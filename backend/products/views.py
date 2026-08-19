@@ -126,8 +126,6 @@ class ROModelPartAPIView(APIView):
         )
 
 
-
-
 class ProductSearchAPIView(APIView):
 
     permission_classes = [IsAuthenticated]
@@ -158,3 +156,36 @@ class ProductSearchAPIView(APIView):
 
         return Response(serializer.data)
 
+
+class CustomerShopCatalogAPIView(APIView):
+    """Read-only catalog for authenticated customer-facing shop screens."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        keyword = request.GET.get("q", "").strip()
+        category_id = request.GET.get("category", "").strip()
+
+        queryset = ROModel.objects.select_related("category").filter(
+            is_active=True,
+            category__is_active=True,
+            business_type="SALE",
+            selling_price__gt=0,
+        )
+
+        if keyword:
+            queryset = queryset.filter(
+                Q(model_name__icontains=keyword)
+                | Q(category__name__icontains=keyword)
+                | Q(capacity__icontains=keyword)
+            )
+
+        if category_id.isdigit():
+            queryset = queryset.filter(category_id=int(category_id))
+
+        serializer = ROModelSerializer(
+            queryset.order_by("category__name", "model_name"),
+            many=True,
+        )
+
+        return Response({"products": serializer.data})
