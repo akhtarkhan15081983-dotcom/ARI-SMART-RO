@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../customer/customer_history_screen.dart';
+import '../customer/referral_screen.dart';
+
 class DashboardCard extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -12,6 +15,27 @@ class DashboardCard extends StatelessWidget {
     required this.onTap,
   });
 
+  void _handleTap(BuildContext context) {
+    switch (title) {
+      case 'Referral':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const ReferralScreen(),
+          ),
+        );
+        return;
+      case 'History':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const CustomerHistoryScreen(),
+          ),
+        );
+        return;
+      default:
+        onTap();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -21,7 +45,7 @@ class DashboardCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(15),
-        onTap: onTap,
+        onTap: () => _handleTap(context),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
