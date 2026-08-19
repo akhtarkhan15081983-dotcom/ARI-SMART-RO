@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [referral-ui-integration, customer-app-completion]
+    branches: [referral-ui-integration, customer-app-completion, final-5-percent-completion]
 
 jobs:
   backend:
@@ -29,7 +29,7 @@ jobs:
           "qrcode[pil]"
           openpyxl
           reportlab
-      - run: python manage.py test referrals products
+      - run: python manage.py test referrals products inventory
 
   flutter:
     runs-on: ubuntu-latest
