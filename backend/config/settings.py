@@ -53,6 +53,10 @@ INSTALLED_APPS = [
     "jobs",
     "corsheaders",
     "attendance",
+    'django_extensions',
+    'service',
+    "complaints",
+    "referrals",
    
 ]
 
@@ -140,6 +144,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 AUTH_USER_MODEL = "accounts.User"
 
 AUTHENTICATION_BACKENDS = [
+    "accounts.backends.PhoneAuthenticationBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
 

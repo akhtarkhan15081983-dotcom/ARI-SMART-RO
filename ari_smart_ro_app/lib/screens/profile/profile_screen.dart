@@ -4,6 +4,8 @@ import '../../models/profile_model.dart';
 import '../../services/api_service.dart';
 import '../../services/profile_service.dart';
 import '../login/login_screen.dart';
+import 'edit_profile_screen.dart';
+import 'change_password_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -191,13 +193,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _ActionButton(
                     icon: Icons.edit_outlined,
                     label: 'Edit Profile',
-                    onPressed: () => _showComingSoon('Edit Profile'),
+                    onPressed: () async {
+
+                      final updated = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const EditProfileScreen(),
+                        ),
+                      );
+
+                      if (updated == true) {
+                        _loadProfile();
+                      }
+
+                    },
                   ),
                   const SizedBox(height: 12),
                   _ActionButton(
                     icon: Icons.lock_outline,
                     label: 'Change Password',
-                    onPressed: () => _showComingSoon('Change Password'),
+                    onPressed: () {
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ChangePasswordScreen(),
+                        ),
+                      );
+
+                    },
                   ),
                   const SizedBox(height: 12),
                   _ActionButton(

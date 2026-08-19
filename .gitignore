@@ -1,0 +1,67 @@
+# ==============================
+# Python / Django
+# ==============================
+**/__pycache__/
+*.py[cod]
+*.sqlite3
+db.sqlite3
+**/db.sqlite3
+
+**/venv/
+**/.venv/
+**/env/
+
+**/media/
+**/staticfiles/
+
+# Environment / secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# ==============================
+# Flutter / Dart
+# ==============================
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/build/
+
+# ==============================
+# Logs / generated output
+# ==============================
+*.log
+**/*log.txt
+**/analysis_output.txt
+**/flutter_tree.txt
+**/lib_tree.txt
+backend_files.txt
+flutter_lib.txt
+project_structure.txt
+django_tree.txt
+
+# ==============================
+# IDE / OS
+# ==============================
+**/.vscode/
+**/.idea/
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Tests / coverage
+# ==============================
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+
+# ==============================
+# Local/customer data
+# ==============================
+customers_master.xlsx
+
+# ==============================
+# Backups
+# ==============================
+*_backup_*.py

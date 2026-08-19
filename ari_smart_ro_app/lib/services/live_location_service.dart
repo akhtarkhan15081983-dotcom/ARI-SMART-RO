@@ -15,16 +15,7 @@ class LiveLocationService {
 
   bool _running = false;
 
-  Future<Map<String,String>> _headers() async {
-
-    final token = await storage.read(key: "access");
-
-    return {
-      "Authorization":"Bearer $token",
-      "Content-Type":"application/json",
-    };
-
-  }
+  
 
   void startTracking() {
 
@@ -66,7 +57,7 @@ class LiveLocationService {
           "${ApiService.baseUrl}/employees/live-location/",
         ),
 
-        headers: await _headers(),
+        headers: await ApiService.authHeaders(),
 
         body: jsonEncode({
 
@@ -82,6 +73,10 @@ class LiveLocationService {
 
       print(response.body);
 
+      if (response.statusCode == 401) {
+        stopTracking();
+      }
+      
     }catch(e){
 
       print(e);

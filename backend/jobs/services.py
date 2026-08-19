@@ -49,6 +49,7 @@ STATUS_CONFIG = {
         "activity": "Job Completed",
     },
 }
+    
 
 def change_job_status(job, new_status):
 
@@ -56,6 +57,36 @@ def change_job_status(job, new_status):
         raise ValueError("Invalid status.")
 
     config = STATUS_CONFIG[new_status]
+
+    if new_status == "COMPLETED":
+
+        if not job.parts_used.exists():
+            raise ValueError(
+                "Cannot complete job: parts have not been scanned."
+            )
+
+        if not hasattr(job, "installation"):
+            raise ValueError(
+                "Cannot complete job: installation details are missing."
+            )
+
+        if not job.media.filter(
+            media_type="PHOTO",
+            description="After Photo",
+        ).exists():
+            raise ValueError(
+                "Cannot complete job: after photo is missing."
+            )
+
+        if not job.otp_verified:
+            raise ValueError(
+                "Cannot complete job: customer OTP is not verified."
+            )
+
+        if not hasattr(job, "signature"):
+            raise ValueError(
+                "Cannot complete job: customer signature is missing."
+            )
 
     if job.status not in config["current"]:
         raise ValueError(

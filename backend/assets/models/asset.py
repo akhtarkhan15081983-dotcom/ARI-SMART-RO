@@ -9,6 +9,7 @@ class ROAsset(models.Model):
 
     STATUS_CHOICES = [
         ("WAREHOUSE", "Warehouse"),
+        ("ASSIGNED", "Assigned"),
         ("INSTALLED", "Installed"),
         ("SERVICE", "Service"),
         ("REPAIR", "Repair"),

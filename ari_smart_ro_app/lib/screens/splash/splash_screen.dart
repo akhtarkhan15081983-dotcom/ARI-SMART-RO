@@ -24,29 +24,14 @@ class _SplashScreenState extends State<SplashScreen> {
     // Splash Screen 2 seconds
     await Future.delayed(const Duration(seconds: 2));
 
-    final token = await ApiService.getAccessToken();
-
     if (!mounted) return;
 
-    if (token != null && token.isNotEmpty) {
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const DashboardScreen(),
-        ),
-      );
-
-    } else {
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const LoginScreen(),
-        ),
-      );
-
-    }
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(),
+      ),
+    );
 
   }
 

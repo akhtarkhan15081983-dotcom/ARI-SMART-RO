@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils import timezone
 
+from accounts.models import User
+
 
 class Customer(models.Model):
 
@@ -16,10 +18,24 @@ class Customer(models.Model):
         blank=True
     )
 
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_profile",
+    )
+
     card_number = models.CharField(
         max_length=25,
         blank=True,
         default=""
+    )
+
+    old_card_number = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
     )
 
     name = models.CharField(max_length=150)
@@ -139,3 +155,129 @@ class Customer(models.Model):
 
     def __str__(self):
         return self.name
+
+class CustomerRentHistory(models.Model):
+
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name="rent_history",
+    )
+
+    rent_month = models.DateField(
+        null=True,
+        blank=True,
+    )
+
+    expected_rent = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+    )
+
+    paid_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+    )
+
+    raw_value = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    remarks = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+
+        ordering = [
+            "rent_month",
+            "id",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "customer",
+                    "rent_month",
+                ],
+                name="unique_customer_rent_month",
+            )
+        ]
+
+    def __str__(self):
+
+        return (
+            f"{self.customer.name} - "
+            f"{self.rent_month} - "
+            f"{self.paid_amount}"
+        )
+
+class CustomerRentPayment(models.Model):
+
+    PAYMENT_MODE_CHOICES = [
+        ("CASH", "Cash"),
+        ("UPI", "UPI"),
+        ("BANK", "Bank Transfer"),
+        ("OTHER", "Other"),
+    ]
+
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name="rent_payments",
+    )
+
+    rent_history = models.ForeignKey(
+        CustomerRentHistory,
+        on_delete=models.CASCADE,
+        related_name="payments",
+    )
+
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+    )
+
+    payment_date = models.DateField(
+        default=timezone.now,
+    )
+
+    payment_mode = models.CharField(
+        max_length=20,
+        choices=PAYMENT_MODE_CHOICES,
+        default="CASH",
+    )
+
+    remarks = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    collected_by = models.ForeignKey(
+        "employees.EmployeeProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="collected_rent_payments",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    def __str__(self):
+        return (
+            f"{self.customer.name} - "
+            f"₹{self.amount} - "
+            f"{self.payment_date}"
+        )
+

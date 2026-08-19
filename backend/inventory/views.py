@@ -1,102 +1,299 @@
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+
 from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework import status
-from .serializers import OCRVerifySerializer,EngineerBagIssueSerializer
-
-from .models import InventoryItem, EngineerBagItem
 from rest_framework.permissions import IsAuthenticated
-from .serializers import MyBagSerializer
+
+from .serializers import (
+    OCRVerifySerializer,
+    EngineerBagIssueSerializer,
+    MyBagSerializer,
+)
+
+from .models import (
+    InventoryItem,
+    EngineerBagItem,
+    InventoryAuditLog,
+)
 
 
-class EngineerBagIssueAPIView(generics.CreateAPIView):
+class EngineerBagIssueAPIView(
+    generics.CreateAPIView
+):
 
     serializer_class = EngineerBagIssueSerializer
 
-    def create(self, request, *args, **kwargs):
+    permission_classes = [
+        IsAuthenticated
+    ]
 
-        inventory_item = InventoryItem.objects.get(
-            id=request.data["inventory_item"]
+    @transaction.atomic
+    def create(
+        self,
+        request,
+        *args,
+        **kwargs,
+    ):
+
+        # ----------------------------------------------------
+        # LOCK INVENTORY ROW
+        # ----------------------------------------------------
+
+        inventory_item = get_object_or_404(
+            InventoryItem.objects.select_for_update(),
+            id=request.data.get("inventory_item"),
         )
+
+        # ----------------------------------------------------
+        # FINAL SERVER-SIDE STOCK CHECK
+        # ----------------------------------------------------
 
         if inventory_item.status != "IN_STOCK":
-            return Response(
-                {
-                    "error": "Part is not available in stock."
-                },
-                status=status.HTTP_400_BAD_REQUEST
+
+            InventoryAuditLog.objects.create(
+                inventory_item=inventory_item,
+                performed_by=request.user,
+                action="SECURITY_REJECT",
+                old_status=inventory_item.status,
+                new_status=inventory_item.status,
+                serial_number=(
+                    inventory_item.serial_number or ""
+                ),
+                remarks=(
+                    "Attempted to issue an inventory "
+                    "item that was not in stock."
+                ),
             )
 
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+            return Response(
+                {
+                    "error":
+                        "Part is not available in stock."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        bag_item = serializer.save()
+        # ----------------------------------------------------
+        # VALIDATE REQUEST
+        # ----------------------------------------------------
+
+        serializer = self.get_serializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        engineer = serializer.validated_data[
+            "engineer"
+        ]
+
+        # ----------------------------------------------------
+        # FINAL DUPLICATE CHECK UNDER LOCK
+        # ----------------------------------------------------
+
+        if EngineerBagItem.objects.filter(
+            inventory_item=inventory_item,
+            status="ISSUED",
+        ).exists():
+
+            InventoryAuditLog.objects.create(
+                inventory_item=inventory_item,
+                engineer=engineer,
+                performed_by=request.user,
+                action="SECURITY_REJECT",
+                old_status=inventory_item.status,
+                new_status=inventory_item.status,
+                serial_number=(
+                    inventory_item.serial_number or ""
+                ),
+                remarks=(
+                    "Duplicate issue attempt detected."
+                ),
+            )
+
+            return Response(
+                {
+                    "error":
+                        "This physical part is already "
+                        "issued to an engineer."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ----------------------------------------------------
+        # CREATE BAG ITEM
+        # ----------------------------------------------------
+
+        bag_item = serializer.save(
+            status="ISSUED"
+        )
+
+        # ----------------------------------------------------
+        # INVENTORY STATUS
+        # ----------------------------------------------------
+
+        old_status = inventory_item.status
 
         inventory_item.status = "ISSUED"
-        inventory_item.save()
+
+        inventory_item.save(
+            update_fields=["status"]
+        )
+
+        # ----------------------------------------------------
+        # AUDIT
+        # ----------------------------------------------------
+
+        InventoryAuditLog.objects.create(
+            inventory_item=inventory_item,
+            engineer=engineer,
+            performed_by=request.user,
+            action="ISSUED",
+            old_status=old_status,
+            new_status="ISSUED",
+            serial_number=(
+                inventory_item.serial_number or ""
+            ),
+            remarks=(
+                request.data.get(
+                    "remarks",
+                    "",
+                )
+            ),
+        )
 
         return Response(
-            EngineerBagIssueSerializer(bag_item).data,
-            status=status.HTTP_201_CREATED
+            EngineerBagIssueSerializer(
+                bag_item
+            ).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
-class OCRVerifyAPIView(generics.GenericAPIView):
+class OCRVerifyAPIView(
+    generics.GenericAPIView
+):
 
     serializer_class = OCRVerifySerializer
 
-    def post(self, request):
+    permission_classes = [
+        IsAuthenticated
+    ]
 
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+    def post(
+        self,
+        request,
+    ):
 
-        engineer = serializer.validated_data["engineer"]
-        serial_number = serializer.validated_data["serial_number"]
-        print("LOGIN ENGINEER :", engineer)
-        print("SCANNED SERIAL :", serial_number)
+        serializer = self.get_serializer(
+            data=request.data
+        )
 
-        try:
+        serializer.is_valid(
+            raise_exception=True
+        )
 
-            print(
-                EngineerBagItem.objects.filter(
-                    inventory_item__serial_number=serial_number
-                ).values(
-                    "engineer__user__first_name",
-                    "status",
-                    "inventory_item__serial_number"
-                )
+        engineer = serializer.validated_data[
+            "engineer"
+        ]
+
+        serial_number = (
+            serializer.validated_data[
+                "serial_number"
+            ].strip()
+        )
+
+        # ----------------------------------------------------
+        # SECURITY: REQUESTING USER MUST BE THE ENGINEER
+        # ----------------------------------------------------
+
+        if engineer.user_id != request.user.id:
+
+            return Response(
+                {
+                    "verified": False,
+                    "message":
+                        "You cannot verify a part "
+                        "for another engineer.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-            bag_item = EngineerBagItem.objects.get(
+        # ----------------------------------------------------
+        # VERIFY EXACT SERIAL + ENGINEER + ISSUED
+        # ----------------------------------------------------
+
+        bag_item = (
+            EngineerBagItem.objects
+            .select_related(
+                "inventory_item",
+                "inventory_item__part",
+                "engineer__user",
+            )
+            .filter(
                 engineer=engineer,
                 inventory_item__serial_number=serial_number,
-                status="ISSUED"
+                inventory_item__status="ISSUED",
+                status="ISSUED",
             )
-            return Response({
+            .first()
+        )
+
+        if not bag_item:
+
+            return Response(
+                {
+                    "verified": False,
+                    "message":
+                        "This part is not currently "
+                        "issued to this engineer.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
                 "verified": True,
-                "message": "Part verified successfully.",
-                "inventory_item": bag_item.inventory_item.id,
-                "part": bag_item.inventory_item.part.name,
-            })
+                "message":
+                    "Part verified successfully.",
+                "inventory_item":
+                    bag_item.inventory_item.id,
+                "part":
+                    bag_item.inventory_item.part.name,
+                "part_code":
+                    bag_item.inventory_item.part.code,
+                "serial_number":
+                    bag_item.inventory_item.serial_number,
+            }
+        )
 
-        except EngineerBagItem.DoesNotExist:
 
-            return Response({
-                "verified": False,
-                "message": "This part is not issued to this engineer."
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-
-class MyBagAPIView(generics.ListAPIView):
+class MyBagAPIView(
+    generics.ListAPIView
+):
 
     serializer_class = MyBagSerializer
-    permission_classes = [IsAuthenticated]
+
+    permission_classes = [
+        IsAuthenticated
+    ]
 
     def get_queryset(self):
 
-        return EngineerBagItem.objects.select_related(
-            "inventory_item__part",
-            "engineer__user",
-        ).filter(
-            engineer__user=self.request.user,
-            status="ISSUED",
+        return (
+            EngineerBagItem.objects
+            .select_related(
+                "inventory_item__part",
+                "engineer__user",
+            )
+            .filter(
+                engineer__user=self.request.user,
+                status="ISSUED",
+                inventory_item__status="ISSUED",
+            )
+            .order_by("-issue_date")
         )

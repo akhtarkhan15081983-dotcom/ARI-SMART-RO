@@ -10,6 +10,7 @@ class InstallationSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "installation_id",
+            "job",
             "customer",
             "engineer",
             "ro_asset",
@@ -25,6 +26,16 @@ class InstallationSerializer(serializers.ModelSerializer):
             "longitude",
             "referral_name",
         ]
+        extra_kwargs = {
+            "job": {"required": False},
+            "customer": {"required": False},
+            "engineer": {"required": False},
+            "ro_asset": {"required": False},
+            "scheduled_date": {"required": False},
+            "business_type": {"required": False},
+            "status": {"required": False},
+            "completed_date": {"required": False},
+        }
 
 
 class InstallationPartSerializer(serializers.ModelSerializer):
@@ -34,17 +45,25 @@ class InstallationPartSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def validate_inventory_item(self, value):
-        if value.status != "ISSUED":
+
+        if value.status not in ["ISSUED", "INSTALLED"]:
             raise serializers.ValidationError(
-                "This part is not issued to an engineer."
+                "Invalid inventory item."
             )
+
         return value
 
     def create(self, validated_data):
+
         installation_part = super().create(validated_data)
 
         inventory_item = installation_part.inventory_item
-        inventory_item.status = "INSTALLED"
-        inventory_item.save()
+
+        if (
+            inventory_item
+            and inventory_item.status != "INSTALLED"
+        ):
+            inventory_item.status = "INSTALLED"
+            inventory_item.save()
 
         return installation_part

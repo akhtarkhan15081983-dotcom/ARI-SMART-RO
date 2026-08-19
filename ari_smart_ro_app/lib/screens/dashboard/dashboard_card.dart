@@ -16,16 +16,21 @@ class DashboardCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 4,
+
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
       ),
+
       child: InkWell(
         borderRadius: BorderRadius.circular(15),
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
 
+        onTap: onTap,
+
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+
+          children: [
             Icon(
               icon,
               size: 50,
@@ -37,11 +42,11 @@ class DashboardCard extends StatelessWidget {
             Text(
               title,
               textAlign: TextAlign.center,
+
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
               ),
             ),
-
           ],
         ),
       ),

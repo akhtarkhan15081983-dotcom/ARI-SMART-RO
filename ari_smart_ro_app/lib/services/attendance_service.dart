@@ -89,7 +89,8 @@ class AttendanceService {
       ),
       headers: await _headers(),
     );
-
+    print(response.statusCode);
+    print(response.body);
     print("TODAY STATUS : ${response.statusCode}");
     print(response.body);
 

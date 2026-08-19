@@ -12,12 +12,20 @@ from .views import (
     JobGPSUploadAPIView,
     JobPartUsedAPIView,
     JobSignatureUploadAPIView,
+    JobSearchAPIView,
+    GenerateOTPAPIView,
+    VerifyOTPAPIView,
 )
 router = DefaultRouter()
 router.register(r"jobs", JobViewSet, basename="jobs")
 
 urlpatterns = [
     path("jobs/my-jobs/", MyJobsAPIView.as_view(), name="my-jobs"),
+    path(
+        "jobs/search/",
+        JobSearchAPIView.as_view(),
+        name="job-search",
+    ),
 
     path(
         "jobs/<int:pk>/accept/",
@@ -61,5 +69,15 @@ urlpatterns = [
         "jobs/<int:pk>/",
         JobDetailAPIView.as_view(),
         name="job-detail",
+    ),
+
+    path(
+        "jobs/<int:pk>/generate-otp/",
+        GenerateOTPAPIView.as_view(),
+    ),
+
+    path(
+        "jobs/<int:pk>/verify-otp/",
+        VerifyOTPAPIView.as_view(),
     ),
 ]

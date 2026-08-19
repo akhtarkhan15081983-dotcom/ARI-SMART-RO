@@ -10,6 +10,7 @@ from .serializers import (
     EmployeeLocationSerializer,
     EmployeeProfileSerializer,
     EmployeeProfileUpdateSerializer,
+    AssignmentEmployeeSerializer,
 )
 
 
@@ -18,6 +19,10 @@ class UpdateLiveLocationAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        print("========== LIVE LOCATION ==========")
+        print("USER :", request.user)
+        print("AUTH :", request.auth)
+        print("IS AUTH :", request.user.is_authenticated)
 
         try:
             employee = request.user.employee_profile
@@ -156,13 +161,11 @@ class EmployeeProfileAPIView(APIView):
 
             serializer.save()
 
-            profile.refresh_from_db()
-
             return Response(
-                EmployeeProfileSerializer(
-                    profile,
-                    context={"request": request},
-                ).data
+                {
+                    "success": True,
+                    "message": "Profile updated successfully."
+                }
             )
 
         return Response(
@@ -170,4 +173,55 @@ class EmployeeProfileAPIView(APIView):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+class EngineerListAPIView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        engineers = EmployeeProfile.objects.filter(
+            designation="ENGINEER",
+            is_active=True,
+        ).select_related("user")
+
+        data = []
+
+        for engineer in engineers:
+
+            data.append({
+
+                "id": engineer.id,
+
+                "employee_id": engineer.employee_id,
+
+                "name": engineer.user.get_full_name()
+                or engineer.user.phone,
+
+                "phone": engineer.user.phone,
+
+            })
+
+        return Response(data)
+
+class AssignmentEmployeeListAPIView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        employees = EmployeeProfile.objects.filter(
+            designation__in=["ENGINEER", "OFFICE"],
+            is_active=True,
+        ).select_related("user").order_by(
+            "designation",
+            "user__first_name",
+            "user__last_name",
+        )
+
+        serializer = AssignmentEmployeeSerializer(
+            employees,
+            many=True,
+        )
+
+        return Response(serializer.data)
 

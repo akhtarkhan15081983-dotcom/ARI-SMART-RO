@@ -1,8 +1,49 @@
 from django.urls import path
 
-from .views import LoginAPIView
+from .views import (
+    CustomerRegisterAPIView,
+    SendOTPAPIView,
+    VerifyOTPAPIView,
+    LoginAPIView,
+    ChangePasswordAPIView,
+)
+
 
 urlpatterns = [
+
+    # ========================================================
+    # CUSTOMER REGISTRATION
+    # ========================================================
+
+    path(
+        "register/",
+        CustomerRegisterAPIView.as_view(),
+        name="customer-register",
+    ),
+
+    # ========================================================
+    # SEND OTP
+    # ========================================================
+
+    path(
+        "send-otp/",
+        SendOTPAPIView.as_view(),
+        name="send-otp",
+    ),
+
+    # ========================================================
+    # VERIFY OTP
+    # ========================================================
+
+    path(
+        "verify-otp/",
+        VerifyOTPAPIView.as_view(),
+        name="verify-otp",
+    ),
+
+    # ========================================================
+    # LOGIN
+    # ========================================================
 
     path(
         "login/",
@@ -10,4 +51,13 @@ urlpatterns = [
         name="login",
     ),
 
+    # ========================================================
+    # CHANGE PASSWORD
+    # ========================================================
+
+    path(
+        "change-password/",
+        ChangePasswordAPIView.as_view(),
+        name="change-password",
+    ),
 ]

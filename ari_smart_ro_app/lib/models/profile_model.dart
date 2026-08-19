@@ -1,5 +1,10 @@
 class ProfileModel {
   final String employeeId;
+  final String firstName;
+  final String lastName;
+  final String pincode;
+  final String emergencyName;
+  final String emergencyContact;
   final String fullName;
   final String phone;
   final String email;
@@ -14,6 +19,11 @@ class ProfileModel {
 
   ProfileModel({
     required this.employeeId,
+    required this.firstName,
+    required this.lastName,
+    required this.pincode,
+    required this.emergencyName,
+    required this.emergencyContact,
     required this.fullName,
     required this.phone,
     required this.email,
@@ -30,6 +40,11 @@ class ProfileModel {
   factory ProfileModel.fromJson(Map<String, dynamic> json) {
     return ProfileModel(
       employeeId: json["employee_id"] ?? "",
+      firstName: json["first_name"] ?? "",
+      lastName: json["last_name"] ?? "",
+      pincode: json["pincode"] ?? "",
+      emergencyName: json["emergency_name"] ?? "",
+      emergencyContact: json["emergency_contact"] ?? "",
       fullName: json["full_name"] ?? "",
       phone: json["phone"] ?? "",
       email: json["email"] ?? "",

@@ -3,6 +3,7 @@ from django.db import models
 from customers.models import Customer
 from employees.models import EmployeeProfile
 from assets.models import ROAsset
+from random import randint
 
 
 class Job(models.Model):
@@ -90,6 +91,24 @@ class Job(models.Model):
     arrived_at = models.DateTimeField(
         null=True,
         blank=True
+    )
+    customer_otp = models.CharField(
+        max_length=6,
+        blank=True,
+        null=True,
+    )
+
+    otp_verified = models.BooleanField(
+        default=False,
+    )
+
+    otp_created_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    otp_attempts = models.PositiveIntegerField(
+        default=0,
     )
 
     in_progress_at = models.DateTimeField(

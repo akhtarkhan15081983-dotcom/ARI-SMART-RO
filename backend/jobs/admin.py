@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Job, JobGPSLog, JobMedia
+from .models import Job, JobGPSLog, JobMedia, JobSignature
 
 class JobGPSLogInline(admin.TabularInline):
     model = JobGPSLog
@@ -61,4 +61,12 @@ class JobMediaAdmin(admin.ModelAdmin):
     search_fields = (
         "job__job_id",
         "description",
+    )
+
+@admin.register(JobSignature)
+class JobSignatureAdmin(admin.ModelAdmin):
+    list_display = (
+        "job",
+        "customer_name",
+        "uploaded_at",
     )

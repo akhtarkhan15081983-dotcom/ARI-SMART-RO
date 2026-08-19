@@ -18,6 +18,11 @@ class AttendanceScreen extends StatefulWidget {
 class _AttendanceScreenState extends State<AttendanceScreen> {
   final AttendanceService _attendanceService = AttendanceService();
   final ImagePicker _imagePicker = ImagePicker();
+  @override
+  void initState() {
+    super.initState();
+    _loadTodayAttendance();
+  }
 
   Position? _position;
   XFile? _selfie;
@@ -28,6 +33,32 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool _isCheckedOut = false;
   DateTime? _checkInTime;
   DateTime? _checkOutTime;
+
+  Future<void> _loadTodayAttendance() async {
+    try {
+      final attendance = await _attendanceService.todayAttendance();
+
+      if (attendance == null) return;
+
+      if (!mounted) return;
+
+      setState(() {
+        _isCheckedIn = attendance.checkIn != null;
+
+        _checkInTime = attendance.checkIn != null
+            ? DateTime.parse(attendance.checkIn!)
+            : null;
+
+        _isCheckedOut = attendance.checkOut != null;
+
+        _checkOutTime = attendance.checkOut != null
+            ? DateTime.parse(attendance.checkOut!)
+            : null;
+      });
+    } catch (e) {
+      print("LOAD ATTENDANCE ERROR : $e");
+    }
+  }
 
   bool get _canCheckIn =>
       _position != null && _selfie != null && !_isSubmitting && !_isCheckedIn;
@@ -106,6 +137,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Future<void> _checkIn() async {
+    final confirm = await _confirmAction(
+      title: "Check In",
+      message: "Are you sure you want to check in?",
+    );
+
+    if (!confirm) return;
     if (!_canCheckIn) {
       _showSnackBar('Verify your GPS location and capture a selfie first.');
       return;
@@ -128,6 +165,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _checkInTime = DateTime.now();
       });
       _showSnackBar('Checked in successfully.', isSuccess: true);
+      await _loadTodayAttendance();
     } catch (_) {
       _showSnackBar('Check-in failed. Please try again.');
     } finally {
@@ -136,6 +174,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Future<void> _checkOut() async {
+    final confirm = await _confirmAction(
+      title: "Check Out",
+      message: "Are you sure you want to check out?",
+    );
+
+    if (!confirm) return;
     if (_isSubmitting || !_isCheckedIn || _isCheckedOut) return;
 
     setState(() => _isSubmitting = true);
@@ -146,12 +190,40 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _isCheckedOut = true;
         _checkOutTime = DateTime.now();
       });
+
+
       _showSnackBar('Checked out successfully.', isSuccess: true);
+      await _loadTodayAttendance();
     } catch (_) {
       _showSnackBar('Check-out failed. Please try again.');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  Future<bool> _confirmAction({
+    required String title,
+    required String message,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Yes"),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? false;
   }
 
   void _showSnackBar(String message, {bool isSuccess = false}) {
