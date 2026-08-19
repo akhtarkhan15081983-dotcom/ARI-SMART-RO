@@ -28,6 +28,7 @@ jobs:
           Pillow
           "qrcode[pil]"
           openpyxl
+          reportlab
       - run: python manage.py test referrals
 
   flutter:
