@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/attendance_model.dart';
-
 import '../../services/api_service.dart';
 import '../../services/attendance_service.dart';
 import '../../services/live_location_service.dart';
-
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
 import '../bag/my_bag_screen.dart';
@@ -16,6 +14,8 @@ import '../qr/qr_scanner_screen.dart';
 import '../walkin/walkin_customer_screen.dart';
 import '../customer/customer_list_screen.dart';
 import '../customer/my_ro_screen.dart';
+import '../customer/customer_history_screen.dart';
+import '../customer/referral_screen.dart';
 import '../rent/rent_payment_screen.dart';
 import '../rent/rent_management_screen.dart';
 import '../rent/payment_history_screen.dart';
@@ -24,13 +24,11 @@ import '../complaint/complaint_list_screen.dart';
 import '../profile/profile_screen.dart';
 import '../login/login_screen.dart';
 import '../shop/shop_screen.dart';
-
 import 'dashboard_card.dart';
 import 'dashboard_items.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
-
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
@@ -66,9 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _startLiveLocationIfRequired() async {
     try {
       final role = await ApiService.getRole();
-      if (_normaliseRole(role) == 'ENGINEER') {
-        _liveLocationService.startTracking();
-      }
+      if (_normaliseRole(role) == 'ENGINEER') _liveLocationService.startTracking();
     } catch (e) {
       debugPrint('LIVE LOCATION START ERROR: $e');
     }
@@ -154,11 +150,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (confirm != true) return;
     await ApiService.logout();
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
   }
 
   Future<void> _handleDashboardBack() async {
@@ -180,9 +172,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (shouldExit == true) await SystemNavigator.pop();
   }
 
-  void _push(Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
-  }
+  void _push(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
   void _handleItemTap(DashboardItem item) {
     switch (item.route) {
@@ -204,31 +194,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 'rent_management': _push(const RentManagementScreen()); return;
       case 'payment_history': _push(const PaymentHistoryScreen()); return;
       case 'shop': _push(const ShopScreen()); return;
+      case 'referral': _push(const ReferralScreen()); return;
+      case 'history': _push(const CustomerHistoryScreen()); return;
       case 'profile': _push(const ProfileScreen()); return;
-      case 'referral': _showComingSoon('Referral', 'Referral module is being prepared.'); return;
-      case 'history': _showComingSoon('History', 'Rent and service history is being prepared.'); return;
       default: _showComingSoon(item.title, '${item.title} module is being prepared.');
     }
   }
 
   void _showComingSoon(String title, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), behavior: SnackBarBehavior.floating));
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingRole) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    if (_isLoadingRole) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final items = _dashboardItems;
     final isCustomer = _role == 'CUSTOMER';
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) _handleDashboardBack();
-      },
+      onPopInvokedWithResult: (didPop, result) { if (!didPop) _handleDashboardBack(); },
       child: Scaffold(
         appBar: AppBar(
           title: Text(isCustomer ? 'ARI Smart RO' : '$_role Dashboard'),
