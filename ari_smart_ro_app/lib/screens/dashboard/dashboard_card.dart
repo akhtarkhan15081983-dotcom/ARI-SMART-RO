@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../customer/referral_screen.dart';
-
 class DashboardCard extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -14,19 +12,6 @@ class DashboardCard extends StatelessWidget {
     required this.onTap,
   });
 
-  void _handleTap(BuildContext context) {
-    if (title == 'Referral') {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const ReferralScreen(),
-        ),
-      );
-      return;
-    }
-
-    onTap();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -36,7 +21,7 @@ class DashboardCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(15),
-        onTap: () => _handleTap(context),
+        onTap: onTap,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
