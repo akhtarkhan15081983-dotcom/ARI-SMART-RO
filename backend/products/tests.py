@@ -9,7 +9,6 @@ class CustomerShopCatalogTests(APITestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(
-            username='shop-test',
             phone='9999999999',
             password='test-pass-123',
         )
