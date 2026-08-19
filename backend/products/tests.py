@@ -8,7 +8,11 @@ from .models import ProductCategory, ROModel
 class CustomerShopCatalogTests(APITestCase):
     def setUp(self):
         User = get_user_model()
-        self.user = User.objects.create_user(username='shop-test', password='test-pass-123')
+        self.user = User.objects.create_user(
+            username='shop-test',
+            phone='9999999999',
+            password='test-pass-123',
+        )
         self.client.force_authenticate(self.user)
         self.category = ProductCategory.objects.create(name='Domestic RO')
 
