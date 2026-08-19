@@ -5,8 +5,8 @@ from .views import (
     ROModelAPIView,
     ROModelPartAPIView,
     ProductSearchAPIView,
+    CustomerShopCatalogAPIView,
 )
-   
 
 
 urlpatterns = [
@@ -33,6 +33,12 @@ urlpatterns = [
         "search/",
         ProductSearchAPIView.as_view(),
         name="product-search",
+    ),
+
+    path(
+        "shop/catalog/",
+        CustomerShopCatalogAPIView.as_view(),
+        name="customer-shop-catalog",
     ),
 
 ]
