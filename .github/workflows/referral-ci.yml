@@ -1,13 +1,13 @@
-name: Referral CI
+name: Customer App CI
 
 on:
   pull_request:
     branches: [main]
   push:
-    branches: [referral-ui-integration]
+    branches: [referral-ui-integration, customer-app-completion]
 
 jobs:
-  backend-referrals:
+  backend:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,7 +29,7 @@ jobs:
           "qrcode[pil]"
           openpyxl
           reportlab
-      - run: python manage.py test referrals
+      - run: python manage.py test referrals products
 
   flutter:
     runs-on: ubuntu-latest
