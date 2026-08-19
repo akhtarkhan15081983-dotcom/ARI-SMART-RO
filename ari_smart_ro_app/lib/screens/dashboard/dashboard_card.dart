@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../customer/customer_history_screen.dart';
 import '../customer/referral_screen.dart';
 
 class DashboardCard extends StatelessWidget {
@@ -15,16 +16,24 @@ class DashboardCard extends StatelessWidget {
   });
 
   void _handleTap(BuildContext context) {
-    if (title == 'Referral') {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const ReferralScreen(),
-        ),
-      );
-      return;
+    switch (title) {
+      case 'Referral':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const ReferralScreen(),
+          ),
+        );
+        return;
+      case 'History':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const CustomerHistoryScreen(),
+          ),
+        );
+        return;
+      default:
+        onTap();
     }
-
-    onTap();
   }
 
   @override
