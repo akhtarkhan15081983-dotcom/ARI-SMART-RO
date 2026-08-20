@@ -77,6 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final profile = _profile!;
     final topPadding = MediaQuery.of(context).padding.top;
+    final canEnroll = !profile.faceEnrolled || profile.faceEnrollmentAllowed;
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FC),
       body: RefreshIndicator(
@@ -96,18 +97,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _InfoRow(Icons.smartphone_outlined, 'Attendance Device',
                     profile.attendanceDeviceId.isNotEmpty ? 'Bound' : 'Not bound', isLast: true),
                 ]),
-                const SizedBox(height: 12),
-                _ActionButton(
-                  icon: Icons.face_retouching_natural,
-                  label: profile.faceEnrolled ? 'Re-enroll Face & Device' : 'Enroll Face & Device',
-                  onPressed: () async {
-                    final changed = await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const FaceEnrollmentScreen()),
-                    );
-                    if (changed == true) _loadProfile();
-                  },
-                ),
+                if (canEnroll) ...[
+                  const SizedBox(height: 12),
+                  _ActionButton(
+                    icon: Icons.face_retouching_natural,
+                    label: profile.faceEnrolled ? 'Admin Authorized Re-enrollment' : 'Enroll Face & Device',
+                    onPressed: () async {
+                      final changed = await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const FaceEnrollmentScreen()),
+                      );
+                      if (changed == true) _loadProfile();
+                    },
+                  ),
+                ] else ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Face and attendance device are locked. Contact admin if re-enrollment is required.',
+                    style: TextStyle(color: Color(0xFF687386), fontSize: 13),
+                  ),
+                ],
                 const SizedBox(height: 22),
                 const _SectionTitle(title: 'Personal Information'),
                 const SizedBox(height: 10),
