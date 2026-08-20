@@ -11,15 +11,19 @@ class LocalLLMError(RuntimeError):
 class LocalLLM:
     """OpenAI-free local inference adapter for ANDY.
 
-    Prefer Ollama's chat endpoint, but fall back to the generate endpoint when
-    a local model/runner does not accept chat requests. Everything remains on
-    the ARI-owned machine.
+    Defaults are intentionally conservative for the current 16 GB ARI
+    development PC. Ollama is asked to unload the model after each response so
+    Whisper and Flutter/Django do not have to compete with a permanently loaded
+    LLM. Environment variables can raise these limits later on a larger server.
     """
 
     def __init__(self):
         self.base_url = os.getenv("ANDY_LLM_URL", "http://127.0.0.1:11434").rstrip("/")
         self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5-coder:3b")
         self.timeout = int(os.getenv("ANDY_LLM_TIMEOUT", "180"))
+        self.num_ctx = int(os.getenv("ANDY_LLM_NUM_CTX", "2048"))
+        self.num_predict = int(os.getenv("ANDY_LLM_NUM_PREDICT", "384"))
+        self.keep_alive = os.getenv("ANDY_LLM_KEEP_ALIVE", "0s")
 
     def _post_json(self, path, payload):
         request = urllib.request.Request(
@@ -52,6 +56,13 @@ class LocalLLM:
         parts.append("ASSISTANT:\n")
         return "\n\n".join(parts)
 
+    def _options(self):
+        return {
+            "temperature": 0.2,
+            "num_ctx": self.num_ctx,
+            "num_predict": self.num_predict,
+        }
+
     def chat(self, messages):
         chat_error = None
         try:
@@ -59,10 +70,8 @@ class LocalLLM:
                 "model": self.model,
                 "messages": messages,
                 "stream": False,
-                "options": {
-                    "temperature": 0.2,
-                    "num_ctx": 8192,
-                },
+                "keep_alive": self.keep_alive,
+                "options": self._options(),
             })
             text = ((data.get("message") or {}).get("content") or "").strip()
             if text:
@@ -71,17 +80,13 @@ class LocalLLM:
         except LocalLLMError as exc:
             chat_error = exc
 
-        # qwen2.5-coder also supports completion. This fallback makes ANDY
-        # resilient if the installed Ollama runner rejects /api/chat.
         try:
             data = self._post_json("/api/generate", {
                 "model": self.model,
                 "prompt": self._messages_to_prompt(messages),
                 "stream": False,
-                "options": {
-                    "temperature": 0.2,
-                    "num_ctx": 8192,
-                },
+                "keep_alive": self.keep_alive,
+                "options": self._options(),
             })
             text = (data.get("response") or "").strip()
             if text:
