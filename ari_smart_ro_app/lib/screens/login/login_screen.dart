@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // Logo
               Image.asset(
-                "assets/images/logo.png",
+                "assets/images/ari_smart_ro_icon.png",
                 height: 220,
               ),
               const SizedBox(height: 20),
