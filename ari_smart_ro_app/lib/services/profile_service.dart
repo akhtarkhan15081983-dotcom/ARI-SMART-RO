@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../models/profile_model.dart';
 import 'api_service.dart';
@@ -30,7 +31,14 @@ class ProfileService {
     );
     request.headers["Authorization"] = "Bearer $token";
     request.fields["device_id"] = deviceId;
-    request.files.add(await http.MultipartFile.fromPath("photo", photoPath));
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        "photo",
+        photoPath,
+        filename: "face_enrollment.jpg",
+        contentType: MediaType("image", "jpeg"),
+      ),
+    );
 
     final response = await request.send();
     final body = await response.stream.bytesToString();
