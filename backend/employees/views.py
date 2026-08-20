@@ -28,6 +28,18 @@ class FaceEnrollmentAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # First-ever enrollment is allowed. Once a face/device exists, only an
+        # explicit admin authorization can open one re-enrollment attempt.
+        already_enrolled = bool(employee.face_enrolled_at or employee.attendance_device_id)
+        if already_enrolled and not employee.face_enrollment_allowed:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Face/device re-enrollment is locked. Ask an admin to allow it.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         enrollment_photo = request.FILES.get("photo")
         device_id = (request.data.get("device_id") or "").strip()
 
@@ -56,11 +68,13 @@ class FaceEnrollmentAPIView(APIView):
         employee.face_enrolled_at = timezone.now()
         employee.face_enrollment_verified = False
         employee.attendance_device_id = device_id
+        employee.face_enrollment_allowed = False
         employee.save(update_fields=[
             "photo",
             "face_enrolled_at",
             "face_enrollment_verified",
             "attendance_device_id",
+            "face_enrollment_allowed",
         ])
 
         return Response({
@@ -68,9 +82,53 @@ class FaceEnrollmentAPIView(APIView):
             "message": "Real enrollment photo saved and this device is bound for attendance.",
             "face_enrolled": True,
             "face_enrollment_verified": False,
+            "face_enrollment_allowed": False,
             "face_enrolled_at": employee.face_enrolled_at,
             "device_bound": True,
         })
+
+
+class AdminFaceEnrollmentControlAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, employee_id):
+        if getattr(request.user, "role", "") != "ADMIN":
+            return Response(
+                {"success": False, "message": "Only an admin can control face enrollment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            employee = EmployeeProfile.objects.select_related("user").get(id=employee_id)
+        except EmployeeProfile.DoesNotExist:
+            return Response(
+                {"success": False, "message": "Employee not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        action = (request.data.get("action") or "").strip().lower()
+        if action == "allow_reenrollment":
+            employee.face_enrollment_allowed = True
+            employee.save(update_fields=["face_enrollment_allowed"])
+            return Response({
+                "success": True,
+                "message": "One face/device re-enrollment has been authorized by admin.",
+                "face_enrollment_allowed": True,
+            })
+
+        if action == "cancel_reenrollment":
+            employee.face_enrollment_allowed = False
+            employee.save(update_fields=["face_enrollment_allowed"])
+            return Response({
+                "success": True,
+                "message": "Face/device re-enrollment authorization cancelled.",
+                "face_enrollment_allowed": False,
+            })
+
+        return Response(
+            {"success": False, "message": "Invalid action."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class UpdateLiveLocationAPIView(APIView):
@@ -122,6 +180,7 @@ class EmployeeProfileAPIView(APIView):
         data = dict(serializer.data)
         data["face_enrolled"] = profile.face_enrolled_at is not None
         data["face_enrollment_verified"] = profile.face_enrollment_verified
+        data["face_enrollment_allowed"] = profile.face_enrollment_allowed
         data["attendance_device_bound"] = bool(profile.attendance_device_id)
         return Response(data)
 
@@ -149,6 +208,10 @@ class EngineerListAPIView(APIView):
             "employee_id": e.employee_id,
             "name": e.user.get_full_name() or e.user.phone,
             "phone": e.user.phone,
+            "face_enrolled": e.face_enrolled_at is not None,
+            "face_enrollment_verified": e.face_enrollment_verified,
+            "face_enrollment_allowed": e.face_enrollment_allowed,
+            "attendance_device_bound": bool(e.attendance_device_id),
         } for e in engineers])
 
 
