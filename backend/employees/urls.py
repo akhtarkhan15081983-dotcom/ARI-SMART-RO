@@ -7,6 +7,7 @@ from .views import (
     EngineerListAPIView,
     AssignmentEmployeeListAPIView,
     FaceEnrollmentAPIView,
+    AdminFaceEnrollmentControlAPIView,
 )
 
 urlpatterns = [
@@ -29,6 +30,11 @@ urlpatterns = [
         "employees/face-enrollment/",
         FaceEnrollmentAPIView.as_view(),
         name="face-enrollment",
+    ),
+    path(
+        "employees/<int:employee_id>/face-enrollment-control/",
+        AdminFaceEnrollmentControlAPIView.as_view(),
+        name="admin-face-enrollment-control",
     ),
     path(
         "employees/engineers/",
