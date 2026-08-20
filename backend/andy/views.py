@@ -1,9 +1,14 @@
+import os
+import tempfile
+
 from rest_framework import status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .local_llm import LocalLLM, LocalLLMError
+from .local_stt import LocalSTT, LocalSTTError
 from .models import AndyConversation, AndyFeedback, AndyMemory, AndyMessage
 from .project_context import build_project_context
 
@@ -51,14 +56,9 @@ class AndyChatAPIView(APIView):
         if memory_text:
             messages.append({"role": "system", "content": "User-confirmed memory:\n" + memory_text})
 
-        # Programming questions get relevant source code directly from the local repository.
-        # This is read-only: ANDY cannot alter the repository through this endpoint.
         if _looks_like_programming_request(text):
             project_context = build_project_context(text)
-            messages.append({
-                "role": "system",
-                "content": "Relevant read-only ARI SMART RO repository context:\n\n" + project_context,
-            })
+            messages.append({"role": "system", "content": "Relevant read-only ARI SMART RO repository context:\n\n" + project_context})
 
         history = conversation.messages.order_by("-created_at")[:20]
         for item in reversed(list(history)):
@@ -68,14 +68,41 @@ class AndyChatAPIView(APIView):
         try:
             answer = LocalLLM().chat(messages)
         except LocalLLMError as exc:
-            return Response({
-                "success": False,
-                "message": str(exc),
-                "hint": "Start the ARI-owned local model server and make sure ANDY_LLM_URL/model are configured.",
-            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"success": False, "message": str(exc), "hint": "Start the ARI-owned local model server and make sure ANDY_LLM_URL/model are configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         assistant_message = AndyMessage.objects.create(conversation=conversation, role="ASSISTANT", content=answer)
         return Response({"success": True, "conversation_id": conversation.id, "message_id": assistant_message.id, "answer": answer})
+
+
+class AndyTranscribeAPIView(APIView):
+    """Receives microphone audio and transcribes it entirely on ARI infrastructure."""
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        audio = request.FILES.get("audio")
+        if audio is None:
+            return Response({"message": "audio file is required."}, status=400)
+        if audio.size > 12 * 1024 * 1024:
+            return Response({"message": "Voice recording is too large."}, status=413)
+
+        suffix = os.path.splitext(audio.name or "voice.m4a")[1] or ".m4a"
+        path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                path = tmp.name
+                for chunk in audio.chunks():
+                    tmp.write(chunk)
+            result = LocalSTT().transcribe(path)
+            return Response({"success": True, **result})
+        except LocalSTTError as exc:
+            return Response({"success": False, "message": str(exc)}, status=422)
+        finally:
+            if path:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 
 class AndyFeedbackAPIView(APIView):
