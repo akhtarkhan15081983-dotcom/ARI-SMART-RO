@@ -29,6 +29,7 @@ class DashboardItems {
     const DashboardItem(title: "Rent Management", icon: Icons.account_balance_wallet, route: "rent_management"),
     const DashboardItem(title: "Payment History", icon: Icons.receipt_long, route: "payment_history"),
     const DashboardItem(title: "Face & Device Security", icon: Icons.admin_panel_settings, route: "face_security_admin"),
+    const DashboardItem(title: "Attendance Selfie Review", icon: Icons.fact_check_outlined, route: "attendance_review_admin"),
     const DashboardItem(title: "Attendance Security Test", icon: Icons.verified_user, route: "attendance_security_test"),
     ...engineer,
     const DashboardItem(title: "Live Map", icon: Icons.map, route: "map"),
