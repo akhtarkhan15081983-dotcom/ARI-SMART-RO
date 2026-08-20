@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 import '../../services/andy_service.dart';
 
 class AndyChatScreen extends StatefulWidget {
@@ -18,21 +20,25 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
   final _service = AndyService();
+  final _recorder = AudioRecorder();
   final List<_ChatItem> _messages = [
-    const _ChatItem(false, 'Namaste. Main ANDY hoon — ARI SMART RO ka private, self-hosted AI assistant. Aap mujhse project, customers, jobs aur programming ke baare mein pooch sakte hain.'),
+    const _ChatItem(false, 'Namaste. Main ANDY hoon — ARI SMART RO ka private, self-hosted AI assistant. Type karein ya microphone dabakar Hindi, English ya Hinglish mein boliye.'),
   ];
   int? _conversationId;
   bool _sending = false;
+  bool _recording = false;
+  bool _transcribing = false;
 
   @override
   void dispose() {
     _controller.dispose();
     _scroll.dispose();
+    _recorder.dispose();
     super.dispose();
   }
 
-  Future<void> _send() async {
-    final text = _controller.text.trim();
+  Future<void> _sendText(String text) async {
+    text = text.trim();
     if (text.isEmpty || _sending) return;
     _controller.clear();
     setState(() { _messages.add(_ChatItem(true, text)); _sending = true; });
@@ -46,11 +52,45 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _messages.add(_ChatItem(false, 'ANDY local model se connect nahi ho pa raha. Local model server check karein.\n$e')));
+      setState(() => _messages.add(_ChatItem(false, 'ANDY local model se connect nahi ho pa raha.\n$e')));
     } finally {
       if (mounted) setState(() => _sending = false);
       _jumpBottom();
     }
+  }
+
+  Future<void> _send() => _sendText(_controller.text);
+
+  Future<void> _toggleRecording() async {
+    if (_sending || _transcribing) return;
+    if (_recording) {
+      final path = await _recorder.stop();
+      if (mounted) setState(() { _recording = false; _transcribing = true; });
+      if (path == null) {
+        if (mounted) setState(() => _transcribing = false);
+        return;
+      }
+      try {
+        final transcription = await _service.transcribe(path);
+        if (!mounted) return;
+        setState(() => _transcribing = false);
+        await _sendText(transcription.text);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _transcribing = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Voice recognition failed: $e')));
+      }
+      return;
+    }
+
+    if (!await _recorder.hasPermission()) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Microphone permission is required for ANDY voice.')));
+      return;
+    }
+    final directory = await getTemporaryDirectory();
+    final path = '${directory.path}/andy_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 64000, sampleRate: 16000), path: path);
+    if (mounted) setState(() => _recording = true);
   }
 
   void _jumpBottom() {
@@ -70,6 +110,7 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final busy = _sending || _transcribing;
     return Scaffold(
       appBar: AppBar(title: const Text('ANDY • Private AI')),
       body: Column(children: [
@@ -103,13 +144,22 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
             );
           },
         )),
-        if (_sending) const LinearProgressIndicator(),
+        if (busy) LinearProgressIndicator(value: _transcribing ? null : null),
+        if (_recording) const Padding(padding: EdgeInsets.only(top: 6), child: Text('Listening… tap the red microphone to send', style: TextStyle(fontWeight: FontWeight.w600))),
+        if (_transcribing) const Padding(padding: EdgeInsets.only(top: 6), child: Text('ANDY is understanding your voice…')),
         SafeArea(top: false, child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           child: Row(children: [
             Expanded(child: TextField(controller: _controller, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: const InputDecoration(hintText: 'Ask ANDY...', border: OutlineInputBorder()))),
-            const SizedBox(width: 8),
-            IconButton.filled(onPressed: _sending ? null : _send, icon: const Icon(Icons.send)),
+            const SizedBox(width: 6),
+            IconButton.filled(
+              onPressed: busy ? null : _toggleRecording,
+              style: _recording ? IconButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error) : null,
+              icon: Icon(_recording ? Icons.stop : Icons.mic),
+              tooltip: _recording ? 'Stop and send voice' : 'Talk to ANDY',
+            ),
+            const SizedBox(width: 6),
+            IconButton.filled(onPressed: busy || _recording ? null : _send, icon: const Icon(Icons.send)),
           ]),
         )),
       ]),
