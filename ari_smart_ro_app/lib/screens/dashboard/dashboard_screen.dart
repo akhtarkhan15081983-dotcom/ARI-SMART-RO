@@ -5,6 +5,7 @@ import '../../services/api_service.dart';
 import '../../services/attendance_service.dart';
 import '../../services/live_location_service.dart';
 import '../admin/face_security_admin_screen.dart';
+import '../admin/attendance_security_test_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
 import '../bag/my_bag_screen.dart';
@@ -64,39 +65,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _startLiveLocationIfRequired() async {
     try {
       final role = await ApiService.getRole();
-      if (_normaliseRole(role) == 'ENGINEER') {
-        _liveLocationService.startTracking();
-      }
-    } catch (e) {
-      debugPrint('LIVE LOCATION START ERROR: $e');
-    }
+      if (_normaliseRole(role) == 'ENGINEER') _liveLocationService.startTracking();
+    } catch (e) { debugPrint('LIVE LOCATION START ERROR: $e'); }
   }
 
   Future<void> _loadDashboard() async {
     await _loadRole();
-    if (_role != 'CUSTOMER') {
-      await _loadAttendance();
-    } else if (mounted) {
-      setState(() => _isLoadingAttendance = false);
-    }
+    if (_role != 'CUSTOMER') await _loadAttendance();
+    else if (mounted) setState(() => _isLoadingAttendance = false);
   }
 
   Future<void> _loadAttendance() async {
     try {
       final attendance = await _attendanceService.todayAttendance();
       if (!mounted) return;
-      setState(() {
-        _todayAttendance = attendance;
-        _isLoadingAttendance = false;
-      });
+      setState(() { _todayAttendance = attendance; _isLoadingAttendance = false; });
     } catch (e) {
       debugPrint('ATTENDANCE ERROR: $e');
-      if (mounted) {
-        setState(() {
-          _todayAttendance = null;
-          _isLoadingAttendance = false;
-        });
-      }
+      if (mounted) setState(() { _todayAttendance = null; _isLoadingAttendance = false; });
     }
   }
 
@@ -104,101 +90,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final storedRole = await ApiService.getRole();
       if (!mounted) return;
-      setState(() {
-        _role = _normaliseRole(storedRole);
-        _isLoadingRole = false;
-      });
+      setState(() { _role = _normaliseRole(storedRole); _isLoadingRole = false; });
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _role = 'CUSTOMER';
-        _isLoadingRole = false;
-      });
+      if (mounted) setState(() { _role = 'CUSTOMER'; _isLoadingRole = false; });
     }
   }
 
   String _normaliseRole(String? role) {
     final value = role?.trim().toUpperCase().replaceAll('ROLE_', '');
     switch (value) {
-      case 'ADMIN':
-      case 'MANAGER':
-      case 'OFFICE':
-      case 'ENGINEER':
-      case 'CUSTOMER':
-        return value!;
-      default:
-        return 'CUSTOMER';
+      case 'ADMIN': case 'MANAGER': case 'OFFICE': case 'ENGINEER': case 'CUSTOMER': return value!;
+      default: return 'CUSTOMER';
     }
   }
 
   List<DashboardItem> get _dashboardItems {
     switch (_role) {
-      case 'ADMIN':
-        return DashboardItems.admin;
-      case 'MANAGER':
-        return DashboardItems.manager;
-      case 'OFFICE':
-        return DashboardItems.office;
-      case 'ENGINEER':
-        return DashboardItems.engineer;
-      default:
-        return _customerItems;
+      case 'ADMIN': return DashboardItems.admin;
+      case 'MANAGER': return DashboardItems.manager;
+      case 'OFFICE': return DashboardItems.office;
+      case 'ENGINEER': return DashboardItems.engineer;
+      default: return _customerItems;
     }
   }
 
-  bool get _engineerWorkLocked =>
-      _role == 'ENGINEER' && !_isLoadingAttendance && _todayAttendance == null;
+  bool get _engineerWorkLocked => _role == 'ENGINEER' && !_isLoadingAttendance && _todayAttendance == null;
+  bool _allowedBeforeCheckIn(String route) => route == 'attendance' || route == 'profile';
 
-  bool _allowedBeforeCheckIn(String route) {
-    return route == 'attendance' || route == 'profile';
-  }
-
-  void _showAttendanceRequired() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Please check in first to use the app.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
+  void _showAttendanceRequired() => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please check in first to use the app.'), behavior: SnackBarBehavior.floating));
 
   Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Logout')),
-        ],
-      ),
-    );
+    final confirm = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('Logout'), content: const Text('Are you sure you want to logout?'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Logout'))]));
     if (confirm != true) return;
     await ApiService.logout();
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
   }
 
   Future<void> _handleDashboardBack() async {
     if (_isExitDialogShowing) return;
     _isExitDialogShowing = true;
-    final shouldExit = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Exit App?'),
-        content: const Text('Are you sure you want to exit the app?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Exit')),
-        ],
-      ),
-    );
+    final shouldExit = await showDialog<bool>(context: context, barrierDismissible: false, builder: (dialogContext) => AlertDialog(title: const Text('Exit App?'), content: const Text('Are you sure you want to exit the app?'), actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')), ElevatedButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Exit'))]));
     _isExitDialogShowing = false;
     if (shouldExit == true) await SystemNavigator.pop();
   }
@@ -206,173 +138,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _push(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
   void _handleItemTap(DashboardItem item) {
-    if (_engineerWorkLocked && !_allowedBeforeCheckIn(item.route)) {
-      _showAttendanceRequired();
-      return;
-    }
-
+    if (_engineerWorkLocked && !_allowedBeforeCheckIn(item.route)) { _showAttendanceRequired(); return; }
     switch (item.route) {
       case 'face_security_admin':
-        if (_role == 'ADMIN') {
-          _push(const FaceSecurityAdminScreen());
-        } else {
-          _showComingSoon('Restricted', 'Only admin can manage face and device re-enrollment.');
-        }
+        if (_role == 'ADMIN') _push(const FaceSecurityAdminScreen());
+        else _showComingSoon('Restricted', 'Only admin can manage face and device re-enrollment.');
+        return;
+      case 'attendance_security_test':
+        if (_role == 'ADMIN') _push(const AttendanceSecurityTestScreen());
+        else _showComingSoon('Restricted', 'Only admin can run attendance security tests.');
         return;
       case 'attendance':
-        Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const AttendanceScreen()))
-            .then((_) => _loadAttendance());
-        return;
-      case 'jobs':
-        _push(const MyJobsScreen());
-        return;
-      case 'assigned_customers':
-        _push(const AssignedCustomersScreen());
-        return;
-      case 'bag':
-        _push(MyBagScreen());
-        return;
-      case 'request':
-        _push(const PartRequestScreen());
-        return;
-      case 'qr':
-        _push(const QRScanScreen(jobId: 0));
-        return;
-      case 'map':
-      case 'engineer_map':
-        _push(const EngineerMapScreen());
-        return;
-      case 'walkin':
-        _push(const WalkInCustomerScreen());
-        return;
-      case 'service':
-        _push(const ServiceListScreen());
-        return;
-      case 'complaint':
-        _push(const ComplaintListScreen());
-        return;
-      case 'customers':
-        _push(const CustomerListScreen());
-        return;
-      case 'my_ro':
-        _push(const MyROScreen());
-        return;
-      case 'rent':
-        _push(const RentPaymentScreen());
-        return;
-      case 'rent_management':
-        _push(const RentManagementScreen());
-        return;
-      case 'payment_history':
-        _push(const PaymentHistoryScreen());
-        return;
-      case 'shop':
-        _push(const ShopScreen());
-        return;
-      case 'referral':
-        _push(const ReferralScreen());
-        return;
-      case 'history':
-        _push(const CustomerHistoryScreen());
-        return;
-      case 'profile':
-        _push(const ProfileScreen());
-        return;
-      default:
-        _showComingSoon(item.title, '${item.title} module is being prepared.');
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AttendanceScreen())).then((_) => _loadAttendance()); return;
+      case 'jobs': _push(const MyJobsScreen()); return;
+      case 'assigned_customers': _push(const AssignedCustomersScreen()); return;
+      case 'bag': _push(MyBagScreen()); return;
+      case 'request': _push(const PartRequestScreen()); return;
+      case 'qr': _push(const QRScanScreen(jobId: 0)); return;
+      case 'map': case 'engineer_map': _push(const EngineerMapScreen()); return;
+      case 'walkin': _push(const WalkInCustomerScreen()); return;
+      case 'service': _push(const ServiceListScreen()); return;
+      case 'complaint': _push(const ComplaintListScreen()); return;
+      case 'customers': _push(const CustomerListScreen()); return;
+      case 'my_ro': _push(const MyROScreen()); return;
+      case 'rent': _push(const RentPaymentScreen()); return;
+      case 'rent_management': _push(const RentManagementScreen()); return;
+      case 'payment_history': _push(const PaymentHistoryScreen()); return;
+      case 'shop': _push(const ShopScreen()); return;
+      case 'referral': _push(const ReferralScreen()); return;
+      case 'history': _push(const CustomerHistoryScreen()); return;
+      case 'profile': _push(const ProfileScreen()); return;
+      default: _showComingSoon(item.title, '${item.title} module is being prepared.');
     }
   }
 
-  void _showComingSoon(String title, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
-  }
+  void _showComingSoon(String title, String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), behavior: SnackBarBehavior.floating));
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingRole) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
+    if (_isLoadingRole) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final items = _dashboardItems;
     final isCustomer = _role == 'CUSTOMER';
-
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) _handleDashboardBack();
-      },
+      onPopInvokedWithResult: (didPop, result) { if (!didPop) _handleDashboardBack(); },
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(isCustomer ? 'ARI Smart RO' : '$_role Dashboard'),
-          actions: [
-            IconButton(onPressed: _logout, icon: const Icon(Icons.logout), tooltip: 'Logout'),
-          ],
-        ),
+        appBar: AppBar(title: Text(isCustomer ? 'ARI Smart RO' : '$_role Dashboard'), actions: [IconButton(onPressed: _logout, icon: const Icon(Icons.logout), tooltip: 'Logout')]),
         body: RefreshIndicator(
           onRefresh: _loadDashboard,
           child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
+            physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16),
             children: [
               if (_role == 'ENGINEER' && _engineerWorkLocked) ...[
-                Card(
-                  color: const Color(0xFFFFF4E5),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.lock_clock_outlined, color: Color(0xFFB26A00)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text('Work modules locked', style: TextStyle(fontWeight: FontWeight.w800)),
-                              SizedBox(height: 4),
-                              Text('Complete today\'s attendance check-in to unlock jobs, customers, service, bag and other work modules.'),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
+                Card(color: const Color(0xFFFFF4E5), child: Padding(padding: const EdgeInsets.all(16), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.lock_clock_outlined, color: Color(0xFFB26A00)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [Text('Work modules locked', style: TextStyle(fontWeight: FontWeight.w800)), SizedBox(height: 4), Text('Complete today\'s attendance check-in to unlock jobs, customers, service, bag and other work modules.')]))]))), const SizedBox(height: 16),
               ],
               if (!isCustomer) ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: _isLoadingAttendance
-                        ? const Center(child: CircularProgressIndicator())
-                        : Text(_todayAttendance == null ? 'Attendance not marked today' : 'Today attendance loaded'),
-                  ),
-                ),
-                const SizedBox(height: 16),
+                Card(child: Padding(padding: const EdgeInsets.all(16), child: _isLoadingAttendance ? const Center(child: CircularProgressIndicator()) : Text(_todayAttendance == null ? 'Attendance not marked today' : 'Today attendance loaded'))), const SizedBox(height: 16),
               ],
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1.15,
-                ),
-                itemCount: items.length,
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  return DashboardCard(
-                    title: item.title,
-                    icon: item.icon,
-                    onTap: () => _handleItemTap(item),
-                  );
-                },
-              ),
+              GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.15), itemCount: items.length, itemBuilder: (context, index) { final item = items[index]; return DashboardCard(title: item.title, icon: item.icon, onTap: () => _handleItemTap(item)); }),
             ],
           ),
         ),
