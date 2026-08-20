@@ -11,14 +11,14 @@ class LocalLLMError(RuntimeError):
 class LocalLLM:
     """OpenAI-free local inference adapter.
 
-    Defaults to a local Ollama-compatible HTTP endpoint. No request is sent to
-    an external AI provider. The host is configurable so inference can later
-    move to an ARI-owned LAN/GPU server without changing ANDY's API.
+    Defaults to the locally installed Ollama-compatible endpoint and a 3B
+    coding model sized for the current ARI development PC. No request is sent
+    to an external AI provider.
     """
 
     def __init__(self):
         self.base_url = os.getenv("ANDY_LLM_URL", "http://127.0.0.1:11434").rstrip("/")
-        self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5-coder:7b")
+        self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5-coder:3b")
         self.timeout = int(os.getenv("ANDY_LLM_TIMEOUT", "120"))
 
     def chat(self, messages):
