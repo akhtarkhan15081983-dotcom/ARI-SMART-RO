@@ -33,9 +33,8 @@ class EmployeeProfile(models.Model):
 
     face_enrolled_at = models.DateTimeField(null=True, blank=True)
     face_enrollment_verified = models.BooleanField(default=False)
+    face_enrollment_allowed = models.BooleanField(default=False)
 
-    # Stable app-generated identifier for the device used during real
-    # enrollment. Attendance from a different device is rejected.
     attendance_device_id = models.CharField(
         max_length=128,
         blank=True,
