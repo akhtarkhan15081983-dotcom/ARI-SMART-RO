@@ -6,8 +6,6 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../services/attendance_service.dart';
 
-/// Lets an employee verify their location, capture a selfie, and mark
-/// attendance using [AttendanceService].
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
 
@@ -16,16 +14,17 @@ class AttendanceScreen extends StatefulWidget {
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
+  static const double _officeLatitude = 27.149028;
+  static const double _officeLongitude = 78.045000;
+  static const double _officeRadiusMeters = 50.0;
+
   final AttendanceService _attendanceService = AttendanceService();
   final ImagePicker _imagePicker = ImagePicker();
-  @override
-  void initState() {
-    super.initState();
-    _loadTodayAttendance();
-  }
 
   Position? _position;
   XFile? _selfie;
+  bool _isLocationVerified = false;
+  double? _distanceFromOffice;
   bool _isLoadingLocation = false;
   bool _isCapturingSelfie = false;
   bool _isSubmitting = false;
@@ -34,39 +33,47 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   DateTime? _checkInTime;
   DateTime? _checkOutTime;
 
+  @override
+  void initState() {
+    super.initState();
+    _loadTodayAttendance();
+  }
+
   Future<void> _loadTodayAttendance() async {
     try {
       final attendance = await _attendanceService.todayAttendance();
-
-      if (attendance == null) return;
-
-      if (!mounted) return;
-
+      if (attendance == null || !mounted) return;
       setState(() {
         _isCheckedIn = attendance.checkIn != null;
-
-        _checkInTime = attendance.checkIn != null
-            ? DateTime.parse(attendance.checkIn!)
-            : null;
-
+        _checkInTime = attendance.checkIn == null
+            ? null
+            : DateTime.parse(attendance.checkIn!);
         _isCheckedOut = attendance.checkOut != null;
-
-        _checkOutTime = attendance.checkOut != null
-            ? DateTime.parse(attendance.checkOut!)
-            : null;
+        _checkOutTime = attendance.checkOut == null
+            ? null
+            : DateTime.parse(attendance.checkOut!);
       });
     } catch (e) {
-      print("LOAD ATTENDANCE ERROR : $e");
+      debugPrint('LOAD ATTENDANCE ERROR: $e');
     }
   }
 
   bool get _canCheckIn =>
-      _position != null && _selfie != null && !_isSubmitting && !_isCheckedIn;
+      _isLocationVerified &&
+      _position != null &&
+      _selfie != null &&
+      !_isSubmitting &&
+      !_isCheckedIn;
 
   Future<void> _verifyLocation() async {
     if (_isLoadingLocation || _isSubmitting) return;
+    setState(() {
+      _isLoadingLocation = true;
+      _isLocationVerified = false;
+      _position = null;
+      _distanceFromOffice = null;
+    });
 
-    setState(() => _isLoadingLocation = true);
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
         throw const _AttendanceException(
@@ -94,19 +101,40 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ),
       );
 
+      final distance = Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        _officeLatitude,
+        _officeLongitude,
+      );
+
       if (!mounted) return;
-      setState(() => _position = position);
-      _showSnackBar('GPS location verified.', isSuccess: true);
+      if (distance > _officeRadiusMeters) {
+        setState(() {
+          _distanceFromOffice = distance;
+          _isLocationVerified = false;
+        });
+        throw _AttendanceException(
+          'You are ${distance.toStringAsFixed(0)}m from the office. '
+          'Attendance is allowed only within 50m.',
+        );
+      }
+
+      setState(() {
+        _position = position;
+        _distanceFromOffice = distance;
+        _isLocationVerified = true;
+      });
+      _showSnackBar(
+        'Office location verified (${distance.toStringAsFixed(0)}m away).',
+        isSuccess: true,
+      );
     } on _AttendanceException catch (error) {
       _showSnackBar(error.message);
     } on LocationServiceDisabledException {
-      _showSnackBar(
-        'Location services are turned off. Enable GPS and try again.',
-      );
+      _showSnackBar('Location services are turned off. Enable GPS and try again.');
     } catch (_) {
-      _showSnackBar(
-        'Unable to get an accurate location. Please try again outdoors.',
-      );
+      _showSnackBar('Unable to get an accurate location. Please try again outdoors.');
     } finally {
       if (mounted) setState(() => _isLoadingLocation = false);
     }
@@ -114,7 +142,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _captureSelfie() async {
     if (_isCapturingSelfie || _isSubmitting) return;
-
     setState(() => _isCapturingSelfie = true);
     try {
       final image = await _imagePicker.pickImage(
@@ -124,29 +151,29 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         maxWidth: 1440,
       );
       if (image == null || !mounted) return;
-
       setState(() => _selfie = image);
-      _showSnackBar('Selfie captured.', isSuccess: true);
-    } catch (_) {
       _showSnackBar(
-        'Unable to open the camera. Check camera permission and try again.',
+        'Selfie captured. Face identity verification will require real employee enrollment.',
+        isSuccess: true,
       );
+    } catch (_) {
+      _showSnackBar('Unable to open the camera. Check camera permission and try again.');
     } finally {
       if (mounted) setState(() => _isCapturingSelfie = false);
     }
   }
 
   Future<void> _checkIn() async {
-    final confirm = await _confirmAction(
-      title: "Check In",
-      message: "Are you sure you want to check in?",
-    );
-
-    if (!confirm) return;
     if (!_canCheckIn) {
-      _showSnackBar('Verify your GPS location and capture a selfie first.');
+      _showSnackBar('Verify office GPS and capture a selfie first.');
       return;
     }
+
+    final confirm = await _confirmAction(
+      title: 'Check In',
+      message: 'Are you sure you want to check in?',
+    );
+    if (!confirm) return;
 
     setState(() => _isSubmitting = true);
     try {
@@ -155,10 +182,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         longitude: _position!.longitude,
         selfiePath: _selfie!.path,
       );
-
-      if (!success) {
-        throw Exception("Check In Failed");
-      }
+      if (!success) throw Exception('Check In Failed');
       if (!mounted) return;
       setState(() {
         _isCheckedIn = true;
@@ -167,7 +191,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _showSnackBar('Checked in successfully.', isSuccess: true);
       await _loadTodayAttendance();
     } catch (_) {
-      _showSnackBar('Check-in failed. Please try again.');
+      _showSnackBar('Check-in rejected. Confirm you are within 50m of the office.');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -175,12 +199,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _checkOut() async {
     final confirm = await _confirmAction(
-      title: "Check Out",
-      message: "Are you sure you want to check out?",
+      title: 'Check Out',
+      message: 'Are you sure you want to check out?',
     );
-
-    if (!confirm) return;
-    if (_isSubmitting || !_isCheckedIn || _isCheckedOut) return;
+    if (!confirm || _isSubmitting || !_isCheckedIn || _isCheckedOut) return;
 
     setState(() => _isSubmitting = true);
     try {
@@ -190,8 +212,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _isCheckedOut = true;
         _checkOutTime = DateTime.now();
       });
-
-
       _showSnackBar('Checked out successfully.', isSuccess: true);
       await _loadTodayAttendance();
     } catch (_) {
@@ -201,10 +221,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  Future<bool> _confirmAction({
-    required String title,
-    required String message,
-  }) async {
+  Future<bool> _confirmAction({required String title, required String message}) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -213,16 +230,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancel"),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text("Yes"),
+            child: const Text('Yes'),
           ),
         ],
       ),
     );
-
     return result ?? false;
   }
 
@@ -234,9 +250,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: isSuccess
-              ? Colors.green.shade700
-              : Colors.red.shade700,
+          backgroundColor: isSuccess ? Colors.green.shade700 : Colors.red.shade700,
         ),
       );
   }
@@ -244,14 +258,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final now = DateTime.now();
-    final date = MaterialLocalizations.of(context).formatMediumDate(now);
+    final date = MaterialLocalizations.of(context).formatMediumDate(DateTime.now());
     final completed = _isCheckedOut;
     final status = completed
         ? 'Attendance completed'
         : _isCheckedIn
-        ? 'You are checked in'
-        : 'Mark your attendance';
+            ? 'You are checked in'
+            : 'Mark your attendance';
+
+    final locationDetail = _isLocationVerified && _position != null
+        ? 'Office verified · ${_distanceFromOffice?.toStringAsFixed(0) ?? '0'}m away'
+        : _distanceFromOffice != null
+            ? 'Outside office radius · ${_distanceFromOffice!.toStringAsFixed(0)}m away'
+            : 'Must be within 50m of the office';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Attendance')),
@@ -259,12 +278,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            Text(
-              status,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            Text(status, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             Text(date, style: theme.textTheme.bodyMedium),
             const SizedBox(height: 24),
@@ -277,13 +291,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             const SizedBox(height: 16),
             _VerificationCard(
               icon: Icons.location_on_outlined,
-              title: 'GPS location',
-              detail: _position == null
-                  ? 'Verify your current location'
-                  : '${_position!.latitude.toStringAsFixed(6)}, '
-                        '${_position!.longitude.toStringAsFixed(6)}',
-              buttonLabel: _position == null ? 'Verify GPS' : 'Refresh GPS',
-              isVerified: _position != null,
+              title: 'Office GPS verification',
+              detail: locationDetail,
+              buttonLabel: _isLocationVerified ? 'Refresh GPS' : 'Verify GPS',
+              isVerified: _isLocationVerified,
               isLoading: _isLoadingLocation,
               enabled: !completed && !_isCheckedIn,
               onPressed: _verifyLocation,
@@ -293,8 +304,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               icon: Icons.camera_front_outlined,
               title: 'Selfie verification',
               detail: _selfie == null
-                  ? 'Take a clear photo using the front camera'
-                  : 'Selfie captured and ready to submit',
+                  ? 'Take a clear live photo using the front camera'
+                  : 'Selfie captured (face enrollment verification pending)',
               buttonLabel: _selfie == null ? 'Take selfie' : 'Retake selfie',
               isVerified: _selfie != null,
               isLoading: _isCapturingSelfie,
@@ -324,41 +335,34 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 onPressed: _isSubmitting || completed
                     ? null
                     : _isCheckedIn
-                    ? _checkOut
-                    : _canCheckIn
-                    ? _checkIn
-                    : null,
+                        ? _checkOut
+                        : _canCheckIn
+                            ? _checkIn
+                            : null,
                 icon: _isSubmitting
                     ? const SizedBox(
                         height: 20,
                         width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
-                    : Icon(
-                        completed
-                            ? Icons.check_circle_outline
-                            : _isCheckedIn
+                    : Icon(completed
+                        ? Icons.check_circle_outline
+                        : _isCheckedIn
                             ? Icons.logout
-                            : Icons.login,
-                      ),
-                label: Text(
-                  _isSubmitting
-                      ? 'Please wait…'
-                      : completed
-                      ? 'Attendance completed'
-                      : _isCheckedIn
-                      ? 'Check out'
-                      : 'Check in',
-                ),
+                            : Icons.login),
+                label: Text(_isSubmitting
+                    ? 'Please wait…'
+                    : completed
+                        ? 'Attendance completed'
+                        : _isCheckedIn
+                            ? 'Check out'
+                            : 'Check in'),
               ),
             ),
             if (!_isCheckedIn && !completed) ...[
               const SizedBox(height: 12),
               Text(
-                'GPS verification and a selfie are required for check-in.',
+                'You must be within 50m of the office and capture a live selfie before check-in.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall,
               ),
@@ -394,8 +398,8 @@ class _AttendanceSummary extends StatelessWidget {
       color: checkedOut
           ? Colors.green.withOpacity(0.08)
           : checkedIn
-          ? Colors.blue.withOpacity(0.08)
-          : null,
+              ? Colors.blue.withOpacity(0.08)
+              : null,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -404,13 +408,13 @@ class _AttendanceSummary extends StatelessWidget {
               checkedOut
                   ? Icons.task_alt
                   : checkedIn
-                  ? Icons.access_time_filled_outlined
-                  : Icons.pending_outlined,
+                      ? Icons.access_time_filled_outlined
+                      : Icons.pending_outlined,
               color: checkedOut
                   ? Colors.green.shade700
                   : checkedIn
-                  ? Colors.blue.shade700
-                  : null,
+                      ? Colors.blue.shade700
+                      : null,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -418,8 +422,8 @@ class _AttendanceSummary extends StatelessWidget {
                 checkedOut
                     ? 'Checked in ${timeFor(checkInTime)} · Checked out ${timeFor(checkOutTime)}'
                     : checkedIn
-                    ? 'Checked in at ${timeFor(checkInTime)}'
-                    : 'Not checked in yet',
+                        ? 'Checked in at ${timeFor(checkInTime)}'
+                        : 'Not checked in yet',
               ),
             ),
           ],
@@ -462,9 +466,7 @@ class _VerificationCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
-              backgroundColor: isVerified
-                  ? Colors.green.withOpacity(0.12)
-                  : null,
+              backgroundColor: isVerified ? Colors.green.withOpacity(0.12) : null,
               child: Icon(isVerified ? Icons.check : icon, color: color),
             ),
             const SizedBox(width: 12),
@@ -472,12 +474,7 @@ class _VerificationCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(detail, maxLines: 2, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 8),
@@ -505,6 +502,5 @@ class _VerificationCard extends StatelessWidget {
 
 class _AttendanceException implements Exception {
   const _AttendanceException(this.message);
-
   final String message;
 }
