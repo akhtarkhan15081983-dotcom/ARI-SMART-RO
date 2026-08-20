@@ -18,6 +18,7 @@ class ProfileModel {
   final String? photo;
   final bool faceEnrolled;
   final bool faceEnrollmentVerified;
+  final bool faceEnrollmentAllowed;
   final String? faceEnrolledAt;
   final String attendanceDeviceId;
 
@@ -41,6 +42,7 @@ class ProfileModel {
     this.photo,
     this.faceEnrolled = false,
     this.faceEnrollmentVerified = false,
+    this.faceEnrollmentAllowed = false,
     this.faceEnrolledAt,
     this.attendanceDeviceId = '',
   });
@@ -66,6 +68,7 @@ class ProfileModel {
       photo: json["photo"],
       faceEnrolled: json["face_enrolled"] == true,
       faceEnrollmentVerified: json["face_enrollment_verified"] == true,
+      faceEnrollmentAllowed: json["face_enrollment_allowed"] == true,
       faceEnrolledAt: json["face_enrolled_at"]?.toString(),
       attendanceDeviceId: json["attendance_device_id"]?.toString() ?? "",
     );
