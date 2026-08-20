@@ -18,6 +18,19 @@ from .security import (
 from employees.models import EmployeeProfile
 
 
+def _is_admin(user):
+    return getattr(user, "role", "") == "ADMIN"
+
+
+def _absolute_file_url(request, file_field):
+    if not file_field:
+        return None
+    try:
+        return request.build_absolute_uri(file_field.url)
+    except Exception:
+        return None
+
+
 class CheckInAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -77,6 +90,7 @@ class CheckInAPIView(APIView):
             latitude=latitude,
             longitude=longitude,
             selfie=selfie,
+            identity_review_status="PENDING",
         )
         return Response({
             "success": True,
@@ -122,3 +136,89 @@ class AttendanceHistoryAPIView(ListAPIView):
     def get_queryset(self):
         employee = EmployeeProfile.objects.get(user=self.request.user)
         return Attendance.objects.filter(employee=employee).order_by("-date")
+
+
+class AdminAttendanceReviewListAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _is_admin(request.user):
+            return Response(
+                {"success": False, "message": "Only admin can review attendance selfies."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        review_status = (request.query_params.get("status") or "PENDING").upper()
+        if review_status not in {"PENDING", "APPROVED", "REJECTED", "ALL"}:
+            review_status = "PENDING"
+
+        qs = Attendance.objects.select_related("employee__user", "identity_reviewed_by").order_by("-date", "-check_in")
+        if review_status != "ALL":
+            qs = qs.filter(identity_review_status=review_status)
+
+        data = []
+        for attendance in qs[:200]:
+            employee = attendance.employee
+            data.append({
+                "id": attendance.id,
+                "employee_id": employee.employee_id,
+                "employee_name": employee.user.get_full_name() or employee.user.phone,
+                "phone": employee.user.phone,
+                "date": attendance.date,
+                "check_in": attendance.check_in,
+                "distance_note": "GPS already passed server-side office geofence at check-in.",
+                "enrollment_photo": _absolute_file_url(request, employee.photo),
+                "attendance_selfie": _absolute_file_url(request, attendance.selfie),
+                "identity_review_status": attendance.identity_review_status,
+                "identity_review_note": attendance.identity_review_note,
+                "identity_reviewed_at": attendance.identity_reviewed_at,
+                "identity_reviewed_by": (
+                    attendance.identity_reviewed_by.get_full_name() or attendance.identity_reviewed_by.phone
+                    if attendance.identity_reviewed_by else None
+                ),
+            })
+        return Response(data)
+
+
+class AdminAttendanceReviewActionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, attendance_id):
+        if not _is_admin(request.user):
+            return Response(
+                {"success": False, "message": "Only admin can review attendance selfies."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            attendance = Attendance.objects.select_related("employee__user").get(id=attendance_id)
+        except Attendance.DoesNotExist:
+            return Response({"success": False, "message": "Attendance record not found."}, status=404)
+
+        action = (request.data.get("action") or "").strip().lower()
+        note = (request.data.get("note") or "").strip()[:255]
+        if action == "approve":
+            new_status = "APPROVED"
+        elif action == "reject":
+            new_status = "REJECTED"
+        elif action == "pending":
+            new_status = "PENDING"
+        else:
+            return Response({"success": False, "message": "Invalid review action."}, status=400)
+
+        attendance.identity_review_status = new_status
+        attendance.identity_reviewed_by = request.user if new_status != "PENDING" else None
+        attendance.identity_reviewed_at = timezone.now() if new_status != "PENDING" else None
+        attendance.identity_review_note = note
+        attendance.save(update_fields=[
+            "identity_review_status",
+            "identity_reviewed_by",
+            "identity_reviewed_at",
+            "identity_review_note",
+        ])
+
+        return Response({
+            "success": True,
+            "message": f"Attendance selfie review marked {new_status.lower()}.",
+            "identity_review_status": new_status,
+        })
