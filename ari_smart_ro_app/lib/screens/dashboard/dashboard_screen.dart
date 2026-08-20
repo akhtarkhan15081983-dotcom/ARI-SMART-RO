@@ -6,6 +6,7 @@ import '../../services/attendance_service.dart';
 import '../../services/live_location_service.dart';
 import '../admin/face_security_admin_screen.dart';
 import '../admin/attendance_security_test_screen.dart';
+import '../admin/attendance_review_admin_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
 import '../bag/my_bag_screen.dart';
@@ -143,6 +144,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 'face_security_admin':
         if (_role == 'ADMIN') _push(const FaceSecurityAdminScreen());
         else _showComingSoon('Restricted', 'Only admin can manage face and device re-enrollment.');
+        return;
+      case 'attendance_review_admin':
+        if (_role == 'ADMIN') _push(const AttendanceReviewAdminScreen());
+        else _showComingSoon('Restricted', 'Only admin can review attendance selfies.');
         return;
       case 'attendance_security_test':
         if (_role == 'ADMIN') _push(const AttendanceSecurityTestScreen());
