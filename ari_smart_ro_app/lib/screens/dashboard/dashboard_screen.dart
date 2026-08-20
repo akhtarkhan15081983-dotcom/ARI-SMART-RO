@@ -115,10 +115,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  bool get _engineerWorkLocked => _role == 'ENGINEER' && !_isLoadingAttendance && _todayAttendance == null;
-  bool _allowedBeforeCheckIn(String route) => route == 'attendance' || route == 'profile';
+  bool get _engineerMissingCheckIn =>
+      _role == 'ENGINEER' && !_isLoadingAttendance && _todayAttendance == null;
 
-  void _showAttendanceRequired() => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please check in first to use the app.'), behavior: SnackBarBehavior.floating));
+  bool get _engineerReviewRejected =>
+      _role == 'ENGINEER' &&
+      !_isLoadingAttendance &&
+      _todayAttendance?.isReviewRejected == true;
+
+  bool get _engineerCheckedOut =>
+      _role == 'ENGINEER' &&
+      !_isLoadingAttendance &&
+      _todayAttendance?.checkOut != null;
+
+  bool get _engineerWorkLocked =>
+      _engineerMissingCheckIn || _engineerReviewRejected || _engineerCheckedOut;
+
+  bool _allowedWhenLocked(String route) => route == 'attendance' || route == 'profile';
+
+  String get _engineerLockMessage {
+    if (_engineerReviewRejected) {
+      final note = _todayAttendance?.identityReviewNote?.trim();
+      return note == null || note.isEmpty
+          ? 'Today\'s attendance selfie review was rejected by admin. Work modules are locked. Contact admin.'
+          : 'Today\'s attendance selfie review was rejected by admin: $note';
+    }
+    if (_engineerCheckedOut) {
+      return 'You have checked out for today. Work modules are locked.';
+    }
+    return 'Please check in first to use work modules.';
+  }
+
+  void _showWorkLocked() => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_engineerLockMessage), behavior: SnackBarBehavior.floating),
+      );
 
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('Logout'), content: const Text('Are you sure you want to logout?'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Logout'))]));
@@ -138,8 +168,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _push(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
-  void _handleItemTap(DashboardItem item) {
-    if (_engineerWorkLocked && !_allowedBeforeCheckIn(item.route)) { _showAttendanceRequired(); return; }
+  Future<void> _handleItemTap(DashboardItem item) async {
+    // Re-check the server before every engineer work-module launch so an admin
+    // rejection takes effect without requiring a fresh login.
+    if (_role == 'ENGINEER' && !_allowedWhenLocked(item.route)) {
+      setState(() => _isLoadingAttendance = true);
+      await _loadAttendance();
+      if (!mounted) return;
+      if (_engineerWorkLocked) { _showWorkLocked(); return; }
+    }
+
     switch (item.route) {
       case 'face_security_admin':
         if (_role == 'ADMIN') _push(const FaceSecurityAdminScreen());
@@ -195,10 +233,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
             physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16),
             children: [
               if (_role == 'ENGINEER' && _engineerWorkLocked) ...[
-                Card(color: const Color(0xFFFFF4E5), child: Padding(padding: const EdgeInsets.all(16), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.lock_clock_outlined, color: Color(0xFFB26A00)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [Text('Work modules locked', style: TextStyle(fontWeight: FontWeight.w800)), SizedBox(height: 4), Text('Complete today\'s attendance check-in to unlock jobs, customers, service, bag and other work modules.')]))]))), const SizedBox(height: 16),
+                Card(
+                  color: _engineerReviewRejected ? const Color(0xFFFFE7E7) : const Color(0xFFFFF4E5),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(_engineerReviewRejected ? Icons.gpp_bad_outlined : Icons.lock_clock_outlined, color: _engineerReviewRejected ? const Color(0xFFB42318) : const Color(0xFFB26A00)),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(_engineerReviewRejected ? 'Attendance review rejected' : 'Work modules locked', style: const TextStyle(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 4),
+                        Text(_engineerLockMessage),
+                      ])),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 16),
               ],
               if (!isCustomer) ...[
-                Card(child: Padding(padding: const EdgeInsets.all(16), child: _isLoadingAttendance ? const Center(child: CircularProgressIndicator()) : Text(_todayAttendance == null ? 'Attendance not marked today' : 'Today attendance loaded'))), const SizedBox(height: 16),
+                Card(child: Padding(padding: const EdgeInsets.all(16), child: _isLoadingAttendance
+                    ? const Center(child: CircularProgressIndicator())
+                    : Text(_todayAttendance == null
+                        ? 'Attendance not marked today'
+                        : _todayAttendance!.isReviewRejected
+                            ? 'Attendance review: REJECTED'
+                            : _todayAttendance!.isReviewApproved
+                                ? 'Attendance review: APPROVED'
+                                : 'Attendance review: PENDING'))),
+                const SizedBox(height: 16),
               ],
               GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.15), itemCount: items.length, itemBuilder: (context, index) { final item = items[index]; return DashboardCard(title: item.title, icon: item.icon, onTap: () => _handleItemTap(item)); }),
             ],
