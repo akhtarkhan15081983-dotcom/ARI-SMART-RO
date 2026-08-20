@@ -4,6 +4,7 @@ import '../../models/attendance_model.dart';
 import '../../services/api_service.dart';
 import '../../services/attendance_service.dart';
 import '../../services/live_location_service.dart';
+import '../admin/face_security_admin_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
 import '../bag/my_bag_screen.dart';
@@ -62,6 +63,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _handleDashboardBack() async { if (_isExitDialogShowing) return; _isExitDialogShowing = true; final shouldExit = await showDialog<bool>(context: context, barrierDismissible: false, builder: (dialogContext) => AlertDialog(title: const Text('Exit App?'), content: const Text('Are you sure you want to exit the app?'), actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')), ElevatedButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Exit'))])); _isExitDialogShowing = false; if (shouldExit == true) await SystemNavigator.pop(); }
   void _push(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   void _handleItemTap(DashboardItem item) { switch (item.route) {
+    case 'face_security_admin': if (_role == 'ADMIN') _push(const FaceSecurityAdminScreen()); else _showComingSoon('Restricted', 'Only admin can manage face and device re-enrollment.'); return;
     case 'attendance': Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AttendanceScreen())).then((_) => _loadAttendance()); return;
     case 'jobs': _push(const MyJobsScreen()); return; case 'assigned_customers': _push(const AssignedCustomersScreen()); return;
     case 'bag': _push(MyBagScreen()); return; case 'request': _push(const PartRequestScreen()); return;
