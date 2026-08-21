@@ -10,24 +10,20 @@ class LocalSTTError(RuntimeError):
 
 
 class LocalSTT:
-    """Fully local speech-to-text tuned for Hindi, English and Hinglish.
-
-    Whisper is loaded only while a voice request is being transcribed and is
-    released afterwards so Ollama has enough RAM on the 16 GB development PC.
-    """
+    """Fully local speech-to-text tuned for fast Hindi/English/Hinglish use."""
 
     _model = None
     _lock = threading.Lock()
 
     def __init__(self):
-        # "small" is materially better than "base" for Indian/Hindi speech,
-        # while still being practical on the current CPU/RAM setup.
         self.model_name = os.getenv("ANDY_STT_MODEL", "small")
         self.device = os.getenv("ANDY_STT_DEVICE", "cpu")
         self.compute_type = os.getenv("ANDY_STT_COMPUTE_TYPE", "int8")
-        # Default to Hindi because ANDY is primarily used in Hindi/Hinglish.
-        # Set ANDY_STT_LANGUAGE=auto if unrestricted language detection is wanted.
         self.language = os.getenv("ANDY_STT_LANGUAGE", "hi").strip().lower()
+        # Keep Whisper resident by default. Re-loading the model on every utterance
+        # was a major source of latency. Set ANDY_STT_RELEASE_AFTER_REQUEST=1 if a
+        # low-memory machine needs the old unload-after-each-request behaviour.
+        self.release_after_request = os.getenv("ANDY_STT_RELEASE_AFTER_REQUEST", "0") == "1"
 
     def _get_model(self):
         if LocalSTT._model is not None:
@@ -56,14 +52,14 @@ class LocalSTT:
                     audio_path,
                     language=language,
                     task="transcribe",
-                    beam_size=5,
-                    best_of=5,
+                    beam_size=2,
+                    best_of=2,
                     vad_filter=True,
-                    vad_parameters={"min_silence_duration_ms": 350},
+                    vad_parameters={"min_silence_duration_ms": 250},
                     condition_on_previous_text=False,
                     initial_prompt=(
-                        "यह ARI SMART RO के ANDY assistant से हिंदी, English और Hinglish में बातचीत है। "
-                        "नाम ANDY है। सामान्य भारतीय हिंदी और English technical words को सही लिखें।"
+                        "ARI SMART RO ANDY assistant. Hindi, English aur Hinglish conversation. "
+                        "ANDY, namaste, Hindi, samajh, customer, engineer, service, installation, RO."
                     ),
                 )
                 text = " ".join(segment.text.strip() for segment in segments).strip()
@@ -74,7 +70,8 @@ class LocalSTT:
             except Exception as exc:
                 raise LocalSTTError(f"Local speech recognition failed: {exc}") from exc
             finally:
-                self.release_model()
+                if self.release_after_request:
+                    self.release_model()
 
         if not text:
             raise LocalSTTError("No clear speech was detected. Please speak again closer to the microphone.")
