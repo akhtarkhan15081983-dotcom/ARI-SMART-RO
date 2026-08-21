@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import '../../services/andy_service.dart';
@@ -21,6 +23,7 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
   final _scroll = ScrollController();
   final _service = AndyService();
   final _recorder = AudioRecorder();
+  final _player = AudioPlayer();
   final List<_ChatItem> _messages = [
     const _ChatItem(false, 'Namaste. Main ANDY hoon — ARI SMART RO ka private, self-hosted AI assistant. Type karein ya microphone dabakar Hindi, English ya Hinglish mein boliye.'),
   ];
@@ -28,38 +31,65 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
   bool _sending = false;
   bool _recording = false;
   bool _transcribing = false;
+  bool _speaking = false;
 
   @override
   void dispose() {
     _controller.dispose();
     _scroll.dispose();
     _recorder.dispose();
+    _player.dispose();
     super.dispose();
   }
 
-  Future<void> _sendText(String text) async {
+  Future<String?> _sendText(String text, {bool autoSpeak = false}) async {
     text = text.trim();
-    if (text.isEmpty || _sending) return;
+    if (text.isEmpty || _sending) return null;
     _controller.clear();
     setState(() { _messages.add(_ChatItem(true, text)); _sending = true; });
     _jumpBottom();
+    String? answer;
     try {
       final reply = await _service.chat(text, conversationId: _conversationId);
-      if (!mounted) return;
+      if (!mounted) return null;
+      answer = reply.answer;
       setState(() {
         _conversationId = reply.conversationId;
         _messages.add(_ChatItem(false, reply.answer, messageId: reply.messageId));
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return null;
       setState(() => _messages.add(_ChatItem(false, 'ANDY local model se connect nahi ho pa raha.\n$e')));
     } finally {
       if (mounted) setState(() => _sending = false);
       _jumpBottom();
     }
+    if (autoSpeak && answer != null && answer.isNotEmpty) await _speak(answer);
+    return answer;
   }
 
-  Future<void> _send() => _sendText(_controller.text);
+  Future<void> _send() async { await _sendText(_controller.text); }
+
+  Future<void> _speak(String text) async {
+    if (_speaking) {
+      await _player.stop();
+      if (mounted) setState(() => _speaking = false);
+      return;
+    }
+    try {
+      if (mounted) setState(() => _speaking = true);
+      final bytes = await _service.speak(text);
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/andy_speech_${DateTime.now().millisecondsSinceEpoch}.wav');
+      await file.writeAsBytes(bytes, flush: true);
+      await _player.setFilePath(file.path);
+      await _player.play();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ANDY voice failed: $e')));
+    } finally {
+      if (mounted) setState(() => _speaking = false);
+    }
+  }
 
   Future<void> _toggleRecording() async {
     if (_sending || _transcribing) return;
@@ -74,7 +104,7 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
         final transcription = await _service.transcribe(path);
         if (!mounted) return;
         setState(() => _transcribing = false);
-        await _sendText(transcription.text);
+        await _sendText(transcription.text, autoSpeak: true);
       } catch (e) {
         if (!mounted) return;
         setState(() => _transcribing = false);
@@ -135,6 +165,7 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
                   if (!item.user && item.messageId != null) ...[
                     const SizedBox(height: 6),
                     Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(icon: Icon(_speaking ? Icons.stop_circle_outlined : Icons.volume_up_outlined, size: 19), tooltip: _speaking ? 'Stop ANDY voice' : 'Hear ANDY', onPressed: () => _speak(item.text)),
                       IconButton(icon: const Icon(Icons.thumb_up_alt_outlined, size: 18), tooltip: 'Helpful', onPressed: () => _rate(item.messageId!, 2)),
                       IconButton(icon: const Icon(Icons.thumb_down_alt_outlined, size: 18), tooltip: 'Needs improvement', onPressed: () => _rate(item.messageId!, 1)),
                     ]),
@@ -144,9 +175,10 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
             );
           },
         )),
-        if (busy) LinearProgressIndicator(value: _transcribing ? null : null),
+        if (busy) const LinearProgressIndicator(),
         if (_recording) const Padding(padding: EdgeInsets.only(top: 6), child: Text('Listening… tap the red microphone to send', style: TextStyle(fontWeight: FontWeight.w600))),
         if (_transcribing) const Padding(padding: EdgeInsets.only(top: 6), child: Text('ANDY is understanding your voice…')),
+        if (_speaking) const Padding(padding: EdgeInsets.only(top: 6), child: Text('ANDY is speaking…')),
         SafeArea(top: false, child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           child: Row(children: [
