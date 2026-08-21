@@ -4,8 +4,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from .app_control import AndyAppControl
-from .models import AndyConversation, AndyMessage
+from andy.app_control import AndyAppControl
+from andy.models import AndyConversation, AndyMessage
 
 
 class AndyAppControlTests(TestCase):
