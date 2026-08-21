@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
@@ -43,6 +44,23 @@ class AndyService {
       language: data['language']?.toString(),
       languageProbability: (data['language_probability'] as num?)?.toDouble() ?? 0,
     );
+  }
+
+  Future<Uint8List> speak(String text) async {
+    final response = await http.post(
+      Uri.parse('${ApiService.baseUrl}/andy/speak/'),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({'text': text}),
+    );
+    if (response.statusCode != 200) {
+      String message = 'ANDY voice is unavailable';
+      try {
+        final data = Map<String, dynamic>.from(jsonDecode(response.body));
+        message = data['message']?.toString() ?? message;
+      } catch (_) {}
+      throw Exception(message);
+    }
+    return response.bodyBytes;
   }
 
   Future<void> feedback(int messageId, int rating, {String correction = ''}) async {
