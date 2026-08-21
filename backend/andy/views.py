@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .app_control import AndyAppControl
 from .local_llm import LocalLLM, LocalLLMError
 from .local_stt import LocalSTT, LocalSTTError
 from .local_tts import LocalTTS, LocalTTSError
@@ -23,19 +24,18 @@ IDENTITY AND CONVERSATION:
 - Understand Hindi, English and everyday Indian Hinglish.
 - Match the user's language naturally. Hindi/Hinglish input should normally receive Hindi/Hinglish output; English input should normally receive English output.
 - For conversational Hindi, prefer simple natural Indian wording instead of formal translation-style Hindi.
-- The user's text may come from speech recognition and can contain small phonetic, spelling or Devanagari errors. Infer the most likely intended sentence from context when confidence is reasonable. For example, words resembling 'हिंदीश', 'हिंदी', 'समज', 'तमज', or 'समझ' in a sentence about language may refer to Hindi and understanding.
+- The user's text may come from speech recognition and can contain small phonetic, spelling or Devanagari errors. Infer the most likely intended sentence from context when confidence is reasonable.
 - If the intended meaning is still genuinely ambiguous, ask one short clarification question instead of inventing an answer.
 - Do not treat ordinary Hindi/Hinglish conversation as a translation request unless the user explicitly asks to translate.
 
 TRUTHFULNESS:
 - Never invent links, URLs, tools, sources, records, actions, capabilities or facts.
 - Never output placeholders such as '[Link to ...]' as though they are real resources.
-- If a requested external resource has not actually been supplied or verified, say that you do not have a verified link.
 - Never claim an action happened unless a tool/API result confirms it.
 - If you do not know something, say so briefly rather than fabricating it.
 
 WORK STYLE:
-Be concise, practical and role-aware. For programming, use the supplied local repository context before answering. Give exact paths and small, testable patches. Never invent a file you have not seen. Never silently deploy, overwrite production code, change permissions, or weaken security. You may propose code, tests and commands; destructive or production changes require explicit human approval. Learn from explicit user corrections and approved solutions, but never autonomously change your own safety rules or application permissions.
+Be concise, practical and role-aware. For programming, use the supplied local repository context before answering. Give exact paths and small, testable patches. Never invent a file you have not seen. Never silently deploy, overwrite production code, change permissions, or weaken security. Destructive or production changes require explicit human approval.
 """
 
 CODE_HINTS = (
@@ -65,6 +65,25 @@ class AndyChatAPIView(APIView):
             conversation = AndyConversation.objects.create(user=request.user, title=text[:160])
 
         AndyMessage.objects.create(conversation=conversation, role="USER", content=text)
+
+        # Fast deterministic app-control path. These intents use authenticated,
+        # permission-scoped Django data directly and avoid an unnecessary LLM
+        # round trip. Phase 1 tools are read-only.
+        app_result = AndyAppControl(request.user).try_handle(text)
+        if app_result and app_result.get("handled"):
+            answer = app_result["answer"]
+            assistant_message = AndyMessage.objects.create(
+                conversation=conversation, role="ASSISTANT", content=answer
+            )
+            return Response({
+                "success": True,
+                "conversation_id": conversation.id,
+                "message_id": assistant_message.id,
+                "answer": answer,
+                "intent": app_result.get("intent"),
+                "source": "app_control",
+            })
+
         memories = AndyMemory.objects.filter(user=request.user, is_active=True).order_by("-updated_at")[:20]
         memory_text = "\n".join(f"- {m.key}: {m.value}" for m in memories)
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -86,11 +105,10 @@ class AndyChatAPIView(APIView):
             return Response({"success": False, "message": str(exc), "hint": "Start the ARI-owned local model server and make sure ANDY_LLM_URL/model are configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         assistant_message = AndyMessage.objects.create(conversation=conversation, role="ASSISTANT", content=answer)
-        return Response({"success": True, "conversation_id": conversation.id, "message_id": assistant_message.id, "answer": answer})
+        return Response({"success": True, "conversation_id": conversation.id, "message_id": assistant_message.id, "answer": answer, "source": "local_llm"})
 
 
 class AndyTranscribeAPIView(APIView):
-    """Receives microphone audio and transcribes it entirely on ARI infrastructure."""
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -121,7 +139,6 @@ class AndyTranscribeAPIView(APIView):
 
 
 class AndySpeakAPIView(APIView):
-    """Turns ANDY text into WAV audio using the ARI-owned local Piper voice."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
