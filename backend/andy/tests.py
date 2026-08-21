@@ -34,6 +34,29 @@ class AndyAppControlTests(TestCase):
         result = AndyAppControl(self.customer_user).try_handle("mere aaj ke jobs batao")
         self.assertIsNone(result)
 
+    def test_unlinked_customer_gets_safe_linking_message(self):
+        result = AndyAppControl(self.customer_user).try_handle("meri complaints batao")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["intent"], "customer_profile_missing")
+        self.assertIn("linked", result["answer"])
+
+    def test_customer_cannot_get_global_operations_summary(self):
+        result = AndyAppControl(self.customer_user).try_handle("operations summary batao")
+        self.assertIsNone(result)
+
+    def test_admin_can_get_operations_summary(self):
+        admin = User.objects.create_user(
+            phone="9000000003",
+            password="test-pass",
+            first_name="Admin",
+            role="ADMIN",
+        )
+        result = AndyAppControl(admin).try_handle("operations summary batao")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["intent"], "operations_summary")
+        self.assertIn("pending jobs", result["answer"])
+        self.assertIn("open complaints", result["answer"])
+
 
 class AndyChatAPITests(TestCase):
     def setUp(self):
