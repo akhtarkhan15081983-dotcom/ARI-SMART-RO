@@ -9,27 +9,22 @@ class LocalLLMError(RuntimeError):
 
 
 class LocalLLM:
-    """OpenAI-free local inference adapter for ANDY.
-
-    Defaults are tuned for the current ARI development PC. The 3B coding model
-    is used by default because it is the preferred local coding brain and now
-    loads successfully after the system storage issue was resolved. Ollama is
-    asked to unload the model after each response so Whisper and Flutter/Django
-    do not compete with a permanently loaded LLM.
-    """
+    """OpenAI-free local inference adapter for ANDY, tuned for low latency."""
 
     def __init__(self):
         self.base_url = os.getenv("ANDY_LLM_URL", "http://127.0.0.1:11434").rstrip("/")
         self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5-coder:3b")
-        self.timeout = int(os.getenv("ANDY_LLM_TIMEOUT", "180"))
-        self.num_ctx = int(os.getenv("ANDY_LLM_NUM_CTX", "2048"))
-        self.num_predict = int(os.getenv("ANDY_LLM_NUM_PREDICT", "384"))
-        self.keep_alive = os.getenv("ANDY_LLM_KEEP_ALIVE", "0s")
+        self.timeout = int(os.getenv("ANDY_LLM_TIMEOUT", "120"))
+        self.num_ctx = int(os.getenv("ANDY_LLM_NUM_CTX", "1536"))
+        self.num_predict = int(os.getenv("ANDY_LLM_NUM_PREDICT", "160"))
+        # Keeping the 3B model warm removes repeated model-start cost. The value
+        # is intentionally bounded rather than permanent for the development PC.
+        self.keep_alive = os.getenv("ANDY_LLM_KEEP_ALIVE", "10m")
 
     def _post_json(self, path, payload):
         request = urllib.request.Request(
             f"{self.base_url}{path}",
-            data=json.dumps(payload).encode("utf-8"),
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -59,7 +54,7 @@ class LocalLLM:
 
     def _options(self):
         return {
-            "temperature": 0.2,
+            "temperature": 0.1,
             "num_ctx": self.num_ctx,
             "num_predict": self.num_predict,
         }
