@@ -11,17 +11,16 @@ class LocalLLMError(RuntimeError):
 class LocalLLM:
     """OpenAI-free local inference adapter for ANDY.
 
-    Defaults are intentionally conservative for the current 16 GB ARI
-    development PC. The 1.5B coding model is used by default because the 3B
-    model cannot reliably allocate its CPU repack buffer while Django and the
-    rest of the development stack are running. Ollama is asked to unload the
-    model after each response so Whisper and Flutter/Django do not compete with
-    a permanently loaded LLM.
+    Defaults are tuned for the current ARI development PC. The 3B coding model
+    is used by default because it is the preferred local coding brain and now
+    loads successfully after the system storage issue was resolved. Ollama is
+    asked to unload the model after each response so Whisper and Flutter/Django
+    do not compete with a permanently loaded LLM.
     """
 
     def __init__(self):
         self.base_url = os.getenv("ANDY_LLM_URL", "http://127.0.0.1:11434").rstrip("/")
-        self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5-coder:1.5b")
+        self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5-coder:3b")
         self.timeout = int(os.getenv("ANDY_LLM_TIMEOUT", "180"))
         self.num_ctx = int(os.getenv("ANDY_LLM_NUM_CTX", "2048"))
         self.num_predict = int(os.getenv("ANDY_LLM_NUM_PREDICT", "384"))
