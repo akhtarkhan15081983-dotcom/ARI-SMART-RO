@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .action_control import AndyActionControl
 from .app_control import AndyAppControl
 from .local_llm import LocalLLM, LocalLLMError
 from .local_stt import LocalSTT, LocalSTTError
@@ -49,6 +50,24 @@ def _looks_like_programming_request(text: str) -> bool:
     return any(hint in lower for hint in CODE_HINTS)
 
 
+def _save_app_answer(conversation, result, source):
+    answer = result["answer"]
+    assistant_message = AndyMessage.objects.create(conversation=conversation, role="ASSISTANT", content=answer)
+    payload = {
+        "success": True,
+        "conversation_id": conversation.id,
+        "message_id": assistant_message.id,
+        "answer": answer,
+        "intent": result.get("intent"),
+        "source": source,
+        "avatar_state": "COMPLETED",
+    }
+    for key in ("requires_confirmation", "pending_action_id", "action_summary"):
+        if key in result:
+            payload[key] = result[key]
+    return Response(payload)
+
+
 class AndyChatAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -66,23 +85,15 @@ class AndyChatAPIView(APIView):
 
         AndyMessage.objects.create(conversation=conversation, role="USER", content=text)
 
-        # Fast deterministic app-control path. These intents use authenticated,
-        # permission-scoped Django data directly and avoid an unnecessary LLM
-        # round trip. Phase 1 tools are read-only.
+        # Write intent detection comes before read-only app control, but it can
+        # only create a pending action. Business data is not changed here.
+        action_result = AndyActionControl(request.user).propose(text)
+        if action_result and action_result.get("handled"):
+            return _save_app_answer(conversation, action_result, "action_control")
+
         app_result = AndyAppControl(request.user).try_handle(text)
         if app_result and app_result.get("handled"):
-            answer = app_result["answer"]
-            assistant_message = AndyMessage.objects.create(
-                conversation=conversation, role="ASSISTANT", content=answer
-            )
-            return Response({
-                "success": True,
-                "conversation_id": conversation.id,
-                "message_id": assistant_message.id,
-                "answer": answer,
-                "intent": app_result.get("intent"),
-                "source": "app_control",
-            })
+            return _save_app_answer(conversation, app_result, "app_control")
 
         memories = AndyMemory.objects.filter(user=request.user, is_active=True).order_by("-updated_at")[:20]
         memory_text = "\n".join(f"- {m.key}: {m.value}" for m in memories)
@@ -105,7 +116,20 @@ class AndyChatAPIView(APIView):
             return Response({"success": False, "message": str(exc), "hint": "Start the ARI-owned local model server and make sure ANDY_LLM_URL/model are configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         assistant_message = AndyMessage.objects.create(conversation=conversation, role="ASSISTANT", content=answer)
-        return Response({"success": True, "conversation_id": conversation.id, "message_id": assistant_message.id, "answer": answer, "source": "local_llm"})
+        return Response({"success": True, "conversation_id": conversation.id, "message_id": assistant_message.id, "answer": answer, "source": "local_llm", "avatar_state": "COMPLETED"})
+
+
+class AndyActionConfirmAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, action_id):
+        confirm = request.data.get("confirm")
+        if not isinstance(confirm, bool):
+            return Response({"message": "confirm must be true or false."}, status=400)
+        result = AndyActionControl(request.user).resolve(action_id, confirm)
+        if not result.get("ok"):
+            return Response({"success": False, "message": result["message"]}, status=result.get("status_code", 422))
+        return Response({"success": True, **result, "avatar_state": "COMPLETED"})
 
 
 class AndyTranscribeAPIView(APIView):
@@ -127,7 +151,7 @@ class AndyTranscribeAPIView(APIView):
                 for chunk in audio.chunks():
                     tmp.write(chunk)
             result = LocalSTT().transcribe(path)
-            return Response({"success": True, **result})
+            return Response({"success": True, **result, "avatar_state": "THINKING"})
         except LocalSTTError as exc:
             return Response({"success": False, "message": str(exc)}, status=422)
         finally:
@@ -152,6 +176,7 @@ class AndySpeakAPIView(APIView):
         response = HttpResponse(audio, content_type="audio/wav")
         response["Content-Disposition"] = 'inline; filename="andy.wav"'
         response["Cache-Control"] = "no-store"
+        response["X-Andy-Avatar-State"] = "SPEAKING"
         return response
 
 
