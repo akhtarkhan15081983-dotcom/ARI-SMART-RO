@@ -52,8 +52,9 @@ class AndyAppControl:
             "handled": True,
             "intent": "capabilities",
             "answer": (
-                f"Main ANDY hoon. Main {detail}. Main Hindi, English aur Hinglish mein baat "
-                "kar sakta hoon. Data-changing actions abhi approval-gated phase ke liye locked hain."
+                f"Main ANDY hoon, ARI SMART RO ka private AI assistant. Main {detail}. "
+                "Main Hindi, English aur Hinglish mein baat kar sakta hoon. "
+                "Data-changing actions abhi approval-gated phase ke liye locked hain."
             ),
         }
 
