@@ -61,3 +61,27 @@ class AndyKnowledge(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["namespace", "is_active"])]
+
+
+class AndyPendingAction(models.Model):
+    STATUS_CHOICES = (
+        ("PENDING", "Pending confirmation"),
+        ("CONFIRMED", "Confirmed"),
+        ("CANCELLED", "Cancelled"),
+        ("FAILED", "Failed"),
+    )
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="andy_pending_actions")
+    action_type = models.CharField(max_length=80)
+    target_type = models.CharField(max_length=80)
+    target_id = models.CharField(max_length=80)
+    payload = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="PENDING")
+    summary = models.CharField(max_length=240)
+    result = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "status", "created_at"])]
