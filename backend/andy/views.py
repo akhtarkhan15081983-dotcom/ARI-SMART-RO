@@ -1,6 +1,7 @@
 import os
 import tempfile
 
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -9,6 +10,7 @@ from rest_framework.views import APIView
 
 from .local_llm import LocalLLM, LocalLLMError
 from .local_stt import LocalSTT, LocalSTTError
+from .local_tts import LocalTTS, LocalTTSError
 from .models import AndyConversation, AndyFeedback, AndyMemory, AndyMessage
 from .project_context import build_project_context
 
@@ -103,6 +105,24 @@ class AndyTranscribeAPIView(APIView):
                     os.remove(path)
                 except OSError:
                     pass
+
+
+class AndySpeakAPIView(APIView):
+    """Turns ANDY text into WAV audio using the ARI-owned local Piper voice."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        text = (request.data.get("text") or "").strip()
+        if not text:
+            return Response({"message": "text is required."}, status=400)
+        try:
+            audio = LocalTTS().synthesize(text)
+        except LocalTTSError as exc:
+            return Response({"success": False, "message": str(exc)}, status=422)
+        response = HttpResponse(audio, content_type="audio/wav")
+        response["Content-Disposition"] = 'inline; filename="andy.wav"'
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 class AndyFeedbackAPIView(APIView):
