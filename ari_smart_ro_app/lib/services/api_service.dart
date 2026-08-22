@@ -7,10 +7,10 @@ class ApiService {
   // ============================================================
 
   static const String productionBaseUrl =
-    "https://wisconsin-ronald-grammar-deaths.trycloudflare.com/api";
+    "https://farmers-wiki-payroll-friend.trycloudflare.com/api";
 
   static const String developmentBaseUrl =
-    "https://wisconsin-ronald-grammar-deaths.trycloudflare.com/api";
+    "https://farmers-wiki-payroll-friend.trycloudflare.com/api";
 
   // ============================================================
   // SELECT BASE URL
@@ -57,8 +57,6 @@ class ApiService {
 
   static Future<Map<String, String>> authHeaders() async {
     final token = await getAccessToken();
-
-   
 
     return {
       "Authorization": "Bearer $token",
