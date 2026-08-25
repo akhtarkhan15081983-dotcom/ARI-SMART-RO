@@ -1,10 +1,26 @@
 import os
+import atexit
+import json
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from django.conf import settings
+
+
+_indic_process = None
+_indic_process_key = None
+
+
+def _stop_indic_process():
+    global _indic_process
+    if _indic_process is not None and _indic_process.poll() is None:
+        _indic_process.terminate()
+    _indic_process = None
+
+
+atexit.register(_stop_indic_process)
 
 
 class LocalTTSError(RuntimeError):
@@ -23,6 +39,7 @@ class LocalTTS:
       ANDY_INDICF5_REF_AUDIO=<path to clean reference WAV>
       ANDY_INDICF5_REF_TEXT=<path to UTF-8 transcript for that WAV>
       ANDY_INDICF5_MODEL=ai4bharat/IndicF5
+      ANDY_INDICF5_ALLOW_CPU=1 to opt into slow CPU IndicF5 in auto mode
     """
 
     def __init__(self):
@@ -33,13 +50,15 @@ class LocalTTS:
         self.config_path = voices_dir / f"{self.model_name}.onnx.json"
         self.timeout = int(os.getenv("ANDY_TTS_TIMEOUT", "90"))
 
-        default_voice_v2_python = Path(settings.BASE_DIR) / "andy_voice_v2" / "Scripts" / "python.exe"
+        repo_root = Path(settings.BASE_DIR).parent
+        default_voice_v2_python = repo_root / "voice_v2_clean" / "Scripts" / "python.exe"
         self.indic_python = Path(os.getenv("ANDY_INDICF5_PYTHON", default_voice_v2_python))
         self.indic_runner = Path(settings.BASE_DIR) / "andy" / "indicf5_runner.py"
         self.indic_ref_audio = Path(os.getenv("ANDY_INDICF5_REF_AUDIO", voices_dir / "andy_reference.wav"))
         self.indic_ref_text = Path(os.getenv("ANDY_INDICF5_REF_TEXT", voices_dir / "andy_reference.txt"))
         self.indic_model = os.getenv("ANDY_INDICF5_MODEL", "ai4bharat/IndicF5")
         self.indic_timeout = int(os.getenv("ANDY_INDICF5_TIMEOUT", "180"))
+        self.indic_allow_cpu = os.getenv("ANDY_INDICF5_ALLOW_CPU", "0").strip().lower() in {"1", "true", "yes"}
 
     def _validate_piper(self):
         if not self.model_path.is_file():
@@ -55,51 +74,67 @@ class LocalTTS:
             and self.indic_ref_text.is_file()
         )
 
+    def _indicf5_fast_enough_for_auto(self) -> bool:
+        # The presence of an NVIDIA driver does not mean the isolated IndicF5
+        # Torch build has CUDA support. Stay fast by default; users can opt in
+        # after verifying CUDA with ANDY_INDICF5_ALLOW_CPU=1, or force the
+        # engine with ANDY_TTS_ENGINE=indicf5.
+        return self.indic_allow_cpu
+
     def _synthesize_indicf5(self, text: str) -> bytes:
+        global _indic_process, _indic_process_key
         if not self._indicf5_ready():
             raise LocalTTSError(
                 "IndicF5 is not configured. Voice-v2 Python, reference WAV and transcript are required."
             )
 
-        input_path = None
         output_path = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8", newline="") as input_file:
-                input_path = input_file.name
-                input_file.write(text)
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as output_file:
                 output_path = output_file.name
 
-            command = [
-                str(self.indic_python),
-                str(self.indic_runner),
-                "--text-file", input_path,
+            process_key = (
+                str(self.indic_python), str(self.indic_runner),
+                str(self.indic_ref_audio), str(self.indic_ref_text), self.indic_model,
+            )
+            if (_indic_process is None or _indic_process.poll() is not None or
+                    _indic_process_key != process_key):
+                _stop_indic_process()
+                command = [str(self.indic_python), str(self.indic_runner), "--serve",
                 "--ref-audio", str(self.indic_ref_audio),
                 "--ref-text-file", str(self.indic_ref_text),
-                "--output", output_path,
-                "--model", self.indic_model,
-            ]
-            completed = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=self.indic_timeout,
-                check=False,
-            )
-            if completed.returncode != 0:
-                detail = (completed.stderr or completed.stdout or "IndicF5 failed").strip()[-1600:]
-                raise LocalTTSError(f"IndicF5 synthesis failed: {detail}")
+                "--model", self.indic_model]
+                _indic_process = subprocess.Popen(
+                    command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                    errors="replace", bufsize=1,
+                )
+                _indic_process_key = process_key
+
+            _indic_process.stdin.write(json.dumps({"text": text, "output": output_path}) + "\n")
+            _indic_process.stdin.flush()
+            recent_output = []
+            while True:
+                line = _indic_process.stdout.readline()
+                if not line:
+                    raise LocalTTSError("IndicF5 persistent runner stopped unexpectedly.")
+                recent_output.append(line.strip())
+                recent_output = recent_output[-20:]
+                if line.startswith("ANDY_RESULT "):
+                    result = json.loads(line[len("ANDY_RESULT "):])
+                    if not result.get("ok"):
+                        raise LocalTTSError(f"IndicF5 synthesis failed: {result.get('error')}")
+                    break
 
             audio = Path(output_path).read_bytes()
             if len(audio) <= 44:
                 raise LocalTTSError("IndicF5 returned empty audio.")
             return audio
-        except subprocess.TimeoutExpired as exc:
-            raise LocalTTSError("IndicF5 synthesis timed out.") from exc
+        except (BrokenPipeError, OSError, json.JSONDecodeError) as exc:
+            _stop_indic_process()
+            raise LocalTTSError(f"IndicF5 persistent runner failed: {exc}") from exc
         finally:
-            for path in (input_path, output_path):
+            for path in (output_path,):
                 if path:
                     try:
                         os.remove(path)
@@ -172,7 +207,7 @@ class LocalTTS:
 
         # auto: prefer the human-quality Voice v2 engine, but never break speech
         # if its environment/model/reference voice is temporarily unavailable.
-        if self._indicf5_ready():
+        if self._indicf5_ready() and self._indicf5_fast_enough_for_auto():
             try:
                 return self._synthesize_indicf5(text)
             except LocalTTSError:
