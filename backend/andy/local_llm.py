@@ -13,7 +13,7 @@ class LocalLLM:
 
     def __init__(self):
         self.base_url = os.getenv("ANDY_LLM_URL", "http://127.0.0.1:11434").rstrip("/")
-        self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5-coder:3b")
+        self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5:3b")
         self.timeout = int(os.getenv("ANDY_LLM_TIMEOUT", "120"))
         self.num_ctx = int(os.getenv("ANDY_LLM_NUM_CTX", "1536"))
         self.num_predict = int(os.getenv("ANDY_LLM_NUM_PREDICT", "96"))
