@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 
+from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator
+
 from .models import EmployeeProfile
 from .serializers import (
     EmployeeLocationSerializer,
@@ -89,7 +91,7 @@ class FaceEnrollmentAPIView(APIView):
 
 
 class AdminFaceEnrollmentControlAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin]
 
     def post(self, request, employee_id):
         if getattr(request.user, "role", "") != "ADMIN":
@@ -148,7 +150,7 @@ class UpdateLiveLocationAPIView(APIView):
 
 
 class EngineerLiveMapAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOperationsUser]
 
     def get(self, request):
         engineers = EmployeeProfile.objects.filter(
@@ -197,7 +199,7 @@ class EmployeeProfileAPIView(APIView):
 
 
 class EngineerListAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
     def get(self, request):
         engineers = EmployeeProfile.objects.filter(
@@ -216,7 +218,7 @@ class EngineerListAPIView(APIView):
 
 
 class AssignmentEmployeeListAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
     def get(self, request):
         employees = EmployeeProfile.objects.filter(
