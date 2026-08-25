@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/complaints/', include('complaints.urls')),
     path('api/referrals/', include('referrals.urls')),
     path('api/andy/', include('andy.urls')),
+    path('api/reports/', include('reporting.urls')),
 ]
 
 if settings.DEBUG:
