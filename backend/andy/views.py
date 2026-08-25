@@ -12,9 +12,9 @@ from .action_control import AndyActionControl
 from .app_control import AndyAppControl
 from .local_llm import LocalLLM, LocalLLMError
 from .local_stt import LocalSTT, LocalSTTError
-from .local_tts import LocalTTS, LocalTTSError
-from .models import AndyConversation, AndyFeedback, AndyMemory, AndyMessage
+from .models import AndyConversation, AndyFeedback, AndyMemory, AndyMessage, AndySpeechJob
 from .project_context import build_project_context
+from .speech_jobs import enqueue_speech_job
 
 
 SYSTEM_PROMPT = """You are ANDY, the private AI assistant for ARI SMART RO.
@@ -169,11 +169,36 @@ class AndySpeakAPIView(APIView):
         text = (request.data.get("text") or "").strip()
         if not text:
             return Response({"message": "text is required."}, status=400)
-        try:
-            audio = LocalTTS().synthesize(text)
-        except LocalTTSError as exc:
-            return Response({"success": False, "message": str(exc)}, status=422)
-        response = HttpResponse(audio, content_type="audio/wav")
+        text = text[:1800]
+        job = AndySpeechJob.objects.filter(
+            user=request.user,
+            text=text,
+            status__in=("PENDING", "RUNNING", "COMPLETED"),
+        ).first()
+        if job is None:
+            job = AndySpeechJob.objects.create(user=request.user, text=text)
+        if job.status in ("PENDING", "RUNNING"):
+            enqueue_speech_job(job.id)
+        return Response({
+            "success": True, "job_id": str(job.id), "status": "PENDING",
+            "status_url": request.build_absolute_uri(f"{job.id}/"),
+            "avatar_state": "THINKING",
+        }, status=status.HTTP_202_ACCEPTED)
+
+
+class AndySpeakJobAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, job_id):
+        job = AndySpeechJob.objects.filter(id=job_id, user=request.user).first()
+        if job is None:
+            return Response({"message": "Speech job not found."}, status=404)
+        if job.status == "FAILED":
+            return Response({"success": False, "status": "FAILED", "message": job.error}, status=422)
+        if job.status != "COMPLETED":
+            return Response({"success": True, "status": job.status, "avatar_state": "THINKING"})
+
+        response = HttpResponse(bytes(job.audio), content_type="audio/wav")
         response["Content-Disposition"] = 'inline; filename="andy.wav"'
         response["Cache-Control"] = "no-store"
         response["X-Andy-Avatar-State"] = "SPEAKING"

@@ -7,7 +7,8 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from andy.action_control import AndyActionControl
 from andy.app_control import AndyAppControl
-from andy.models import AndyConversation, AndyMessage, AndyPendingAction
+from andy.models import AndyConversation, AndyMessage, AndyPendingAction, AndySpeechJob
+from andy.local_tts import LocalTTS
 from assets.models import ROAsset
 from customers.models import Customer
 from employees.models import EmployeeProfile
@@ -272,3 +273,81 @@ class AndyChatAPITests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+class AndySpeakAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            phone="9000000031",
+            password="test-pass",
+            first_name="Voice",
+            role="ENGINEER",
+        )
+
+    def test_speak_requires_authentication(self):
+        response = self.client.post("/api/andy/speak/", {"text": "hello"}, format="json")
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_speak_rejects_empty_text(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post("/api/andy/speak/", {"text": "   "}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    @patch("andy.views.enqueue_speech_job")
+    def test_speak_queues_background_job(self, mock_enqueue):
+        self.client.force_authenticate(self.user)
+        response = self.client.post("/api/andy/speak/", {"text": "Namaste"}, format="json")
+        self.assertEqual(response.status_code, 202)
+        job = AndySpeechJob.objects.get(id=response.json()["job_id"])
+        self.assertEqual(job.status, "PENDING")
+        mock_enqueue.assert_called_once_with(job.id)
+
+    def test_completed_speech_job_returns_wav(self):
+        job = AndySpeechJob.objects.create(
+            user=self.user, text="Namaste", status="COMPLETED", audio=b"RIFF" + b"0" * 64
+        )
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"/api/andy/speak/{job.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "audio/wav")
+        self.assertEqual(response["X-Andy-Avatar-State"], "SPEAKING")
+
+    def test_pending_speech_job_reports_status(self):
+        job = AndySpeechJob.objects.create(user=self.user, text="Namaste")
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"/api/andy/speak/{job.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "PENDING")
+
+    @patch("andy.views.enqueue_speech_job")
+    def test_speak_reuses_existing_job_for_same_text(self, mock_enqueue):
+        job = AndySpeechJob.objects.create(user=self.user, text="Namaste", status="COMPLETED", audio=b"RIFF")
+        self.client.force_authenticate(self.user)
+        response = self.client.post("/api/andy/speak/", {"text": "Namaste"}, format="json")
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["job_id"], str(job.id))
+        mock_enqueue.assert_not_called()
+
+    def test_failed_speech_job_reports_tts_error(self):
+        job = AndySpeechJob.objects.create(user=self.user, text="Namaste", status="FAILED", error="voice failed")
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"/api/andy/speak/{job.id}/")
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["message"], "voice failed")
+
+    def test_speech_job_is_private_to_owner(self):
+        other = User.objects.create_user(phone="9000000032", password="test-pass", role="ENGINEER")
+        job = AndySpeechJob.objects.create(user=other, text="private")
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"/api/andy/speak/{job.id}/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_default_indic_python_uses_repo_voice_v2_environment(self):
+        tts = LocalTTS()
+        self.assertEqual(tts.indic_python.name, "python.exe")
+        self.assertEqual(tts.indic_python.parent.parent.name, "voice_v2_clean")
+
+    @patch.dict("os.environ", {"ANDY_INDICF5_ALLOW_CPU": "0"})
+    def test_auto_voice_avoids_slow_cpu_indicf5(self):
+        self.assertFalse(LocalTTS()._indicf5_fast_enough_for_auto())

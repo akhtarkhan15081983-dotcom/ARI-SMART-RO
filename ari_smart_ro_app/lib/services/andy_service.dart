@@ -134,7 +134,7 @@ class AndyService {
       headers: await ApiService.authHeaders(),
       body: jsonEncode({'text': text}),
     );
-    if (response.statusCode != 200) {
+    if (response.statusCode != 202) {
       String message = 'ANDY voice is unavailable';
       try {
         final data = _decode(response);
@@ -142,7 +142,34 @@ class AndyService {
       } catch (_) {}
       throw Exception(message);
     }
-    return response.bodyBytes;
+    final queued = _decode(response);
+    final jobId = queued['job_id']?.toString();
+    if (jobId == null || jobId.isEmpty) {
+      throw Exception('ANDY voice job could not be started');
+    }
+
+    // CPU-only IndicF5 can take a long time for its first model load. Keep
+    // polling without holding any single HTTP request open, so the completed
+    // WAV is still delivered instead of being abandoned after four minutes.
+    for (var attempt = 0; attempt < 1200; attempt++) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      final poll = await http.get(
+        Uri.parse('${ApiService.baseUrl}/andy/speak/$jobId/'),
+        headers: await ApiService.authHeaders(),
+      );
+      if (poll.statusCode == 200 &&
+          poll.headers['content-type']?.startsWith('audio/wav') == true) {
+        return poll.bodyBytes;
+      }
+      if (poll.statusCode == 200) continue;
+
+      String message = 'ANDY voice is unavailable';
+      try {
+        message = _decode(poll)['message']?.toString() ?? message;
+      } catch (_) {}
+      throw Exception(message);
+    }
+    throw Exception('ANDY voice generation timed out');
   }
 
   Future<void> feedback(int messageId, int rating, {String correction = ''}) async {
