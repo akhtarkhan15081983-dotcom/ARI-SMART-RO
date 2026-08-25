@@ -65,6 +65,24 @@ def answer_ro_question(text):
             "Tank valve khula ho aur tank air-pressure sahi ho; over-pressure mein pani store nahi hota."
         )
 
+    if "membrane" in q and _has(
+        q, "kab", "kharab", "life", "change", "badal", "replace", "कब", "खराब", "बदल"
+    ):
+        return (
+            "RO membrane ki koi fixed life nahi hoti. Filters aur inlet pressure sahi hone par bhi output TDS badhe, "
+            "flow kam ho ya product/reject ratio galat ho to meter aur pressure test ke baad membrane replace karayein."
+        )
+
+    if _has(
+        q,
+        "waste pani nahi", "waste paani nahi", "reject water nahi",
+        "drain water nahi", "वेस्ट पानी नहीं", "रिजेक्ट पानी नहीं",
+    ):
+        return (
+            "Waste pani bilkul na aaye to low inlet pressure, booster pump, blocked reject pipe ya flow restrictor check karein. "
+            "RO ko lagatar na chalayein; technician se product/reject flow aur membrane pressure test karayein."
+        )
+
     if _has(
         q,
         "waste water", "drain water", "pani waste", "continuous drain",
