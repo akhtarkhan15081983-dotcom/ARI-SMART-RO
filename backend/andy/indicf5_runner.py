@@ -65,8 +65,15 @@ def _synthesize(text, output_path, ref_audio, normalized_ref_text, model, vocode
     )
     if getattr(audio, "dtype", None) == np.int16:
         audio = audio.astype(np.float32) / 32768.0
+
+    # Make ANDY clearly audible on laptop speakers without digital clipping.
+    audio = np.asarray(audio, dtype=np.float32)
+    peak = float(np.max(np.abs(audio))) if audio.size else 0.0
+    if peak > 0.0:
+        audio = audio * (0.95 / peak)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(output_path), np.asarray(audio, dtype=np.float32), samplerate=sample_rate or 24000)
+    sf.write(str(output_path), audio, samplerate=sample_rate or 24000)
 
 
 def main() -> int:
