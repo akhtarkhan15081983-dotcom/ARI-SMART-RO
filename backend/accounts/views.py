@@ -25,7 +25,7 @@ from .services.otp import (
 
 class ProductionScopedRateThrottle(ScopedRateThrottle):
     def get_cache_key(self, request, view):
-        if settings.DEBUG:
+        if settings.DEBUG or settings.DISABLE_AUTH_THROTTLING:
             return None
         return super().get_cache_key(request, view)
 
