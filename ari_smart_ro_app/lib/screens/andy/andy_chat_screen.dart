@@ -209,12 +209,64 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
     });
   }
 
+  Future<String?> _askForCorrection() async {
+    final correctionController = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Teach ANDY'),
+        content: TextField(
+          controller: correctionController,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 7,
+          maxLength: 2000,
+          decoration: const InputDecoration(
+            labelText: 'Sahi jawab',
+            hintText: 'ANDY ko kya jawab dena chahiye tha?',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = correctionController.text.trim();
+              if (value.length >= 5) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Submit for review'),
+          ),
+        ],
+      ),
+    );
+    correctionController.dispose();
+    return result;
+  }
+
   Future<void> _rate(int messageId, int rating) async {
+    var correction = '';
+    if (rating == 1) {
+      final submitted = await _askForCorrection();
+      if (submitted == null || submitted.isEmpty) return;
+      correction = submitted;
+    }
+
     try {
-      await _service.feedback(messageId, rating);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Feedback saved. ANDY can learn from reviewed feedback.')));
+      await _service.feedback(messageId, rating, correction: correction);
+      if (!mounted) return;
+      final message = rating == 1
+          ? 'Correction admin review ke liye submit ho gayi.'
+          : 'Feedback saved.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save feedback.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save feedback.')),
+        );
+      }
     }
   }
 
