@@ -44,7 +44,9 @@ class LocalTTS:
 
     def __init__(self):
         voices_dir = Path(os.getenv("ANDY_TTS_VOICES_DIR", Path(settings.BASE_DIR) / "andy" / "voices"))
-        self.engine = os.getenv("ANDY_TTS_ENGINE", "auto").strip().lower()
+        # Keep the current release fast on CPU-only laptops. IndicF5 remains
+        # available as an explicit opt-in for the next optimized voice version.
+        self.engine = os.getenv("ANDY_TTS_ENGINE", "piper").strip().lower()
         self.model_name = os.getenv("ANDY_TTS_MODEL", "hi_IN-rohan-medium")
         self.model_path = voices_dir / f"{self.model_name}.onnx"
         self.config_path = voices_dir / f"{self.model_name}.onnx.json"
