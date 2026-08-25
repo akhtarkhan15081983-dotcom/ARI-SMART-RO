@@ -31,6 +31,8 @@ jobs:
           python manage.py check --deploy
           python manage.py makemigrations --check --dry-run
       - name: Backend tests
+        env:
+          DJANGO_DISABLE_AUTH_THROTTLING: "1"
         run: python manage.py test -v 1
 
   flutter:
