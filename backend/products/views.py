@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+
+from accounts.permissions import IsReadOnlyOrStaffOperator
 from django.db.models import Q
 from .models import (
     ProductCategory,
@@ -18,7 +20,7 @@ from .serializers import (
 
 class ProductCategoryAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsReadOnlyOrStaffOperator]
 
     def get(self, request):
 
@@ -53,7 +55,7 @@ class ProductCategoryAPIView(APIView):
 
 class ROModelAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsReadOnlyOrStaffOperator]
 
     def get(self, request):
 
@@ -90,7 +92,7 @@ class ROModelAPIView(APIView):
 
 class ROModelPartAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsReadOnlyOrStaffOperator]
 
     def get(self, request):
 
