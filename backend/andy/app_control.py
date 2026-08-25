@@ -212,6 +212,20 @@ class AndyAppControl:
     def try_handle(self, text):
         q = self._norm(text)
 
+        if (
+            getattr(self.user, "role", "") in ("ADMIN", "MANAGER")
+            and self._has(q, "customer", "customers", "ग्राहक")
+            and self._has(q, "total", "count", "kitne", "कितने", "कुल")
+        ):
+            from customers.models import Customer
+
+            count = Customer.objects.count()
+            return {
+                "handled": True,
+                "intent": "customer_count",
+                "answer": f"ARI SMART RO mein कुल {count} customer registered hain.",
+            }
+
         if self._has(q, "taiyar", "tayyar", "ready", "तैयार"):
             return {
                 "handled": True,
