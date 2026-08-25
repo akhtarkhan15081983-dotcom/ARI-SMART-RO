@@ -73,6 +73,9 @@ def _synthesize(text, output_path, ref_audio, normalized_ref_text, model, vocode
     if peak > 0.0:
         audio = audio * (0.95 / peak)
 
+    # 150% perceived loudness with soft limiting to avoid harsh clipping.
+    audio = np.tanh(audio * 1.5) / np.tanh(1.5)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(str(output_path), audio, samplerate=sample_rate or 24000)
 
