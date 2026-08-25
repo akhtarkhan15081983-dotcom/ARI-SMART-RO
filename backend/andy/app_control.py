@@ -2,6 +2,8 @@ import re
 
 from django.utils import timezone
 
+from .ro_knowledge import answer_ro_question
+
 
 class AndyAppControl:
     """Deterministic, permission-scoped ARI SMART RO tools for ANDY.
@@ -211,6 +213,14 @@ class AndyAppControl:
 
     def try_handle(self, text):
         q = self._norm(text)
+
+        ro_answer = answer_ro_question(q)
+        if ro_answer:
+            return {
+                "handled": True,
+                "intent": "ro_troubleshooting",
+                "answer": ro_answer,
+            }
 
         if (
             getattr(self.user, "role", "") in ("ADMIN", "MANAGER")
