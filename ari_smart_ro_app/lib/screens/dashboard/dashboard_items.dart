@@ -9,6 +9,7 @@ class DashboardItem {
 
 class DashboardItems {
   static const DashboardItem andy = DashboardItem(title: "ANDY AI", icon: Icons.auto_awesome, route: "andy");
+  static const DashboardItem reports = DashboardItem(title: "Business Reports", icon: Icons.analytics_outlined, route: "reports");
 
   static List<DashboardItem> engineer = [
     andy,
@@ -31,6 +32,7 @@ class DashboardItems {
     const DashboardItem(title: "Customers", icon: Icons.people, route: "customers"),
     const DashboardItem(title: "Rent Management", icon: Icons.account_balance_wallet, route: "rent_management"),
     const DashboardItem(title: "Payment History", icon: Icons.receipt_long, route: "payment_history"),
+    reports,
     const DashboardItem(title: "Face & Device Security", icon: Icons.admin_panel_settings, route: "face_security_admin"),
     const DashboardItem(title: "Attendance Selfie Review", icon: Icons.fact_check_outlined, route: "attendance_review_admin"),
     const DashboardItem(title: "Attendance Security Test", icon: Icons.verified_user, route: "attendance_security_test"),
@@ -46,6 +48,7 @@ class DashboardItems {
     const DashboardItem(title: "Customers", icon: Icons.people, route: "customers"),
     const DashboardItem(title: "Rent Management", icon: Icons.account_balance_wallet, route: "rent_management"),
     const DashboardItem(title: "Payment History", icon: Icons.receipt_long, route: "payment_history"),
+    reports,
     const DashboardItem(title: "Walk-In Customer", icon: Icons.person_add_alt_1, route: "walkin"),
     const DashboardItem(title: "Live Map", icon: Icons.map, route: "map"),
     const DashboardItem(title: "Engineer Live", icon: Icons.location_on, route: "engineer_map"),
