@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from andy.action_control import AndyActionControl
 from andy.app_control import AndyAppControl
-from andy.models import AndyConversation, AndyMessage, AndyPendingAction, AndySpeechJob
+from andy.models import AndyConversation, AndyKnowledge, AndyMessage, AndyPendingAction, AndySpeechJob, AndyTeaching
 from andy.local_tts import LocalTTS
 from assets.models import ROAsset
 from customers.models import Customer
@@ -351,3 +351,114 @@ class AndySpeakAPITests(TestCase):
     @patch.dict("os.environ", {"ANDY_INDICF5_ALLOW_CPU": "0"})
     def test_auto_voice_avoids_slow_cpu_indicf5(self):
         self.assertFalse(LocalTTS()._indicf5_fast_enough_for_auto())
+
+
+class AndyTeachingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            phone="9000000301",
+            password="test-pass",
+            first_name="Teacher",
+            role="CUSTOMER",
+        )
+        self.admin = User.objects.create_user(
+            phone="9000000302",
+            password="test-pass",
+            first_name="Reviewer",
+            role="ADMIN",
+            is_superuser=True,
+            is_staff=True,
+        )
+        self.client = APIClient()
+        self.conversation = AndyConversation.objects.create(
+            user=self.user,
+            title="Teaching test",
+        )
+        AndyMessage.objects.create(
+            conversation=self.conversation,
+            role="USER",
+            content="UV chamber quartz sleeve ko kab clean karein?",
+        )
+        self.assistant_message = AndyMessage.objects.create(
+            conversation=self.conversation,
+            role="ASSISTANT",
+            content="Mujhe pakka nahi pata.",
+        )
+
+    def test_bad_feedback_with_correction_creates_pending_teaching(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            f"/api/andy/feedback/{self.assistant_message.id}/",
+            {"rating": 1, "correction": "Quartz sleeve ko scale ke hisab se service par inspect aur clean karein."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        teaching = AndyTeaching.objects.get(id=response.data["teaching_id"])
+        self.assertEqual(teaching.status, "PENDING")
+        self.assertEqual(teaching.submitted_by, self.user)
+        self.assertIn("quartz sleeve", teaching.question.lower())
+
+    def test_regular_user_cannot_review_teaching(self):
+        teaching = AndyTeaching.objects.create(
+            submitted_by=self.user,
+            question="UV chamber quartz sleeve ko kab clean karein?",
+            answer="Service par inspect karein.",
+        )
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            f"/api/andy/teach/{teaching.id}/review/",
+            {"action": "APPROVE"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        teaching.refresh_from_db()
+        self.assertEqual(teaching.status, "PENDING")
+
+    def test_admin_approval_creates_retrievable_knowledge(self):
+        teaching = AndyTeaching.objects.create(
+            submitted_by=self.user,
+            question="UV chamber quartz sleeve ko kab clean karein?",
+            answer="Quartz sleeve ko scale ke hisab se service par inspect aur clean karein.",
+        )
+        self.client.force_authenticate(self.admin)
+        review = self.client.post(
+            f"/api/andy/teach/{teaching.id}/review/",
+            {"action": "APPROVE"},
+            format="json",
+        )
+        self.assertEqual(review.status_code, 200)
+        teaching.refresh_from_db()
+        self.assertEqual(teaching.status, "APPROVED")
+        self.assertIsNotNone(teaching.knowledge_id)
+        self.assertTrue(
+            AndyKnowledge.objects.filter(
+                id=teaching.knowledge_id,
+                namespace="andy-approved",
+                is_active=True,
+            ).exists()
+        )
+
+        self.client.force_authenticate(self.user)
+        with patch("andy.views.LocalLLM.chat") as llm_chat:
+            response = self.client.post(
+                "/api/andy/chat/",
+                {"message": "UV chamber quartz sleeve ko kab clean karein?"},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["source"], "approved_knowledge")
+        self.assertIn("inspect aur clean", response.data["answer"])
+        llm_chat.assert_not_called()
+
+    def test_direct_teach_submission_is_pending(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            "/api/andy/teach/",
+            {
+                "question": "Pre-filter kab badalna chahiye?",
+                "answer": "Flow aur filter condition inspect karke badlein.",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["status"], "PENDING")
