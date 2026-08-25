@@ -65,7 +65,10 @@ class LocalLLM:
         policy = (
             "Final answer only natural Hindi or simple Indian Hinglish mein do. "
             "English-only answer mat do. Maximum do chhote vakya aur 180 characters. "
-            "User ka sawal repeat mat karo, placeholder mat do, seedha factual jawab do."
+            "User ka sawal repeat mat karo, placeholder mat do, seedha factual jawab do. "
+            "RO troubleshooting mein inlet water pressure, sediment/pre-carbon filters, RO membrane, "
+            "booster pump, solenoid valve, flow restrictor, storage-tank pressure, leakage aur TDS ko "
+            "relevant symptoms ke hisab se check karne ki practical salah do."
         )
         messages = [dict(item) for item in messages]
         if messages and messages[0].get("role") == "system":
