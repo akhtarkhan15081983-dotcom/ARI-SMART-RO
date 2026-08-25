@@ -369,7 +369,7 @@ def build_operations_report(period):
     )
     purchase_totals = purchase_items.aggregate(
         items=Count("id"),
-        quantity=Sum("quantity"),
+        total_quantity=Sum("quantity"),
         value=Sum(purchase_value_expression),
         invoices=Count("purchase", distinct=True),
         suppliers=Count("purchase__supplier", distinct=True),
@@ -392,7 +392,7 @@ def build_operations_report(period):
             "purchase_invoices": purchase_totals["invoices"] or 0,
             "purchase_suppliers": purchase_totals["suppliers"] or 0,
             "purchase_items": purchase_totals["items"] or 0,
-            "purchase_quantity": purchase_totals["quantity"] or 0,
+            "purchase_quantity": purchase_totals["total_quantity"] or 0,
             "purchase_value": _money(purchase_totals["value"]),
         },
         "jobs_by_status": _status_counts(jobs_created),
