@@ -16,7 +16,7 @@ class LocalLLM:
         self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5-coder:3b")
         self.timeout = int(os.getenv("ANDY_LLM_TIMEOUT", "120"))
         self.num_ctx = int(os.getenv("ANDY_LLM_NUM_CTX", "1536"))
-        self.num_predict = int(os.getenv("ANDY_LLM_NUM_PREDICT", "160"))
+        self.num_predict = int(os.getenv("ANDY_LLM_NUM_PREDICT", "96"))
         # Keeping the 3B model warm removes repeated model-start cost. The value
         # is intentionally bounded rather than permanent for the development PC.
         self.keep_alive = os.getenv("ANDY_LLM_KEEP_ALIVE", "10m")
@@ -60,6 +60,19 @@ class LocalLLM:
         }
 
     def chat(self, messages):
+        # ANDY is Hindi/Hinglish-first on the ARI SMART RO mobile app. Keeping
+        # replies short also makes high-quality local IndicF5 practical on CPU.
+        messages = [
+            *messages,
+            {
+                "role": "system",
+                "content": (
+                    "Final answer only natural Hindi or simple Indian Hinglish mein do. "
+                    "English-only answer mat do. Maximum do chhote vakya aur 180 characters. "
+                    "Seedha jawab do; apni limitations ya language par commentary mat karo."
+                ),
+            },
+        ]
         chat_error = None
         try:
             data = self._post_json("/api/chat", {
