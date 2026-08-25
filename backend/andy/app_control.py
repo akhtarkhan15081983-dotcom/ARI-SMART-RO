@@ -212,6 +212,21 @@ class AndyAppControl:
     def try_handle(self, text):
         q = self._norm(text)
 
+        if self._has(q, "taiyar", "tayyar", "ready", "तैयार"):
+            return {
+                "handled": True,
+                "intent": "readiness",
+                "answer": "Haan, main taiyar hoon. Batayiye, main aapki kya madad karoon?",
+            }
+
+        if "hindi" in q or "हिंदी" in q or "हिन्दी" in q:
+            if self._has(q, "aati", "samajh", "understand", "bol", "speak", "आती", "समझ", "बोल"):
+                return {
+                    "handled": True,
+                    "intent": "language_support",
+                    "answer": "Haan, mujhe Hindi aur Hinglish samajh aati hai. Aap Hindi mein baat kar sakte hain.",
+                }
+
         if self._has(
             q,
             "what can you do", "what all can you do", "tum kya kar sakte",
