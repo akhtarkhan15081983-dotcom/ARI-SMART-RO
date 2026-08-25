@@ -62,6 +62,7 @@ def _synthesize(text, output_path, ref_audio, normalized_ref_text, model, vocode
         mel_spec_type="vocos",
         device=device,
         speed=1.2,
+        nfe_step=16,
     )
     if getattr(audio, "dtype", None) == np.int16:
         audio = audio.astype(np.float32) / 32768.0
