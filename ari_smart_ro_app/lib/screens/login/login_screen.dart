@@ -20,6 +20,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isLoading = false;
 
   @override
+  void dispose() {
+    phoneController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
@@ -131,7 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: () async {
+                  onPressed: isLoading ? null : () async {
 
                     setState(() {
                       isLoading = true;
@@ -141,6 +148,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       phone: phoneController.text.trim(),
                       password: passwordController.text.trim(),
                     );
+
+                    if (!mounted) return;
 
                     setState(() {
                       isLoading = false;
@@ -176,13 +185,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
 
-                  child: const Text(
-                    "LOGIN",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          "LOGIN",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ],

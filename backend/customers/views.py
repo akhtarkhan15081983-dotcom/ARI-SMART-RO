@@ -1,5 +1,6 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsEngineer, IsStaffOperator, STAFF_ROLES, user_role
 from employees.models import EmployeeProfile
 from .models import Customer
 
@@ -34,6 +35,20 @@ from .serializers import (
     CustomerProfileSerializer,
     MyROSerializer,
 )
+
+
+def _customer_queryset_for(user):
+    role = user_role(user)
+    queryset = Customer.objects.select_related("assigned_engineer__user")
+    if role in STAFF_ROLES:
+        return queryset
+    if role == "ENGINEER":
+        return queryset.filter(assigned_engineer__user=user)
+    if role == "CUSTOMER":
+        return queryset.filter(phone=user.phone)
+    return queryset.none()
+
+
 class CustomerProfileAPIView(APIView):
 
     permission_classes = [
@@ -530,7 +545,7 @@ class CustomerCreateAPIView(generics.CreateAPIView):
 
     serializer_class = CustomerSerializer
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
 class CustomerDetailAPIView(generics.RetrieveAPIView):
 
@@ -538,7 +553,8 @@ class CustomerDetailAPIView(generics.RetrieveAPIView):
 
     permission_classes = [IsAuthenticated]
 
-    queryset = Customer.objects.all()
+    def get_queryset(self):
+        return _customer_queryset_for(self.request.user)
 
 class CustomerServiceHistoryAPIView(APIView):
     """
@@ -854,7 +870,7 @@ class CustomerSearchAPIView(APIView):
 
         q = request.GET.get("q", "").strip()
 
-        queryset = Customer.objects.all()
+        queryset = _customer_queryset_for(request.user)
 
         if q:
 
@@ -880,11 +896,11 @@ class CustomerUpdateAPIView(generics.UpdateAPIView):
 
     serializer_class = CustomerSerializer
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
 class WalkInCustomerAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsEngineer]
 
     def post(self, request):
 
@@ -953,7 +969,7 @@ class WalkInCustomerAPIView(APIView):
 
 class AssignCustomerAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
     def post(self, request, pk):
 

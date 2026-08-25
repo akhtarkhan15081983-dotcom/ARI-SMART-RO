@@ -1,4 +1,4 @@
-import random
+import secrets
 
 from datetime import timedelta
 
@@ -14,10 +14,7 @@ OTP_EXPIRY_MINUTES = 5
 def generate_otp():
 
     return str(
-        random.randint(
-            100000,
-            999999,
-        )
+        100000 + secrets.randbelow(900000)
     )
 
 

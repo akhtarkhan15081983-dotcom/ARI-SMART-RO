@@ -1,74 +1,79 @@
 from io import BytesIO
 
+import openpyxl
+from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
-
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.permissions import IsOperationsUser, IsStaffOperator, STAFF_ROLES, user_role
 from .models import Service
 from .serializers import ServiceSerializer
-from django.db.models import Q
 
-import openpyxl
+
+def _service_queryset_for(user, include_customer=True):
+    queryset = Service.objects.select_related(
+        "customer",
+        "engineer",
+        "engineer__user",
+        "ro_asset",
+    )
+    role = user_role(user)
+
+    if role in STAFF_ROLES:
+        return queryset
+    if role == "ENGINEER":
+        return queryset.filter(engineer__user=user)
+    if include_customer and role == "CUSTOMER":
+        return queryset.filter(customer__phone=user.phone)
+    return queryset.none()
 
 
 class ServiceListAPIView(generics.ListAPIView):
-
-    queryset = Service.objects.all().order_by("-id")
-
     serializer_class = ServiceSerializer
-
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return _service_queryset_for(self.request.user).order_by("-id")
 
 
 class ServiceCreateAPIView(generics.CreateAPIView):
-
     queryset = Service.objects.all()
-
     serializer_class = ServiceSerializer
-
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
 
 class ServiceDetailAPIView(generics.RetrieveAPIView):
-
-    queryset = Service.objects.all()
-
     serializer_class = ServiceSerializer
-
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return _service_queryset_for(self.request.user)
 
 
 class ServiceUpdateAPIView(generics.UpdateAPIView):
-
-    queryset = Service.objects.all()
-
     serializer_class = ServiceSerializer
+    permission_classes = [IsOperationsUser]
 
-    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        return _service_queryset_for(self.request.user, include_customer=False)
 
 
 class CompleteServiceAPIView(generics.UpdateAPIView):
-
-    queryset = Service.objects.all()
-
     serializer_class = ServiceSerializer
+    permission_classes = [IsOperationsUser]
 
-    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        return _service_queryset_for(self.request.user, include_customer=False)
 
     def update(self, request, *args, **kwargs):
-
         service = self.get_object()
-
         service.status = "COMPLETED"
-
         service.completed_date = timezone.now()
-
-        service.save()
-
+        service.save(update_fields=["status", "completed_date", "updated_at"])
         return Response(
             {
                 "success": True,
@@ -78,55 +83,36 @@ class CompleteServiceAPIView(generics.UpdateAPIView):
             status=status.HTTP_200_OK,
         )
 
+
 class ServiceSearchAPIView(generics.ListAPIView):
-
     serializer_class = ServiceSerializer
-
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-
-        keyword = self.request.GET.get("q", "")
-
-        queryset = Service.objects.select_related(
-            "customer",
-            "engineer",
-            "ro_asset",
-        )
+        keyword = self.request.GET.get("q", "").strip()
+        queryset = _service_queryset_for(self.request.user)
 
         if keyword:
-
             queryset = queryset.filter(
-
-                Q(service_id__icontains=keyword) |
-
-                Q(customer__name__icontains=keyword) |
-
-                Q(customer__phone__icontains=keyword) |
-
-                Q(customer__card_number__icontains=keyword)
-
+                Q(service_id__icontains=keyword)
+                | Q(customer__name__icontains=keyword)
+                | Q(customer__phone__icontains=keyword)
+                | Q(customer__card_number__icontains=keyword)
             )
 
         return queryset.order_by("-id")
 
 
 class ServiceExportAPIView(APIView):
-
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
     def get(self, request, *args, **kwargs):
-        queryset = Service.objects.select_related(
-            "customer",
-            "engineer",
-            "ro_asset",
-        ).order_by("-id")
-
+        queryset = _service_queryset_for(request.user).order_by("-id")
         workbook = openpyxl.Workbook()
         worksheet = workbook.active
         worksheet.title = "Service Report"
 
-        headers = [
+        worksheet.append([
             "ID",
             "Service ID",
             "Customer",
@@ -143,8 +129,7 @@ class ServiceExportAPIView(APIView):
             "Remarks",
             "Latitude",
             "Longitude",
-        ]
-        worksheet.append(headers)
+        ])
 
         for service in queryset:
             worksheet.append([
@@ -161,7 +146,7 @@ class ServiceExportAPIView(APIView):
                 service.next_service_date.isoformat() if service.next_service_date else "",
                 service.input_tds or "",
                 service.output_tds or "",
-                service.remarks or "",
+                service.remarks,
                 service.latitude or "",
                 service.longitude or "",
             ])
@@ -176,5 +161,3 @@ class ServiceExportAPIView(APIView):
         )
         response["Content-Disposition"] = 'attachment; filename="service_report.xlsx"'
         return response
-
-

@@ -91,6 +91,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
   void _showComingSoon(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), behavior: SnackBarBehavior.floating));
 
+  @override
+  void dispose() {
+    _liveLocationService.stopTracking();
+    super.dispose();
+  }
+
   @override Widget build(BuildContext context) {
     if (_isLoadingRole) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final items = _dashboardItems, isCustomer = _role == 'CUSTOMER';
