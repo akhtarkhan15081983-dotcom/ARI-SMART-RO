@@ -7,6 +7,7 @@ explicitly, following the upstream IndicF5 fix direction.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -46,47 +47,10 @@ def _build_model(repo_id: str, device: str):
     return model, vocoder
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--text-file", required=True)
-    parser.add_argument("--ref-audio", required=True)
-    parser.add_argument("--ref-text-file", required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--model", default="ai4bharat/IndicF5")
-    args = parser.parse_args()
-
-    text_path = Path(args.text_file)
-    ref_audio_path = Path(args.ref_audio)
-    ref_text_path = Path(args.ref_text_file)
-    output_path = Path(args.output)
-
-    for path, label in (
-        (text_path, "text file"),
-        (ref_audio_path, "reference audio"),
-        (ref_text_path, "reference transcript"),
-    ):
-        if not path.is_file():
-            raise FileNotFoundError(f"IndicF5 {label} not found: {path}")
-
-    text = text_path.read_text(encoding="utf-8").strip()
-    ref_text = ref_text_path.read_text(encoding="utf-8").strip()
-    if not text:
-        raise ValueError("IndicF5 synthesis text is empty.")
-    if not ref_text:
-        raise ValueError("IndicF5 reference transcript is empty.")
-
+def _synthesize(text, output_path, ref_audio, normalized_ref_text, model, vocoder, device):
     import numpy as np
     import soundfile as sf
-    import torch
-    from f5_tts.infer.utils_infer import infer_process, preprocess_ref_audio_text
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, vocoder = _build_model(args.model, device)
-
-    print("Preprocessing reference voice...", flush=True)
-    ref_audio, normalized_ref_text = preprocess_ref_audio_text(
-        str(ref_audio_path), ref_text, device=device
-    )
+    from f5_tts.infer.utils_infer import infer_process
 
     print("Generating ANDY Voice v2...", flush=True)
     audio, sample_rate, _ = infer_process(
@@ -97,13 +61,71 @@ def main() -> int:
         vocoder,
         mel_spec_type="vocos",
         device=device,
+        speed=1.2,
     )
-
     if getattr(audio, "dtype", None) == np.int16:
         audio = audio.astype(np.float32) / 32768.0
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(str(output_path), np.asarray(audio, dtype=np.float32), samplerate=sample_rate or 24000)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--serve", action="store_true")
+    parser.add_argument("--text-file")
+    parser.add_argument("--ref-audio", required=True)
+    parser.add_argument("--ref-text-file", required=True)
+    parser.add_argument("--output")
+    parser.add_argument("--model", default="ai4bharat/IndicF5")
+    args = parser.parse_args()
+
+    ref_audio_path = Path(args.ref_audio)
+    ref_text_path = Path(args.ref_text_file)
+
+    for path, label in (
+        (ref_audio_path, "reference audio"),
+        (ref_text_path, "reference transcript"),
+    ):
+        if not path.is_file():
+            raise FileNotFoundError(f"IndicF5 {label} not found: {path}")
+
+    ref_text = ref_text_path.read_text(encoding="utf-8").strip()
+    if not ref_text:
+        raise ValueError("IndicF5 reference transcript is empty.")
+
+    import torch
+    from f5_tts.infer.utils_infer import preprocess_ref_audio_text
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model, vocoder = _build_model(args.model, device)
+
+    print("Preprocessing reference voice...", flush=True)
+    ref_audio, normalized_ref_text = preprocess_ref_audio_text(
+        str(ref_audio_path), ref_text, device=device
+    )
+
+    if args.serve:
+        print("ANDY_READY", flush=True)
+        for line in sys.stdin:
+            try:
+                request = json.loads(line)
+                text = str(request.get("text") or "").strip()
+                if not text:
+                    raise ValueError("IndicF5 synthesis text is empty.")
+                output_path = Path(request["output"])
+                _synthesize(text, output_path, ref_audio, normalized_ref_text, model, vocoder, device)
+                print("ANDY_RESULT " + json.dumps({"ok": True}), flush=True)
+            except Exception as exc:
+                print("ANDY_RESULT " + json.dumps({"ok": False, "error": str(exc)}), flush=True)
+        return 0
+
+    if not args.text_file or not args.output:
+        parser.error("--text-file and --output are required unless --serve is used")
+    text = Path(args.text_file).read_text(encoding="utf-8").strip()
+    if not text:
+        raise ValueError("IndicF5 synthesis text is empty.")
+    output_path = Path(args.output)
+    _synthesize(text, output_path, ref_audio, normalized_ref_text, model, vocoder, device)
     print(f"ANDY Voice v2 saved: {output_path}", flush=True)
     return 0
 
