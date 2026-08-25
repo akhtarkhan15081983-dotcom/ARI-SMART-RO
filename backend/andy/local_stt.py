@@ -2,8 +2,6 @@ import gc
 import os
 import threading
 
-from faster_whisper import WhisperModel
-
 
 class LocalSTTError(RuntimeError):
     pass
@@ -29,6 +27,10 @@ class LocalSTT:
         if LocalSTT._model is not None:
             return LocalSTT._model
         try:
+            # Import only when transcription is requested. This keeps Django
+            # startup, URL checks and non-STT tests independent of PyAV DLLs.
+            from faster_whisper import WhisperModel
+
             LocalSTT._model = WhisperModel(
                 self.model_name,
                 device=self.device,
