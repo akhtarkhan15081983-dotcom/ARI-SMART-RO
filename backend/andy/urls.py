@@ -7,6 +7,9 @@ from .views import (
     AndyMemoryAPIView,
     AndySpeakAPIView,
     AndySpeakJobAPIView,
+    AndyTeachAPIView,
+    AndyTeachPendingAPIView,
+    AndyTeachReviewAPIView,
     AndyTranscribeAPIView,
 )
 
@@ -17,5 +20,8 @@ urlpatterns = [
     path("speak/", AndySpeakAPIView.as_view(), name="andy-speak"),
     path("speak/<uuid:job_id>/", AndySpeakJobAPIView.as_view(), name="andy-speak-job"),
     path("feedback/<int:message_id>/", AndyFeedbackAPIView.as_view(), name="andy-feedback"),
+    path("teach/", AndyTeachAPIView.as_view(), name="andy-teach"),
+    path("teach/pending/", AndyTeachPendingAPIView.as_view(), name="andy-teach-pending"),
+    path("teach/<int:teaching_id>/review/", AndyTeachReviewAPIView.as_view(), name="andy-teach-review"),
     path("memory/", AndyMemoryAPIView.as_view(), name="andy-memory"),
 ]
