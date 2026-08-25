@@ -133,6 +133,8 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
+DISABLE_AUTH_THROTTLING = _env_bool("DJANGO_DISABLE_AUTH_THROTTLING", False)
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
