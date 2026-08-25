@@ -23,6 +23,7 @@ import '../customer/referral_screen.dart';
 import '../rent/rent_payment_screen.dart';
 import '../rent/rent_management_screen.dart';
 import '../rent/payment_history_screen.dart';
+import '../reports/reports_screen.dart';
 import '../service/service_list_screen.dart';
 import '../complaint/complaint_list_screen.dart';
 import '../profile/profile_screen.dart';
@@ -86,7 +87,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 'service': _push(const ServiceListScreen()); return; case 'complaint': _push(const ComplaintListScreen()); return; case 'customers': _push(const CustomerListScreen()); return;
       case 'my_ro': _push(const MyROScreen()); return; case 'rent': _push(const RentPaymentScreen()); return; case 'rent_management': _push(const RentManagementScreen()); return;
       case 'payment_history': _push(const PaymentHistoryScreen()); return; case 'shop': _push(const ShopScreen()); return; case 'referral': _push(const ReferralScreen()); return;
-      case 'history': _push(const CustomerHistoryScreen()); return; case 'profile': _push(const ProfileScreen()); return; default: _showComingSoon('${item.title} is being prepared.');
+      case 'history': _push(const CustomerHistoryScreen()); return; case 'reports': _push(const ReportsScreen()); return; case 'profile': _push(const ProfileScreen()); return; default: _showComingSoon('${item.title} is being prepared.');
     }
   }
   void _showComingSoon(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), behavior: SnackBarBehavior.floating));
