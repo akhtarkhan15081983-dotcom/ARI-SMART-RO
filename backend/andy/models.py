@@ -101,3 +101,49 @@ class AndySpeechJob(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class AndyTeaching(models.Model):
+    STATUS_CHOICES = (
+        ("PENDING", "Pending review"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+    )
+
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="andy_teachings_submitted",
+    )
+    source_message = models.ForeignKey(
+        AndyMessage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="teaching_submissions",
+    )
+    question = models.TextField()
+    answer = models.TextField()
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="PENDING", db_index=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="andy_teachings_reviewed",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    knowledge = models.OneToOneField(
+        AndyKnowledge,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="teaching",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "created_at"])]
+
