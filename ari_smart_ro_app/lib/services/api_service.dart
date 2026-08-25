@@ -124,7 +124,7 @@ class ApiService {
     try {
       final response = await http
           .post(
-            Uri.parse("\$baseUrl/auth/token/refresh/"),
+            Uri.parse("$baseUrl/auth/token/refresh/"),
             headers: const {"Content-Type": "application/json"},
             body: jsonEncode({"refresh": refresh}),
           )
