@@ -12,9 +12,10 @@ from .action_control import AndyActionControl
 from .app_control import AndyAppControl
 from .local_llm import LocalLLM, LocalLLMError
 from .local_stt import LocalSTT, LocalSTTError
-from .models import AndyConversation, AndyFeedback, AndyMemory, AndyMessage, AndySpeechJob
+from .models import AndyConversation, AndyFeedback, AndyMemory, AndyMessage, AndySpeechJob, AndyTeaching
 from .project_context import build_project_context
 from .speech_jobs import enqueue_speech_job
+from .teaching import approve_teaching, find_approved_knowledge, reject_teaching
 
 
 SYSTEM_PROMPT = """You are ANDY, the private AI assistant for ARI SMART RO.
@@ -94,6 +95,17 @@ class AndyChatAPIView(APIView):
         app_result = AndyAppControl(request.user).try_handle(text)
         if app_result and app_result.get("handled"):
             return _save_app_answer(conversation, app_result, "app_control")
+
+        approved_knowledge = find_approved_knowledge(text)
+        if approved_knowledge is not None:
+            return _save_app_answer(
+                conversation,
+                {
+                    "answer": approved_knowledge.content,
+                    "intent": "approved_knowledge",
+                },
+                "approved_knowledge",
+            )
 
         memories = AndyMemory.objects.filter(user=request.user, is_active=True).order_by("-updated_at")[:20]
         memory_text = "\n".join(f"- {m.key}: {m.value}" for m in memories)
@@ -216,8 +228,123 @@ class AndyFeedbackAPIView(APIView):
         if rating not in (0, 1, 2, "0", "1", "2"):
             return Response({"message": "rating must be 0, 1 or 2."}, status=400)
         correction = (request.data.get("correction") or "").strip()
-        feedback = AndyFeedback.objects.create(user=request.user, message=message, rating=int(rating), correction=correction)
-        return Response({"success": True, "feedback_id": feedback.id})
+        numeric_rating = int(rating)
+        if len(correction) > 2000:
+            return Response({"message": "Correction must be 2000 characters or fewer."}, status=400)
+
+        feedback = AndyFeedback.objects.create(
+            user=request.user,
+            message=message,
+            rating=numeric_rating,
+            correction=correction,
+        )
+        teaching = None
+        if numeric_rating == 1 and correction:
+            source_question = (
+                message.conversation.messages
+                .filter(role="USER", created_at__lte=message.created_at)
+                .order_by("-created_at")
+                .first()
+            )
+            if source_question is not None:
+                teaching = AndyTeaching.objects.create(
+                    submitted_by=request.user,
+                    source_message=message,
+                    question=source_question.content,
+                    answer=correction,
+                )
+
+        return Response({
+            "success": True,
+            "feedback_id": feedback.id,
+            "teaching_id": teaching.id if teaching else None,
+            "teaching_status": teaching.status if teaching else None,
+        })
+
+
+def _can_review_teaching(user):
+    return bool(
+        getattr(user, "is_superuser", False)
+        or getattr(user, "role", "") in ("ADMIN", "MANAGER")
+    )
+
+
+class AndyTeachAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        question = (request.data.get("question") or "").strip()
+        answer = (request.data.get("answer") or "").strip()
+        if len(question) < 5 or len(question) > 500:
+            return Response({"message": "Question must be between 5 and 500 characters."}, status=400)
+        if len(answer) < 5 or len(answer) > 2000:
+            return Response({"message": "Answer must be between 5 and 2000 characters."}, status=400)
+
+        teaching = AndyTeaching.objects.create(
+            submitted_by=request.user,
+            question=question,
+            answer=answer,
+        )
+        return Response({
+            "success": True,
+            "teaching_id": teaching.id,
+            "status": teaching.status,
+            "message": "Correction submitted for admin review.",
+        }, status=status.HTTP_201_CREATED)
+
+
+class AndyTeachPendingAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _can_review_teaching(request.user):
+            return Response({"message": "Admin or manager access is required."}, status=403)
+
+        rows = AndyTeaching.objects.filter(status="PENDING").select_related(
+            "submitted_by", "source_message"
+        )[:100]
+        return Response({
+            "success": True,
+            "results": [
+                {
+                    "id": row.id,
+                    "question": row.question,
+                    "answer": row.answer,
+                    "submitted_by_id": row.submitted_by_id,
+                    "source_message_id": row.source_message_id,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ],
+        })
+
+
+class AndyTeachReviewAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, teaching_id):
+        if not _can_review_teaching(request.user):
+            return Response({"message": "Admin or manager access is required."}, status=403)
+
+        action = (request.data.get("action") or "").strip().upper()
+        try:
+            if action == "APPROVE":
+                teaching = approve_teaching(teaching_id, request.user)
+            elif action == "REJECT":
+                teaching = reject_teaching(teaching_id, request.user)
+            else:
+                return Response({"message": "action must be APPROVE or REJECT."}, status=400)
+        except AndyTeaching.DoesNotExist:
+            return Response({"message": "Teaching submission not found."}, status=404)
+        except ValueError as exc:
+            return Response({"message": str(exc)}, status=409)
+
+        return Response({
+            "success": True,
+            "teaching_id": teaching.id,
+            "status": teaching.status,
+            "knowledge_id": teaching.knowledge_id,
+        })
 
 
 class AndyMemoryAPIView(APIView):
