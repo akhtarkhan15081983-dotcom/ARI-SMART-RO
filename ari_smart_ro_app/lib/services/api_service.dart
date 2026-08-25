@@ -9,8 +9,10 @@ class ApiService {
   static const String productionBaseUrl =
     "https://farmers-wiki-payroll-friend.trycloudflare.com/api";
 
-  static const String developmentBaseUrl =
-    "https://farmers-wiki-payroll-friend.trycloudflare.com/api";
+  static const String developmentBaseUrl = String.fromEnvironment(
+    "API_BASE_URL",
+    defaultValue: "http://127.0.0.1:8000/api",
+  );
 
   // ============================================================
   // SELECT BASE URL
