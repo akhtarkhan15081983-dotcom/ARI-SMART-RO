@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.throttling import ScopedRateThrottle
+from django.conf import settings
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -22,6 +23,13 @@ from .services.otp import (
 )
 
 
+class ProductionScopedRateThrottle(ScopedRateThrottle):
+    def get_cache_key(self, request, view):
+        if settings.DEBUG:
+            return None
+        return super().get_cache_key(request, view)
+
+
 # ============================================================
 # CUSTOMER REGISTRATION
 # ============================================================
@@ -29,7 +37,7 @@ from .services.otp import (
 class CustomerRegisterAPIView(APIView):
 
     permission_classes = []
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ProductionScopedRateThrottle]
     throttle_scope = "otp"
 
     def post(self, request):
@@ -70,7 +78,7 @@ class CustomerRegisterAPIView(APIView):
 class SendOTPAPIView(APIView):
 
     permission_classes = []
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ProductionScopedRateThrottle]
     throttle_scope = "otp"
 
     def post(self, request):
@@ -150,7 +158,7 @@ class SendOTPAPIView(APIView):
 class VerifyOTPAPIView(APIView):
 
     permission_classes = []
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ProductionScopedRateThrottle]
     throttle_scope = "otp"
 
     def post(self, request):
@@ -246,7 +254,7 @@ class VerifyOTPAPIView(APIView):
 class LoginAPIView(APIView):
 
     permission_classes = []
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ProductionScopedRateThrottle]
     throttle_scope = "login"
 
     def post(self, request):
