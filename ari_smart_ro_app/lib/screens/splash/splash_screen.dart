@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../services/api_service.dart';
+import '../dashboard/dashboard_screen.dart';
 import '../login/login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -16,11 +20,12 @@ class _SplashScreenState extends State<SplashScreen>
   late final AnimationController _fadeController;
   late final Animation<double> _fadeAnimation;
 
+  Timer? _fallbackTimer;
   bool _videoReady = false;
   bool _navigated = false;
 
   static const Duration _splashDuration = Duration(
-    milliseconds: 3500,
+    milliseconds: 2500,
   );
 
   @override
@@ -41,6 +46,7 @@ class _SplashScreenState extends State<SplashScreen>
       'assets/videos/ari_water_fill.mp4',
     );
 
+    _fallbackTimer = Timer(_splashDuration, _goToNext);
     _initializeSplash();
   }
 
@@ -73,7 +79,7 @@ class _SplashScreenState extends State<SplashScreen>
         const Duration(milliseconds: 800),
       );
 
-      _goToLogin();
+      _goToNext();
     }
   }
 
@@ -82,12 +88,12 @@ class _SplashScreenState extends State<SplashScreen>
 
     final position = _videoController.value.position;
 
-    if (position >= const Duration(seconds: 9)) {
-    _goToLogin();
+    if (position >= const Duration(seconds: 7)) {
+      _goToNext();
   }
   }
 
-  Future<void> _goToLogin() async {
+  Future<void> _goToNext() async {
     if (_navigated || !mounted) return;
 
     _navigated = true;
@@ -104,16 +110,22 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (!mounted) return;
 
+    final hasSession = await ApiService.restoreSession();
+    if (!mounted) return;
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => const LoginScreen(),
+        builder: (_) => hasSession
+            ? const DashboardScreen()
+            : const LoginScreen(),
       ),
     );
   }
 
   @override
   void dispose() {
+    _fallbackTimer?.cancel();
     _videoController.removeListener(_videoListener);
     _videoController.dispose();
     _fadeController.dispose();
