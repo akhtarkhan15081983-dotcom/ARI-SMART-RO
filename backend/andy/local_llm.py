@@ -62,17 +62,16 @@ class LocalLLM:
     def chat(self, messages):
         # ANDY is Hindi/Hinglish-first on the ARI SMART RO mobile app. Keeping
         # replies short also makes high-quality local IndicF5 practical on CPU.
-        messages = [
-            *messages,
-            {
-                "role": "system",
-                "content": (
-                    "Final answer only natural Hindi or simple Indian Hinglish mein do. "
-                    "English-only answer mat do. Maximum do chhote vakya aur 180 characters. "
-                    "Seedha jawab do; apni limitations ya language par commentary mat karo."
-                ),
-            },
-        ]
+        policy = (
+            "Final answer only natural Hindi or simple Indian Hinglish mein do. "
+            "English-only answer mat do. Maximum do chhote vakya aur 180 characters. "
+            "User ka sawal repeat mat karo, placeholder mat do, seedha factual jawab do."
+        )
+        messages = [dict(item) for item in messages]
+        if messages and messages[0].get("role") == "system":
+            messages[0]["content"] = (messages[0].get("content") or "") + "\n\n" + policy
+        else:
+            messages.insert(0, {"role": "system", "content": policy})
         chat_error = None
         try:
             data = self._post_json("/api/chat", {
