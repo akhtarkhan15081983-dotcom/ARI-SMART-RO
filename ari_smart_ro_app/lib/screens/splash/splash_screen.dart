@@ -90,13 +90,14 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (position >= const Duration(seconds: 7)) {
       _goToNext();
-  }
+    }
   }
 
   Future<void> _goToNext() async {
     if (_navigated || !mounted) return;
 
     _navigated = true;
+    _fallbackTimer?.cancel();
 
     try {
       if (_videoController.value.isPlaying) {
