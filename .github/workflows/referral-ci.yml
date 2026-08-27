@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, andy-assistant, production-launch]
   push:
-    branches: [andy-assistant, production-launch]
+    branches: [main, andy-assistant, production-launch]
 
 jobs:
   backend:
