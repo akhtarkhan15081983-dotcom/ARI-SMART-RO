@@ -1,4 +1,4 @@
-package com.example.ari_smart_ro_app
+package com.arismartro.app
 
 import io.flutter.embedding.android.FlutterActivity
 

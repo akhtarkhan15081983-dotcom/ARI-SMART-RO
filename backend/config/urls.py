@@ -3,7 +3,10 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from .views import healthcheck
+
 urlpatterns = [
+    path('health/', healthcheck, name='healthcheck'),
     path('admin/', admin.site.urls),
     path('api/', include('jobs.urls')),
     path('api/', include('partmaster.urls')),

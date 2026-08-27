@@ -71,5 +71,5 @@ class CustomerRegisterSerializer(serializers.Serializer):
             ),
             role="CUSTOMER",
             is_verified=False,
+            is_active=False,
         )
-

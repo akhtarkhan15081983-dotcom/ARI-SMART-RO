@@ -369,7 +369,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
               TileLayer(
                 urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
                 subdomains: const ['a', 'b', 'c', 'd'],
-                userAgentPackageName: 'com.example.ari_smart_ro_app',
+                userAgentPackageName: 'com.arismartro.app',
               ),
               MarkerLayer(markers: markers),
             ],

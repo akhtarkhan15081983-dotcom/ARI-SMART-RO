@@ -1,9 +1,11 @@
 from datetime import timedelta
+from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User, PhoneOTP
 
@@ -47,6 +49,10 @@ class CustomerRegistrationTests(TestCase):
 
         self.assertFalse(
             user.is_verified
+        )
+
+        self.assertFalse(
+            user.is_active
         )
 
     def test_registration_password_is_hashed(self):
@@ -247,6 +253,25 @@ class SendOTPTests(TestCase):
             400,
         )
 
+    @override_settings(
+        DEBUG=True,
+        OTP_SMS_BACKEND="webhook",
+        OTP_SMS_WEBHOOK_URL="https://example.invalid/otp",
+        OTP_SMS_WEBHOOK_TOKEN="",
+    )
+    @patch("accounts.services.sms.urlopen", side_effect=OSError("gateway unavailable"))
+    def test_delivery_failure_does_not_claim_otp_was_sent(self, mocked_urlopen):
+        response = self.client.post(
+            "/api/auth/send-otp/",
+            {"phone": self.user.phone},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.data["success"])
+        self.assertTrue(PhoneOTP.objects.get(user=self.user).is_used)
+        mocked_urlopen.assert_called_once()
+
 
 # ============================================================
 # VERIFY OTP TESTS
@@ -301,6 +326,7 @@ class VerifyOTPTests(TestCase):
             {
                 "phone": "9000000020",
                 "otp": "123456",
+                "password": "Verified@12345",
             },
             format="json",
         )
@@ -320,6 +346,10 @@ class VerifyOTPTests(TestCase):
             self.user.is_verified
         )
 
+        self.assertTrue(self.user.is_active)
+        self.assertTrue(self.user.check_password("Verified@12345"))
+        self.assertFalse(self.user.check_password("Test@123"))
+
         otp.refresh_from_db()
 
         self.assertTrue(
@@ -337,6 +367,7 @@ class VerifyOTPTests(TestCase):
             {
                 "phone": "9000000020",
                 "otp": "654321",
+                "password": "Verified@12345",
             },
             format="json",
         )
@@ -376,6 +407,7 @@ class VerifyOTPTests(TestCase):
             {
                 "phone": "9000000020",
                 "otp": "123456",
+                "password": "Verified@12345",
             },
             format="json",
         )
@@ -416,6 +448,7 @@ class VerifyOTPTests(TestCase):
             {
                 "phone": "9000000020",
                 "otp": "123456",
+                "password": "Verified@12345",
             },
             format="json",
         )
@@ -446,6 +479,7 @@ class VerifyOTPTests(TestCase):
                 {
                     "phone": "9000000020",
                     "otp": "999999",
+                    "password": "Verified@12345",
                 },
                 format="json",
             )
@@ -485,6 +519,7 @@ class VerifyOTPTests(TestCase):
             {
                 "phone": "9000000020",
                 "otp": "12345",
+                "password": "Verified@12345",
             },
             format="json",
         )
@@ -536,3 +571,59 @@ class VerifyOTPTests(TestCase):
             active_otps.count(),
             1,
         )
+
+
+class LoginSecurityTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_unverified_customer_cannot_login(self):
+        User.objects.create_user(
+            phone="9000000030",
+            password="Test@12345",
+            role="CUSTOMER",
+            is_verified=False,
+            is_active=True,
+        )
+
+        response = self.client.post(
+            "/api/auth/login/",
+            {"phone": "9000000030", "password": "Test@12345"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("access", response.data)
+
+    def test_verified_customer_can_login(self):
+        User.objects.create_user(
+            phone="9000000031",
+            password="Test@12345",
+            role="CUSTOMER",
+            is_verified=True,
+            is_active=True,
+        )
+
+        response = self.client.post(
+            "/api/auth/login/",
+            {"phone": "9000000031", "password": "Test@12345"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.data)
+
+    def test_existing_token_for_unverified_customer_is_rejected(self):
+        user = User.objects.create_user(
+            phone="9000000032",
+            password="Test@12345",
+            role="CUSTOMER",
+            is_verified=False,
+            is_active=True,
+        )
+        access = str(RefreshToken.for_user(user).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+        response = self.client.get("/api/customers/")
+
+        self.assertEqual(response.status_code, 401)

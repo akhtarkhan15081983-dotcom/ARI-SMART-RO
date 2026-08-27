@@ -1,6 +1,13 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
-from accounts.permissions import IsEngineer, IsStaffOperator, STAFF_ROLES, user_role
+from accounts.permissions import (
+    IsEngineer,
+    IsStaffOperator,
+    IsVerifiedCustomer,
+    IsVerifiedCustomerOrOperations,
+    STAFF_ROLES,
+    user_role,
+)
 from employees.models import EmployeeProfile
 from .models import Customer
 
@@ -45,6 +52,8 @@ def _customer_queryset_for(user):
     if role == "ENGINEER":
         return queryset.filter(assigned_engineer__user=user)
     if role == "CUSTOMER":
+        if not user.is_verified or not user.is_active:
+            return queryset.none()
         return queryset.filter(phone=user.phone)
     return queryset.none()
 
@@ -502,7 +511,7 @@ class MyROAPIView(APIView):
 class CustomerListAPIView(generics.ListAPIView):
 
     serializer_class = CustomerSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsVerifiedCustomerOrOperations]
 
     def get_queryset(self):
 
@@ -551,7 +560,7 @@ class CustomerDetailAPIView(generics.RetrieveAPIView):
 
     serializer_class = CustomerSerializer
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsVerifiedCustomerOrOperations]
 
     def get_queryset(self):
         return _customer_queryset_for(self.request.user)
@@ -864,7 +873,7 @@ class CustomerServiceHistoryAPIView(APIView):
 
 class CustomerSearchAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsVerifiedCustomerOrOperations]
 
     def get(self, request):
 
@@ -1114,7 +1123,7 @@ class CustomerRentAPIView(APIView):
     केवल CUSTOMER role के लिए.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsVerifiedCustomer]
 
     def get(self, request):
 
@@ -2776,4 +2785,3 @@ class RentPaymentHistoryAPIView(APIView):
 # ============================================================
 # CUSTOMER APP PROFILE
 # ============================================================
-
