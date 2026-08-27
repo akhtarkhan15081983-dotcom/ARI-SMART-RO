@@ -8,7 +8,7 @@
 PRODUCT_NAME = ari_smart_ro_app
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.ariSmartRoApp
+PRODUCT_BUNDLE_IDENTIFIER = com.arismartro.app
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 ARI SMART RO. All rights reserved.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../../controllers/login_controller.dart';
+import 'customer_registration_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -202,6 +203,23 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                 ),
+              ),
+
+              TextButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        final phone = await Navigator.push<String>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CustomerRegistrationScreen(),
+                          ),
+                        );
+                        if (phone != null && mounted) {
+                          phoneController.text = phone;
+                        }
+                      },
+                child: const Text('New customer? Register / Verify'),
               ),
             ],
           ),

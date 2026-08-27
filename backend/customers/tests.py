@@ -171,6 +171,29 @@ class CustomerProfileTests(TestCase):
             ).exists()
         )
 
+    def test_unverified_customer_cannot_read_phone_matched_records(self):
+        customer = Customer.objects.create(
+            name="Protected Customer",
+            phone=self.user.phone,
+            address="Private Address",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+            ro_model="Test RO",
+        )
+        self.user.is_verified = False
+        self.user.save(update_fields=["is_verified"])
+
+        responses = [
+            self.client.get("/api/customers/"),
+            self.client.get(f"/api/customers/{customer.id}/"),
+            self.client.get("/api/customers/search/?q=Protected"),
+            self.client.get("/api/customers/rent/"),
+        ]
+
+        for response in responses:
+            self.assertEqual(response.status_code, 403)
+
     # ========================================================
     # 3. CUSTOMER CAN READ OWN PROFILE
     # ========================================================
@@ -2431,5 +2454,3 @@ class CustomerRentAPITests(TestCase):
             response.status_code,
             400,
         )
-
-    

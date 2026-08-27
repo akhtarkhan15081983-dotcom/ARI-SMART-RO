@@ -60,6 +60,9 @@ Thumbs.db
 # Local/customer data
 # ==============================
 customers_master.xlsx
+backend/employees/*.jpg
+backend/employees/*.jpeg
+backend/employees/*.png
 
 # ==============================
 # Backups

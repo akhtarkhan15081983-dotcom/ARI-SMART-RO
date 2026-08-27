@@ -8,7 +8,7 @@ from unittest import skipIf
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -40,7 +40,7 @@ from django.utils import timezone
 from .services import change_job_status
 
 
-class JobPartSecurityTests(TestCase):
+class JobPartSecurityFixtures:
 
     def setUp(self):
 
@@ -252,6 +252,9 @@ class JobPartSecurityTests(TestCase):
                 "pk": job.pk,
             },
         )
+
+
+class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
 
     # =========================================================
     # 1. CORRECT ENGINEER CAN USE OWN BAG PART
@@ -655,98 +658,6 @@ class JobPartSecurityTests(TestCase):
                 job=self.job,
                 inventory_item=self.inventory_item,
             ).exists()
-        )
-
-    # =========================================================
-    # 11. CONCURRENT INSTALLATION
-    # =========================================================
-
-    @skipIf(
-        settings.DATABASES["default"]["ENGINE"]
-        == "django.db.backends.sqlite3",
-        "SQLite does not support this concurrency test reliably.",
-    )
-    def test_concurrent_install_same_part_only_one_succeeds(self):
-
-        results = []
-
-        def install_part():
-
-            close_old_connections()
-
-            client = APIClient()
-
-            client.force_authenticate(
-                user=self.engineer_user
-            )
-
-            response = client.post(
-                self.parts_url(self.job),
-                {
-                    "inventory_item": self.inventory_item.id,
-                    "quantity": 1,
-                    "remarks": "Concurrency security test",
-                },
-                format="json",
-            )
-
-            results.append(
-                response.status_code
-            )
-
-            close_old_connections()
-
-        thread1 = threading.Thread(
-            target=install_part
-        )
-
-        thread2 = threading.Thread(
-            target=install_part
-        )
-
-        thread1.start()
-        thread2.start()
-
-        thread1.join()
-        thread2.join()
-
-        self.assertEqual(
-            len(results),
-            2,
-        )
-
-        # Exactly one request must succeed.
-        self.assertEqual(
-            results.count(201),
-            1,
-        )
-
-        # The second request must be rejected.
-        self.assertEqual(
-            results.count(400),
-            1,
-        )
-
-        # Only one physical usage record may exist.
-        self.assertEqual(
-            JobPartUsed.objects.filter(
-                inventory_item=self.inventory_item,
-            ).count(),
-            1,
-        )
-
-        self.inventory_item.refresh_from_db()
-
-        self.assertEqual(
-            self.inventory_item.status,
-            "INSTALLED",
-        )
-
-        self.bag_item.refresh_from_db()
-
-        self.assertEqual(
-            self.bag_item.status,
-            "INSTALLED",
         )
 
     # =========================================================
@@ -2071,4 +1982,98 @@ class JobPartSecurityTests(TestCase):
         self.assertNotIn(
             self.job.job_id,
             returned_job_ids,
+        )
+
+
+class JobPartConcurrencyTests(
+    JobPartSecurityFixtures,
+    TransactionTestCase,
+):
+
+    @skipIf(
+        settings.DATABASES["default"]["ENGINE"]
+        == "django.db.backends.sqlite3",
+        "SQLite does not support this concurrency test reliably.",
+    )
+    def test_concurrent_install_same_part_only_one_succeeds(self):
+
+        results = []
+
+        def install_part():
+
+            close_old_connections()
+
+            client = APIClient()
+
+            client.force_authenticate(
+                user=self.engineer_user
+            )
+
+            response = client.post(
+                self.parts_url(self.job),
+                {
+                    "inventory_item": self.inventory_item.id,
+                    "quantity": 1,
+                    "remarks": "Concurrency security test",
+                },
+                format="json",
+            )
+
+            results.append(
+                response.status_code
+            )
+
+            close_old_connections()
+
+        thread1 = threading.Thread(
+            target=install_part
+        )
+
+        thread2 = threading.Thread(
+            target=install_part
+        )
+
+        thread1.start()
+        thread2.start()
+
+        thread1.join()
+        thread2.join()
+
+        self.assertEqual(
+            len(results),
+            2,
+        )
+
+        # Exactly one request must succeed.
+        self.assertEqual(
+            results.count(201),
+            1,
+        )
+
+        # The second request must be rejected.
+        self.assertEqual(
+            results.count(400),
+            1,
+        )
+
+        # Only one physical usage record may exist.
+        self.assertEqual(
+            JobPartUsed.objects.filter(
+                inventory_item=self.inventory_item,
+            ).count(),
+            1,
+        )
+
+        self.inventory_item.refresh_from_db()
+
+        self.assertEqual(
+            self.inventory_item.status,
+            "INSTALLED",
+        )
+
+        self.bag_item.refresh_from_db()
+
+        self.assertEqual(
+            self.bag_item.status,
+            "INSTALLED",
         )

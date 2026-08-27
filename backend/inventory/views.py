@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
+from accounts.permissions import IsStaffOperator
+
 from .serializers import OCRVerifySerializer, EngineerBagIssueSerializer, MyBagSerializer, PartRequestSerializer, PartCatalogSerializer
 from .models import InventoryItem, EngineerBagItem, InventoryAuditLog, PartRequest
 from partmaster.models import PartMaster
@@ -14,7 +16,7 @@ from employees.models import EmployeeProfile
 
 class EngineerBagIssueAPIView(generics.CreateAPIView):
     serializer_class = EngineerBagIssueSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
