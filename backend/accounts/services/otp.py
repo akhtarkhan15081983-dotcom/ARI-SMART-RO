@@ -1,4 +1,4 @@
-import random
+import secrets
 
 from datetime import timedelta
 
@@ -14,10 +14,7 @@ OTP_EXPIRY_MINUTES = 5
 def generate_otp():
 
     return str(
-        random.randint(
-            100000,
-            999999,
-        )
+        100000 + secrets.randbelow(900000)
     )
 
 
@@ -67,7 +64,7 @@ def create_phone_otp(user):
     return phone_otp
 
 
-def verify_phone_otp(user, otp_value):
+def verify_phone_otp(user, otp_value, new_password):
 
     if user.role != "CUSTOMER":
 
@@ -196,10 +193,14 @@ def verify_phone_otp(user, otp_value):
             )
 
             user.is_verified = True
+            user.is_active = True
+            user.set_password(new_password)
 
             user.save(
                 update_fields=[
-                    "is_verified"
+                    "is_verified",
+                    "is_active",
+                    "password",
                 ]
             )
 

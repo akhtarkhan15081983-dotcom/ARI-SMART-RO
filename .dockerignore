@@ -1,0 +1,12 @@
+.git
+.github
+**/__pycache__
+**/*.pyc
+**/*.sqlite3
+**/.env
+**/.env.*
+!**/.env.example
+**/media
+**/staticfiles
+ari_smart_ro_app/.dart_tool
+ari_smart_ro_app/build

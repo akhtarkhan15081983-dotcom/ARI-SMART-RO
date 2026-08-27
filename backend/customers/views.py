@@ -1,5 +1,13 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import (
+    IsEngineer,
+    IsStaffOperator,
+    IsVerifiedCustomer,
+    IsVerifiedCustomerOrOperations,
+    STAFF_ROLES,
+    user_role,
+)
 from employees.models import EmployeeProfile
 from .models import Customer
 
@@ -34,6 +42,22 @@ from .serializers import (
     CustomerProfileSerializer,
     MyROSerializer,
 )
+
+
+def _customer_queryset_for(user):
+    role = user_role(user)
+    queryset = Customer.objects.select_related("assigned_engineer__user")
+    if role in STAFF_ROLES:
+        return queryset
+    if role == "ENGINEER":
+        return queryset.filter(assigned_engineer__user=user)
+    if role == "CUSTOMER":
+        if not user.is_verified or not user.is_active:
+            return queryset.none()
+        return queryset.filter(phone=user.phone)
+    return queryset.none()
+
+
 class CustomerProfileAPIView(APIView):
 
     permission_classes = [
@@ -487,7 +511,7 @@ class MyROAPIView(APIView):
 class CustomerListAPIView(generics.ListAPIView):
 
     serializer_class = CustomerSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsVerifiedCustomerOrOperations]
 
     def get_queryset(self):
 
@@ -530,15 +554,16 @@ class CustomerCreateAPIView(generics.CreateAPIView):
 
     serializer_class = CustomerSerializer
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
 class CustomerDetailAPIView(generics.RetrieveAPIView):
 
     serializer_class = CustomerSerializer
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsVerifiedCustomerOrOperations]
 
-    queryset = Customer.objects.all()
+    def get_queryset(self):
+        return _customer_queryset_for(self.request.user)
 
 class CustomerServiceHistoryAPIView(APIView):
     """
@@ -848,13 +873,13 @@ class CustomerServiceHistoryAPIView(APIView):
 
 class CustomerSearchAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsVerifiedCustomerOrOperations]
 
     def get(self, request):
 
         q = request.GET.get("q", "").strip()
 
-        queryset = Customer.objects.all()
+        queryset = _customer_queryset_for(request.user)
 
         if q:
 
@@ -880,11 +905,11 @@ class CustomerUpdateAPIView(generics.UpdateAPIView):
 
     serializer_class = CustomerSerializer
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
 class WalkInCustomerAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsEngineer]
 
     def post(self, request):
 
@@ -953,7 +978,7 @@ class WalkInCustomerAPIView(APIView):
 
 class AssignCustomerAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffOperator]
 
     def post(self, request, pk):
 
@@ -1098,7 +1123,7 @@ class CustomerRentAPIView(APIView):
     केवल CUSTOMER role के लिए.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsVerifiedCustomer]
 
     def get(self, request):
 
@@ -2760,4 +2785,3 @@ class RentPaymentHistoryAPIView(APIView):
 # ============================================================
 # CUSTOMER APP PROFILE
 # ============================================================
-

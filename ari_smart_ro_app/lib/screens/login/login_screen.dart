@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../../controllers/login_controller.dart';
+import 'customer_registration_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -18,6 +19,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final loginController = LoginController();
 
   bool isLoading = false;
+
+  @override
+  void dispose() {
+    phoneController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -131,7 +139,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: () async {
+                  onPressed: isLoading ? null : () async {
 
                     setState(() {
                       isLoading = true;
@@ -141,6 +149,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       phone: phoneController.text.trim(),
                       password: passwordController.text.trim(),
                     );
+
+                    if (!mounted) return;
 
                     setState(() {
                       isLoading = false;
@@ -176,14 +186,40 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
 
-                  child: const Text(
-                    "LOGIN",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          "LOGIN",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
+              ),
+
+              TextButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        final phone = await Navigator.push<String>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CustomerRegistrationScreen(),
+                          ),
+                        );
+                        if (phone != null && mounted) {
+                          phoneController.text = phone;
+                        }
+                      },
+                child: const Text('New customer? Register / Verify'),
               ),
             ],
           ),

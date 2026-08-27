@@ -9,6 +9,9 @@ from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.exceptions import PermissionDenied
+
+from accounts.permissions import IsEngineer, IsOperationsUser, IsStaffOperator, STAFF_ROLES, user_role
 
 from jobs.models import (
     Job,
@@ -30,23 +33,32 @@ from .serializers import (
 )
 
 
+
+
+def _installation_queryset_for(user):
+    queryset = Installation.objects.select_related(
+        "customer", "engineer", "engineer__user", "ro_asset", "job"
+    )
+    role = user_role(user)
+    if role in STAFF_ROLES:
+        return queryset
+    if role == "ENGINEER":
+        return queryset.filter(engineer__user=user)
+    return queryset.none()
+
+
 # ============================================================
 # INSTALLATION LIST
 # ============================================================
 
 class InstallationListAPIView(generics.ListAPIView):
 
-    queryset = (
-        Installation.objects
-        .all()
-        .order_by("-id")
-    )
-
     serializer_class = InstallationSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    def get_queryset(self):
+        return _installation_queryset_for(self.request.user).order_by("-id")
+
+    permission_classes = [IsOperationsUser]
 
 
 # ============================================================
@@ -59,9 +71,7 @@ class InstallationCreateAPIView(generics.CreateAPIView):
 
     serializer_class = InstallationSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsStaffOperator]
 
 
 # ============================================================
@@ -72,13 +82,13 @@ class InstallationDetailAPIView(
     generics.RetrieveAPIView
 ):
 
-    queryset = Installation.objects.all()
 
     serializer_class = InstallationSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    def get_queryset(self):
+        return _installation_queryset_for(self.request.user)
+
+    permission_classes = [IsOperationsUser]
 
 
 # ============================================================
@@ -89,13 +99,13 @@ class InstallationUpdateAPIView(
     generics.UpdateAPIView
 ):
 
-    queryset = Installation.objects.all()
 
     serializer_class = InstallationSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    def get_queryset(self):
+        return _installation_queryset_for(self.request.user)
+
+    permission_classes = [IsOperationsUser]
 
 
 # ============================================================
@@ -110,9 +120,13 @@ class InstallationPartCreateAPIView(
 
     serializer_class = InstallationPartSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsOperationsUser]
+
+    def perform_create(self, serializer):
+        installation = serializer.validated_data["installation"]
+        if user_role(self.request.user) == "ENGINEER" and installation.engineer.user_id != self.request.user.id:
+            raise PermissionDenied("You can add parts only to your assigned installation.")
+        serializer.save()
 
 
 # ============================================================
@@ -125,9 +139,7 @@ class CompleteInstallationAPIView(
 
     serializer_class = InstallationSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsEngineer]
 
     @transaction.atomic
     def create(
@@ -426,9 +438,7 @@ class InstallationSearchAPIView(
 
     serializer_class = InstallationSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsOperationsUser]
 
     def get_queryset(self):
 
@@ -437,14 +447,7 @@ class InstallationSearchAPIView(
             "",
         ).strip()
 
-        queryset = (
-            Installation.objects
-            .select_related(
-                "customer",
-                "engineer",
-                "ro_asset",
-            )
-        )
+        queryset = _installation_queryset_for(self.request.user)
 
         if keyword:
 
@@ -490,9 +493,7 @@ class InstallationDashboardAPIView(
     APIView
 ):
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsEngineer]
 
     def get(
         self,

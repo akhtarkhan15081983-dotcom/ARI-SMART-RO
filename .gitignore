@@ -60,8 +60,25 @@ Thumbs.db
 # Local/customer data
 # ==============================
 customers_master.xlsx
+backend/employees/*.jpg
+backend/employees/*.jpeg
+backend/employees/*.png
 
 # ==============================
 # Backups
 # ==============================
 *_backup_*.py
+
+# Android signing secrets
+**/android/key.properties
+*.jks
+*.keystore
+
+# Local ANDY voice environments and generated audio
+voice_v2_clean/
+voice_v2_venv/
+backend/andy/voices/
+backend/andy_*_test.txt
+backend/andy_*_test.wav
+backend/andy_test.txt
+backend/andy_test.wav

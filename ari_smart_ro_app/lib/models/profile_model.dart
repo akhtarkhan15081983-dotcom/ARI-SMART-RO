@@ -16,6 +16,11 @@ class ProfileModel {
   final String state;
   final String address;
   final String? photo;
+  final bool faceEnrolled;
+  final bool faceEnrollmentVerified;
+  final bool faceEnrollmentAllowed;
+  final String? faceEnrolledAt;
+  final String attendanceDeviceId;
 
   ProfileModel({
     required this.employeeId,
@@ -35,6 +40,11 @@ class ProfileModel {
     required this.state,
     required this.address,
     this.photo,
+    this.faceEnrolled = false,
+    this.faceEnrollmentVerified = false,
+    this.faceEnrollmentAllowed = false,
+    this.faceEnrolledAt,
+    this.attendanceDeviceId = '',
   });
 
   factory ProfileModel.fromJson(Map<String, dynamic> json) {
@@ -56,6 +66,11 @@ class ProfileModel {
       state: json["state"] ?? "",
       address: json["address"] ?? "",
       photo: json["photo"],
+      faceEnrolled: json["face_enrolled"] == true,
+      faceEnrollmentVerified: json["face_enrollment_verified"] == true,
+      faceEnrollmentAllowed: json["face_enrollment_allowed"] == true,
+      faceEnrolledAt: json["face_enrolled_at"]?.toString(),
+      attendanceDeviceId: json["attendance_device_id"]?.toString() ?? "",
     );
   }
 }

@@ -35,6 +35,19 @@ class InventorySecurityTests(TestCase):
             password="TestPassword123!",
         )
 
+        self.staff_user = User.objects.create_user(
+            phone="9999900003",
+            password="TestPassword123!",
+            role="OFFICE",
+        )
+
+        self.customer_user = User.objects.create_user(
+            phone="9999900004",
+            password="TestPassword123!",
+            role="CUSTOMER",
+            is_verified=True,
+        )
+
         # -----------------------------------------
         # ENGINEERS
         # -----------------------------------------
@@ -70,6 +83,12 @@ class InventorySecurityTests(TestCase):
         self.other_client.force_authenticate(
             user=self.other_user
         )
+
+        self.staff_client = APIClient()
+        self.staff_client.force_authenticate(user=self.staff_user)
+
+        self.customer_client = APIClient()
+        self.customer_client.force_authenticate(user=self.customer_user)
 
         # -----------------------------------------
         # PART CATEGORY
@@ -249,7 +268,7 @@ class InventorySecurityTests(TestCase):
 
     def test_stock_item_can_be_issued(self):
 
-        response = self.client.post(
+        response = self.staff_client.post(
             "/api/inventory/issue/",
             {
                 "engineer": self.engineer.id,
@@ -285,7 +304,7 @@ class InventorySecurityTests(TestCase):
 
     def test_successful_issue_creates_audit_log(self):
 
-        response = self.client.post(
+        response = self.staff_client.post(
             "/api/inventory/issue/",
             {
                 "engineer": self.engineer.id,
@@ -324,7 +343,7 @@ class InventorySecurityTests(TestCase):
 
         self.assertEqual(
             audit.performed_by,
-            self.engineer_user,
+            self.staff_user,
         )
 
         self.assertEqual(
@@ -338,7 +357,7 @@ class InventorySecurityTests(TestCase):
 
     def test_duplicate_issue_is_rejected(self):
 
-        first_response = self.client.post(
+        first_response = self.staff_client.post(
             "/api/inventory/issue/",
             {
                 "engineer": self.engineer.id,
@@ -352,7 +371,7 @@ class InventorySecurityTests(TestCase):
             201,
         )
 
-        second_response = self.other_client.post(
+        second_response = self.staff_client.post(
             "/api/inventory/issue/",
             {
                 "engineer": self.other_engineer.id,
@@ -399,7 +418,7 @@ class InventorySecurityTests(TestCase):
             update_fields=["status"]
         )
 
-        response = self.other_client.post(
+        response = self.staff_client.post(
             "/api/inventory/issue/",
             {
                 "engineer": self.other_engineer.id,
@@ -419,6 +438,34 @@ class InventorySecurityTests(TestCase):
                 action="SECURITY_REJECT",
             ).exists()
         )
+
+    def test_engineer_cannot_issue_stock_to_any_bag(self):
+        response = self.client.post(
+            "/api/inventory/issue/",
+            {
+                "engineer": self.engineer.id,
+                "inventory_item": self.inventory_item.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.inventory_item.refresh_from_db()
+        self.assertEqual(self.inventory_item.status, "IN_STOCK")
+
+    def test_customer_cannot_issue_stock_to_any_bag(self):
+        response = self.customer_client.post(
+            "/api/inventory/issue/",
+            {
+                "engineer": self.engineer.id,
+                "inventory_item": self.inventory_item.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.inventory_item.refresh_from_db()
+        self.assertEqual(self.inventory_item.status, "IN_STOCK")
 
     # =================================================
     # 8. BAG MUST ONLY SHOW ISSUED ITEMS

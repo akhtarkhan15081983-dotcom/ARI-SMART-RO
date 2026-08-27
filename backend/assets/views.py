@@ -1,6 +1,7 @@
 from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
+
+from accounts.permissions import IsOperationsUser
 
 from .models.asset import ROAsset
 from .serializers import ROAssetSerializer
@@ -10,7 +11,7 @@ class ROAssetListAPIView(generics.ListAPIView):
 
     serializer_class = ROAssetSerializer
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOperationsUser]
 
     def get_queryset(self):
 

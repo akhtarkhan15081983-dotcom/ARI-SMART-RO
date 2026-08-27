@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/attendance_model.dart';
 import 'api_service.dart';
+import 'device_identity_service.dart';
 
 class AttendanceService {
   final storage = const FlutterSecureStorage();
@@ -28,18 +29,18 @@ class AttendanceService {
     required String selfiePath,
   }) async {
     final token = await storage.read(key: "access");
+    final deviceId = await DeviceIdentityService.getOrCreate();
 
-    var request = http.MultipartRequest(
+    final request = http.MultipartRequest(
       "POST",
-      Uri.parse(
-        "${ApiService.baseUrl}/attendance/check-in/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/attendance/check-in/"),
     );
 
     request.headers["Authorization"] = "Bearer $token";
 
     request.fields["latitude"] = latitude.toString();
     request.fields["longitude"] = longitude.toString();
+    request.fields["device_id"] = deviceId;
 
     request.files.add(
       await http.MultipartFile.fromPath(
@@ -49,14 +50,12 @@ class AttendanceService {
     );
 
     final response = await request.send();
-
     final body = await response.stream.bytesToString();
 
     print("CHECK IN STATUS : ${response.statusCode}");
     print(body);
 
-    return response.statusCode == 200 ||
-        response.statusCode == 201;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
 
   // ===========================
@@ -65,17 +64,14 @@ class AttendanceService {
 
   Future<bool> checkOut() async {
     final response = await http.post(
-      Uri.parse(
-        "${ApiService.baseUrl}/attendance/check-out/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/attendance/check-out/"),
       headers: await _headers(),
     );
 
     print("CHECK OUT STATUS : ${response.statusCode}");
     print(response.body);
 
-    return response.statusCode == 200 ||
-        response.statusCode == 201;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
 
   // ===========================
@@ -84,9 +80,7 @@ class AttendanceService {
 
   Future<AttendanceModel?> todayAttendance() async {
     final response = await http.get(
-      Uri.parse(
-        "${ApiService.baseUrl}/attendance/today/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/attendance/today/"),
       headers: await _headers(),
     );
     print(response.statusCode);
@@ -95,9 +89,7 @@ class AttendanceService {
     print(response.body);
 
     if (response.statusCode == 200) {
-      return AttendanceModel.fromJson(
-        jsonDecode(response.body),
-      );
+      return AttendanceModel.fromJson(jsonDecode(response.body));
     }
 
     return null;
@@ -109,9 +101,7 @@ class AttendanceService {
 
   Future<List<AttendanceModel>> history() async {
     final response = await http.get(
-      Uri.parse(
-        "${ApiService.baseUrl}/attendance/history/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/attendance/history/"),
       headers: await _headers(),
     );
 
@@ -120,12 +110,7 @@ class AttendanceService {
 
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
-
-      return data
-          .map(
-            (e) => AttendanceModel.fromJson(e),
-          )
-          .toList();
+      return data.map((e) => AttendanceModel.fromJson(e)).toList();
     }
 
     return [];
