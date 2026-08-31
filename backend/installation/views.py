@@ -378,10 +378,14 @@ class CompleteInstallationAPIView(
                 if monthly_rent > 0:
 
                     referred_type = "RENT"
+                    qualifying_amount = monthly_rent
 
                 else:
 
                     referred_type = "PURCHASE"
+                    qualifying_amount = Decimal(
+                        str(job.ro_asset.ro_model.selling_price or 0)
+                    )
 
                 # --------------------------------------------
                 # QUALIFY REFERRAL
@@ -396,7 +400,7 @@ class CompleteInstallationAPIView(
 
                     referred_type=referred_type,
 
-                    qualifying_amount=monthly_rent,
+                    qualifying_amount=qualifying_amount,
 
                     actor=request.user,
                 )

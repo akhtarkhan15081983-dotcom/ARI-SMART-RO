@@ -27,6 +27,7 @@ db.sqlite3
 **/.flutter-plugins-dependencies
 **/.packages
 **/build/
+**/.gradle/
 
 # ==============================
 # Logs / generated output
@@ -34,6 +35,10 @@ db.sqlite3
 *.log
 **/*log.txt
 **/analysis_output.txt
+output/
+tmp/pdfs/final_render/
+tmp/pdfs/source_render/
+video-production/**/opening-hero-frame.png
 **/flutter_tree.txt
 **/lib_tree.txt
 backend_files.txt
@@ -68,6 +73,8 @@ backend/employees/*.png
 # Backups
 # ==============================
 *_backup_*.py
+.migration-backup/
+backend/.deploy-venv/
 
 # Android signing secrets
 **/android/key.properties
@@ -80,5 +87,6 @@ voice_v2_venv/
 backend/andy/voices/
 backend/andy_*_test.txt
 backend/andy_*_test.wav
+backend/andy_*_verify.wav
 backend/andy_test.txt
 backend/andy_test.wav

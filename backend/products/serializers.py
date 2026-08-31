@@ -4,7 +4,23 @@ from .models import (
     ProductCategory,
     ROModel,
     ROModelPart,
+    ROModelImage,
 )
+
+
+class ROModelImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ROModelImage
+        fields = ["id", "image_url", "alt_text", "sort_order"]
+
+    def get_image_url(self, obj):
+        if not obj.image:
+            return ""
+        request = self.context.get("request")
+        url = obj.image.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class ProductCategorySerializer(serializers.ModelSerializer):
@@ -20,6 +36,7 @@ class ROModelSerializer(serializers.ModelSerializer):
         source="category.name",
         read_only=True,
     )
+    images = ROModelImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = ROModel

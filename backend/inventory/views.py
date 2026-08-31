@@ -12,6 +12,7 @@ from .serializers import OCRVerifySerializer, EngineerBagIssueSerializer, MyBagS
 from .models import InventoryItem, EngineerBagItem, InventoryAuditLog, PartRequest
 from partmaster.models import PartMaster
 from employees.models import EmployeeProfile
+from accounts.permissions import IsAdminOrManager
 
 
 class EngineerBagIssueAPIView(generics.CreateAPIView):
@@ -61,6 +62,21 @@ class MyBagAPIView(generics.ListAPIView):
 
     def get_queryset(self):
         return EngineerBagItem.objects.select_related("inventory_item__part", "engineer__user").filter(engineer__user=self.request.user, status="ISSUED", inventory_item__status="ISSUED").order_by("-issue_date")
+
+
+class AdminEngineerBagAPIView(generics.ListAPIView):
+    serializer_class = MyBagSerializer
+    permission_classes = [IsAdminOrManager]
+
+    def get_queryset(self):
+        return EngineerBagItem.objects.select_related(
+            "inventory_item__part", "engineer__user"
+        ).filter(
+            status="ISSUED",
+            inventory_item__status="ISSUED",
+            engineer__designation="ENGINEER",
+            engineer__is_active=True,
+        ).order_by("engineer__employee_id", "inventory_item__part__name")
 
 
 class PartCatalogAPIView(generics.ListAPIView):

@@ -3,16 +3,19 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.throttling import ScopedRateThrottle
 from django.conf import settings
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
+from datetime import timedelta
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from django.contrib.auth import authenticate
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.hashers import check_password
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import User
+from .models import AuthSecurityEvent, User
+from customers.models import Customer
 
 from .serializers import (
     UserSerializer,
@@ -31,6 +34,18 @@ class ProductionScopedRateThrottle(ScopedRateThrottle):
         if settings.DEBUG or settings.DISABLE_AUTH_THROTTLING:
             return None
         return super().get_cache_key(request, view)
+
+
+def _security_event(request, event_type, user=None, **details):
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+    ip_address = forwarded or request.META.get("REMOTE_ADDR") or None
+    AuthSecurityEvent.objects.create(
+        user=user,
+        event_type=event_type,
+        ip_address=ip_address,
+        device_id=request.headers.get("X-ARI-Device-ID", "")[:64],
+        details=details,
+    )
 
 
 # ============================================================
@@ -186,6 +201,7 @@ class VerifyOTPAPIView(APIView):
         otp = request.data.get(
             "otp"
         )
+        new_password = request.data.get("new_password")
 
         new_password = request.data.get(
             "password"
@@ -237,6 +253,15 @@ class VerifyOTPAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        if new_password:
+            try:
+                validate_password(new_password, user=user)
+            except DjangoValidationError as exc:
+                return Response(
+                    {"success": False, "message": " ".join(exc.messages)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         try:
 
             validate_password(
@@ -272,6 +297,26 @@ class VerifyOTPAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if new_password:
+            user.set_password(new_password)
+            user.save(update_fields=["password"])
+
+        # Existing/imported customers activate their own record by proving
+        # ownership of the exact registered phone number.
+        customer = Customer.objects.filter(phone=user.phone).first()
+        if customer is not None:
+            if customer.user_id not in (None, user.id):
+                return Response(
+                    {"success": False, "message": "This customer record is already linked to another account."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if customer.user_id is None:
+                customer.user = user
+                customer.save(update_fields=["user"])
+
+        refresh = RefreshToken.for_user(user)
+        _security_event(request, "OTP_VERIFIED", user=user, existing_customer=customer is not None)
+
         return Response(
             {
                 "success": True,
@@ -279,6 +324,9 @@ class VerifyOTPAPIView(APIView):
                     "Phone number verified successfully."
                 ),
                 "user": UserSerializer(user).data,
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "existing_customer_linked": customer is not None,
             },
             status=status.HTTP_200_OK,
         )
@@ -316,12 +364,10 @@ class LoginAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        customer = User.objects.filter(
-            phone=phone,
-            role="CUSTOMER",
-        ).only("is_verified", "is_active").first()
-
-        if customer and (not customer.is_verified or not customer.is_active):
+        candidate = User.objects.filter(phone=phone).first()
+        if candidate and candidate.role == "CUSTOMER" and (
+            not candidate.is_verified or not candidate.is_active
+        ):
             return Response(
                 {
                     "success": False,
@@ -330,12 +376,31 @@ class LoginAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        if candidate is not None and candidate.locked_until is not None:
+            if candidate.locked_until > timezone.now():
+                _security_event(request, "LOGIN_FAILED", user=candidate, reason="ACCOUNT_LOCKED")
+                return Response(
+                    {"success": False, "message": "Account is temporarily locked. Please try again later."},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            candidate.failed_login_attempts = 0
+            candidate.locked_until = None
+            candidate.save(update_fields=["failed_login_attempts", "locked_until"])
+
         user = authenticate(
             phone=phone,
             password=password,
         )
 
         if user is None:
+            if candidate is not None:
+                candidate.failed_login_attempts += 1
+                event_type = "LOGIN_FAILED"
+                if candidate.failed_login_attempts >= 5:
+                    candidate.locked_until = timezone.now() + timedelta(minutes=15)
+                    event_type = "ACCOUNT_LOCKED"
+                candidate.save(update_fields=["failed_login_attempts", "locked_until"])
+                _security_event(request, event_type, user=candidate)
 
             return Response(
                 {
@@ -346,6 +411,20 @@ class LoginAPIView(APIView):
                 },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
+
+        if user.role == "CUSTOMER" and not user.is_verified:
+            _security_event(request, "LOGIN_FAILED", user=user, reason="PHONE_NOT_VERIFIED")
+            return Response(
+                {"success": False, "message": "Please verify your mobile number before login."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if user.failed_login_attempts or user.locked_until is not None:
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            user.save(update_fields=["failed_login_attempts", "locked_until"])
+
+        _security_event(request, "LOGIN_SUCCESS", user=user)
 
         refresh = RefreshToken.for_user(
             user

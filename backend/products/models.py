@@ -64,12 +64,45 @@ class ROModel(models.Model):
         default=0
     )
 
+    mrp = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Maximum retail price shown before discount.",
+    )
+
+    stock_quantity = models.PositiveIntegerField(default=0)
+
+    description = models.TextField(blank=True)
+
+    features = models.TextField(
+        blank=True,
+        help_text="Enter one customer-facing feature per line.",
+    )
+
     warranty_months = models.PositiveIntegerField(default=12)
 
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.model_name
+
+
+class ROModelImage(models.Model):
+    ro_model = models.ForeignKey(
+        ROModel,
+        on_delete=models.CASCADE,
+        related_name="images",
+    )
+    image = models.ImageField(upload_to="products/ro_models/")
+    alt_text = models.CharField(max_length=160, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+
+    def __str__(self):
+        return f"{self.ro_model.model_name} image {self.sort_order + 1}"
 
 
 

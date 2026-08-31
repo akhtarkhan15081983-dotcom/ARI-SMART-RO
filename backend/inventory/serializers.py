@@ -37,6 +37,9 @@ class OCRVerifySerializer(serializers.Serializer):
 
 
 class MyBagSerializer(serializers.ModelSerializer):
+    engineer_id = serializers.IntegerField(source="engineer.id", read_only=True)
+    engineer_name = serializers.CharField(source="engineer.user.get_full_name", read_only=True)
+    employee_id = serializers.CharField(source="engineer.employee_id", read_only=True)
     part_name = serializers.CharField(source="inventory_item.part.name", read_only=True)
     part_code = serializers.CharField(source="inventory_item.part.code", read_only=True)
     serial_number = serializers.CharField(source="inventory_item.serial_number", read_only=True)
@@ -44,7 +47,7 @@ class MyBagSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EngineerBagItem
-        fields = ["id", "part_name", "part_code", "serial_number", "barcode", "status", "issue_date", "install_date", "return_date", "remarks"]
+        fields = ["id", "engineer_id", "engineer_name", "employee_id", "part_name", "part_code", "serial_number", "barcode", "status", "issue_date", "install_date", "return_date", "remarks"]
 
 
 class InventoryAuditLogSerializer(serializers.ModelSerializer):

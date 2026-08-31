@@ -198,8 +198,13 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "login": os.getenv("DJANGO_LOGIN_THROTTLE", "10/min"),
         "otp": os.getenv("DJANGO_OTP_THROTTLE", "5/min"),
+        "sim_start": os.getenv("DJANGO_SIM_START_THROTTLE", "3/min"),
+        "sim_poll": os.getenv("DJANGO_SIM_POLL_THROTTLE", "30/min"),
+        "sms_gateway": os.getenv("DJANGO_SMS_GATEWAY_THROTTLE", "120/min"),
     },
 }
+
+ARI_SMS_GATEWAY_NUMBER = os.getenv("ARI_SMS_GATEWAY_NUMBER", "").strip()
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOWED_ORIGINS = _env_list(
@@ -214,8 +219,8 @@ CORS_ALLOWED_ORIGINS = _env_list(
 CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
@@ -232,6 +237,8 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+SECURE_REFERRER_POLICY = "same-origin"
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0" if DEBUG else "3600"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = False

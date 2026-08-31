@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from accounts.permissions import IsReadOnlyOrStaffOperator
 from django.db.models import Q
@@ -160,15 +160,15 @@ class ProductSearchAPIView(APIView):
 
 
 class CustomerShopCatalogAPIView(APIView):
-    """Read-only catalog for authenticated customer-facing shop screens."""
+    """Public read-only catalog used by the guest and customer storefront."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
         keyword = request.GET.get("q", "").strip()
         category_id = request.GET.get("category", "").strip()
 
-        queryset = ROModel.objects.select_related("category").filter(
+        queryset = ROModel.objects.select_related("category").prefetch_related("images").filter(
             is_active=True,
             category__is_active=True,
             business_type="SALE",
@@ -188,6 +188,7 @@ class CustomerShopCatalogAPIView(APIView):
         serializer = ROModelSerializer(
             queryset.order_by("category__name", "model_name"),
             many=True,
+            context={"request": request},
         )
 
         return Response({"products": serializer.data})

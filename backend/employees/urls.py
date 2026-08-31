@@ -9,8 +9,14 @@ from .views import (
     FaceEnrollmentAPIView,
     AdminFaceEnrollmentControlAPIView,
 )
+from .hrms import LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView
 
 urlpatterns = [
+    path("employees/hrms/leaves/", LeaveRequestAPIView.as_view(), name="hrms-leaves"),
+    path("employees/hrms/leaves/<int:leave_id>/review/", LeaveReviewAPIView.as_view(), name="hrms-leave-review"),
+    path("employees/hrms/payroll/", PayrollAPIView.as_view(), name="hrms-payroll"),
+    path("employees/hrms/payroll/<int:payroll_id>/action/", PayrollActionAPIView.as_view(), name="hrms-payroll-action"),
+    path("employees/hrms/reports/payroll.xlsx", PayrollExcelReportAPIView.as_view(), name="hrms-payroll-excel"),
     path(
         "employees/live-location/",
         UpdateLiveLocationAPIView.as_view(),

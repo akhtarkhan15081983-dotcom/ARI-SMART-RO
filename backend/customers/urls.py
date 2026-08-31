@@ -16,9 +16,15 @@ from .views import (
     RentPaymentHistoryAPIView,
     CustomerProfileAPIView,
     MyROAPIView,
+    CustomerLocationCaptureAPIView,
 )
 
 urlpatterns = [
+    path(
+        "<int:pk>/capture-location/",
+        CustomerLocationCaptureAPIView.as_view(),
+        name="customer-capture-location",
+    ),
     path(
         "profile/",
         CustomerProfileAPIView.as_view(),

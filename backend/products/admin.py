@@ -4,7 +4,14 @@ from .models import (
     ProductCategory,
     ROModel,
     ROModelPart,
+    ROModelImage,
 )
+
+
+class ROModelImageInline(admin.TabularInline):
+    model = ROModelImage
+    extra = 1
+    fields = ("image", "alt_text", "sort_order")
 
 
 @admin.register(ProductCategory)
@@ -28,6 +35,8 @@ class ProductCategoryAdmin(admin.ModelAdmin):
 @admin.register(ROModel)
 class ROModelAdmin(admin.ModelAdmin):
 
+    inlines = [ROModelImageInline]
+
     list_display = (
         "id",
         "model_name",
@@ -35,6 +44,7 @@ class ROModelAdmin(admin.ModelAdmin):
         "business_type",
         "monthly_rent",
         "selling_price",
+        "stock_quantity",
         "is_active",
     )
 

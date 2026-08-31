@@ -472,11 +472,13 @@ class _CustomerListScreenState
         // CARD TAP
         // ======================================================
 
-        onTap: () {
-          _openCustomerDetails(
-            customer,
-          );
-        },
+        onTap: _role == "OFFICE"
+            ? null
+            : () {
+                _openCustomerDetails(
+                  customer,
+                );
+              },
 
         child: Padding(
           padding:
@@ -541,12 +543,13 @@ class _CustomerListScreenState
                   // DETAILS INDICATOR
                   // =================================================
 
-                  const Icon(
-                    Icons
-                        .arrow_forward_ios,
-                    size: 16,
-                    color: Colors.grey,
-                  ),
+                  if (_role != "OFFICE")
+                    const Icon(
+                      Icons
+                          .arrow_forward_ios,
+                      size: 16,
+                      color: Colors.grey,
+                    ),
                 ],
               ),
 

@@ -1,14 +1,19 @@
+import calendar
+from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
 
 import openpyxl
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.chart import BarChart, LineChart, Reference
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsStaffOperator
+from accounts.permissions import IsAdminOrManager
 from attendance.models import Attendance
 from complaints.models import Complaint
 from customers.models import Customer, CustomerRentHistory, CustomerRentPayment
@@ -16,7 +21,7 @@ from installation.models import Installation
 from inventory.models import EngineerBagItem, InventoryItem, PartRequest
 from jobs.models import Job, JobPartUsed
 from purchase.models import PurchaseItem
-from service.models import Service
+from service.models import Service, ServicePart
 
 from .periods import resolve_period
 
@@ -404,11 +409,263 @@ def build_operations_report(period):
     }
 
 
+def build_customer_report(period):
+    """Customer-wise financial and operational audit for the selected period."""
+    rows = {}
+
+    def customer_row(customer_id, code, name, phone):
+        return rows.setdefault(customer_id, {
+            "customer_code": code,
+            "customer_name": name,
+            "phone": phone,
+            "payments": 0,
+            "payment_amount": ZERO,
+            "parts_quantity": 0,
+            "parts_types": 0,
+            "jobs": 0,
+            "jobs_completed": 0,
+            "services": 0,
+            "services_completed": 0,
+            "complaints": 0,
+            "complaints_resolved": 0,
+        })
+
+    payment_rows = CustomerRentPayment.objects.filter(
+        payment_date__range=(period.start, period.end)
+    ).values(
+        "customer_id", "customer__customer_id", "customer__name", "customer__phone"
+    ).annotate(
+        payments=Count("id"), amount=Sum("amount")
+    )
+    for item in payment_rows:
+        row = customer_row(item["customer_id"], item["customer__customer_id"], item["customer__name"], item["customer__phone"])
+        row["payments"] = item["payments"]
+        row["payment_amount"] = _decimal(item["amount"])
+
+    part_rows = JobPartUsed.objects.filter(
+        **_datetime_filter(period, "used_at")
+    ).values(
+        "job__customer_id", "job__customer__customer_id", "job__customer__name", "job__customer__phone"
+    ).annotate(
+        quantity=Sum("quantity"), part_types=Count("inventory_item__part", distinct=True)
+    )
+    for item in part_rows:
+        row = customer_row(item["job__customer_id"], item["job__customer__customer_id"], item["job__customer__name"], item["job__customer__phone"])
+        row["parts_quantity"] = item["quantity"] or 0
+        row["parts_types"] = item["part_types"] or 0
+
+    service_part_rows = ServicePart.objects.filter(
+        **_datetime_filter(period, "service__scheduled_date")
+    ).values(
+        "service__customer_id", "service__customer__customer_id",
+        "service__customer__name", "service__customer__phone",
+    ).annotate(
+        quantity=Sum("quantity"), part_types=Count("part", distinct=True)
+    )
+    for item in service_part_rows:
+        row = customer_row(item["service__customer_id"], item["service__customer__customer_id"], item["service__customer__name"], item["service__customer__phone"])
+        row["parts_quantity"] += item["quantity"] or 0
+        row["parts_types"] += item["part_types"] or 0
+
+    job_rows = Job.objects.filter(
+        **_datetime_filter(period, "created_at")
+    ).values(
+        "customer_id", "customer__customer_id", "customer__name", "customer__phone"
+    ).annotate(
+        jobs=Count("id"), completed=Count("id", filter=Q(status="COMPLETED"))
+    )
+    for item in job_rows:
+        row = customer_row(item["customer_id"], item["customer__customer_id"], item["customer__name"], item["customer__phone"])
+        row["jobs"] = item["jobs"]
+        row["jobs_completed"] = item["completed"]
+
+    service_rows = Service.objects.filter(
+        **_datetime_filter(period, "scheduled_date")
+    ).values(
+        "customer_id", "customer__customer_id", "customer__name", "customer__phone"
+    ).annotate(
+        services=Count("id"), completed=Count("id", filter=Q(status="COMPLETED"))
+    )
+    for item in service_rows:
+        row = customer_row(item["customer_id"], item["customer__customer_id"], item["customer__name"], item["customer__phone"])
+        row["services"] = item["services"]
+        row["services_completed"] = item["completed"]
+
+    complaint_rows = Complaint.objects.filter(
+        **_datetime_filter(period, "complaint_date")
+    ).values(
+        "customer_id", "customer__customer_id", "customer__name", "customer__phone"
+    ).annotate(
+        complaints=Count("id"),
+        resolved=Count("id", filter=Q(status__in=["RESOLVED", "CLOSED"])),
+    )
+    for item in complaint_rows:
+        row = customer_row(item["customer_id"], item["customer__customer_id"], item["customer__name"], item["customer__phone"])
+        row["complaints"] = item["complaints"]
+        row["complaints_resolved"] = item["resolved"]
+
+    summary = []
+    for row in rows.values():
+        row["payment_amount"] = _money(row["payment_amount"])
+        summary.append(row)
+    summary.sort(key=lambda row: (row["customer_name"].lower(), row["customer_code"]))
+
+    payments = [{
+        "payment_date": item["payment_date"],
+        "customer_code": item["customer__customer_id"],
+        "customer_name": item["customer__name"],
+        "amount": _money(item["amount"]),
+        "payment_mode": item["payment_mode"],
+        "collected_by": item["collected_by__employee_id"] or "",
+        "remarks": item["remarks"],
+    } for item in CustomerRentPayment.objects.filter(
+        payment_date__range=(period.start, period.end)
+    ).values(
+        "payment_date", "customer__customer_id", "customer__name", "amount",
+        "payment_mode", "remarks", "collected_by__employee_id",
+    ).order_by("customer__name", "-payment_date")]
+
+    parts = [{
+        "activity_date": item["used_at"],
+        "customer_code": item["job__customer__customer_id"],
+        "customer_name": item["job__customer__name"],
+        "work_id": item["job__job_id"],
+        "part_code": item["inventory_item__part__code"],
+        "part_name": item["inventory_item__part__name"],
+        "serial_number": item["inventory_item__serial_number"],
+        "quantity": item["quantity"],
+        "remarks": item["remarks"],
+    } for item in JobPartUsed.objects.filter(
+        **_datetime_filter(period, "used_at")
+    ).values(
+        "used_at", "job__customer__customer_id", "job__customer__name",
+        "job__job_id", "inventory_item__part__code", "inventory_item__part__name",
+        "inventory_item__serial_number", "quantity", "remarks",
+    ).order_by("job__customer__name", "-used_at")]
+    parts.extend({
+        "activity_date": item["service__scheduled_date"],
+        "customer_code": item["service__customer__customer_id"],
+        "customer_name": item["service__customer__name"],
+        "work_id": item["service__service_id"],
+        "part_code": item["part__code"],
+        "part_name": item["part__name"],
+        "serial_number": item["inventory_item__serial_number"],
+        "quantity": item["quantity"],
+        "remarks": item["remarks"],
+    } for item in ServicePart.objects.filter(
+        **_datetime_filter(period, "service__scheduled_date")
+    ).values(
+        "service__scheduled_date", "service__customer__customer_id",
+        "service__customer__name", "service__service_id", "part__code",
+        "part__name", "inventory_item__serial_number", "quantity", "remarks",
+    ))
+
+    return {
+        "summary": {
+            "customers": len(summary),
+            "customers_with_payments": sum(1 for row in summary if row["payments"] > 0),
+            "customers_with_parts": sum(1 for row in summary if row["parts_quantity"] > 0),
+        },
+        "by_customer": summary,
+        "payment_details": payments,
+        "part_details": parts,
+    }
+
+
+def build_management_report(period, parts, rent, attendance, operations):
+    rent_summary = rent["summary"]
+    operation_summary = operations["summary"]
+    attendance_summary = attendance["summary"]
+    jobs_created = operation_summary["jobs_created"] or 0
+    jobs_completed = operation_summary["jobs_completed"] or 0
+    complaints_created = operation_summary["complaints_created"] or 0
+    complaints_resolved = operation_summary["complaints_resolved"] or 0
+    attendance_records = attendance_summary["records"] or 0
+    present = attendance_summary["present"] or 0
+    collection_rate = float(rent_summary["collection_efficiency_percent"] or 0)
+    job_rate = round(jobs_completed / jobs_created * 100, 1) if jobs_created else 0
+    complaint_rate = round(complaints_resolved / complaints_created * 100, 1) if complaints_created else 0
+    attendance_rate = round(present / attendance_records * 100, 1) if attendance_records else 0
+    scored_rates = [rate for rate, count in [
+        (collection_rate, rent_summary["rent_rows"]),
+        (job_rate, jobs_created),
+        (complaint_rate, complaints_created),
+        (attendance_rate, attendance_records),
+    ] if count]
+    health_score = round(sum(scored_rates) / len(scored_rates), 1) if scored_rates else 0
+
+    ageing = {"current": ZERO, "31_60_days": ZERO, "61_90_days": ZERO, "over_90_days": ZERO}
+    for row in CustomerRentHistory.objects.filter(
+        rent_month__lte=period.end
+    ).values("rent_month", "expected_rent", "paid_amount"):
+        due = max(_decimal(row["expected_rent"]) - _decimal(row["paid_amount"]), ZERO)
+        if not due:
+            continue
+        age = (period.end - row["rent_month"]).days
+        bucket = "current" if age <= 30 else "31_60_days" if age <= 60 else "61_90_days" if age <= 90 else "over_90_days"
+        ageing[bucket] += due
+
+    trend = []
+    anchor = period.end.replace(day=1)
+    for offset in range(5, -1, -1):
+        month_index = anchor.year * 12 + anchor.month - 1 - offset
+        year, month_zero = divmod(month_index, 12)
+        month = month_zero + 1
+        start = date(year, month, 1)
+        end = date(year, month, calendar.monthrange(year, month)[1])
+        payments = _decimal(CustomerRentPayment.objects.filter(
+            payment_date__range=(start, end)
+        ).aggregate(total=Sum("amount"))["total"])
+        completed = Job.objects.filter(completed_at__date__range=(start, end)).count()
+        resolved = Complaint.objects.filter(resolved_date__date__range=(start, end)).count()
+        trend.append({"month": start.strftime("%b %Y"), "rent_collected": _money(payments), "jobs_completed": completed, "complaints_resolved": resolved})
+
+    employee_rows = {}
+    for row in rent["by_collector"]:
+        key = row["employee_id"] or "UNASSIGNED"
+        employee_rows[key] = {"employee_id": key, "employee_name": row["employee_name"], "rent_collected": row["amount"], "payments": row["payments"], "parts_used": 0, "jobs": 0, "working_hours": "0.00"}
+    for row in parts["by_employee"]:
+        key = row["employee_id"] or "UNASSIGNED"
+        target = employee_rows.setdefault(key, {"employee_id": key, "employee_name": row["employee_name"], "rent_collected": "0.00", "payments": 0, "parts_used": 0, "jobs": 0, "working_hours": "0.00"})
+        target["parts_used"] = row["quantity"]
+        target["jobs"] = row["jobs"]
+    for row in attendance["by_employee"]:
+        key = row["employee_id"] or "UNASSIGNED"
+        target = employee_rows.setdefault(key, {"employee_id": key, "employee_name": row["employee_name"], "rent_collected": "0.00", "payments": 0, "parts_used": 0, "jobs": 0, "working_hours": "0.00"})
+        target["working_hours"] = row["working_hours"]
+
+    insights = []
+    if collection_rate < 80:
+        insights.append({"severity": "HIGH", "title": "Collection efficiency needs attention", "detail": f"Only {collection_rate:.1f}% of expected rent is collected; ₹{rent_summary['outstanding']} remains outstanding."})
+    if operation_summary["open_complaints_snapshot"]:
+        insights.append({"severity": "MEDIUM", "title": "Open complaint backlog", "detail": f"{operation_summary['open_complaints_snapshot']} complaints are currently open."})
+    if attendance_summary["pending_identity_reviews"]:
+        insights.append({"severity": "MEDIUM", "title": "Attendance reviews pending", "detail": f"{attendance_summary['pending_identity_reviews']} identity reviews require action."})
+    if not insights:
+        insights.append({"severity": "GOOD", "title": "No critical exception detected", "detail": "Core operating indicators are within a healthy range for this period."})
+
+    return {
+        "scorecard": {
+            "business_health_score": health_score,
+            "collection_efficiency": collection_rate,
+            "job_completion_rate": job_rate,
+            "complaint_resolution_rate": complaint_rate,
+            "attendance_rate": attendance_rate,
+        },
+        "rent_ageing": {key: _money(value) for key, value in ageing.items()},
+        "trend_6_months": trend,
+        "employee_productivity": sorted(employee_rows.values(), key=lambda row: Decimal(str(row["rent_collected"] or 0)), reverse=True),
+        "insights": insights,
+    }
+
+
 def build_reports(period):
     parts = build_parts_report(period)
     rent = build_rent_report(period)
     attendance = build_attendance_report(period)
     operations = build_operations_report(period)
+    customers = build_customer_report(period)
+    management = build_management_report(period, parts, rent, attendance, operations)
 
     return {
         "period": period.as_dict(),
@@ -424,6 +681,8 @@ def build_reports(period):
         "rent": rent,
         "attendance": attendance,
         "operations": operations,
+        "customers": customers,
+        "management": management,
     }
 
 
@@ -432,21 +691,44 @@ def _append_rows(worksheet, rows):
         worksheet.append(["No records"])
         return
     headers = list(rows[0].keys())
-    worksheet.append(headers)
+    worksheet.append([_humanize_header(header) for header in headers])
     for row in rows:
-        worksheet.append([row.get(header, "") for header in headers])
+        worksheet.append([_excel_value(row.get(header, ""), header) for header in headers])
+
+
+def _humanize_header(value):
+    return str(value).replace("__", " ").replace("_", " ").title()
+
+
+def _excel_value(value, field=""):
+    if isinstance(value, datetime):
+        return value.astimezone().strftime("%d-%m-%Y %I:%M %p")
+    if isinstance(value, date):
+        return value.strftime("%d-%m-%Y")
+    numeric_fields = {
+        "amount", "payment_amount", "rent_collected", "rent_outstanding",
+        "expected", "paid", "outstanding", "purchase_value", "working_hours",
+        "current", "31_60_days", "61_90_days", "over_90_days",
+    }
+    if field in numeric_fields and isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return value
+    return value
 
 
 def build_workbook(data):
     workbook = openpyxl.Workbook()
-    summary_sheet = workbook.active
-    summary_sheet.title = "Summary"
+    dashboard = workbook.active
+    dashboard.title = "Executive Dashboard"
+    summary_sheet = workbook.create_sheet("Summary")
     summary_sheet.append(["ARI SMART RO REPORT"])
     summary_sheet.append(["Period", data["period"]["label"]])
     summary_sheet.append([])
     summary_sheet.append(["Metric", "Value"])
     for key, value in data["overview"].items():
-        summary_sheet.append([key.replace("_", " ").title(), value])
+        summary_sheet.append([_humanize_header(key), _excel_value(value, key)])
 
     parts_sheet = workbook.create_sheet("Parts by Employee")
     _append_rows(parts_sheet, data["parts"]["by_employee"])
@@ -466,19 +748,163 @@ def build_workbook(data):
     operations_sheet = workbook.create_sheet("Operations")
     operations_sheet.append(["Metric", "Value"])
     for key, value in data["operations"]["summary"].items():
-        operations_sheet.append([key.replace("_", " ").title(), value])
+        operations_sheet.append([_humanize_header(key), _excel_value(value, key)])
+
+    customer_sheet = workbook.create_sheet("Customer Summary")
+    _append_rows(customer_sheet, data["customers"]["by_customer"])
+
+    customer_payment_sheet = workbook.create_sheet("Customer Payments")
+    _append_rows(customer_payment_sheet, data["customers"]["payment_details"])
+
+    customer_parts_sheet = workbook.create_sheet("Customer Parts")
+    _append_rows(customer_parts_sheet, data["customers"]["part_details"])
+
+    employee_productivity_sheet = workbook.create_sheet("Employee Productivity")
+    _append_rows(employee_productivity_sheet, data["management"]["employee_productivity"])
+
+    rent_ageing_sheet = workbook.create_sheet("Rent Ageing")
+    _append_rows(rent_ageing_sheet, [data["management"]["rent_ageing"]])
+
+    insight_sheet = workbook.create_sheet("Management Actions")
+    _append_rows(insight_sheet, data["management"]["insights"])
+
+    navy = "123A63"
+    blue = "0878C9"
+    pale_blue = "EAF4FC"
+    white = "FFFFFF"
+    border = Border(bottom=Side(style="thin", color="D9E2EC"))
+
+    management = data["management"]
+    scorecard = management["scorecard"]
+    dashboard.merge_cells("A1:L2")
+    dashboard["A1"] = "ARI SMART RO  |  EXECUTIVE BUSINESS REVIEW"
+    dashboard["A1"].font = Font(size=22, bold=True, color=white)
+    dashboard["A1"].fill = PatternFill("solid", fgColor=navy)
+    dashboard["A1"].alignment = Alignment(horizontal="left", vertical="center")
+    dashboard.merge_cells("A3:L3")
+    dashboard["A3"] = f"Reporting period: {data['period']['label']}  |  Management view"
+    dashboard["A3"].font = Font(size=11, color="52606D")
+
+    cards = [
+        ("A5:C7", "Business Health", scorecard["business_health_score"], "0.0"),
+        ("D5:F7", "Collection Efficiency", scorecard["collection_efficiency"] / 100, "0.0%"),
+        ("G5:I7", "Job Completion", scorecard["job_completion_rate"] / 100, "0.0%"),
+        ("J5:L7", "Complaint Resolution", scorecard["complaint_resolution_rate"] / 100, "0.0%"),
+    ]
+    for cell_range, label, value, number_format in cards:
+        dashboard.merge_cells(cell_range)
+        cell = dashboard[cell_range.split(":")[0]]
+        cell.value = f"{label}\n{value:.1f}" if number_format == "0.0" else f"{label}\n{value:.1%}"
+        cell.font = Font(size=14, bold=True, color=navy)
+        cell.fill = PatternFill("solid", fgColor="EAF4FC")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    dashboard["A9"] = "MANAGEMENT EXCEPTIONS & ACTIONS"
+    dashboard["A9"].font = Font(size=13, bold=True, color=white)
+    dashboard["A9"].fill = PatternFill("solid", fgColor=blue)
+    dashboard.merge_cells("A9:L9")
+    for index, insight in enumerate(management["insights"], start=10):
+        dashboard.merge_cells(start_row=index, start_column=1, end_row=index, end_column=12)
+        cell = dashboard.cell(index, 1)
+        cell.value = f"[{insight['severity']}] {insight['title']} — {insight['detail']}"
+        cell.fill = PatternFill("solid", fgColor="FFF4E5" if insight["severity"] != "GOOD" else "E8F5E9")
+        cell.font = Font(color="9C2C13" if insight["severity"] == "HIGH" else navy, bold=insight["severity"] == "HIGH")
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        dashboard.row_dimensions[index].height = 30
+
+    trend_start = 31
+    dashboard.cell(trend_start, 1, "Month")
+    dashboard.cell(trend_start, 2, "Rent Collected")
+    dashboard.cell(trend_start, 3, "Jobs Completed")
+    dashboard.cell(trend_start, 4, "Complaints Resolved")
+    for row_index, row in enumerate(management["trend_6_months"], start=trend_start + 1):
+        dashboard.cell(row_index, 1, row["month"])
+        dashboard.cell(row_index, 2, float(row["rent_collected"]))
+        dashboard.cell(row_index, 3, row["jobs_completed"])
+        dashboard.cell(row_index, 4, row["complaints_resolved"])
+    trend_end = trend_start + len(management["trend_6_months"])
+
+    rent_chart = LineChart()
+    rent_chart.title = "Rent Collection Trend (₹)"
+    rent_chart.style = 13
+    rent_chart.height = 7.5
+    rent_chart.width = 12.5
+    rent_chart.add_data(Reference(dashboard, min_col=2, min_row=trend_start, max_row=trend_end), titles_from_data=True)
+    rent_chart.set_categories(Reference(dashboard, min_col=1, min_row=trend_start + 1, max_row=trend_end))
+    rent_chart.y_axis.numFmt = '₹#,##0'
+    dashboard.add_chart(rent_chart, "A14")
+
+    work_chart = BarChart()
+    work_chart.type = "col"
+    work_chart.title = "Completed Work Trend"
+    work_chart.style = 10
+    work_chart.height = 7.5
+    work_chart.width = 12.5
+    work_chart.add_data(Reference(dashboard, min_col=3, max_col=4, min_row=trend_start, max_row=trend_end), titles_from_data=True)
+    work_chart.set_categories(Reference(dashboard, min_col=1, min_row=trend_start + 1, max_row=trend_end))
+    dashboard.add_chart(work_chart, "G14")
+
+    dashboard.sheet_state = "visible"
+    dashboard.sheet_view.showGridLines = False
+    dashboard.freeze_panes = "A4"
+    dashboard.column_dimensions["A"].width = 16
+    for column in range(2, 13):
+        dashboard.column_dimensions[get_column_letter(column)].width = 12
+    dashboard.row_dimensions[1].height = 28
+    dashboard.sheet_properties.pageSetUpPr.fitToPage = True
+    dashboard.page_setup.orientation = "landscape"
+    dashboard.page_setup.fitToWidth = 1
+
+    summary_sheet.merge_cells("A1:B1")
+    summary_sheet["A1"].font = Font(size=18, bold=True, color=white)
+    summary_sheet["A1"].fill = PatternFill("solid", fgColor=navy)
+    summary_sheet["A1"].alignment = Alignment(horizontal="center")
+    summary_sheet.row_dimensions[1].height = 30
+    summary_sheet["A2"].font = Font(bold=True, color=navy)
 
     for worksheet in workbook.worksheets:
-        worksheet.freeze_panes = "A2"
-        for column in worksheet.columns:
+        if worksheet.title == "Executive Dashboard":
+            continue
+        header_row = 4 if worksheet.title == "Summary" else 1
+        worksheet.freeze_panes = f"A{header_row + 1}"
+        worksheet.sheet_view.showGridLines = False
+        worksheet.auto_filter.ref = worksheet.dimensions
+        for cell in worksheet[header_row]:
+            cell.font = Font(bold=True, color=white)
+            cell.fill = PatternFill("solid", fgColor=blue)
+            cell.alignment = Alignment(vertical="center")
+        for column_index in range(1, worksheet.max_column + 1):
+            heading = str(worksheet.cell(header_row, column_index).value or "").lower()
+            if any(word in heading for word in ["amount", "value", "expected", "paid", "outstanding", "rent collected"]):
+                for row_index in range(header_row + 1, worksheet.max_row + 1):
+                    worksheet.cell(row_index, column_index).number_format = '₹#,##0.00;[Red](₹#,##0.00);-'
+            elif any(word in heading for word in ["quantity", "payments", "jobs", "services", "complaints", "parts"]):
+                for row_index in range(header_row + 1, worksheet.max_row + 1):
+                    worksheet.cell(row_index, column_index).number_format = '#,##0;[Red](#,##0);-'
+        worksheet.row_dimensions[header_row].height = 24
+        for row_number in range(header_row + 1, worksheet.max_row + 1):
+            if (row_number - header_row) % 2 == 0:
+                for cell in worksheet[row_number]:
+                    cell.fill = PatternFill("solid", fgColor=pale_blue)
+            for cell in worksheet[row_number]:
+                cell.border = border
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+        worksheet.auto_filter.ref = (
+            f"A{header_row}:{worksheet.cell(header_row, worksheet.max_column).coordinate}"
+        )
+        worksheet.print_title_rows = f"{header_row}:{header_row}"
+        worksheet.page_setup.orientation = "landscape"
+        worksheet.page_setup.fitToWidth = 1
+        worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+        for column_index, column in enumerate(worksheet.columns, start=1):
             width = min(max(len(str(cell.value or "")) for cell in column) + 2, 40)
-            worksheet.column_dimensions[column[0].column_letter].width = width
+            worksheet.column_dimensions[get_column_letter(column_index)].width = width
 
     return workbook
 
 
 class ReportsSummaryAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [IsAdminOrManager]
 
     def get(self, request):
         try:
@@ -496,7 +922,7 @@ class ReportsSummaryAPIView(APIView):
 
 
 class ReportsExportAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [IsAdminOrManager]
 
     def get(self, request):
         try:

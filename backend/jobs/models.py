@@ -4,6 +4,7 @@ from customers.models import Customer
 from employees.models import EmployeeProfile
 from assets.models import ROAsset
 from random import randint
+from django.conf import settings
 
 
 class Job(models.Model):
@@ -311,4 +312,32 @@ class JobSignature(models.Model):
 
     def __str__(self):
         return self.job.job_id
+
+
+class WorkScheduleOverride(models.Model):
+    """Calendar-level reschedule/forward information for any operational work."""
+
+    event_key = models.CharField(max_length=80, unique=True, db_index=True)
+    scheduled_date = models.DateTimeField()
+    employee = models.ForeignKey(
+        EmployeeProfile,
+        on_delete=models.PROTECT,
+        related_name="work_schedule_overrides",
+    )
+    previous_date = models.DateTimeField(null=True, blank=True)
+    reason = models.CharField(max_length=250, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="work_schedule_changes",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["scheduled_date", "event_key"]
+
+    def __str__(self):
+        return f"{self.event_key} - {self.scheduled_date}"
 

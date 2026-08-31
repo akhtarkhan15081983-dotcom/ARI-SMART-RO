@@ -1,6 +1,7 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import (
+    IsAdminOrManager,
     IsEngineer,
     IsStaffOperator,
     IsVerifiedCustomer,
@@ -28,13 +29,87 @@ import calendar
 from assets.models.asset import ROAsset
 from decimal import Decimal
 from django.db import transaction
-from .models import CustomerRentHistory, CustomerRentPayment
+from .models import CustomerLocationLog, CustomerRentHistory, CustomerRentPayment
 from referrals.services import claim_welcome_reward
 
 from referrals.services import (
     calculate_max_redeemable,
     redeem_wallet,
 )
+
+
+class CustomerLocationCaptureAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        role = user_role(request.user)
+        if role not in {"ADMIN", "MANAGER", "ENGINEER"}:
+            return Response(
+                {"detail": "Only Admin, Manager or assigned Engineer can save customer location."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        customer = Customer.objects.select_related("assigned_engineer").filter(pk=pk).first()
+        if customer is None:
+            return Response({"detail": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        employee = getattr(request.user, "employee_profile", None)
+        if role == "ENGINEER" and (
+            employee is None or customer.assigned_engineer_id != employee.id
+        ):
+            return Response(
+                {"detail": "You can save location only for customers assigned to you."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if customer.latitude is not None and customer.longitude is not None:
+            return Response(
+                {
+                    "detail": (
+                        "Customer location is already saved. "
+                        "Only Admin customer editing can correct it."
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        try:
+            latitude = Decimal(str(request.data.get("latitude")))
+            longitude = Decimal(str(request.data.get("longitude")))
+            accuracy_value = request.data.get("accuracy")
+            accuracy = Decimal(str(accuracy_value)) if accuracy_value not in (None, "") else None
+        except Exception:
+            return Response(
+                {"detail": "Valid latitude and longitude are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not Decimal("-90") <= latitude <= Decimal("90") or not Decimal("-180") <= longitude <= Decimal("180"):
+            return Response({"detail": "Location coordinates are outside the valid range."}, status=status.HTTP_400_BAD_REQUEST)
+        if accuracy is not None and (accuracy < 0 or accuracy > Decimal("10000")):
+            return Response({"detail": "GPS accuracy is invalid."}, status=status.HTTP_400_BAD_REQUEST)
+
+        customer.latitude = latitude
+        customer.longitude = longitude
+        customer.save(update_fields=["latitude", "longitude"])
+        log = CustomerLocationLog.objects.create(
+            customer=customer,
+            captured_by=employee,
+            latitude=latitude,
+            longitude=longitude,
+            accuracy=accuracy,
+            source=str(request.data.get("source") or "WORK_CALENDAR").upper()
+            if str(request.data.get("source") or "").upper() in {"WORK_CALENDAR", "WORK_ROUTE"}
+            else "WORK_CALENDAR",
+        )
+        return Response({
+            "message": "Customer location saved successfully.",
+            "customer_id": customer.id,
+            "latitude": str(customer.latitude),
+            "longitude": str(customer.longitude),
+            "accuracy": str(log.accuracy) if log.accuracy is not None else None,
+            "captured_at": log.captured_at.isoformat(),
+        })
 
 from .serializers import (
     CustomerSerializer,
@@ -47,7 +122,7 @@ from .serializers import (
 def _customer_queryset_for(user):
     role = user_role(user)
     queryset = Customer.objects.select_related("assigned_engineer__user")
-    if role in STAFF_ROLES:
+    if role in {"ADMIN", "MANAGER"}:
         return queryset
     if role == "ENGINEER":
         return queryset.filter(assigned_engineer__user=user)
@@ -554,7 +629,7 @@ class CustomerCreateAPIView(generics.CreateAPIView):
 
     serializer_class = CustomerSerializer
 
-    permission_classes = [IsStaffOperator]
+    permission_classes = [IsAdminOrManager]
 
 class CustomerDetailAPIView(generics.RetrieveAPIView):
 
@@ -588,7 +663,6 @@ class CustomerServiceHistoryAPIView(APIView):
     ALLOWED_STAFF_ROLES = [
         "ADMIN",
         "MANAGER",
-        "OFFICE",
     ]
 
     def get(self, request, pk):
@@ -905,7 +979,7 @@ class CustomerUpdateAPIView(generics.UpdateAPIView):
 
     serializer_class = CustomerSerializer
 
-    permission_classes = [IsStaffOperator]
+    permission_classes = [IsAdminOrManager]
 
 class WalkInCustomerAPIView(APIView):
 
@@ -1400,12 +1474,12 @@ class CustomerRentAPIView(APIView):
         )
 
 # ============================================================
-# ADMIN / MANAGER / OFFICE RENT MANAGEMENT
+# ADMIN / MANAGER RENT MANAGEMENT
 # ============================================================
 
 class RentManagementAPIView(APIView):
     """
-    Admin, Manager aur Office ke liye
+    Admin aur Manager ke liye
     sabhi customers ka current rent aur rent history.
 
     GET:
@@ -1417,7 +1491,6 @@ class RentManagementAPIView(APIView):
     ALLOWED_ROLES = [
         "ADMIN",
         "MANAGER",
-        "OFFICE",
     ]
 
     def get(self, request):
@@ -1755,12 +1828,12 @@ class RentManagementAPIView(APIView):
         )
 
 # ============================================================
-# OFFICE RENT PAYMENT
+# ADMIN / MANAGER RENT PAYMENT
 # ============================================================
 
 class RentPaymentCreateAPIView(APIView):
     """
-    Office / Admin / Manager customer ka rent payment record
+    Admin / Manager or assigned Engineer customer ka rent payment record
     create kar sakte hain.
 
     Referral wallet rules:
@@ -1781,7 +1854,7 @@ class RentPaymentCreateAPIView(APIView):
     ALLOWED_ROLES = [
         "ADMIN",
         "MANAGER",
-        "OFFICE",
+        "ENGINEER",
     ]
 
     @transaction.atomic
@@ -1797,7 +1870,7 @@ class RentPaymentCreateAPIView(APIView):
                 {
                     "success": False,
                     "message": (
-                        "Only Admin, Manager or Office "
+                        "Only Admin, Manager or assigned Engineer "
                         "can record rent payment."
                     ),
                 },
@@ -1883,6 +1956,19 @@ class RentPaymentCreateAPIView(APIView):
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        if request.user.role == "ENGINEER":
+            engineer = getattr(request.user, "employee_profile", None)
+            if engineer is None or customer.assigned_engineer_id != engineer.id:
+                return Response(
+                    {
+                        "success": False,
+                        "message": (
+                            "You can collect rent only from customers assigned to you."
+                        ),
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         # ====================================================
         # MONTHLY RENT VALIDATION
@@ -2591,7 +2677,6 @@ class RentPaymentHistoryAPIView(APIView):
     ALLOWED_ROLES = [
         "ADMIN",
         "MANAGER",
-        "OFFICE",
     ]
 
     def get(self, request):
@@ -2606,7 +2691,7 @@ class RentPaymentHistoryAPIView(APIView):
                 {
                     "success": False,
                     "message": (
-                        "Only Admin, Manager or Office "
+                        "Only Admin or Manager "
                         "can view rent payment history."
                     ),
                 },

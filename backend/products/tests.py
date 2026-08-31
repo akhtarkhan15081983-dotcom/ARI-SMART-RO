@@ -43,3 +43,10 @@ class CustomerShopCatalogTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['products']), 1)
         self.assertEqual(response.data['products'][0]['model_name'], 'Aqua Prime')
+
+    def test_catalog_is_available_without_login(self):
+        visible = self._model('Guest Visible RO')
+        self.client.force_authenticate(user=None)
+        response = self.client.get(reverse('customer-shop-catalog'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['products'][0]['id'], visible.id)

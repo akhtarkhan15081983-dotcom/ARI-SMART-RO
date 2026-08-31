@@ -8,9 +8,15 @@ from .views import (
     LoginAPIView,
     ChangePasswordAPIView,
 )
+from .sim_verification import SimVerificationPollAPIView, SimVerificationStartAPIView, SmsGatewayIngestAPIView
+from .engagement import CustomerEngagementAPIView
 
 
 urlpatterns = [
+    path("customer-engagement/", CustomerEngagementAPIView.as_view(), name="customer-engagement"),
+    path("sim-verification/start/", SimVerificationStartAPIView.as_view(), name="sim-verification-start"),
+    path("sim-verification/poll/", SimVerificationPollAPIView.as_view(), name="sim-verification-poll"),
+    path("sms-gateway/ingest/", SmsGatewayIngestAPIView.as_view(), name="sms-gateway-ingest"),
 
     # ========================================================
     # CUSTOMER REGISTRATION

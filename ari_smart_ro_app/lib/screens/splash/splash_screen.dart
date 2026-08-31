@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../services/api_service.dart';
+import '../../services/referral_link_service.dart';
+import '../login/customer_onboarding_screen.dart';
 import '../dashboard/dashboard_screen.dart';
-import '../login/login_screen.dart';
+import '../shop/shop_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -24,9 +26,7 @@ class _SplashScreenState extends State<SplashScreen>
   bool _videoReady = false;
   bool _navigated = false;
 
-  static const Duration _splashDuration = Duration(
-    milliseconds: 2500,
-  );
+  static const Duration _splashDuration = Duration(milliseconds: 2500);
 
   @override
   void initState() {
@@ -67,17 +67,13 @@ class _SplashScreenState extends State<SplashScreen>
 
       await _fadeController.forward();
 
-      await _videoController.seekTo(
-        const Duration(seconds: 5),
-      );
+      await _videoController.seekTo(const Duration(seconds: 5));
 
       await _videoController.play();
     } catch (e) {
       debugPrint('SPLASH VIDEO ERROR: $e');
 
-      await Future.delayed(
-        const Duration(milliseconds: 800),
-      );
+      await Future.delayed(const Duration(milliseconds: 800));
 
       _goToNext();
     }
@@ -113,13 +109,18 @@ class _SplashScreenState extends State<SplashScreen>
 
     final hasSession = await ApiService.restoreSession();
     if (!mounted) return;
+    final referralCode = ReferralLinkService.takePendingCode();
 
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => hasSession
-            ? const DashboardScreen()
-            : const LoginScreen(),
+        builder: (_) {
+          if (hasSession) return const DashboardScreen();
+          if (referralCode != null) {
+            return CustomerOnboardingScreen(referralCode: referralCode);
+          }
+          return const ShopScreen(guestMode: true);
+        },
       ),
     );
   }
@@ -148,17 +149,13 @@ class _SplashScreenState extends State<SplashScreen>
                 child: SizedBox(
                   width: _videoController.value.size.width,
                   height: _videoController.value.size.height,
-                  child: VideoPlayer(
-                    _videoController,
-                  ),
+                  child: VideoPlayer(_videoController),
                 ),
               ),
             )
           else
             const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF00A8FF),
-              ),
+              child: CircularProgressIndicator(color: Color(0xFF00A8FF)),
             ),
 
           Container(
@@ -177,10 +174,7 @@ class _SplashScreenState extends State<SplashScreen>
 
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 24,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
               child: Column(
                 children: [
                   const Spacer(),
@@ -191,13 +185,9 @@ class _SplashScreenState extends State<SplashScreen>
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(
-                        alpha: 0.30,
-                      ),
+                      color: Colors.black.withValues(alpha: 0.30),
                       borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: const Color(0x5500A8FF),
-                      ),
+                      border: Border.all(color: const Color(0x5500A8FF)),
                     ),
                     child: const Column(
                       children: [
@@ -240,10 +230,7 @@ class _SplashScreenState extends State<SplashScreen>
 
                   const Text(
                     'Smart solution for every drop',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
 
                   const SizedBox(height: 30),

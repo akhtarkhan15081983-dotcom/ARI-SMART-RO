@@ -1,24 +1,24 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import 'api_service.dart';
 
 class ReportService {
+  static const MethodChannel _downloadsChannel = MethodChannel(
+    'com.arismartro.app/downloads',
+  );
+
   Future<Map<String, dynamic>> getSummary({
     required String period,
     required DateTime date,
   }) async {
     final uri = Uri.parse(
       "${ApiService.baseUrl}/reports/summary/",
-    ).replace(
-      queryParameters: {
-        "period": period,
-        "date": _dateValue(date),
-      },
-    );
+    ).replace(queryParameters: {"period": period, "date": _dateValue(date)});
 
     final response = await http
         .get(uri, headers: await ApiService.authHeaders())
@@ -37,12 +37,7 @@ class ReportService {
   }) async {
     final uri = Uri.parse(
       "${ApiService.baseUrl}/reports/export/",
-    ).replace(
-      queryParameters: {
-        "period": period,
-        "date": _dateValue(date),
-      },
-    );
+    ).replace(queryParameters: {"period": period, "date": _dateValue(date)});
 
     final response = await http
         .get(uri, headers: await ApiService.authHeaders())
@@ -52,9 +47,22 @@ class ReportService {
       throw Exception(_message(response));
     }
 
+    final filename = "ari-smart-ro-$period-${_dateValue(date)}.xlsx";
+
+    if (Platform.isAndroid) {
+      final savedPath = await _downloadsChannel.invokeMethod<String>('saveFile', {
+        'filename': filename,
+        'mimeType':
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'bytes': response.bodyBytes,
+      });
+      if (savedPath == null || savedPath.isEmpty) {
+        throw Exception('Report download location was not returned.');
+      }
+      return savedPath;
+    }
+
     final directory = await getApplicationDocumentsDirectory();
-    final filename =
-        "ari-smart-ro-$period-${_dateValue(date)}.xlsx";
     final file = File("${directory.path}/$filename");
     await file.writeAsBytes(response.bodyBytes, flush: true);
     return file.path;

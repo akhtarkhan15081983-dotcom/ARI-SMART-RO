@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -10,8 +11,7 @@ class ApiService {
     defaultValue: "",
   );
 
-  static const String _developmentBaseUrl =
-      "http://127.0.0.1:8000/api";
+  static const String _developmentBaseUrl = "http://127.0.0.1:8000/api";
 
   static String get baseUrl {
     final configured = _configuredBaseUrl.trim();
@@ -22,16 +22,13 @@ class ApiService {
     }
 
     if (kReleaseMode) {
-      throw StateError(
-        "API_BASE_URL is required for a release build.",
-      );
+      throw StateError("API_BASE_URL is required for a release build.");
     }
 
     return _developmentBaseUrl;
   }
 
-  static const FlutterSecureStorage storage =
-      FlutterSecureStorage();
+  static const FlutterSecureStorage storage = FlutterSecureStorage();
 
   static Future<String?> getAccessToken() {
     return storage.read(key: "access");
@@ -43,8 +40,10 @@ class ApiService {
 
   static Future<Map<String, String>> authHeaders() async {
     final token = await getAccessToken();
+    final deviceId = await _deviceId();
     final headers = <String, String>{
       "Content-Type": "application/json",
+      "X-ARI-Device-ID": deviceId,
     };
 
     if (token != null && token.isNotEmpty) {
@@ -52,6 +51,19 @@ class ApiService {
     }
 
     return headers;
+  }
+
+  static Future<String> _deviceId() async {
+    const key = "ari_device_id";
+    final existing = await storage.read(key: key);
+    if (existing != null && existing.isNotEmpty) return existing;
+    final random = Random.secure();
+    final value = List<int>.generate(
+      24,
+      (_) => random.nextInt(256),
+    ).map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+    await storage.write(key: key, value: value);
+    return value;
   }
 
   static Future<String?> getRole() {
@@ -102,9 +114,11 @@ class ApiService {
     try {
       final segments = token.split('.');
       if (segments.length != 3) return false;
-      final payload = jsonDecode(
-        utf8.decode(base64Url.decode(base64Url.normalize(segments[1]))),
-      ) as Map<String, dynamic>;
+      final payload =
+          jsonDecode(
+                utf8.decode(base64Url.decode(base64Url.normalize(segments[1]))),
+              )
+              as Map<String, dynamic>;
       final expiry = payload["exp"] as int?;
       if (expiry == null) return false;
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;

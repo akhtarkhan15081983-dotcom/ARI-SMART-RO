@@ -35,10 +35,21 @@ class ReferralMeAPIView(APIView):
         rewards = WalletReward.objects.filter(owner=request.user).order_by("activated_at", "id")
         referrals = Referral.objects.filter(referrer=request.user).select_related("referred_user")
         total = sum((r.remaining_amount for r in rewards if r.status in {"ACTIVE", "PARTIAL"}), Decimal("0.00"))
+        points_value = sum((r.remaining_amount for r in rewards if r.reward_type == "APP_REFERRAL_POINTS" and r.status in {"ACTIVE", "PARTIAL"}), Decimal("0.00"))
         return Response({
             "success": True,
             "referral_code": profile.referral_code,
             "wallet_balance": total,
+            "points_balance": int(points_value * 10),
+            "program": {
+                "app_referral_points": 100,
+                "app_referral_value": "10.00",
+                "cash_bill_wallet_percent": "30.00",
+                "app_points_allowed_categories": ["PURCHASE", "PARTS", "SERVICE"],
+                "rent_discount_monthly": "50.00",
+                "rent_discount_months": 12,
+                "minimum_rent_cash": "100.00",
+            },
             "rewards": WalletRewardSerializer(rewards, many=True).data,
             "referrals": ReferralSerializer(referrals, many=True).data,
         })
@@ -54,11 +65,17 @@ class ClaimReferralAPIView(APIView):
             referral = claim_referral(
                 referred_user=request.user,
                 code=serializer.validated_data["referral_code"],
+                claim_fingerprint=request.headers.get("X-ARI-Device-ID", ""),
             )
         except Exception as exc:
             detail = getattr(exc, "detail", str(exc))
             return Response({"success": False, "message": detail}, status=400)
-        return Response({"success": True, "message": "Referral attribution saved. Reward will activate after qualifying action.", "referral": ReferralSerializer(referral).data}, status=201)
+        message = (
+            "Referral saved. It is under automatic security review."
+            if referral.status == "REVIEW"
+            else "Referral saved. Referrer received 100 points; rent benefit activates after successful installation."
+        )
+        return Response({"success": True, "message": message, "referral": ReferralSerializer(referral).data}, status=201)
 
 
 class WelcomeRewardAPIView(APIView):

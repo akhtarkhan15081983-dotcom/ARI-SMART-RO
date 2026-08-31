@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../../controllers/login_controller.dart';
-import 'customer_registration_screen.dart';
+import 'customer_onboarding_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,7 +11,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-
   final phoneController = TextEditingController();
 
   final passwordController = TextEditingController();
@@ -45,30 +44,20 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [
-
               // Logo
-              Image.asset(
-                "assets/images/ari_smart_ro_icon.png",
-                height: 220,
-              ),
+              Image.asset("assets/images/ari_smart_ro_icon.png", height: 220),
               const SizedBox(height: 20),
 
               const Text(
                 "ARI SMART RO",
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
               ),
 
               const SizedBox(height: 8),
 
               const Text(
                 "Sign in to continue",
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.grey,
-                ),
+                style: TextStyle(fontSize: 18, color: Colors.grey),
               ),
 
               const SizedBox(height: 35),
@@ -94,10 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: Colors.blue,
-                      width: 2,
-                    ),
+                    borderSide: const BorderSide(color: Colors.blue, width: 2),
                   ),
                 ),
               ),
@@ -125,10 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: Colors.blue,
-                      width: 2,
-                    ),
+                    borderSide: const BorderSide(color: Colors.blue, width: 2),
                   ),
                 ),
               ),
@@ -139,43 +122,43 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: isLoading ? null : () async {
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          setState(() {
+                            isLoading = true;
+                          });
 
-                    setState(() {
-                      isLoading = true;
-                    });
+                          final success = await loginController.login(
+                            phone: phoneController.text.trim(),
+                            password: passwordController.text.trim(),
+                          );
 
-                    final success = await loginController.login(
-                      phone: phoneController.text.trim(),
-                      password: passwordController.text.trim(),
-                    );
+                          if (!context.mounted) return;
 
-                    if (!mounted) return;
+                          setState(() {
+                            isLoading = false;
+                          });
 
-                    setState(() {
-                      isLoading = false;
-                    });
-
-                    if (success) {
-
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const DashboardScreen(),
-                        ),
-                      );
-
-                    } else {
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Invalid Phone or Password"),
-                        ),
-                      );
-
-                    }
-
-                  },
+                          if (success) {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const DashboardScreen(),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  loginController.lastError.isEmpty
+                                      ? 'Invalid phone or password.'
+                                      : loginController.lastError,
+                                ),
+                              ),
+                            );
+                          }
+                        },
 
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
@@ -204,22 +187,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                 ),
               ),
-
-              TextButton(
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
                 onPressed: isLoading
                     ? null
-                    : () async {
-                        final phone = await Navigator.push<String>(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CustomerRegistrationScreen(),
-                          ),
-                        );
-                        if (phone != null && mounted) {
-                          phoneController.text = phone;
-                        }
-                      },
-                child: const Text('New customer? Register / Verify'),
+                    : () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const CustomerOnboardingScreen(),
+                        ),
+                      ),
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('CREATE / ACTIVATE CUSTOMER ACCOUNT'),
               ),
             ],
           ),

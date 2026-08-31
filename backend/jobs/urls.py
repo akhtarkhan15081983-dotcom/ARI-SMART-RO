@@ -16,10 +16,14 @@ from .views import (
     GenerateOTPAPIView,
     VerifyOTPAPIView,
 )
+from .work_planner import WorkCalendarAPIView, WorkRescheduleAPIView, WorkRouteAPIView
 router = DefaultRouter()
 router.register(r"jobs", JobViewSet, basename="jobs")
 
 urlpatterns = [
+    path("work-planner/calendar/", WorkCalendarAPIView.as_view(), name="work-calendar"),
+    path("work-planner/reschedule/", WorkRescheduleAPIView.as_view(), name="work-reschedule"),
+    path("work-planner/route/", WorkRouteAPIView.as_view(), name="work-route"),
     path("jobs/my-jobs/", MyJobsAPIView.as_view(), name="my-jobs"),
     path(
         "jobs/search/",

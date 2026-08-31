@@ -22,6 +22,12 @@ WELCOME_AMOUNT = Decimal("50.00")
 WELCOME_VALIDITY_DAYS = 90
 WELCOME_MAX_BILL_PERCENT = Decimal("40.00")
 
+# Referrer earns 100 points when a verified customer applies the code.
+# 100 points = ₹10 and can cover at most 30% of an eligible bill.
+APP_REFERRAL_POINTS = 100
+APP_REFERRAL_VALUE = Decimal("10.00")
+APP_REFERRAL_MAX_BILL_PERCENT = Decimal("30.00")
+
 
 # ------------------------------------------------------------
 # RENT REFERRAL
@@ -133,6 +139,7 @@ def claim_referral(
     *,
     referred_user,
     code,
+    claim_fingerprint="",
 ):
 
     code = (
@@ -153,6 +160,20 @@ def claim_referral(
         raise ValidationError(
             "Only customer accounts can join "
             "the referral program."
+        )
+
+    if not referred_user.is_verified:
+        raise ValidationError(
+            "Please verify your mobile number before applying a referral code."
+        )
+
+    customer = getattr(referred_user, "customer_profile", None)
+    if customer is not None and customer.jobs.filter(
+        job_type="INSTALLATION",
+        status="COMPLETED",
+    ).exists():
+        raise ValidationError(
+            "Referral code must be applied before installation is completed."
         )
 
     referrer_profile = (
@@ -209,11 +230,36 @@ def claim_referral(
             "a referral attribution."
         )
 
-    return Referral.objects.create(
+    fingerprint = str(claim_fingerprint or "").strip()[:64]
+    risk_reasons = []
+    if fingerprint and Referral.objects.filter(
+        claim_fingerprint=fingerprint,
+    ).exclude(referred_user=referred_user).exists():
+        risk_reasons.append(
+            "DEVICE_USED_FOR_MULTIPLE_REFERRAL_ACCOUNTS"
+        )
+
+    referral = Referral.objects.create(
         referrer=referrer_profile.user,
         referred_user=referred_user,
         referral_code=code,
+        claim_fingerprint=fingerprint,
+        risk_reasons=risk_reasons,
+        status="REVIEW" if risk_reasons else "PENDING",
     )
+
+    if referral.status == "PENDING":
+        _create_reward(
+            owner=referral.referrer,
+            reward_type="APP_REFERRAL_POINTS",
+            amount=APP_REFERRAL_VALUE,
+            categories=[CATEGORY_PURCHASE, CATEGORY_PARTS, CATEGORY_SERVICE],
+            referral=referral,
+            max_bill_percent=APP_REFERRAL_MAX_BILL_PERCENT,
+            source_reference=f"APP_REFERRAL:{referral.id}:100_POINTS",
+        )
+
+    return referral
 
 
 # ============================================================
@@ -511,14 +557,6 @@ def qualify_referral(
     )
 
     # ========================================================
-    # DUPLICATE REWARD PROTECTION
-    # ========================================================
-
-    if referral.rewards.exists():
-
-        return referral
-
-    # ========================================================
     # DETERMINE REFERRER TYPE
     # ========================================================
 
@@ -675,6 +713,28 @@ def qualify_referral(
 
         pass
 
+    return referral
+
+
+@transaction.atomic
+def approve_referral_review(referral_id):
+    """Approve only an exception; normal referrals never need manual approval."""
+    referral = Referral.objects.select_for_update().get(pk=referral_id)
+    if referral.status != "REVIEW":
+        raise ValidationError("Only referrals under review can be approved.")
+    referral.status = "PENDING"
+    referral.rejection_reason = ""
+    referral.save(update_fields=["status", "rejection_reason", "updated_at"])
+    if not referral.rewards.filter(reward_type="APP_REFERRAL_POINTS").exists():
+        _create_reward(
+            owner=referral.referrer,
+            reward_type="APP_REFERRAL_POINTS",
+            amount=APP_REFERRAL_VALUE,
+            categories=[CATEGORY_PURCHASE, CATEGORY_PARTS, CATEGORY_SERVICE],
+            referral=referral,
+            max_bill_percent=APP_REFERRAL_MAX_BILL_PERCENT,
+            source_reference=f"APP_REFERRAL:{referral.id}:100_POINTS",
+        )
     return referral
 
 

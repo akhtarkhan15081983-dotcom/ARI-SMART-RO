@@ -23,6 +23,7 @@ class Referral(models.Model):
         ("QUALIFIED", "Qualified"),
         ("REJECTED", "Rejected"),
         ("REVERSED", "Reversed"),
+        ("REVIEW", "Review Required"),
     ]
 
     CUSTOMER_TYPE_CHOICES = [
@@ -65,6 +66,8 @@ class Referral(models.Model):
     )
     qualified_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(blank=True, default="")
+    claim_fingerprint = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    risk_reasons = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -84,6 +87,7 @@ class Referral(models.Model):
 class WalletReward(models.Model):
     REWARD_TYPES = [
         ("APP_WELCOME", "App Welcome Reward"),
+        ("APP_REFERRAL_POINTS", "App Referral — 100 Points"),
         ("RENT_REFERRAL", "Rent to Rent Referral"),
         ("RENT_TO_PURCHASE", "Rent to Purchase Referral"),
         ("PURCHASE_TO_RENT", "Purchase to Rent Referral"),

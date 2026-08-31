@@ -281,3 +281,34 @@ class CustomerRentPayment(models.Model):
             f"{self.payment_date}"
         )
 
+
+class CustomerLocationLog(models.Model):
+    SOURCE_CHOICES = [
+        ("WORK_CALENDAR", "Work Calendar"),
+        ("WORK_ROUTE", "Work Route"),
+    ]
+
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name="location_logs",
+    )
+    captured_by = models.ForeignKey(
+        "employees.EmployeeProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_locations_captured",
+    )
+    latitude = models.DecimalField(max_digits=10, decimal_places=7)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7)
+    accuracy = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="WORK_CALENDAR")
+    captured_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-captured_at"]
+
+    def __str__(self):
+        return f"{self.customer.customer_id} - {self.captured_at}"
+

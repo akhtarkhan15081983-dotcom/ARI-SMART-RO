@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Customer
+from .models import Customer, CustomerLocationLog
 
 
 @admin.register(Customer)
@@ -37,3 +37,41 @@ class CustomerAdmin(admin.ModelAdmin):
     autocomplete_fields = (
         "assigned_engineer",
     )
+
+
+@admin.register(CustomerLocationLog)
+class CustomerLocationLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "customer",
+        "captured_by",
+        "latitude",
+        "longitude",
+        "accuracy",
+        "source",
+        "captured_at",
+    )
+    search_fields = (
+        "customer__customer_id",
+        "customer__name",
+        "customer__phone",
+        "captured_by__employee_id",
+    )
+    list_filter = ("source", "captured_at")
+    readonly_fields = (
+        "customer",
+        "captured_by",
+        "latitude",
+        "longitude",
+        "accuracy",
+        "source",
+        "captured_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

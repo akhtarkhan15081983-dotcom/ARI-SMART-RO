@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/customer_model.dart';
 import '../../services/customer_service.dart';
+import '../../services/work_planner_service.dart';
 import '../installation/installation_screen.dart';
 
 class AssignedCustomersScreen extends StatefulWidget {
@@ -13,9 +15,9 @@ class AssignedCustomersScreen extends StatefulWidget {
       _AssignedCustomersScreenState();
 }
 
-class _AssignedCustomersScreenState
-    extends State<AssignedCustomersScreen> {
+class _AssignedCustomersScreenState extends State<AssignedCustomersScreen> {
   final CustomerService customerService = CustomerService();
+  final WorkPlannerService _workPlannerService = WorkPlannerService();
 
   late Future<List<CustomerModel>> _customersFuture;
 
@@ -49,32 +51,20 @@ class _AssignedCustomersScreenState
     final cleanPhone = phone.trim();
 
     if (cleanPhone.isEmpty) {
-      _showMessage(
-        'Customer phone number is not available.',
-        Colors.red,
-      );
+      _showMessage('Customer phone number is not available.', Colors.red);
       return;
     }
 
-    final Uri uri = Uri(
-      scheme: 'tel',
-      path: cleanPhone,
-    );
+    final Uri uri = Uri(scheme: 'tel', path: cleanPhone);
 
     try {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri);
       } else {
-        _showMessage(
-          'Unable to open phone dialer.',
-          Colors.red,
-        );
+        _showMessage('Unable to open phone dialer.', Colors.red);
       }
     } catch (_) {
-      _showMessage(
-        'Unable to make phone call.',
-        Colors.red,
-      );
+      _showMessage('Unable to make phone call.', Colors.red);
     }
   }
 
@@ -82,24 +72,15 @@ class _AssignedCustomersScreenState
   // OPEN GOOGLE MAPS
   // ============================================================
 
-  Future<void> _openGoogleMaps(
-    double? latitude,
-    double? longitude,
-  ) async {
+  Future<void> _openGoogleMaps(double? latitude, double? longitude) async {
     // Customer location is not available.
     if (latitude == null || longitude == null) {
-      _showMessage(
-        'Customer location is not available.',
-        Colors.orange,
-      );
+      _showMessage('Customer location is not available.', Colors.orange);
       return;
     }
 
     if (latitude == 0 || longitude == 0) {
-      _showMessage(
-        'Customer location is not available.',
-        Colors.orange,
-      );
+      _showMessage('Customer location is not available.', Colors.orange);
       return;
     }
 
@@ -109,10 +90,7 @@ class _AssignedCustomersScreenState
 
     try {
       if (await canLaunchUrl(navigationUri)) {
-        await launchUrl(
-          navigationUri,
-          mode: LaunchMode.externalApplication,
-        );
+        await launchUrl(navigationUri, mode: LaunchMode.externalApplication);
         return;
       }
 
@@ -122,15 +100,65 @@ class _AssignedCustomersScreenState
         '&query=$latitude,$longitude',
       );
 
-      await launchUrl(
-        webUri,
-        mode: LaunchMode.externalApplication,
-      );
+      await launchUrl(webUri, mode: LaunchMode.externalApplication);
     } catch (_) {
-      _showMessage(
-        'Unable to open Google Maps.',
-        Colors.red,
+      _showMessage('Unable to open Google Maps.', Colors.red);
+    }
+  }
+
+  Future<void> _captureCustomerLocation(CustomerModel customer) async {
+    if (customer.latitude != 0 && customer.longitude != 0) return;
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      _showMessage('Please enable phone location service.', Colors.orange);
+      return;
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      _showMessage('Location permission is required.', Colors.red);
+      return;
+    }
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 20),
+      ),
+    );
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save customer location?'),
+        content: Text(
+          '${customer.customerName}\n\nAccuracy: ±${position.accuracy.toStringAsFixed(1)} metres\nConfirm that you are at the customer site.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _workPlannerService.saveCustomerLocation(
+        customerId: customer.id,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracy: position.accuracy,
       );
+      await _refreshCustomers();
+      _showMessage('Customer location saved successfully.', Colors.green);
+    } catch (e) {
+      _showMessage(e.toString().replaceFirst('Exception: ', ''), Colors.red);
     }
   }
 
@@ -138,18 +166,12 @@ class _AssignedCustomersScreenState
   // MESSAGE
   // ============================================================
 
-  void _showMessage(
-    String message,
-    Color color,
-  ) {
+  void _showMessage(String message, Color color) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
 
   // ============================================================
@@ -160,9 +182,7 @@ class _AssignedCustomersScreenState
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
       elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
         padding: const EdgeInsets.all(15),
         child: Column(
@@ -171,13 +191,9 @@ class _AssignedCustomersScreenState
             // ----------------------------------------------------
             // CUSTOMER NAME
             // ----------------------------------------------------
-
             Text(
               customer.customerName,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 8),
@@ -185,7 +201,6 @@ class _AssignedCustomersScreenState
             // ----------------------------------------------------
             // CARD NUMBER
             // ----------------------------------------------------
-
             Text(
               'Card No : ${customer.cardNumber}',
               style: const TextStyle(
@@ -199,20 +214,14 @@ class _AssignedCustomersScreenState
             // ----------------------------------------------------
             // PHONE
             // ----------------------------------------------------
-
             Row(
               children: [
-                const Icon(
-                  Icons.phone,
-                  color: Colors.green,
-                ),
+                const Icon(Icons.phone, color: Colors.green),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     customer.phone,
-                    style: const TextStyle(
-                      fontSize: 15,
-                    ),
+                    style: const TextStyle(fontSize: 15),
                   ),
                 ),
               ],
@@ -223,21 +232,15 @@ class _AssignedCustomersScreenState
             // ----------------------------------------------------
             // ADDRESS
             // ----------------------------------------------------
-
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.location_on,
-                  color: Colors.red,
-                ),
+                const Icon(Icons.location_on, color: Colors.red),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     customer.address,
-                    style: const TextStyle(
-                      fontSize: 15,
-                    ),
+                    style: const TextStyle(fontSize: 15),
                   ),
                 ),
               ],
@@ -248,7 +251,6 @@ class _AssignedCustomersScreenState
             // ----------------------------------------------------
             // CALL + NAVIGATE
             // ----------------------------------------------------
-
             Row(
               children: [
                 Expanded(
@@ -266,10 +268,7 @@ class _AssignedCustomersScreenState
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      _openGoogleMaps(
-                        customer.latitude,
-                        customer.longitude,
-                      );
+                      _openGoogleMaps(customer.latitude, customer.longitude);
                     },
                     icon: const Icon(Icons.navigation),
                     label: const Text('Navigate'),
@@ -280,10 +279,30 @@ class _AssignedCustomersScreenState
 
             const SizedBox(height: 12),
 
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: customer.latitude != 0 && customer.longitude != 0
+                    ? null
+                    : () => _captureCustomerLocation(customer),
+                icon: Icon(
+                  customer.latitude != 0 && customer.longitude != 0
+                      ? Icons.location_on
+                      : Icons.add_location_alt_outlined,
+                ),
+                label: Text(
+                  customer.latitude != 0 && customer.longitude != 0
+                      ? 'Location Saved'
+                      : 'Save Customer Location',
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
             // ----------------------------------------------------
             // INSTALLATION
             // ----------------------------------------------------
-
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -293,9 +312,7 @@ class _AssignedCustomersScreenState
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => InstallationScreen(
-                        customer: customer,
-                      ),
+                      builder: (_) => InstallationScreen(customer: customer),
                     ),
                   );
                 },
@@ -315,9 +332,7 @@ class _AssignedCustomersScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Assigned Customers',
-        ),
+        title: const Text('Assigned Customers'),
         centerTitle: true,
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -330,9 +345,7 @@ class _AssignedCustomersScreenState
                 _loadCustomers();
               });
             },
-            icon: const Icon(
-              Icons.refresh,
-            ),
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
@@ -340,7 +353,6 @@ class _AssignedCustomersScreenState
       // --------------------------------------------------------
       // ASSIGNED CUSTOMER LIST
       // --------------------------------------------------------
-
       body: FutureBuilder<List<CustomerModel>>(
         future: _customersFuture,
 
@@ -349,11 +361,8 @@ class _AssignedCustomersScreenState
           // LOADING
           // ----------------------------------------------------
 
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
           }
 
           // ----------------------------------------------------
@@ -365,8 +374,7 @@ class _AssignedCustomersScreenState
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
-                  mainAxisAlignment:
-                      MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(
                       Icons.error_outline,
@@ -390,9 +398,7 @@ class _AssignedCustomersScreenState
                     Text(
                       snapshot.error.toString(),
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(color: Colors.grey),
                     ),
 
                     const SizedBox(height: 20),
@@ -426,16 +432,11 @@ class _AssignedCustomersScreenState
             return RefreshIndicator(
               onRefresh: _refreshCustomers,
               child: ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
                   SizedBox(height: 180),
 
-                  Icon(
-                    Icons.people_outline,
-                    size: 70,
-                    color: Colors.grey,
-                  ),
+                  Icon(Icons.people_outline, size: 70, color: Colors.grey),
 
                   SizedBox(height: 15),
 
@@ -455,9 +456,7 @@ class _AssignedCustomersScreenState
                     child: Text(
                       'Customers assigned to you will appear here.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey,
-                      ),
+                      style: TextStyle(color: Colors.grey),
                     ),
                   ),
                 ],
@@ -472,8 +471,7 @@ class _AssignedCustomersScreenState
           return RefreshIndicator(
             onRefresh: _refreshCustomers,
             child: ListView.builder(
-              physics:
-                  const AlwaysScrollableScrollPhysics(),
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(15),
               itemCount: customers.length,
               itemBuilder: (context, index) {

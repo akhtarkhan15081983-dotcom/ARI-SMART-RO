@@ -15,7 +15,7 @@ class ReferralSerializer(serializers.ModelSerializer):
         fields = [
             "id", "referral_code", "referrer_name", "referred_name",
             "referred_type", "status", "qualifying_amount",
-            "qualified_at", "created_at",
+            "qualified_at", "risk_reasons", "created_at",
         ]
         read_only_fields = fields
 
