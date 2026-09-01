@@ -67,7 +67,7 @@ class AndyService {
       headers: await ApiService.authHeaders(),
       body: jsonEncode({
         'message': message,
-        if (conversationId != null) 'conversation_id': conversationId,
+        'conversation_id': ?conversationId,
       }),
     );
     final data = _decode(response);
@@ -95,7 +95,9 @@ class AndyService {
     );
     final data = _decode(response);
     if (response.statusCode != 200) {
-      throw Exception(data['message']?.toString() ?? 'Unable to complete ANDY action');
+      throw Exception(
+        data['message']?.toString() ?? 'Unable to complete ANDY action',
+      );
     }
     return AndyActionResult(
       success: data['success'] == true,
@@ -118,12 +120,15 @@ class AndyService {
     final response = await http.Response.fromStream(streamed);
     final data = _decode(response);
     if (response.statusCode != 200) {
-      throw Exception(data['message']?.toString() ?? 'Voice recognition failed');
+      throw Exception(
+        data['message']?.toString() ?? 'Voice recognition failed',
+      );
     }
     return AndyTranscription(
       text: data['text']?.toString() ?? '',
       language: data['language']?.toString(),
-      languageProbability: (data['language_probability'] as num?)?.toDouble() ?? 0,
+      languageProbability:
+          (data['language_probability'] as num?)?.toDouble() ?? 0,
       avatarState: data['avatar_state']?.toString(),
     );
   }
@@ -172,7 +177,11 @@ class AndyService {
     throw Exception('ANDY voice generation timed out');
   }
 
-  Future<void> feedback(int messageId, int rating, {String correction = ''}) async {
+  Future<void> feedback(
+    int messageId,
+    int rating, {
+    String correction = '',
+  }) async {
     final response = await http.post(
       Uri.parse('${ApiService.baseUrl}/andy/feedback/$messageId/'),
       headers: await ApiService.authHeaders(),

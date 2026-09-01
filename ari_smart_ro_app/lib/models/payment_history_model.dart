@@ -44,86 +44,43 @@ class RentPaymentRecord {
     required this.createdAt,
   });
 
-  factory RentPaymentRecord.fromJson(
-    Map<String, dynamic> json,
-  ) {
-    final customer =
-        (json["customer"] ?? {})
-            as Map<String, dynamic>;
+  factory RentPaymentRecord.fromJson(Map<String, dynamic> json) {
+    final customer = (json["customer"] ?? {}) as Map<String, dynamic>;
 
     return RentPaymentRecord(
-      id: _toInt(
-        json["id"],
-      ),
+      id: _toInt(json["id"]),
 
-      customerId: _toInt(
-        customer["id"],
-      ),
+      customerId: _toInt(customer["id"]),
 
-      customerCode:
-          customer["customer_id"]
-                  ?.toString() ??
-              "",
+      customerCode: customer["customer_id"]?.toString() ?? "",
 
-      customerName:
-          customer["name"]
-                  ?.toString() ??
-              "",
+      customerName: customer["name"]?.toString() ?? "",
 
-      phone:
-          customer["phone"]
-                  ?.toString() ??
-              "",
+      phone: customer["phone"]?.toString() ?? "",
 
       // ========================================================
       // CURRENT CARD NUMBER
       // ========================================================
-
-      cardNumber:
-          customer["card_number"]
-                  ?.toString() ??
-              "",
+      cardNumber: customer["card_number"]?.toString() ?? "",
 
       // ========================================================
       // OLD CARD NUMBER
       // ========================================================
+      oldCardNumber: customer["old_card_number"]?.toString() ?? "",
 
-      oldCardNumber:
-          customer["old_card_number"]
-                  ?.toString() ??
-              "",
+      rentMonth: json["rent_month"]?.toString(),
 
-      rentMonth:
-          json["rent_month"]
-              ?.toString(),
+      amount: _toDouble(json["amount"]),
 
-      amount:
-          _toDouble(
-        json["amount"],
-      ),
+      paymentDate: json["payment_date"]?.toString(),
 
-      paymentDate:
-          json["payment_date"]
-              ?.toString(),
+      paymentMode: json["payment_mode"]?.toString() ?? "OTHER",
 
-      paymentMode:
-          json["payment_mode"]
-                  ?.toString() ??
-              "OTHER",
+      remarks: json["remarks"]?.toString() ?? "",
 
-      remarks:
-          json["remarks"]
-                  ?.toString() ??
-              "",
+      collectedBy: json["collected_by"]?.toString() ?? "",
 
-      collectedBy:
-          json["collected_by"]
-                  ?.toString() ??
-              "",
-
-      createdAt:
-          json["created_at"]
-              ?.toString(),
+      createdAt: json["created_at"]?.toString(),
     );
   }
 
@@ -131,33 +88,23 @@ class RentPaymentRecord {
   // INT CONVERTER
   // ============================================================
 
-  static int _toInt(
-    dynamic value,
-  ) {
+  static int _toInt(dynamic value) {
     if (value is int) {
       return value;
     }
 
-    return int.tryParse(
-          value?.toString() ?? "",
-        ) ??
-        0;
+    return int.tryParse(value?.toString() ?? "") ?? 0;
   }
 
   // ============================================================
   // DOUBLE CONVERTER
   // ============================================================
 
-  static double _toDouble(
-    dynamic value,
-  ) {
+  static double _toDouble(dynamic value) {
     if (value is num) {
       return value.toDouble();
     }
 
-    return double.tryParse(
-          value?.toString() ?? "",
-        ) ??
-        0.0;
+    return double.tryParse(value?.toString() ?? "") ?? 0.0;
   }
 }

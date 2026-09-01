@@ -22,6 +22,7 @@ from inventory.models import EngineerBagItem, InventoryItem, PartRequest
 from jobs.models import Job, JobPartUsed
 from purchase.models import PurchaseItem
 from service.models import Service, ServicePart
+from employees.models import EmployeeProfile, Holiday, LeaveRequest, PayrollRecord
 
 from .periods import resolve_period
 
@@ -666,6 +667,8 @@ def build_reports(period):
     operations = build_operations_report(period)
     customers = build_customer_report(period)
     management = build_management_report(period, parts, rent, attendance, operations)
+    hrms = build_hrms_report(period)
+    ledgers = build_operational_ledgers(period)
 
     return {
         "period": period.as_dict(),
@@ -683,6 +686,179 @@ def build_reports(period):
         "operations": operations,
         "customers": customers,
         "management": management,
+        "hrms": hrms,
+        "ledgers": ledgers,
+    }
+
+
+def build_operational_ledgers(period):
+    def employee_name(employee):
+        return employee.user.get_full_name() or employee.user.phone
+
+    jobs = [{
+        "job_id": row.job_id,
+        "customer_code": row.customer.customer_id,
+        "customer_name": row.customer.name,
+        "customer_phone": row.customer.phone,
+        "engineer_id": row.engineer.employee_id,
+        "engineer_name": employee_name(row.engineer),
+        "asset_id": row.ro_asset.asset_id,
+        "job_type": row.get_job_type_display(),
+        "priority": row.get_priority_display(),
+        "scheduled_date": row.scheduled_date,
+        "status": row.get_status_display(),
+        "assigned_at": row.assigned_at,
+        "completed_at": row.completed_at,
+        "remarks": row.remarks,
+    } for row in Job.objects.filter(
+        **_datetime_filter(period, "scheduled_date")
+    ).select_related("customer", "engineer__user", "ro_asset").order_by("scheduled_date")]
+
+    complaints = [{
+        "complaint_id": row.complaint_id,
+        "customer_code": row.customer.customer_id,
+        "customer_name": row.customer.name,
+        "customer_phone": row.customer.phone,
+        "engineer_id": row.engineer.employee_id if row.engineer else "",
+        "engineer_name": employee_name(row.engineer) if row.engineer else "Unassigned",
+        "complaint_type": row.get_complaint_type_display(),
+        "priority": row.get_priority_display(),
+        "complaint_date": row.complaint_date,
+        "scheduled_date": row.scheduled_date,
+        "resolved_date": row.resolved_date,
+        "status": row.get_status_display(),
+        "description": row.description,
+        "resolution": row.resolution,
+        "engineer_remarks": row.engineer_remarks,
+    } for row in Complaint.objects.filter(
+        **_datetime_filter(period, "complaint_date")
+    ).select_related("customer", "engineer__user").order_by("complaint_date")]
+
+    services = [{
+        "service_id": row.service_id,
+        "customer_code": row.customer.customer_id,
+        "customer_name": row.customer.name,
+        "customer_phone": row.customer.phone,
+        "engineer_id": row.engineer.employee_id,
+        "engineer_name": employee_name(row.engineer),
+        "asset_id": row.ro_asset.asset_id,
+        "service_type": row.get_service_type_display(),
+        "scheduled_date": row.scheduled_date,
+        "completed_date": row.completed_date,
+        "input_tds": row.input_tds,
+        "output_tds": row.output_tds,
+        "next_service_date": row.next_service_date,
+        "status": row.get_status_display(),
+        "remarks": row.remarks,
+    } for row in Service.objects.filter(
+        **_datetime_filter(period, "scheduled_date")
+    ).select_related("customer", "engineer__user", "ro_asset").order_by("scheduled_date")]
+
+    installations = [{
+        "installation_id": row.installation_id,
+        "customer_code": row.customer.customer_id,
+        "customer_name": row.customer.name,
+        "customer_phone": row.customer.phone,
+        "engineer_id": row.engineer.employee_id,
+        "engineer_name": employee_name(row.engineer),
+        "asset_id": row.ro_asset.asset_id,
+        "business_type": row.get_business_type_display(),
+        "scheduled_date": row.scheduled_date,
+        "completed_date": row.completed_date,
+        "input_tds": row.input_tds,
+        "output_tds": row.output_tds,
+        "referral_name": row.referral_name,
+        "status": row.get_status_display(),
+        "remarks": row.remarks,
+    } for row in Installation.objects.filter(
+        **_datetime_filter(period, "scheduled_date")
+    ).select_related("customer", "engineer__user", "ro_asset").order_by("scheduled_date")]
+
+    return {
+        "jobs": jobs,
+        "complaints": complaints,
+        "services": services,
+        "installations": installations,
+    }
+
+
+def build_hrms_report(period):
+    employees = []
+    for employee in EmployeeProfile.objects.select_related("user").order_by("employee_id"):
+        employees.append({
+            "employee_id": employee.employee_id,
+            "employee_name": employee.user.get_full_name() or employee.user.phone,
+            "phone": employee.user.phone,
+            "designation": employee.get_designation_display(),
+            "joining_date": employee.joining_date,
+            "monthly_salary": employee.salary,
+            "active": employee.is_active,
+            "face_enrolled": bool(employee.face_enrolled_at),
+            "attendance_device_bound": bool(employee.attendance_device_id),
+        })
+
+    leaves = [{
+        "employee_id": row.employee.employee_id,
+        "employee_name": row.employee.user.get_full_name() or row.employee.user.phone,
+        "leave_type": row.get_leave_type_display(),
+        "start_date": row.start_date,
+        "end_date": row.end_date,
+        "status": row.status,
+        "paid": row.is_paid,
+        "reason": row.reason,
+        "review_note": row.review_note,
+        "reviewed_by": (row.reviewed_by.get_full_name() or row.reviewed_by.phone) if row.reviewed_by else "",
+    } for row in LeaveRequest.objects.filter(
+        start_date__lte=period.end,
+        end_date__gte=period.start,
+    ).select_related("employee__user", "reviewed_by")]
+
+    payroll = [{
+        "employee_id": row.employee.employee_id,
+        "employee_name": row.employee.user.get_full_name() or row.employee.user.phone,
+        "payroll_month": row.payroll_month,
+        "base_salary": row.base_salary,
+        "payable_base": row.payable_base,
+        "late_days": row.late_days,
+        "late_penalty": row.late_penalty,
+        "half_day_deduction": row.half_day_deduction,
+        "absence_deduction": row.absence_deduction,
+        "overtime_hours": row.overtime_hours,
+        "overtime_amount": row.overtime_amount,
+        "rent_incentive": row.rent_incentive,
+        "sale_incentive": row.sale_incentive,
+        "other_earnings": row.other_earnings,
+        "other_deductions": row.other_deductions,
+        "net_salary": row.net_salary,
+        "status": row.status,
+        "paid_at": row.paid_at,
+    } for row in PayrollRecord.objects.filter(
+        payroll_month__gte=period.start.replace(day=1),
+        payroll_month__lte=period.end,
+    ).select_related("employee__user")]
+
+    holidays = [{
+        "date": row.date,
+        "holiday": row.name,
+        "description": row.description,
+        "paid": row.is_paid,
+        "declared_by": row.declared_by.get_full_name() or row.declared_by.phone,
+    } for row in Holiday.objects.filter(date__range=(period.start, period.end)).select_related("declared_by")]
+
+    return {
+        "summary": {
+            "active_employees": sum(1 for row in employees if row["active"]),
+            "pending_leaves": sum(1 for row in leaves if row["status"] == "PENDING"),
+            "approved_leaves": sum(1 for row in leaves if row["status"] == "APPROVED"),
+            "payroll_net": _money(sum((_decimal(row["net_salary"]) for row in payroll), ZERO)),
+            "overtime_amount": _money(sum((_decimal(row["overtime_amount"]) for row in payroll), ZERO)),
+            "incentives": _money(sum((_decimal(row["rent_incentive"]) + _decimal(row["sale_incentive"]) for row in payroll), ZERO)),
+            "holidays": len(holidays),
+        },
+        "employees": employees,
+        "leaves": leaves,
+        "payroll": payroll,
+        "holidays": holidays,
     }
 
 
@@ -709,6 +885,10 @@ def _excel_value(value, field=""):
         "amount", "payment_amount", "rent_collected", "rent_outstanding",
         "expected", "paid", "outstanding", "purchase_value", "working_hours",
         "current", "31_60_days", "61_90_days", "over_90_days",
+        "monthly_salary", "base_salary", "payable_base", "late_penalty",
+        "half_day_deduction", "absence_deduction", "overtime_amount",
+        "rent_incentive", "sale_incentive", "other_earnings",
+        "other_deductions", "net_salary", "payroll_net", "incentives",
     }
     if field in numeric_fields and isinstance(value, str):
         try:
@@ -759,6 +939,18 @@ def build_workbook(data):
     customer_parts_sheet = workbook.create_sheet("Customer Parts")
     _append_rows(customer_parts_sheet, data["customers"]["part_details"])
 
+    job_register_sheet = workbook.create_sheet("Job Register")
+    _append_rows(job_register_sheet, data["ledgers"]["jobs"])
+
+    complaint_register_sheet = workbook.create_sheet("Complaint Register")
+    _append_rows(complaint_register_sheet, data["ledgers"]["complaints"])
+
+    service_register_sheet = workbook.create_sheet("Service Register")
+    _append_rows(service_register_sheet, data["ledgers"]["services"])
+
+    installation_register_sheet = workbook.create_sheet("Installation Register")
+    _append_rows(installation_register_sheet, data["ledgers"]["installations"])
+
     employee_productivity_sheet = workbook.create_sheet("Employee Productivity")
     _append_rows(employee_productivity_sheet, data["management"]["employee_productivity"])
 
@@ -767,6 +959,43 @@ def build_workbook(data):
 
     insight_sheet = workbook.create_sheet("Management Actions")
     _append_rows(insight_sheet, data["management"]["insights"])
+
+    hr_summary_sheet = workbook.create_sheet("HR Executive Summary")
+    hr_summary_sheet.append(["Metric", "Value"])
+    for key, value in data["hrms"]["summary"].items():
+        hr_summary_sheet.append([_humanize_header(key), _excel_value(value, key)])
+
+    employee_master_sheet = workbook.create_sheet("HR Employee Master")
+    _append_rows(employee_master_sheet, data["hrms"]["employees"])
+
+    leave_sheet = workbook.create_sheet("HR Leave Register")
+    _append_rows(leave_sheet, data["hrms"]["leaves"])
+
+    payroll_sheet = workbook.create_sheet("HR Payroll Register")
+    _append_rows(payroll_sheet, data["hrms"]["payroll"])
+
+    holiday_sheet = workbook.create_sheet("HR Holiday Calendar")
+    _append_rows(holiday_sheet, data["hrms"]["holidays"])
+
+    index_sheet = workbook.create_sheet("Workbook Index", 1)
+    index_sheet.append(["Sheet", "Purpose", "Records"])
+    index_rows = [
+        ("Executive Dashboard", "Leadership KPIs, trends and management actions", 1),
+        ("Customer Summary", "Customer-wise business activity and balances", len(data["customers"]["by_customer"])),
+        ("Customer Payments", "Customer-wise payment ledger", len(data["customers"]["payment_details"])),
+        ("Customer Parts", "Customer-wise parts and service usage", len(data["customers"]["part_details"])),
+        ("Job Register", "Complete customer and engineer work ledger", len(data["ledgers"]["jobs"])),
+        ("Complaint Register", "Complaint lifecycle, ownership and resolution", len(data["ledgers"]["complaints"])),
+        ("Service Register", "Service history, TDS readings and next service", len(data["ledgers"]["services"])),
+        ("Installation Register", "Rental, sale and AMC installation history", len(data["ledgers"]["installations"])),
+        ("Attendance", "Employee attendance and working-hours summary", len(data["attendance"]["by_employee"])),
+        ("HR Employee Master", "Safe employee master without Aadhaar/PAN", len(data["hrms"]["employees"])),
+        ("HR Leave Register", "Leave requests, approvals and review notes", len(data["hrms"]["leaves"])),
+        ("HR Payroll Register", "Salary, penalties, overtime and incentives", len(data["hrms"]["payroll"])),
+        ("HR Holiday Calendar", "Declared paid office holidays", len(data["hrms"]["holidays"])),
+    ]
+    for row in index_rows:
+        index_sheet.append(row)
 
     navy = "123A63"
     blue = "0878C9"
@@ -875,7 +1104,7 @@ def build_workbook(data):
             cell.alignment = Alignment(vertical="center")
         for column_index in range(1, worksheet.max_column + 1):
             heading = str(worksheet.cell(header_row, column_index).value or "").lower()
-            if any(word in heading for word in ["amount", "value", "expected", "paid", "outstanding", "rent collected"]):
+            if any(word in heading for word in ["amount", "value", "expected", "paid", "outstanding", "rent collected", "salary", "deduction", "incentive", "payroll"]):
                 for row_index in range(header_row + 1, worksheet.max_row + 1):
                     worksheet.cell(row_index, column_index).number_format = '₹#,##0.00;[Red](₹#,##0.00);-'
             elif any(word in heading for word in ["quantity", "payments", "jobs", "services", "complaints", "parts"]):

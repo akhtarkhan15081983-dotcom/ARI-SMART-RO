@@ -79,136 +79,84 @@ class ComplaintModel {
     required this.updatedAt,
   });
 
-  factory ComplaintModel.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory ComplaintModel.fromJson(Map<String, dynamic> json) {
     return ComplaintModel(
       id: _toInt(json["id"]),
 
-      complaintId:
-          json["complaint_id"]?.toString() ?? "",
+      complaintId: json["complaint_id"]?.toString() ?? "",
 
       // ========================================================
       // CUSTOMER
       // ========================================================
+      customer: _toNullableInt(json["customer"]),
 
-      customer: _toNullableInt(
-        json["customer"],
-      ),
+      customerName: json["customer_name"]?.toString() ?? "",
 
-      customerName:
-          json["customer_name"]?.toString() ?? "",
+      customerIdDisplay: json["customer_id_display"]?.toString() ?? "",
 
-      customerIdDisplay:
-          json["customer_id_display"]
-                  ?.toString() ??
-              "",
+      customerPhone: json["customer_phone"]?.toString() ?? "",
 
-      customerPhone:
-          json["customer_phone"]?.toString() ?? "",
+      currentCardNumber: json["current_card_number"]?.toString() ?? "",
 
-      currentCardNumber:
-          json["current_card_number"]
-                  ?.toString() ??
-              "",
-
-      oldCardNumber:
-          json["old_card_number"]
-                  ?.toString() ??
-              "",
+      oldCardNumber: json["old_card_number"]?.toString() ?? "",
 
       // ========================================================
       // ENGINEER
       // ========================================================
+      engineer: _toNullableInt(json["engineer"]),
 
-      engineer: _toNullableInt(
-        json["engineer"],
-      ),
+      engineerName: json["engineer_name"]?.toString() ?? "",
 
-      engineerName:
-          json["engineer_name"]?.toString() ?? "",
-
-      engineerIdDisplay:
-          json["engineer_id_display"]
-                  ?.toString() ??
-              "",
+      engineerIdDisplay: json["engineer_id_display"]?.toString() ?? "",
 
       // ========================================================
       // COMPLAINT
       // ========================================================
+      complaintType: json["complaint_type"]?.toString() ?? "",
 
-      complaintType:
-          json["complaint_type"]?.toString() ?? "",
+      description: json["description"]?.toString() ?? "",
 
-      description:
-          json["description"]?.toString() ?? "",
+      priority: json["priority"]?.toString() ?? "NORMAL",
 
-      priority:
-          json["priority"]?.toString() ?? "NORMAL",
-
-      status:
-          json["status"]?.toString() ?? "NEW",
+      status: json["status"]?.toString() ?? "NEW",
 
       // ========================================================
       // DATES
       // ========================================================
+      complaintDate: json["complaint_date"]?.toString(),
 
-      complaintDate:
-          json["complaint_date"]?.toString(),
+      scheduledDate: json["scheduled_date"]?.toString(),
 
-      scheduledDate:
-          json["scheduled_date"]?.toString(),
-
-      resolvedDate:
-          json["resolved_date"]?.toString(),
+      resolvedDate: json["resolved_date"]?.toString(),
 
       // ========================================================
       // WORK
       // ========================================================
+      engineerRemarks: json["engineer_remarks"]?.toString() ?? "",
 
-      engineerRemarks:
-          json["engineer_remarks"]?.toString() ?? "",
-
-      resolution:
-          json["resolution"]?.toString() ?? "",
+      resolution: json["resolution"]?.toString() ?? "",
 
       // ========================================================
       // LOCATION
       // ========================================================
+      latitude: _toNullableDouble(json["latitude"]),
 
-      latitude:
-          _toNullableDouble(
-        json["latitude"],
-      ),
-
-      longitude:
-          _toNullableDouble(
-        json["longitude"],
-      ),
+      longitude: _toNullableDouble(json["longitude"]),
 
       // ========================================================
       // SERVICE
       // ========================================================
-
-      linkedService:
-          _toNullableInt(
-        json["linked_service"],
-      ),
+      linkedService: _toNullableInt(json["linked_service"]),
 
       linkedServiceIdDisplay:
-          json["linked_service_id_display"]
-                  ?.toString() ??
-              "",
+          json["linked_service_id_display"]?.toString() ?? "",
 
       // ========================================================
       // SYSTEM
       // ========================================================
+      createdAt: json["created_at"]?.toString(),
 
-      createdAt:
-          json["created_at"]?.toString(),
-
-      updatedAt:
-          json["updated_at"]?.toString(),
+      updatedAt: json["updated_at"]?.toString(),
     );
   }
 
@@ -216,22 +164,15 @@ class ComplaintModel {
   // HELPERS
   // ============================================================
 
-  static int _toInt(
-    dynamic value,
-  ) {
+  static int _toInt(dynamic value) {
     if (value is int) {
       return value;
     }
 
-    return int.tryParse(
-          value?.toString() ?? "",
-        ) ??
-        0;
+    return int.tryParse(value?.toString() ?? "") ?? 0;
   }
 
-  static int? _toNullableInt(
-    dynamic value,
-  ) {
+  static int? _toNullableInt(dynamic value) {
     if (value == null) {
       return null;
     }
@@ -240,14 +181,10 @@ class ComplaintModel {
       return value;
     }
 
-    return int.tryParse(
-      value.toString(),
-    );
+    return int.tryParse(value.toString());
   }
 
-  static double? _toNullableDouble(
-    dynamic value,
-  ) {
+  static double? _toNullableDouble(dynamic value) {
     if (value == null) {
       return null;
     }
@@ -256,9 +193,7 @@ class ComplaintModel {
       return value.toDouble();
     }
 
-    return double.tryParse(
-      value.toString(),
-    );
+    return double.tryParse(value.toString());
   }
 
   // ============================================================
@@ -270,9 +205,7 @@ class ComplaintModel {
       return customerName;
     }
 
-    return customerIdDisplay.isNotEmpty
-        ? customerIdDisplay
-        : "-";
+    return customerIdDisplay.isNotEmpty ? customerIdDisplay : "-";
   }
 
   String get displayEngineer {
@@ -329,9 +262,7 @@ class ComplaintModel {
         return "Other";
 
       default:
-        return complaintType.isEmpty
-            ? "-"
-            : complaintType;
+        return complaintType.isEmpty ? "-" : complaintType;
     }
   }
 
@@ -347,9 +278,7 @@ class ComplaintModel {
         return "Normal";
 
       default:
-        return priority.isEmpty
-            ? "-"
-            : priority;
+        return priority.isEmpty ? "-" : priority;
     }
   }
 
@@ -374,9 +303,7 @@ class ComplaintModel {
         return "Cancelled";
 
       default:
-        return status.isEmpty
-            ? "-"
-            : status;
+        return status.isEmpty ? "-" : status;
     }
   }
 }

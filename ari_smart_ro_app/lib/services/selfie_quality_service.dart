@@ -8,10 +8,8 @@ class SelfieQualityResult {
   final bool isValid;
   final String message;
 
-  factory SelfieQualityResult.valid() => const SelfieQualityResult._(
-        true,
-        'Live selfie quality verified.',
-      );
+  factory SelfieQualityResult.valid() =>
+      const SelfieQualityResult._(true, 'Live selfie quality verified.');
 
   factory SelfieQualityResult.invalid(String message) =>
       SelfieQualityResult._(false, message);
@@ -21,7 +19,9 @@ class SelfieQualityService {
   static Future<SelfieQualityResult> validate(String imagePath) async {
     final file = File(imagePath);
     if (!await file.exists()) {
-      return SelfieQualityResult.invalid('Selfie image could not be read. Please retake it.');
+      return SelfieQualityResult.invalid(
+        'Selfie image could not be read. Please retake it.',
+      );
     }
 
     final detector = FaceDetector(

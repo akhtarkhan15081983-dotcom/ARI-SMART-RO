@@ -23,7 +23,7 @@ class AttendanceService {
   // CHECK IN
   // ===========================
 
-  Future<bool> checkIn({
+  Future<AttendanceActionResult> checkIn({
     required double latitude,
     required double longitude,
     required String selfiePath,
@@ -42,20 +42,46 @@ class AttendanceService {
     request.fields["longitude"] = longitude.toString();
     request.fields["device_id"] = deviceId;
 
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        "selfie",
-        selfiePath,
-      ),
-    );
+    request.files.add(await http.MultipartFile.fromPath("selfie", selfiePath));
 
-    final response = await request.send();
-    final body = await response.stream.bytesToString();
+    try {
+      final response = await request.send();
+      final body = await response.stream.bytesToString();
+      final success = response.statusCode == 200 || response.statusCode == 201;
+      String message = success
+          ? 'Checked in successfully.'
+          : 'Check-in failed.';
+      double? distanceMeters;
 
-    print("CHECK IN STATUS : ${response.statusCode}");
-    print(body);
+      try {
+        final decoded = jsonDecode(body);
+        if (decoded is Map<String, dynamic>) {
+          final serverMessage = decoded['message'] ?? decoded['detail'];
+          if (serverMessage != null &&
+              serverMessage.toString().trim().isNotEmpty) {
+            message = serverMessage.toString().trim();
+          }
+          final distance = decoded['distance_from_office_meters'];
+          if (distance is num) distanceMeters = distance.toDouble();
+        }
+      } catch (_) {
+        // Keep the safe fallback when the server returns a non-JSON response.
+      }
 
-    return response.statusCode == 200 || response.statusCode == 201;
+      return AttendanceActionResult(
+        success: success,
+        message: message,
+        statusCode: response.statusCode,
+        distanceFromOfficeMeters: distanceMeters,
+      );
+    } catch (_) {
+      return const AttendanceActionResult(
+        success: false,
+        message:
+            'Unable to connect to the server. Check the network and try again.',
+        statusCode: 0,
+      );
+    }
   }
 
   // ===========================
@@ -115,4 +141,18 @@ class AttendanceService {
 
     return [];
   }
+}
+
+class AttendanceActionResult {
+  final bool success;
+  final String message;
+  final int statusCode;
+  final double? distanceFromOfficeMeters;
+
+  const AttendanceActionResult({
+    required this.success,
+    required this.message,
+    required this.statusCode,
+    this.distanceFromOfficeMeters,
+  });
 }

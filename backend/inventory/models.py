@@ -14,6 +14,7 @@ from django.core.files import File
 class InventoryItem(models.Model):
 
     STATUS_CHOICES = [
+        ("PENDING_RECEIPT", "Pending Receipt"),
         ("IN_STOCK", "In Stock"),
         ("ISSUED", "Issued To Engineer"),
         ("INSTALLED", "Installed"),
@@ -21,7 +22,7 @@ class InventoryItem(models.Model):
         ("SCRAP", "Scrap"),
     ]
 
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="IN_STOCK")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING_RECEIPT")
     purchase_item = models.ForeignKey(PurchaseItem, on_delete=models.PROTECT, related_name="inventory_items")
     part = models.ForeignKey(PartMaster, on_delete=models.PROTECT)
     serial_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
@@ -30,6 +31,11 @@ class InventoryItem(models.Model):
     expiry_date = models.DateField(blank=True, null=True)
     qr_code = models.ImageField(upload_to="qr_codes/", blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    received_at = models.DateTimeField(null=True, blank=True)
+    received_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="received_inventory_items",
+    )
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -77,6 +83,7 @@ class InventoryAuditLog(models.Model):
         ("SCRAP", "Marked Scrap"),
         ("STATUS_CHANGE", "Status Changed"),
         ("SECURITY_REJECT", "Security Rejection"),
+        ("RECEIVED", "Received Into Stock"),
     ]
 
     inventory_item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, related_name="audit_logs")
@@ -134,3 +141,22 @@ class PartRequest(models.Model):
 
     def __str__(self):
         return f"{self.engineer.employee_id} - {self.part.code} x {self.quantity}"
+
+
+class PartRequestEvent(models.Model):
+    ACTION_CHOICES = [
+        ("CREATED", "Created"), ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"), ("FULFILLED", "Fulfilled"),
+    ]
+    part_request = models.ForeignKey(PartRequest, on_delete=models.CASCADE, related_name="events")
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    performed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="part_request_actions",
+    )
+    remarks = models.CharField(max_length=500, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]

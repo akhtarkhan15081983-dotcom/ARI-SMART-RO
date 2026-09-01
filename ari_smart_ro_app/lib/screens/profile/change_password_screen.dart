@@ -5,13 +5,10 @@ class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
 
   @override
-  State<ChangePasswordScreen> createState() =>
-      _ChangePasswordScreenState();
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
-class _ChangePasswordScreenState
-    extends State<ChangePasswordScreen> {
-
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final oldController = TextEditingController();
   final newController = TextEditingController();
   final confirmController = TextEditingController();
@@ -25,32 +22,21 @@ class _ChangePasswordScreenState
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
-      appBar: AppBar(
-        title: const Text("Change Password"),
-      ),
+      appBar: AppBar(title: const Text("Change Password")),
 
       body: Padding(
-
         padding: const EdgeInsets.all(20),
 
         child: Column(
-
           children: [
-
             TextField(
               controller: oldController,
               obscureText: hideOld,
               decoration: InputDecoration(
                 labelText: "Old Password",
                 suffixIcon: IconButton(
-                  icon: Icon(
-                    hideOld
-                        ? Icons.visibility
-                        : Icons.visibility_off,
-                  ),
+                  icon: Icon(hideOld ? Icons.visibility : Icons.visibility_off),
                   onPressed: () {
                     setState(() {
                       hideOld = !hideOld;
@@ -68,11 +54,7 @@ class _ChangePasswordScreenState
               decoration: InputDecoration(
                 labelText: "New Password",
                 suffixIcon: IconButton(
-                  icon: Icon(
-                    hideNew
-                        ? Icons.visibility
-                        : Icons.visibility_off,
-                  ),
+                  icon: Icon(hideNew ? Icons.visibility : Icons.visibility_off),
                   onPressed: () {
                     setState(() {
                       hideNew = !hideNew;
@@ -91,9 +73,7 @@ class _ChangePasswordScreenState
                 labelText: "Confirm Password",
                 suffixIcon: IconButton(
                   icon: Icon(
-                    hideConfirm
-                        ? Icons.visibility
-                        : Icons.visibility_off,
+                    hideConfirm ? Icons.visibility : Icons.visibility_off,
                   ),
                   onPressed: () {
                     setState(() {
@@ -110,14 +90,10 @@ class _ChangePasswordScreenState
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-
                 onPressed: isLoading
                     ? null
                     : () async {
-
-                        if (newController.text !=
-                            confirmController.text) {
-
+                        if (newController.text != confirmController.text) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text(
@@ -134,47 +110,34 @@ class _ChangePasswordScreenState
                         });
 
                         try {
-
                           await _profileService.changePassword(
-
                             oldPassword: oldController.text.trim(),
 
                             newPassword: newController.text.trim(),
-
                           );
 
                           if (!mounted) return;
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text(
-                                "Password Changed Successfully",
-                              ),
+                              content: Text("Password Changed Successfully"),
                             ),
                           );
 
                           Navigator.pop(context);
-
                         } catch (e) {
-
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text(
-                                "Old Password is incorrect",
-                              ),
+                              content: Text("Old Password is incorrect"),
                             ),
                           );
-
                         }
 
                         if (mounted) {
-
                           setState(() {
                             isLoading = false;
                           });
-
                         }
-
                       },
 
                 child: isLoading
@@ -186,11 +149,9 @@ class _ChangePasswordScreenState
                           color: Colors.white,
                         ),
                       )
-                    : const Text(
-                        "CHANGE PASSWORD",
-                      ),
-              )            )
-
+                    : const Text("CHANGE PASSWORD"),
+              ),
+            ),
           ],
         ),
       ),

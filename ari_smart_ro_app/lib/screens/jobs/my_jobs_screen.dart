@@ -85,26 +85,18 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("My Jobs"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text("My Jobs"), centerTitle: true),
       body: RefreshIndicator(
         onRefresh: refreshJobs,
         child: FutureBuilder<List<JobModel>>(
           future: jobsFuture,
           builder: (context, snapshot) {
-            if (snapshot.connectionState ==
-                ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
-              return Center(
-                child: Text(snapshot.error.toString()),
-              );
+              return Center(child: Text(snapshot.error.toString()));
             }
 
             final jobs = snapshot.data ?? [];
@@ -134,10 +126,8 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-
                         Row(
                           children: [
-
                             Expanded(
                               child: Text(
                                 job.customerName,
@@ -165,7 +155,6 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                                 ),
                               ),
                             ),
-
                           ],
                         ),
 
@@ -173,9 +162,7 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
 
                         Text(
                           "Job ID : ${job.jobId}",
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
 
                         const SizedBox(height: 5),
@@ -186,7 +173,6 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
 
                         Row(
                           children: [
-
                             const Text(
                               "Priority : ",
                               style: TextStyle(fontWeight: FontWeight.bold),
@@ -199,7 +185,6 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-
                           ],
                         ),
 
@@ -209,9 +194,7 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                           children: [
                             const Icon(Icons.phone, size: 18),
                             const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(job.customerPhone),
-                            ),
+                            Expanded(child: Text(job.customerPhone)),
                           ],
                         ),
 
@@ -222,9 +205,7 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                           children: [
                             const Icon(Icons.location_on, size: 18),
                             const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(job.customerAddress),
-                            ),
+                            Expanded(child: Text(job.customerAddress)),
                           ],
                         ),
 
@@ -234,24 +215,19 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                           children: [
                             const Icon(Icons.calendar_today, size: 18),
                             const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(job.scheduledDate),
-                            ),
+                            Expanded(child: Text(job.scheduledDate)),
                           ],
                         ),
 
                         if (job.remarks.isNotEmpty) ...[
                           const SizedBox(height: 10),
-                          Text(
-                            "Remarks : ${job.remarks}",
-                          ),
+                          Text("Remarks : ${job.remarks}"),
                         ],
 
                         const SizedBox(height: 20),
 
                         Row(
                           children: [
-
                             Expanded(
                               child: ElevatedButton.icon(
                                 icon: const Icon(Icons.call),
@@ -272,15 +248,13 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => JobDetailsScreen(
-                                        jobId: job.id,
-                                      ),
+                                      builder: (_) =>
+                                          JobDetailsScreen(jobId: job.id),
                                     ),
                                   );
                                 },
                               ),
                             ),
-
                           ],
                         ),
 
@@ -296,14 +270,12 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                                   : "Open Job",
                             ),
                             onPressed: () async {
-
                               if (job.status == "ASSIGNED") {
-
-                                final success =
-                                    await jobService.acceptJob(job.id);
+                                final success = await jobService.acceptJob(
+                                  job.id,
+                                );
 
                                 if (success) {
-
                                   if (!mounted) return;
 
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -315,36 +287,25 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                                   );
 
                                   refreshJobs();
-
                                 } else {
-
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text(
-                                        "Unable to Accept Job",
-                                      ),
+                                      content: Text("Unable to Accept Job"),
                                     ),
                                   );
-
                                 }
-
                               } else {
-
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => JobDetailsScreen(
-                                      jobId: job.id,
-                                    ),
+                                    builder: (_) =>
+                                        JobDetailsScreen(jobId: job.id),
                                   ),
                                 );
-
                               }
-
                             },
                           ),
                         ),
-
                       ],
                     ),
                   ),

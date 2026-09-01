@@ -4,10 +4,12 @@ import '../../models/attendance_model.dart';
 import '../../services/api_service.dart';
 import '../../services/attendance_service.dart';
 import '../../services/live_location_service.dart';
+import '../../services/saas_admin_service.dart';
 import '../admin/face_security_admin_screen.dart';
 import '../admin/attendance_security_test_screen.dart';
 import '../admin/attendance_review_admin_screen.dart';
 import '../admin/engineer_bag_admin_screen.dart';
+import '../admin/saas_super_admin_screen.dart';
 import '../andy/andy_chat_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
@@ -33,6 +35,8 @@ import '../shop/shop_screen.dart';
 import '../work_planner/work_calendar_screen.dart';
 import '../work_planner/work_route_screen.dart';
 import '../hrms/hrms_screen.dart';
+import '../hrms/employee_management_screen.dart';
+import '../inventory/inventory_workflow_screen.dart';
 import 'dashboard_card.dart';
 import 'dashboard_items.dart';
 
@@ -45,6 +49,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final AttendanceService _attendanceService = AttendanceService();
   final LiveLocationService _liveLocationService = LiveLocationService();
+  final SaasAdminService _saasAdminService = const SaasAdminService();
   static const List<DashboardItem> _customerItems = [
     DashboardItems.andy,
     DashboardItem(title: 'My RO', icon: Icons.water_drop, route: 'my_ro'),
@@ -70,6 +75,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ];
   AttendanceModel? _todayAttendance;
   String _role = 'CUSTOMER';
+  bool _isPlatformSuperAdmin = false;
   bool _isLoadingAttendance = true,
       _isLoadingRole = true,
       _isExitDialogShowing = false;
@@ -83,8 +89,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _startLiveLocationIfRequired() async {
     try {
-      if (_normaliseRole(await ApiService.getRole()) == 'ENGINEER')
+      if (_normaliseRole(await ApiService.getRole()) == 'ENGINEER') {
         _liveLocationService.startTracking();
+      }
     } catch (e) {
       debugPrint('LIVE LOCATION START ERROR: $e');
     }
@@ -92,43 +99,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadDashboard() async {
     await _loadRole();
-    if (_role != 'CUSTOMER')
+    if (_role == 'ADMIN') {
+      final allowed = await _saasAdminService.canAccess();
+      if (mounted) setState(() => _isPlatformSuperAdmin = allowed);
+    }
+    if (_role != 'CUSTOMER') {
       await _loadAttendance();
-    else if (mounted)
+    } else if (mounted) {
       setState(() => _isLoadingAttendance = false);
+    }
   }
 
   Future<void> _loadAttendance() async {
     try {
       final a = await _attendanceService.todayAttendance();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _todayAttendance = a;
           _isLoadingAttendance = false;
         });
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _todayAttendance = null;
           _isLoadingAttendance = false;
         });
+      }
     }
   }
 
   Future<void> _loadRole() async {
     try {
       final r = await ApiService.getRole();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _role = _normaliseRole(r);
           _isLoadingRole = false;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _role = 'CUSTOMER';
           _isLoadingRole = false;
         });
+      }
     }
   }
 
@@ -142,7 +158,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<DashboardItem> get _dashboardItems {
     switch (_role) {
       case 'ADMIN':
-        return DashboardItems.admin;
+        return [
+          if (_isPlatformSuperAdmin)
+            const DashboardItem(
+              title: 'SaaS Command Center',
+              icon: Icons.public_rounded,
+              route: 'saas_super_admin',
+            ),
+          ...DashboardItems.admin,
+        ];
       case 'MANAGER':
         return DashboardItems.manager;
       case 'OFFICE':
@@ -175,8 +199,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ? 'Today\'s attendance selfie review was rejected by admin. Work modules are locked. Contact admin.'
           : 'Today\'s attendance selfie review was rejected by admin: $n';
     }
-    if (_engineerCheckedOut)
+    if (_engineerCheckedOut) {
       return 'You have checked out for today. Work modules are locked.';
+    }
     return 'Please check in first to use work modules.';
   }
 
@@ -253,26 +278,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
     switch (item.route) {
+      case 'saas_super_admin':
+        if (_isPlatformSuperAdmin) {
+          _push(const SaasSuperAdminScreen());
+        } else {
+          _showComingSoon('Platform super-admin access is required.');
+        }
+        return;
       case 'andy':
         _push(const AndyChatScreen());
         return;
       case 'face_security_admin':
-        if (_role == 'ADMIN')
+        if (_role == 'ADMIN') {
           _push(const FaceSecurityAdminScreen());
-        else
+        } else {
           _showComingSoon('Restricted');
+        }
         return;
       case 'attendance_review_admin':
-        if (_role == 'ADMIN')
+        if (_role == 'ADMIN') {
           _push(const AttendanceReviewAdminScreen());
-        else
+        } else {
           _showComingSoon('Restricted');
+        }
         return;
       case 'attendance_security_test':
-        if (_role == 'ADMIN')
+        if (_role == 'ADMIN') {
           _push(const AttendanceSecurityTestScreen());
-        else
+        } else {
           _showComingSoon('Restricted');
+        }
         return;
       case 'attendance':
         Navigator.of(context)
@@ -293,6 +328,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return;
       case 'hrms':
         _push(const HrmsScreen());
+        return;
+      case 'employee_management':
+        if (_role == 'ADMIN') {
+          _push(const EmployeeManagementScreen());
+        } else {
+          _showComingSoon('Only company administrators can manage employees.');
+        }
+        return;
+      case 'inventory_workflow':
+        if ({'ADMIN', 'MANAGER', 'OFFICE'}.contains(_role)) {
+          _push(const InventoryWorkflowScreen());
+        } else {
+          _showComingSoon(
+            'Inventory control is restricted to authorised staff.',
+          );
+        }
         return;
       case 'bag':
         if (_role == 'ADMIN' || _role == 'MANAGER') {
@@ -360,6 +411,148 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
       );
 
+  List<_DashboardGroup> _dashboardGroups(List<DashboardItem> items) {
+    const routes = <String, Set<String>>{
+      'Customers': {
+        'customers',
+        'assigned_customers',
+        'walkin',
+        'referral',
+        'history',
+      },
+      'Operations': {
+        'jobs',
+        'work_calendar',
+        'work_route',
+        'service',
+        'complaint',
+        'map',
+        'engineer_map',
+      },
+      'Finance': {
+        'rent',
+        'rent_management',
+        'payment_history',
+        'reports',
+        'qr',
+      },
+      'Employees': {
+        'employee_management',
+        'hrms',
+        'attendance',
+        'attendance_review_admin',
+        'attendance_security_test',
+        'face_security_admin',
+      },
+      'Inventory': {
+        'inventory_workflow',
+        'bag',
+        'request',
+        'asset_selection',
+        'installation',
+        'shop',
+      },
+    };
+    final definitions = [
+      ('Customers', Icons.groups_rounded, const Color(0xFF2563EB)),
+      ('Operations', Icons.route_rounded, const Color(0xFF0891B2)),
+      (
+        'Finance',
+        Icons.account_balance_wallet_rounded,
+        const Color(0xFF059669),
+      ),
+      ('Employees', Icons.badge_rounded, const Color(0xFF7C3AED)),
+      ('Inventory', Icons.inventory_2_rounded, const Color(0xFFEA580C)),
+      ('Control', Icons.admin_panel_settings_rounded, const Color(0xFF334155)),
+    ];
+    final assigned = routes.values.expand((set) => set).toSet();
+    return definitions
+        .map((definition) {
+          final groupItems = definition.$1 == 'Control'
+              ? items.where((item) => !assigned.contains(item.route)).toList()
+              : items
+                    .where(
+                      (item) => routes[definition.$1]!.contains(item.route),
+                    )
+                    .toList();
+          return _DashboardGroup(
+            title: definition.$1,
+            icon: definition.$2,
+            color: definition.$3,
+            items: groupItems,
+          );
+        })
+        .where((group) => group.items.isNotEmpty)
+        .toList();
+  }
+
+  Future<void> _openDashboardGroup(_DashboardGroup group) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .72,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: group.color.withValues(alpha: .12),
+                      child: Icon(group.icon, color: group.color),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.title,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        Text('${group.items.length} tools'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.35,
+                  ),
+                  itemCount: group.items.length,
+                  itemBuilder: (_, index) {
+                    final item = group.items[index];
+                    return DashboardCard(
+                      title: item.title,
+                      icon: item.icon,
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        Future<void>.delayed(
+                          const Duration(milliseconds: 300),
+                          () => _handleItemTap(item),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _liveLocationService.stopTracking();
@@ -368,8 +561,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingRole)
+    if (_isLoadingRole) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     final items = _dashboardItems, isCustomer = _role == 'CUSTOMER';
     return PopScope(
       canPop: false,
@@ -417,24 +611,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1.15,
-                ),
-                itemCount: items.length,
-                itemBuilder: (_, i) {
-                  final item = items[i];
-                  return DashboardCard(
-                    title: item.title,
-                    icon: item.icon,
-                    onTap: () => _handleItemTap(item),
-                  );
-                },
+              _CommandGrid(
+                role: _role,
+                groups: _dashboardGroups(items),
+                onOpen: _openDashboardGroup,
               ),
             ],
           ),
@@ -442,4 +622,100 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+}
+
+class _DashboardGroup {
+  const _DashboardGroup({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.items,
+  });
+  final String title;
+  final IconData icon;
+  final Color color;
+  final List<DashboardItem> items;
+}
+
+class _CommandGrid extends StatelessWidget {
+  const _CommandGrid({
+    required this.role,
+    required this.groups,
+    required this.onOpen,
+  });
+  final String role;
+  final List<_DashboardGroup> groups;
+  final ValueChanged<_DashboardGroup> onOpen;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        role == 'CUSTOMER' ? 'My ARI workspace' : 'Business command center',
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+      const SizedBox(height: 4),
+      Text(
+        'All tools organised into ${groups.length} workspaces',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      const SizedBox(height: 14),
+      GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.55,
+        ),
+        itemCount: groups.length,
+        itemBuilder: (_, index) {
+          final group = groups[index];
+          return Card(
+            margin: EdgeInsets.zero,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => onOpen(group),
+              child: Padding(
+                padding: const EdgeInsets.all(15),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(11),
+                      decoration: BoxDecoration(
+                        color: group.color.withValues(alpha: .11),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(group.icon, color: group.color, size: 27),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            group.title,
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${group.items.length} tools',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, size: 20),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    ],
+  );
 }

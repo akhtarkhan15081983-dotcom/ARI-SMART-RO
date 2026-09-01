@@ -9,19 +9,13 @@ import '../../services/api_service.dart';
 class CustomerDetailsScreen extends StatefulWidget {
   final CustomerModel customer;
 
-  const CustomerDetailsScreen({
-    super.key,
-    required this.customer,
-  });
+  const CustomerDetailsScreen({super.key, required this.customer});
 
   @override
-  State<CustomerDetailsScreen> createState() =>
-      _CustomerDetailsScreenState();
+  State<CustomerDetailsScreen> createState() => _CustomerDetailsScreenState();
 }
 
-class _CustomerDetailsScreenState
-    extends State<CustomerDetailsScreen> {
-
+class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
   bool _loadingHistory = true;
   String? _historyError;
 
@@ -68,8 +62,7 @@ class _CustomerDetailsScreenState
           final history = decoded["history"];
 
           setState(() {
-            _serviceHistory =
-                history is List ? history : [];
+            _serviceHistory = history is List ? history : [];
             _loadingHistory = false;
           });
         } else if (decoded is List) {
@@ -89,16 +82,14 @@ class _CustomerDetailsScreenState
 
       setState(() {
         _loadingHistory = false;
-        _historyError =
-            "Unable to load service history.";
+        _historyError = "Unable to load service history.";
       });
     } catch (e) {
       print("SERVICE HISTORY ERROR : $e");
 
       setState(() {
         _loadingHistory = false;
-        _historyError =
-            "Unable to load service history.";
+        _historyError = "Unable to load service history.";
       });
     }
   }
@@ -112,40 +103,25 @@ class _CustomerDetailsScreenState
     required String title,
     required String value,
   }) {
-    final displayValue =
-        value.trim().isEmpty ? "Not Available" : value;
+    final displayValue = value.trim().isEmpty ? "Not Available" : value;
 
     return Container(
-      margin: const EdgeInsets.only(
-        bottom: 10,
-      ),
-      padding: const EdgeInsets.all(
-        12,
-      ),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(
-          12,
-        ),
+        borderRadius: BorderRadius.circular(12),
         color: Colors.grey.shade100,
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            size: 22,
-            color: Colors.blue,
-          ),
+          Icon(icon, size: 22, color: Colors.blue),
 
-          const SizedBox(
-            width: 12,
-          ),
+          const SizedBox(width: 12),
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
@@ -156,9 +132,7 @@ class _CustomerDetailsScreenState
                   ),
                 ),
 
-                const SizedBox(
-                  height: 3,
-                ),
+                const SizedBox(height: 3),
 
                 Text(
                   displayValue,
@@ -179,32 +153,18 @@ class _CustomerDetailsScreenState
   // SECTION TITLE
   // ============================================================
 
-  Widget _sectionTitle(
-    String title,
-    IconData icon,
-  ) {
+  Widget _sectionTitle(String title, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.only(
-        top: 8,
-        bottom: 10,
-      ),
+      padding: const EdgeInsets.only(top: 8, bottom: 10),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: Colors.blue,
-          ),
+          Icon(icon, color: Colors.blue),
 
-          const SizedBox(
-            width: 8,
-          ),
+          const SizedBox(width: 8),
 
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -215,9 +175,7 @@ class _CustomerDetailsScreenState
   // SAFE STRING
   // ============================================================
 
-  String _stringValue(
-    dynamic value,
-  ) {
+  String _stringValue(dynamic value) {
     if (value == null) {
       return "";
     }
@@ -229,66 +187,43 @@ class _CustomerDetailsScreenState
   // SERVICE HISTORY CARD
   // ============================================================
 
-  Widget _buildServiceHistoryCard(
-    Map<String, dynamic> job,
-  ) {
-    final jobId =
-        _stringValue(job["job_id"]);
+  Widget _buildServiceHistoryCard(Map<String, dynamic> job) {
+    final jobId = _stringValue(job["job_id"]);
 
-    final jobType =
-        _stringValue(job["job_type"]);
+    final jobType = _stringValue(job["job_type"]);
 
-    final status =
-        _stringValue(job["status"]);
+    final status = _stringValue(job["status"]);
 
-    final engineerName =
-        _stringValue(job["engineer_name"]);
+    final engineerName = _stringValue(job["engineer_name"]);
 
-    final scheduledDate =
-        _stringValue(job["scheduled_date"]);
+    final scheduledDate = _stringValue(job["scheduled_date"]);
 
-    final completedAt =
-        _stringValue(job["completed_at"]);
+    final completedAt = _stringValue(job["completed_at"]);
 
-    final parts =
-        job["parts_used"] is List
-            ? job["parts_used"] as List
-            : <dynamic>[];
+    final parts = job["parts_used"] is List
+        ? job["parts_used"] as List
+        : <dynamic>[];
 
     return Card(
-      margin: const EdgeInsets.only(
-        bottom: 14,
-      ),
+      margin: const EdgeInsets.only(bottom: 14),
       elevation: 3,
-      shape: RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(
-          16,
-        ),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             // ==================================================
             // JOB HEADER
             // ==================================================
-
             Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color:
-                        Colors.blue.shade50,
-                    borderRadius:
-                        BorderRadius.circular(12),
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
                     Icons.build_circle_outlined,
@@ -297,38 +232,25 @@ class _CustomerDetailsScreenState
                   ),
                 ),
 
-                const SizedBox(
-                  width: 12,
-                ),
+                const SizedBox(width: 12),
 
                 Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        jobId.isEmpty
-                            ? "Service Job"
-                            : jobId,
+                        jobId.isEmpty ? "Service Job" : jobId,
                         style: const TextStyle(
                           fontSize: 17,
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 4,
-                      ),
+                      const SizedBox(height: 4),
 
                       Text(
-                        jobType.isEmpty
-                            ? "Service"
-                            : jobType,
-                        style: TextStyle(
-                          color:
-                              Colors.grey.shade700,
-                        ),
+                        jobType.isEmpty ? "Service" : jobType,
+                        style: TextStyle(color: Colors.grey.shade700),
                       ),
                     ],
                   ),
@@ -338,14 +260,11 @@ class _CustomerDetailsScreenState
               ],
             ),
 
-            const SizedBox(
-              height: 14,
-            ),
+            const SizedBox(height: 14),
 
             // ==================================================
             // ENGINEER
             // ==================================================
-
             if (engineerName.isNotEmpty)
               _historyInfoRow(
                 Icons.engineering_outlined,
@@ -370,10 +289,7 @@ class _CustomerDetailsScreenState
             // ==================================================
             // PARTS
             // ==================================================
-
-            const SizedBox(
-              height: 8,
-            ),
+            const SizedBox(height: 8),
 
             Row(
               children: [
@@ -383,42 +299,31 @@ class _CustomerDetailsScreenState
                   color: Colors.blue,
                 ),
 
-                const SizedBox(
-                  width: 7,
-                ),
+                const SizedBox(width: 7),
 
                 Text(
                   "Parts Used",
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(
-              height: 8,
-            ),
+            const SizedBox(height: 8),
 
             if (parts.isEmpty)
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color:
-                      Colors.grey.shade100,
-                  borderRadius:
-                      BorderRadius.circular(10),
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   "No parts recorded.",
-                  style: TextStyle(
-                    color:
-                        Colors.grey.shade700,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade700),
                 ),
               )
             else
@@ -426,9 +331,7 @@ class _CustomerDetailsScreenState
                 (part) => _buildPartCard(
                   part is Map<String, dynamic>
                       ? part
-                      : Map<String, dynamic>.from(
-                          part as Map,
-                        ),
+                      : Map<String, dynamic>.from(part as Map),
                 ),
               ),
           ],
@@ -441,9 +344,7 @@ class _CustomerDetailsScreenState
   // STATUS CHIP
   // ============================================================
 
-  Widget _statusChip(
-    String status,
-  ) {
+  Widget _statusChip(String status) {
     String displayStatus;
 
     switch (status) {
@@ -476,19 +377,14 @@ class _CustomerDetailsScreenState
         break;
 
       default:
-        displayStatus =
-            status.isEmpty ? "Unknown" : status;
+        displayStatus = status.isEmpty ? "Unknown" : status;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 6,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: _statusColor(status),
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         displayStatus,
@@ -505,9 +401,7 @@ class _CustomerDetailsScreenState
   // STATUS COLOR
   // ============================================================
 
-  Color _statusColor(
-    String status,
-  ) {
+  Color _statusColor(String status) {
     switch (status) {
       case "COMPLETED":
         return Colors.green;
@@ -531,41 +425,19 @@ class _CustomerDetailsScreenState
   // HISTORY INFO ROW
   // ============================================================
 
-  Widget _historyInfoRow(
-    IconData icon,
-    String title,
-    String value,
-  ) {
+  Widget _historyInfoRow(IconData icon, String title, String value) {
     return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 7,
-      ),
+      padding: const EdgeInsets.only(bottom: 7),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            size: 18,
-            color: Colors.grey.shade700,
-          ),
+          Icon(icon, size: 18, color: Colors.grey.shade700),
 
-          const SizedBox(
-            width: 8,
-          ),
+          const SizedBox(width: 8),
 
-          Text(
-            "$title: ",
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Text("$title: ", style: const TextStyle(fontWeight: FontWeight.w600)),
 
-          Expanded(
-            child: Text(
-              value,
-            ),
-          ),
+          Expanded(child: Text(value)),
         ],
       ),
     );
@@ -575,102 +447,52 @@ class _CustomerDetailsScreenState
   // PART CARD
   // ============================================================
 
-  Widget _buildPartCard(
-    Map<String, dynamic> part,
-  ) {
-    final partName =
-        _stringValue(part["part_name"]);
+  Widget _buildPartCard(Map<String, dynamic> part) {
+    final partName = _stringValue(part["part_name"]);
 
-    final partCode =
-        _stringValue(part["part_code"]);
+    final partCode = _stringValue(part["part_code"]);
 
-    final serialNumber =
-        _stringValue(part["serial_number"]);
+    final serialNumber = _stringValue(part["serial_number"]);
 
-    final barcode =
-        _stringValue(part["barcode"]);
+    final barcode = _stringValue(part["barcode"]);
 
-    final quantity =
-        _stringValue(part["quantity"]);
+    final quantity = _stringValue(part["quantity"]);
 
-    final usedAt =
-        _stringValue(part["used_at"]);
+    final usedAt = _stringValue(part["used_at"]);
 
-    final remarks =
-        _stringValue(part["remarks"]);
+    final remarks = _stringValue(part["remarks"]);
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(
-        bottom: 8,
-      ),
-      padding:
-          const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
-        borderRadius:
-            BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey.shade300,
-        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
           // PART NAME
           Text(
-            partName.isEmpty
-                ? "Unknown Part"
-                : partName,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight:
-                  FontWeight.bold,
-            ),
+            partName.isEmpty ? "Unknown Part" : partName,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
           ),
 
-          const SizedBox(
-            height: 8,
-          ),
+          const SizedBox(height: 8),
 
-          if (partCode.isNotEmpty)
-            _partInfo(
-              "Part Code",
-              partCode,
-            ),
+          if (partCode.isNotEmpty) _partInfo("Part Code", partCode),
 
-          if (serialNumber.isNotEmpty)
-            _partInfo(
-              "Serial Number",
-              serialNumber,
-            ),
+          if (serialNumber.isNotEmpty) _partInfo("Serial Number", serialNumber),
 
-          if (barcode.isNotEmpty)
-            _partInfo(
-              "Barcode",
-              barcode,
-            ),
+          if (barcode.isNotEmpty) _partInfo("Barcode", barcode),
 
-          _partInfo(
-            "Quantity",
-            quantity.isEmpty
-                ? "1"
-                : quantity,
-          ),
+          _partInfo("Quantity", quantity.isEmpty ? "1" : quantity),
 
-          if (usedAt.isNotEmpty)
-            _partInfo(
-              "Used On",
-              _formatDate(usedAt),
-            ),
+          if (usedAt.isNotEmpty) _partInfo("Used On", _formatDate(usedAt)),
 
-          if (remarks.isNotEmpty)
-            _partInfo(
-              "Remarks",
-              remarks,
-            ),
+          if (remarks.isNotEmpty) _partInfo("Remarks", remarks),
         ],
       ),
     );
@@ -680,17 +502,11 @@ class _CustomerDetailsScreenState
   // PART INFO
   // ============================================================
 
-  Widget _partInfo(
-    String title,
-    String value,
-  ) {
+  Widget _partInfo(String title, String value) {
     return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 4,
-      ),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 105,
@@ -698,10 +514,8 @@ class _CustomerDetailsScreenState
               title,
               style: TextStyle(
                 fontSize: 12,
-                color:
-                    Colors.grey.shade600,
-                fontWeight:
-                    FontWeight.w600,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -709,11 +523,7 @@ class _CustomerDetailsScreenState
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight:
-                    FontWeight.w500,
-              ),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -725,27 +535,19 @@ class _CustomerDetailsScreenState
   // DATE FORMAT
   // ============================================================
 
-  String _formatDate(
-    String value,
-  ) {
+  String _formatDate(String value) {
     try {
-      final date =
-          DateTime.parse(value).toLocal();
+      final date = DateTime.parse(value).toLocal();
 
-      final day =
-          date.day.toString().padLeft(2, "0");
+      final day = date.day.toString().padLeft(2, "0");
 
-      final month =
-          date.month.toString().padLeft(2, "0");
+      final month = date.month.toString().padLeft(2, "0");
 
-      final year =
-          date.year.toString();
+      final year = date.year.toString();
 
-      final hour =
-          date.hour.toString().padLeft(2, "0");
+      final hour = date.hour.toString().padLeft(2, "0");
 
-      final minute =
-          date.minute.toString().padLeft(2, "0");
+      final minute = date.minute.toString().padLeft(2, "0");
 
       return "$day-$month-$year $hour:$minute";
     } catch (_) {
@@ -760,20 +562,14 @@ class _CustomerDetailsScreenState
   Widget _buildServiceHistorySection() {
     if (_loadingHistory) {
       return Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle(
-            "Service & Parts History",
-            Icons.history,
-          ),
+          _sectionTitle("Service & Parts History", Icons.history),
 
           const Center(
             child: Padding(
-              padding:
-                  EdgeInsets.all(24),
-              child:
-                  CircularProgressIndicator(),
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
             ),
           ),
         ],
@@ -782,56 +578,35 @@ class _CustomerDetailsScreenState
 
     if (_historyError != null) {
       return Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle(
-            "Service & Parts History",
-            Icons.history,
-          ),
+          _sectionTitle("Service & Parts History", Icons.history),
 
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.red.shade50,
-              borderRadius:
-                  BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               children: [
-                const Icon(
-                  Icons.error_outline,
-                  color: Colors.red,
-                  size: 30,
-                ),
+                const Icon(Icons.error_outline, color: Colors.red, size: 30),
 
-                const SizedBox(
-                  height: 8,
-                ),
+                const SizedBox(height: 8),
 
                 Text(
                   _historyError!,
-                  textAlign:
-                      TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.red,
-                  ),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
                 ),
 
-                const SizedBox(
-                  height: 10,
-                ),
+                const SizedBox(height: 10),
 
                 OutlinedButton.icon(
-                  onPressed:
-                      _loadServiceHistory,
-                  icon: const Icon(
-                    Icons.refresh,
-                  ),
-                  label:
-                      const Text("Retry"),
+                  onPressed: _loadServiceHistory,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text("Retry"),
                 ),
               ],
             ),
@@ -842,43 +617,28 @@ class _CustomerDetailsScreenState
 
     if (_serviceHistory.isEmpty) {
       return Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle(
-            "Service & Parts History",
-            Icons.history,
-          ),
+          _sectionTitle("Service & Parts History", Icons.history),
 
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: Colors.grey.shade100,
-              borderRadius:
-                  BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               children: [
-                Icon(
-                  Icons.history,
-                  size: 38,
-                  color:
-                      Colors.grey.shade500,
-                ),
+                Icon(Icons.history, size: 38, color: Colors.grey.shade500),
 
-                const SizedBox(
-                  height: 8,
-                ),
+                const SizedBox(height: 8),
 
                 Text(
                   "No service history found.",
                   style: TextStyle(
-                    color:
-                        Colors.grey.shade700,
-                    fontWeight:
-                        FontWeight.w600,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -889,26 +649,17 @@ class _CustomerDetailsScreenState
     }
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(
-          "Service & Parts History",
-          Icons.history,
-        ),
+        _sectionTitle("Service & Parts History", Icons.history),
 
-        ..._serviceHistory.map(
-          (item) {
-            if (item
-                is Map<String, dynamic>) {
-              return _buildServiceHistoryCard(
-                item,
-              );
-            }
+        ..._serviceHistory.map((item) {
+          if (item is Map<String, dynamic>) {
+            return _buildServiceHistoryCard(item);
+          }
 
-            return const SizedBox.shrink();
-          },
-        ),
+          return const SizedBox.shrink();
+        }),
       ],
     );
   }
@@ -918,60 +669,40 @@ class _CustomerDetailsScreenState
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final customer =
-        widget.customer;
+  Widget build(BuildContext context) {
+    final customer = widget.customer;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Customer Details",
-        ),
+        title: const Text("Customer Details"),
         centerTitle: true,
 
         actions: [
           IconButton(
-            onPressed:
-                _loadServiceHistory,
-            icon: const Icon(
-              Icons.refresh,
-            ),
+            onPressed: _loadServiceHistory,
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
 
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(
-          14,
-        ),
+        padding: const EdgeInsets.all(14),
 
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
 
           children: [
-
             // ====================================================
             // CUSTOMER HEADER
             // ====================================================
-
             Card(
               elevation: 4,
-              shape:
-                  RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(
-                  16,
-                ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
 
               child: Padding(
-                padding:
-                    const EdgeInsets.all(
-                  18,
-                ),
+                padding: const EdgeInsets.all(18),
 
                 child: Row(
                   children: [
@@ -979,64 +710,46 @@ class _CustomerDetailsScreenState
                       radius: 32,
 
                       child: Text(
-                        customer.customerName
-                                .trim()
-                                .isNotEmpty
+                        customer.customerName.trim().isNotEmpty
                             ? customer.customerName
-                                .trim()
-                                .substring(
-                                  0,
-                                  1,
-                                )
-                                .toUpperCase()
+                                  .trim()
+                                  .substring(0, 1)
+                                  .toUpperCase()
                             : "?",
 
-                        style:
-                            const TextStyle(
+                        style: const TextStyle(
                           fontSize: 24,
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
 
-                    const SizedBox(
-                      width: 14,
-                    ),
+                    const SizedBox(width: 14),
 
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
 
                         children: [
                           Text(
-                            customer.customerName
-                                    .trim()
-                                    .isEmpty
+                            customer.customerName.trim().isEmpty
                                 ? "Customer"
                                 : customer.customerName,
 
-                            style:
-                                const TextStyle(
+                            style: const TextStyle(
                               fontSize: 21,
-                              fontWeight:
-                                  FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
 
-                          const SizedBox(
-                            height: 5,
-                          ),
+                          const SizedBox(height: 5),
 
                           Text(
                             customer.phone,
 
                             style: TextStyle(
                               fontSize: 15,
-                              color: Colors
-                                  .grey
-                                  .shade700,
+                              color: Colors.grey.shade700,
                             ),
                           ),
                         ],
@@ -1047,18 +760,12 @@ class _CustomerDetailsScreenState
               ),
             ),
 
-            const SizedBox(
-              height: 12,
-            ),
+            const SizedBox(height: 12),
 
             // ====================================================
             // CUSTOMER INFORMATION
             // ====================================================
-
-            _sectionTitle(
-              "Customer Information",
-              Icons.person_outline,
-            ),
+            _sectionTitle("Customer Information", Icons.person_outline),
 
             _detailRow(
               icon: Icons.badge_outlined,
@@ -1087,11 +794,7 @@ class _CustomerDetailsScreenState
             // ====================================================
             // CARD INFORMATION
             // ====================================================
-
-            _sectionTitle(
-              "Card Information",
-              Icons.credit_card,
-            ),
+            _sectionTitle("Card Information", Icons.credit_card),
 
             _detailRow(
               icon: Icons.credit_card,
@@ -1099,9 +802,7 @@ class _CustomerDetailsScreenState
               value: customer.cardNumber,
             ),
 
-            if (customer.oldCardNumber
-                .trim()
-                .isNotEmpty)
+            if (customer.oldCardNumber.trim().isNotEmpty)
               _detailRow(
                 icon: Icons.history,
                 title: "Old Card Number",
@@ -1111,11 +812,7 @@ class _CustomerDetailsScreenState
             // ====================================================
             // RO INFORMATION
             // ====================================================
-
-            _sectionTitle(
-              "RO Information",
-              Icons.water_drop_outlined,
-            ),
+            _sectionTitle("RO Information", Icons.water_drop_outlined),
 
             _detailRow(
               icon: Icons.water_drop,
@@ -1126,72 +823,55 @@ class _CustomerDetailsScreenState
             _detailRow(
               icon: Icons.payments_outlined,
               title: "Monthly Rent",
-              value:
-                  customer.monthlyRent.isEmpty
-                      ? ""
-                      : "₹${customer.monthlyRent}",
+              value: customer.monthlyRent.isEmpty
+                  ? ""
+                  : "₹${customer.monthlyRent}",
             ),
 
             _detailRow(
               icon: Icons.receipt_long_outlined,
               title: "Installation Charge",
-              value:
-                  customer.installationCharge
-                          .isEmpty
-                      ? ""
-                      : "₹${customer.installationCharge}",
+              value: customer.installationCharge.isEmpty
+                  ? ""
+                  : "₹${customer.installationCharge}",
             ),
 
             // ====================================================
             // ASSIGNMENT
             // ====================================================
-
-            _sectionTitle(
-              "Assignment",
-              Icons.engineering_outlined,
-            ),
+            _sectionTitle("Assignment", Icons.engineering_outlined),
 
             _detailRow(
               icon: Icons.engineering,
               title: "Assigned Employee",
-              value:
-                  customer.engineerName.isEmpty
-                      ? "Not Assigned"
-                      : customer.engineerName,
+              value: customer.engineerName.isEmpty
+                  ? "Not Assigned"
+                  : customer.engineerName,
             ),
 
             // ====================================================
             // SERVICE & PARTS HISTORY
             // ====================================================
-
             _buildServiceHistorySection(),
 
             // ====================================================
             // LOCATION
             // ====================================================
-
-            _sectionTitle(
-              "Location",
-              Icons.location_on_outlined,
-            ),
+            _sectionTitle("Location", Icons.location_on_outlined),
 
             _detailRow(
               icon: Icons.my_location,
               title: "Latitude",
-              value:
-                  customer.latitude.toString(),
+              value: customer.latitude.toString(),
             ),
 
             _detailRow(
               icon: Icons.explore,
               title: "Longitude",
-              value:
-                  customer.longitude.toString(),
+              value: customer.longitude.toString(),
             ),
 
-            const SizedBox(
-              height: 20,
-            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

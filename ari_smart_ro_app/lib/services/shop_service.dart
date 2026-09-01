@@ -12,13 +12,13 @@ class ShopService {
 
   Future<List<ShopProduct>> fetchCatalog({String query = ''}) async {
     final httpClient = client ?? http.Client();
-    final uri = Uri.parse('${ApiService.baseUrl}/products/shop/catalog/').replace(
-      queryParameters: query.trim().isEmpty ? null : {'q': query.trim()},
-    );
-    final response = await httpClient.get(
-      uri,
-      headers: await ApiService.authHeaders(),
-    );
+    final uri = Uri.parse('${ApiService.baseUrl}/products/shop/catalog/')
+        .replace(
+          queryParameters: query.trim().isEmpty ? null : {'q': query.trim()},
+        );
+    final response = await httpClient
+        .get(uri, headers: await ApiService.authHeaders())
+        .timeout(const Duration(seconds: 15));
 
     if (response.statusCode != 200) {
       throw Exception('Unable to load shop catalog');

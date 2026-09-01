@@ -33,6 +33,20 @@ class Purchase(models.Model):
 
     remarks = models.TextField(blank=True)
 
+    invoice_image = models.ImageField(upload_to="purchase_invoices/%Y/%m/", blank=True, null=True)
+    entry_source = models.CharField(
+        max_length=20,
+        choices=(("MANUAL", "Manual"), ("INVOICE_OCR", "Invoice OCR")),
+        default="MANUAL",
+    )
+    ocr_text = models.TextField(blank=True)
+    ocr_confidence = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    verified_by = models.ForeignKey(
+        "accounts.User", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="verified_purchases",
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

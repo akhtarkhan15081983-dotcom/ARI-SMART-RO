@@ -8,6 +8,7 @@ import '../login/login_screen.dart';
 import '../rent/rent_payment_screen.dart';
 import '../service/service_list_screen.dart';
 import 'about_ari_screen.dart';
+import 'guest_account_screen.dart';
 import 'guest_services_screen.dart';
 
 class ShopScreen extends StatefulWidget {
@@ -112,7 +113,7 @@ class _ShopScreenState extends State<ShopScreen> {
         _openGuestPage(const AboutAriScreen());
         return;
       case 3:
-        _openLogin();
+        _openGuestPage(const GuestAccountScreen());
         return;
     }
   }
@@ -413,10 +414,27 @@ class _ShopScreenState extends State<ShopScreen> {
                   ),
                 SliverToBoxAdapter(
                   child: _ServiceShortcuts(
-                    onService: () =>
-                        _openMemberFeature(const ServiceListScreen()),
-                    onAmc: () => _openMemberFeature(const ServiceListScreen()),
-                    onRent: () => _openMemberFeature(const RentPaymentScreen()),
+                    onService: () => widget.guestMode
+                        ? _openGuestPage(
+                            const GuestServiceDetailScreen(
+                              type: GuestServiceType.service,
+                            ),
+                          )
+                        : _openMemberFeature(const ServiceListScreen()),
+                    onAmc: () => widget.guestMode
+                        ? _openGuestPage(
+                            const GuestServiceDetailScreen(
+                              type: GuestServiceType.amc,
+                            ),
+                          )
+                        : _openMemberFeature(const ServiceListScreen()),
+                    onRent: () => widget.guestMode
+                        ? _openGuestPage(
+                            const GuestServiceDetailScreen(
+                              type: GuestServiceType.rental,
+                            ),
+                          )
+                        : _openMemberFeature(const RentPaymentScreen()),
                     onParts: () {
                       _searchController.text = 'filter';
                       _loadCatalog();
@@ -506,10 +524,12 @@ class _ShopScreenState extends State<ShopScreen> {
                   )
                 else if (snapshot.hasError)
                   SliverFillRemaining(
+                    hasScrollBody: false,
                     child: _StoreMessage(
-                      icon: Icons.wifi_off_rounded,
-                      title: 'Store could not be loaded',
-                      message: 'Check your connection and try again.',
+                      icon: Icons.cloud_off_rounded,
+                      title: 'Store is temporarily unavailable',
+                      message:
+                          'You can still explore Services, About and Account. Pull down or tap retry when the server is available.',
                       button: 'TRY AGAIN',
                       onPressed: _loadCatalog,
                     ),

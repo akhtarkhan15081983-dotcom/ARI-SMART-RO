@@ -6,10 +6,12 @@ class AttendanceReviewAdminScreen extends StatefulWidget {
   const AttendanceReviewAdminScreen({super.key});
 
   @override
-  State<AttendanceReviewAdminScreen> createState() => _AttendanceReviewAdminScreenState();
+  State<AttendanceReviewAdminScreen> createState() =>
+      _AttendanceReviewAdminScreenState();
 }
 
-class _AttendanceReviewAdminScreenState extends State<AttendanceReviewAdminScreen> {
+class _AttendanceReviewAdminScreenState
+    extends State<AttendanceReviewAdminScreen> {
   final _service = AdminAttendanceReviewService();
   String _status = 'PENDING';
   bool _loading = true;
@@ -23,7 +25,10 @@ class _AttendanceReviewAdminScreenState extends State<AttendanceReviewAdminScree
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final reviews = await _service.getReviews(status: _status);
       if (!mounted) return;
@@ -41,7 +46,11 @@ class _AttendanceReviewAdminScreenState extends State<AttendanceReviewAdminScree
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(action == 'approve' ? 'Approve selfie review?' : 'Reject selfie review?'),
+        title: Text(
+          action == 'approve'
+              ? 'Approve selfie review?'
+              : 'Reject selfie review?',
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -51,13 +60,22 @@ class _AttendanceReviewAdminScreenState extends State<AttendanceReviewAdminScree
             TextField(
               controller: noteController,
               maxLength: 255,
-              decoration: const InputDecoration(labelText: 'Admin note (optional)', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Admin note (optional)',
+                border: OutlineInputBorder(),
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(action == 'approve' ? 'Approve' : 'Reject')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(action == 'approve' ? 'Approve' : 'Reject'),
+          ),
         ],
       ),
     );
@@ -70,11 +88,15 @@ class _AttendanceReviewAdminScreenState extends State<AttendanceReviewAdminScree
         note: noteController.text.trim(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
     } finally {
       noteController.dispose();
     }
@@ -91,11 +113,21 @@ class _AttendanceReviewAdminScreenState extends State<AttendanceReviewAdminScree
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: url == null || url.isEmpty
-                  ? const ColoredBox(color: Color(0xFFEAEAEA), child: Center(child: Icon(Icons.person_off_outlined, size: 48)))
+                  ? const ColoredBox(
+                      color: Color(0xFFEAEAEA),
+                      child: Center(
+                        child: Icon(Icons.person_off_outlined, size: 48),
+                      ),
+                    )
                   : Image.network(
                       url,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFFEAEAEA), child: Center(child: Icon(Icons.broken_image_outlined, size: 48))),
+                      errorBuilder: (_, _, _) => const ColoredBox(
+                        color: Color(0xFFEAEAEA),
+                        child: Center(
+                          child: Icon(Icons.broken_image_outlined, size: 48),
+                        ),
+                      ),
                     ),
             ),
           ),
@@ -132,13 +164,49 @@ class _AttendanceReviewAdminScreenState extends State<AttendanceReviewAdminScree
                 ButtonSegment(value: 'REJECTED', label: Text('Rejected')),
               ],
               selected: {_status},
-              onSelectionChanged: (value) { _status = value.first; _load(); },
+              onSelectionChanged: (value) {
+                _status = value.first;
+                _load();
+              },
             ),
             const SizedBox(height: 16),
-            if (_loading) const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))
-            else if (_error != null) Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(children: [Text(_error!), const SizedBox(height: 12), FilledButton(onPressed: _load, child: const Text('Retry'))])))
-            else if (_reviews.isEmpty) const Padding(padding: EdgeInsets.all(40), child: Center(child: Text('No attendance selfie reviews in this section.')))
-            else ..._reviews.map((item) => _ReviewCard(item: item, photoBuilder: _photo, onApprove: () => _review(item, 'approve'), onReject: () => _review(item, 'reject'))),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(40),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      Text(_error!),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: _load,
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (_reviews.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(40),
+                child: Center(
+                  child: Text('No attendance selfie reviews in this section.'),
+                ),
+              )
+            else
+              ..._reviews.map(
+                (item) => _ReviewCard(
+                  item: item,
+                  photoBuilder: _photo,
+                  onApprove: () => _review(item, 'approve'),
+                  onReject: () => _review(item, 'reject'),
+                ),
+              ),
           ],
         ),
       ),
@@ -147,7 +215,12 @@ class _AttendanceReviewAdminScreenState extends State<AttendanceReviewAdminScree
 }
 
 class _ReviewCard extends StatelessWidget {
-  const _ReviewCard({required this.item, required this.photoBuilder, required this.onApprove, required this.onReject});
+  const _ReviewCard({
+    required this.item,
+    required this.photoBuilder,
+    required this.onApprove,
+    required this.onReject,
+  });
 
   final Map<String, dynamic> item;
   final Widget Function(String?, String) photoBuilder;
@@ -164,30 +237,62 @@ class _ReviewCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(item['employee_name']?.toString() ?? 'Employee', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            Text(
+              item['employee_name']?.toString() ?? 'Employee',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 4),
             Text('${item['employee_id'] ?? ''}  •  ${item['date'] ?? ''}'),
             const SizedBox(height: 4),
-            Text('Status: ${item['identity_review_status'] ?? 'PENDING'}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(
+              'Status: ${item['identity_review_status'] ?? 'PENDING'}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 14),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              photoBuilder(item['enrollment_photo']?.toString(), 'Enrollment'),
-              const SizedBox(width: 12),
-              photoBuilder(item['attendance_selfie']?.toString(), 'Attendance selfie'),
-            ]),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                photoBuilder(
+                  item['enrollment_photo']?.toString(),
+                  'Enrollment',
+                ),
+                const SizedBox(width: 12),
+                photoBuilder(
+                  item['attendance_selfie']?.toString(),
+                  'Attendance selfie',
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
             Text(item['distance_note']?.toString() ?? ''),
-            if ((item['identity_review_note']?.toString() ?? '').isNotEmpty) ...[
+            if ((item['identity_review_note']?.toString() ?? '')
+                .isNotEmpty) ...[
               const SizedBox(height: 8),
               Text('Review note: ${item['identity_review_note']}'),
             ],
             if (pending) ...[
               const SizedBox(height: 14),
-              Row(children: [
-                Expanded(child: OutlinedButton.icon(onPressed: onReject, icon: const Icon(Icons.close), label: const Text('Reject'))),
-                const SizedBox(width: 10),
-                Expanded(child: FilledButton.icon(onPressed: onApprove, icon: const Icon(Icons.check), label: const Text('Approve'))),
-              ]),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onReject,
+                      icon: const Icon(Icons.close),
+                      label: const Text('Reject'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: onApprove,
+                      icon: const Icon(Icons.check),
+                      label: const Text('Approve'),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ],
         ),

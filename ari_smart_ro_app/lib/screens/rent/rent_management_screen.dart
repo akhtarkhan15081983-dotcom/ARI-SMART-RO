@@ -7,13 +7,10 @@ class RentManagementScreen extends StatefulWidget {
   const RentManagementScreen({super.key});
 
   @override
-  State<RentManagementScreen> createState() =>
-      _RentManagementScreenState();
+  State<RentManagementScreen> createState() => _RentManagementScreenState();
 }
 
-class _RentManagementScreenState
-    extends State<RentManagementScreen> {
-
+class _RentManagementScreenState extends State<RentManagementScreen> {
   // ============================================================
   // STATE
   // ============================================================
@@ -28,8 +25,7 @@ class _RentManagementScreenState
   // CUSTOMER SEARCH
   // ============================================================
 
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = "";
 
@@ -56,52 +52,28 @@ class _RentManagementScreenState
   double get _totalExpected {
     return _customers.fold(
       0.0,
-      (sum, customer) =>
-          sum + customer.rentMonthExpected,
+      (sum, customer) => sum + customer.rentMonthExpected,
     );
   }
 
   double get _totalPaid {
-    return _customers.fold(
-      0.0,
-      (sum, customer) =>
-          sum + customer.paidAmount,
-    );
+    return _customers.fold(0.0, (sum, customer) => sum + customer.paidAmount);
   }
 
   double get _totalBalance {
-    return _customers.fold(
-      0.0,
-      (sum, customer) =>
-          sum + customer.balance,
-    );
+    return _customers.fold(0.0, (sum, customer) => sum + customer.balance);
   }
 
   int get _paidCount {
-    return _customers
-        .where(
-          (customer) =>
-              customer.status == "PAID",
-        )
-        .length;
+    return _customers.where((customer) => customer.status == "PAID").length;
   }
 
   int get _pendingCount {
-    return _customers
-        .where(
-          (customer) =>
-              customer.status == "PENDING",
-        )
-        .length;
+    return _customers.where((customer) => customer.status == "PENDING").length;
   }
 
   int get _partialCount {
-    return _customers
-        .where(
-          (customer) =>
-              customer.status == "PARTIAL",
-        )
-        .length;
+    return _customers.where((customer) => customer.status == "PARTIAL").length;
   }
 
   // ============================================================
@@ -126,7 +98,6 @@ class _RentManagementScreenState
   // ============================================================
 
   Future<void> _loadRentManagement() async {
-
     if (mounted) {
       setState(() {
         _isLoading = true;
@@ -135,56 +106,35 @@ class _RentManagementScreenState
     }
 
     try {
+      final response = await RentManagementService.getRentManagement();
 
-      final response =
-          await RentManagementService
-              .getRentManagement();
+      final customerList = (response["customers"] ?? []) as List;
 
-      final customerList =
-          (response["customers"] ?? [])
-              as List;
-
-      final customers =
-          customerList
-              .map(
-                (item) =>
-                    RentManagementCustomer
-                        .fromJson(
-                  item
-                      as Map<String, dynamic>,
-                ),
-              )
-              .toList();
+      final customers = customerList
+          .map(
+            (item) =>
+                RentManagementCustomer.fromJson(item as Map<String, dynamic>),
+          )
+          .toList();
 
       if (!mounted) return;
 
       setState(() {
-
         _customers = customers;
 
         _isLoading = false;
 
         _error = null;
       });
-
     } catch (e) {
-
-      debugPrint(
-        "RENT MANAGEMENT ERROR: $e",
-      );
+      debugPrint("RENT MANAGEMENT ERROR: $e");
 
       if (!mounted) return;
 
       setState(() {
-
         _isLoading = false;
 
-        _error = e
-            .toString()
-            .replaceFirst(
-              "Exception: ",
-              "",
-            );
+        _error = e.toString().replaceFirst("Exception: ", "");
       });
     }
   }
@@ -201,12 +151,8 @@ class _RentManagementScreenState
   // STATUS COLOR
   // ============================================================
 
-  Color _statusColor(
-    String status,
-  ) {
-
+  Color _statusColor(String status) {
     switch (status) {
-
       case "PAID":
         return Colors.green;
 
@@ -228,12 +174,8 @@ class _RentManagementScreenState
   // STATUS TEXT
   // ============================================================
 
-  String _statusText(
-    String status,
-  ) {
-
+  String _statusText(String status) {
     switch (status) {
-
       case "PAID":
         return "PAID";
 
@@ -255,17 +197,10 @@ class _RentManagementScreenState
   // CUSTOMER DETAILS
   // ============================================================
 
-  Future<void> _openCustomerDetails(
-    RentManagementCustomer customer,
-  ) async {
-
-    final paymentSaved =
-        await Navigator.of(context).push<bool>(
+  Future<void> _openCustomerDetails(RentManagementCustomer customer) async {
+    final paymentSaved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) =>
-            RentCustomerDetailsScreen(
-          customer: customer,
-        ),
+        builder: (_) => RentCustomerDetailsScreen(customer: customer),
       ),
     );
 
@@ -279,29 +214,17 @@ class _RentManagementScreenState
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-
+  Widget build(BuildContext context) {
     return Scaffold(
-
       appBar: AppBar(
-
-        title: const Text(
-          "Rent Management",
-        ),
+        title: const Text("Rent Management"),
 
         centerTitle: true,
 
         actions: [
-
           IconButton(
-            icon: const Icon(
-              Icons.refresh,
-            ),
-            onPressed: _isLoading
-                ? null
-                : _refresh,
+            icon: const Icon(Icons.refresh),
+            onPressed: _isLoading ? null : _refresh,
           ),
         ],
       ),
@@ -315,56 +238,33 @@ class _RentManagementScreenState
   // ============================================================
 
   Widget _buildBody() {
-
     if (_isLoading) {
-
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_error != null) {
-
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisSize:
-                MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min,
             children: [
+              const Icon(Icons.error_outline, size: 60, color: Colors.red),
 
-              const Icon(
-                Icons.error_outline,
-                size: 60,
-                color: Colors.red,
-              ),
-
-              const SizedBox(
-                height: 16,
-              ),
+              const SizedBox(height: 16),
 
               Text(
                 _error!,
-                textAlign:
-                    TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16),
               ),
 
-              const SizedBox(
-                height: 20,
-              ),
+              const SizedBox(height: 20),
 
               ElevatedButton.icon(
-                onPressed:
-                    _refresh,
-                icon: const Icon(
-                  Icons.refresh,
-                ),
-                label: const Text(
-                  "Retry",
-                ),
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh),
+                label: const Text("Retry"),
               ),
             ],
           ),
@@ -373,22 +273,16 @@ class _RentManagementScreenState
     }
 
     if (_customers.isEmpty) {
-
       return RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
           children: const [
-
-            SizedBox(
-              height: 200,
-            ),
+            SizedBox(height: 200),
 
             Center(
               child: Text(
                 "No customer rent records found.",
-                style: TextStyle(
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontSize: 16),
               ),
             ),
           ],
@@ -397,27 +291,19 @@ class _RentManagementScreenState
     }
 
     return RefreshIndicator(
-
       onRefresh: _refresh,
 
       child: ListView(
-
-        padding:
-            const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(12),
 
         children: [
-
           _buildSummary(),
 
-          const SizedBox(
-            height: 12,
-          ),
+          const SizedBox(height: 12),
 
           _buildCustomerSearch(),
 
-          const SizedBox(
-            height: 10,
-          ),
+          const SizedBox(height: 10),
 
           _buildCustomerList(),
         ],
@@ -430,81 +316,53 @@ class _RentManagementScreenState
   // ============================================================
 
   Widget _buildSummary() {
-
     return Card(
-
       elevation: 3,
 
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
 
       child: Padding(
-
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
 
         child: Column(
-
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
 
           children: [
-
             const Text(
               "Rent Summary",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight:
-                    FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
 
             Row(
               children: [
-
                 Expanded(
-                  child:
-                      _summaryBox(
+                  child: _summaryBox(
                     "Customers",
-                    _customers.length
-                        .toString(),
+                    _customers.length.toString(),
                     Icons.people,
                     Colors.blue,
                   ),
                 ),
 
-                const SizedBox(
-                  width: 8,
-                ),
+                const SizedBox(width: 8),
 
                 Expanded(
-                  child:
-                      _summaryBox(
+                  child: _summaryBox(
                     "Paid",
-                    _paidCount
-                        .toString(),
+                    _paidCount.toString(),
                     Icons.check_circle,
                     Colors.green,
                   ),
                 ),
 
-                const SizedBox(
-                  width: 8,
-                ),
+                const SizedBox(width: 8),
 
                 Expanded(
-                  child:
-                      _summaryBox(
+                  child: _summaryBox(
                     "Pending",
-                    _pendingCount
-                        .toString(),
+                    _pendingCount.toString(),
                     Icons.pending,
                     Colors.red,
                   ),
@@ -512,16 +370,12 @@ class _RentManagementScreenState
               ],
             ),
 
-            const SizedBox(
-              height: 12,
-            ),
+            const SizedBox(height: 12),
 
             Row(
               children: [
-
                 Expanded(
-                  child:
-                      _summaryBox(
+                  child: _summaryBox(
                     "Expected",
                     "₹${_totalExpected.toStringAsFixed(0)}",
                     Icons.account_balance_wallet,
@@ -529,13 +383,10 @@ class _RentManagementScreenState
                   ),
                 ),
 
-                const SizedBox(
-                  width: 8,
-                ),
+                const SizedBox(width: 8),
 
                 Expanded(
-                  child:
-                      _summaryBox(
+                  child: _summaryBox(
                     "Collected",
                     "₹${_totalPaid.toStringAsFixed(0)}",
                     Icons.payments,
@@ -543,13 +394,10 @@ class _RentManagementScreenState
                   ),
                 ),
 
-                const SizedBox(
-                  width: 8,
-                ),
+                const SizedBox(width: 8),
 
                 Expanded(
-                  child:
-                      _summaryBox(
+                  child: _summaryBox(
                     "Balance",
                     "₹${_totalBalance.toStringAsFixed(0)}",
                     Icons.money_off,
@@ -560,17 +408,13 @@ class _RentManagementScreenState
             ),
 
             if (_partialCount > 0) ...[
-
-              const SizedBox(
-                height: 12,
-              ),
+              const SizedBox(height: 12),
 
               Text(
                 "Partial Payments: $_partialCount",
                 style: const TextStyle(
                   color: Colors.orange,
-                  fontWeight:
-                      FontWeight.w600,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -584,71 +428,40 @@ class _RentManagementScreenState
   // SUMMARY BOX
   // ============================================================
 
-  Widget _summaryBox(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-
+  Widget _summaryBox(String title, String value, IconData icon, Color color) {
     return Container(
+      padding: const EdgeInsets.all(10),
 
-      padding:
-          const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
 
-      decoration:
-          BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
 
-        color:
-            color.withOpacity(0.08),
-
-        borderRadius:
-            BorderRadius.circular(12),
-
-        border:
-            Border.all(
-          color:
-              color.withOpacity(0.20),
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
       ),
 
       child: Column(
-
         children: [
+          Icon(icon, color: color, size: 24),
 
-          Icon(
-            icon,
-            color: color,
-            size: 24,
-          ),
-
-          const SizedBox(
-            height: 6,
-          ),
+          const SizedBox(height: 6),
 
           Text(
             value,
-            textAlign:
-                TextAlign.center,
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 16,
-              fontWeight:
-                  FontWeight.bold,
+              fontWeight: FontWeight.bold,
               color: color,
             ),
           ),
 
-          const SizedBox(
-            height: 3,
-          ),
+          const SizedBox(height: 3),
 
           Text(
             title,
-            textAlign:
-                TextAlign.center,
-            style: const TextStyle(
-              fontSize: 11,
-            ),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 11),
           ),
         ],
       ),
@@ -674,8 +487,7 @@ class _RentManagementScreenState
           },
           textInputAction: TextInputAction.search,
           decoration: InputDecoration(
-            hintText:
-              "Search name, ID, phone, current card or old card...",
+            hintText: "Search name, ID, phone, current card or old card...",
             prefixIcon: const Icon(Icons.search),
             suffixIcon: _searchQuery.isEmpty
                 ? null
@@ -693,22 +505,15 @@ class _RentManagementScreenState
             fillColor: Colors.white,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(
-                color: Colors.grey.shade300,
-              ),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(
-                color: Colors.grey.shade300,
-              ),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(
-                color: Colors.blue,
-                width: 1.5,
-              ),
+              borderSide: const BorderSide(color: Colors.blue, width: 1.5),
             ),
           ),
         ),
@@ -722,9 +527,7 @@ class _RentManagementScreenState
                   ? "No customer found"
                   : "$resultCount customer${resultCount == 1 ? "" : "s"} found",
               style: TextStyle(
-                color: resultCount == 0
-                    ? Colors.red
-                    : Colors.grey.shade700,
+                color: resultCount == 0 ? Colors.red : Colors.grey.shade700,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -744,11 +547,7 @@ class _RentManagementScreenState
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [
-              Icon(
-                Icons.person_search,
-                size: 52,
-                color: Colors.grey.shade500,
-              ),
+              Icon(Icons.person_search, size: 52, color: Colors.grey.shade500),
               const SizedBox(height: 10),
               Text(
                 _searchQuery.trim().isEmpty
@@ -765,9 +564,7 @@ class _RentManagementScreenState
                 Text(
                   "Try name, customer ID, phone, current card or old card number.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade600),
                 ),
               ],
             ],
@@ -777,210 +574,127 @@ class _RentManagementScreenState
     }
 
     return Column(
-      children: customers.map(
-        (customer) {
+      children: customers.map((customer) {
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
 
-          return Card(
+          elevation: 2,
 
-            margin:
-                const EdgeInsets.only(
-              bottom: 10,
-            ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
 
-            elevation: 2,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
 
-            shape:
-                RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.circular(
-                14,
+            onTap: () => _openCustomerDetails(customer),
+
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: Colors.blue.withValues(alpha: 0.10),
+
+                        child: const Icon(Icons.person, color: Colors.blue),
+                      ),
+
+                      const SizedBox(width: 12),
+
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+
+                          children: [
+                            Text(
+                              customer.name.isEmpty
+                                  ? "Unknown Customer"
+                                  : customer.name,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+
+                            const SizedBox(height: 3),
+
+                            Text(
+                              customer.customerId,
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+
+                            Text(
+                              customer.phone,
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      _statusBadge(customer.status),
+                    ],
+                  ),
+
+                  const Divider(height: 24),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _amountColumn(
+                          "Expected",
+                          customer.rentMonthExpected,
+                        ),
+                      ),
+
+                      Expanded(
+                        child: _amountColumn("Paid", customer.paidAmount),
+                      ),
+
+                      Expanded(
+                        child: _amountColumn("Balance", customer.balance),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_today,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
+
+                      const SizedBox(width: 6),
+
+                      Text(
+                        "Due: ${customer.dueDate}",
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey,
+                        ),
+                      ),
+
+                      const Spacer(),
+
+                      const Icon(Icons.chevron_right, color: Colors.grey),
+                    ],
+                  ),
+                ],
               ),
             ),
-
-            child: InkWell(
-
-              borderRadius:
-                  BorderRadius.circular(
-                14,
-              ),
-
-              onTap: () =>
-                  _openCustomerDetails(
-                customer,
-              ),
-
-              child: Padding(
-
-                padding:
-                    const EdgeInsets.all(
-                  14,
-                ),
-
-                child: Column(
-
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
-
-                  children: [
-
-                    Row(
-                      children: [
-
-                        CircleAvatar(
-
-                          backgroundColor:
-                              Colors.blue
-                                  .withOpacity(
-                            0.10,
-                          ),
-
-                          child:
-                              const Icon(
-                            Icons.person,
-                            color:
-                                Colors.blue,
-                          ),
-                        ),
-
-                        const SizedBox(
-                          width: 12,
-                        ),
-
-                        Expanded(
-                          child: Column(
-
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
-
-                            children: [
-
-                              Text(
-                                customer.name
-                                    .isEmpty
-                                    ? "Unknown Customer"
-                                    : customer.name,
-                                style:
-                                    const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight:
-                                      FontWeight.bold,
-                                ),
-                              ),
-
-                              const SizedBox(
-                                height: 3,
-                              ),
-
-                              Text(
-                                customer.customerId,
-                                style:
-                                    const TextStyle(
-                                  color:
-                                      Colors.grey,
-                                ),
-                              ),
-
-                              Text(
-                                customer.phone,
-                                style:
-                                    const TextStyle(
-                                  color:
-                                      Colors.grey,
-                                  fontSize:
-                                      12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        _statusBadge(
-                          customer.status,
-                        ),
-                      ],
-                    ),
-
-                    const Divider(
-                      height: 24,
-                    ),
-
-                    Row(
-                      children: [
-
-                        Expanded(
-                          child:
-                              _amountColumn(
-                            "Expected",
-                            customer
-                                .rentMonthExpected,
-                          ),
-                        ),
-
-                        Expanded(
-                          child:
-                              _amountColumn(
-                            "Paid",
-                            customer
-                                .paidAmount,
-                          ),
-                        ),
-
-                        Expanded(
-                          child:
-                              _amountColumn(
-                            "Balance",
-                            customer.balance,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(
-                      height: 12,
-                    ),
-
-                    Row(
-                      children: [
-
-                        const Icon(
-                          Icons.calendar_today,
-                          size: 16,
-                          color:
-                              Colors.grey,
-                        ),
-
-                        const SizedBox(
-                          width: 6,
-                        ),
-
-                        Text(
-                          "Due: ${customer.dueDate}",
-                          style:
-                              const TextStyle(
-                            fontSize: 13,
-                            color:
-                                Colors.grey,
-                          ),
-                        ),
-
-                        const Spacer(),
-
-                        const Icon(
-                          Icons.chevron_right,
-                          color:
-                              Colors.grey,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ).toList(),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -988,40 +702,18 @@ class _RentManagementScreenState
   // AMOUNT COLUMN
   // ============================================================
 
-  Widget _amountColumn(
-    String title,
-    double amount,
-  ) {
-
+  Widget _amountColumn(String title, double amount) {
     return Column(
-
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
 
       children: [
+        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
 
-        Text(
-          title,
-          style:
-              const TextStyle(
-            fontSize: 12,
-            color:
-                Colors.grey,
-          ),
-        ),
-
-        const SizedBox(
-          height: 3,
-        ),
+        const SizedBox(height: 3),
 
         Text(
           "₹${amount.toStringAsFixed(2)}",
-          style:
-              const TextStyle(
-            fontSize: 15,
-            fontWeight:
-                FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
         ),
       ],
     );
@@ -1031,37 +723,18 @@ class _RentManagementScreenState
   // STATUS BADGE
   // ============================================================
 
-  Widget _statusBadge(
-    String status,
-  ) {
-
-    final color =
-        _statusColor(status);
+  Widget _statusBadge(String status) {
+    final color = _statusColor(status);
 
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
 
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 9,
-        vertical: 5,
-      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
 
-      decoration:
-          BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
 
-        color:
-            color.withOpacity(0.10),
-
-        borderRadius:
-            BorderRadius.circular(
-          20,
-        ),
-
-        border:
-            Border.all(
-          color:
-              color.withOpacity(0.30),
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
       ),
 
       child: Text(
@@ -1069,39 +742,28 @@ class _RentManagementScreenState
         style: TextStyle(
           color: color,
           fontSize: 11,
-          fontWeight:
-              FontWeight.bold,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
   }
 }
 
-
 // =================================================================
 // CUSTOMER RENT DETAILS
 // =================================================================
 
-class RentCustomerDetailsScreen
-    extends StatefulWidget {
+class RentCustomerDetailsScreen extends StatefulWidget {
+  const RentCustomerDetailsScreen({super.key, required this.customer});
 
-  const RentCustomerDetailsScreen({
-    super.key,
-    required this.customer,
-  });
-
-  final RentManagementCustomer
-      customer;
+  final RentManagementCustomer customer;
 
   @override
-  State<RentCustomerDetailsScreen>
-      createState() =>
-          _RentCustomerDetailsScreenState();
+  State<RentCustomerDetailsScreen> createState() =>
+      _RentCustomerDetailsScreenState();
 }
 
-class _RentCustomerDetailsScreenState
-    extends State<RentCustomerDetailsScreen> {
-
+class _RentCustomerDetailsScreenState extends State<RentCustomerDetailsScreen> {
   // ============================================================
   // LOCAL STATE
   // ============================================================
@@ -1112,19 +774,14 @@ class _RentCustomerDetailsScreenState
   // CUSTOMER
   // ============================================================
 
-  RentManagementCustomer get customer =>
-      widget.customer;
+  RentManagementCustomer get customer => widget.customer;
 
   // ============================================================
   // STATUS COLOR
   // ============================================================
 
-  Color _statusColor(
-    String status,
-  ) {
-
+  Color _statusColor(String status) {
     switch (status) {
-
       case "PAID":
         return Colors.green;
 
@@ -1143,12 +800,8 @@ class _RentCustomerDetailsScreenState
   // STATUS TEXT
   // ============================================================
 
-  String _statusText(
-    String status,
-  ) {
-
+  String _statusText(String status) {
     switch (status) {
-
       case "PAID":
         return "PAID";
 
@@ -1171,181 +824,110 @@ class _RentCustomerDetailsScreenState
   // ============================================================
 
   Future<void> _showAddPaymentDialog() async {
+    final amountController = TextEditingController();
 
-    final amountController =
-        TextEditingController();
-
-    final remarksController =
-        TextEditingController();
+    final remarksController = TextEditingController();
 
     String paymentMode = "CASH";
 
     try {
-
       await showDialog(
         context: context,
         builder: (dialogContext) {
-
           return StatefulBuilder(
-            builder: (
-              context,
-              setDialogState,
-            ) {
-
+            builder: (context, setDialogState) {
               return AlertDialog(
+                title: const Text("Add Rent Payment"),
 
-                title: const Text(
-                  "Add Rent Payment",
-                ),
-
-                content:
-                    SingleChildScrollView(
-
+                content: SingleChildScrollView(
                   child: Column(
-
-                    mainAxisSize:
-                        MainAxisSize.min,
+                    mainAxisSize: MainAxisSize.min,
 
                     children: [
-
                       Text(
-                        customer.name.isEmpty
-                            ? "Customer"
-                            : customer.name,
-                        style:
-                            const TextStyle(
-                          fontWeight:
-                              FontWeight.bold,
+                        customer.name.isEmpty ? "Customer" : customer.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
                           fontSize: 17,
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 6,
-                      ),
+                      const SizedBox(height: 6),
 
                       Text(
                         "Balance: ₹${customer.balance.toStringAsFixed(2)}",
-                        style:
-                            const TextStyle(
-                          color:
-                              Colors.orange,
-                          fontWeight:
-                              FontWeight.w600,
+                        style: const TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 18,
-                      ),
+                      const SizedBox(height: 18),
 
                       TextField(
+                        controller: amountController,
 
-                        controller:
-                            amountController,
-
-                        keyboardType:
-                            const TextInputType
-                                .numberWithOptions(
+                        keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
 
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              "Payment Amount",
-                          prefixText:
-                              "₹ ",
-                          border:
-                              OutlineInputBorder(),
+                        decoration: const InputDecoration(
+                          labelText: "Payment Amount",
+                          prefixText: "₹ ",
+                          border: OutlineInputBorder(),
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 12,
-                      ),
+                      const SizedBox(height: 12),
 
-                      DropdownButtonFormField<
-                          String>(
+                      DropdownButtonFormField<String>(
+                        initialValue: paymentMode,
 
-                        initialValue:
-                            paymentMode,
-
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              "Payment Mode",
-                          border:
-                              OutlineInputBorder(),
+                        decoration: const InputDecoration(
+                          labelText: "Payment Mode",
+                          border: OutlineInputBorder(),
                         ),
 
                         items: const [
+                          DropdownMenuItem(value: "CASH", child: Text("Cash")),
 
-                          DropdownMenuItem(
-                            value: "CASH",
-                            child:
-                                Text("Cash"),
-                          ),
-
-                          DropdownMenuItem(
-                            value: "UPI",
-                            child:
-                                Text("UPI"),
-                          ),
+                          DropdownMenuItem(value: "UPI", child: Text("UPI")),
 
                           DropdownMenuItem(
                             value: "BANK",
-                            child:
-                                Text(
-                              "Bank Transfer",
-                            ),
+                            child: Text("Bank Transfer"),
                           ),
 
                           DropdownMenuItem(
                             value: "OTHER",
-                            child:
-                                Text("Other"),
+                            child: Text("Other"),
                           ),
                         ],
 
-                        onChanged:
-                            _savingPayment
-                                ? null
-                                : (value) {
+                        onChanged: _savingPayment
+                            ? null
+                            : (value) {
+                                if (value == null) {
+                                  return;
+                                }
 
-                                    if (value ==
-                                        null) {
-                                      return;
-                                    }
-
-                                    setDialogState(
-                                      () {
-                                        paymentMode =
-                                            value;
-                                      },
-                                    );
-                                  },
+                                setDialogState(() {
+                                  paymentMode = value;
+                                });
+                              },
                       ),
 
-                      const SizedBox(
-                        height: 12,
-                      ),
+                      const SizedBox(height: 12),
 
                       TextField(
-
-                        controller:
-                            remarksController,
+                        controller: remarksController,
 
                         maxLines: 2,
 
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              "Remarks",
-                          hintText:
-                              "Optional",
-                          border:
-                              OutlineInputBorder(),
+                        decoration: const InputDecoration(
+                          labelText: "Remarks",
+                          hintText: "Optional",
+                          border: OutlineInputBorder(),
                         ),
                       ),
                     ],
@@ -1353,119 +935,76 @@ class _RentCustomerDetailsScreenState
                 ),
 
                 actions: [
-
                   TextButton(
+                    onPressed: _savingPayment
+                        ? null
+                        : () {
+                            Navigator.pop(dialogContext);
+                          },
 
-                    onPressed:
-                        _savingPayment
-                            ? null
-                            : () {
-                                Navigator.pop(
-                                  dialogContext,
-                                );
-                              },
-
-                    child:
-                        const Text(
-                      "CANCEL",
-                    ),
+                    child: const Text("CANCEL"),
                   ),
 
                   ElevatedButton(
+                    onPressed: _savingPayment
+                        ? null
+                        : () async {
+                            final amount = double.tryParse(
+                              amountController.text.trim(),
+                            );
 
-                    onPressed:
-                        _savingPayment
-                            ? null
-                            : () async {
-
-                                final amount =
-                                    double.tryParse(
-                                  amountController
-                                      .text
-                                      .trim(),
-                                );
-
-                                if (amount ==
-                                        null ||
-                                    amount <= 0) {
-
-                                  ScaffoldMessenger
-                                      .of(
-                                    context,
-                                  ).showSnackBar(
-                                    const SnackBar(
-                                      content:
-                                          Text(
-                                        "Please enter a valid payment amount.",
-                                      ),
-                                    ),
-                                  );
-
-                                  return;
-                                }
-
-                                if (amount >
-                                    customer.balance) {
-
-                                  ScaffoldMessenger
-                                      .of(
-                                    context,
-                                  ).showSnackBar(
-                                    const SnackBar(
-                                      content:
-                                          Text(
-                                        "Payment cannot be greater than balance.",
-                                      ),
-                                    ),
-                                  );
-
-                                  return;
-                                }
-
-                                // IMPORTANT:
-                                // Close the payment dialog before making the
-                                // API call. The previous implementation kept
-                                // the dialog mounted while _submitPayment()
-                                // popped the customer details route, which
-                                // caused Flutter's "_dependencies.isEmpty"
-                                // assertion on some devices.
-
-                                setDialogState(
-                                  () {
-                                    _savingPayment = true;
-                                  },
-                                );
-
-                                Navigator.pop(
-                                  dialogContext,
-                                );
-
-                                await _submitPayment(
-                                  amount: amount,
-                                  paymentMode: paymentMode,
-                                  remarks:
-                                      remarksController
-                                          .text
-                                          .trim(),
-                                );
-                              },
-
-                    child:
-                        _savingPayment
-
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth:
-                                      2,
+                            if (amount == null || amount <= 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "Please enter a valid payment amount.",
+                                  ),
                                 ),
-                              )
+                              );
 
-                            : const Text(
-                                "SAVE PAYMENT",
-                              ),
+                              return;
+                            }
+
+                            if (amount > customer.balance) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "Payment cannot be greater than balance.",
+                                  ),
+                                ),
+                              );
+
+                              return;
+                            }
+
+                            // IMPORTANT:
+                            // Close the payment dialog before making the
+                            // API call. The previous implementation kept
+                            // the dialog mounted while _submitPayment()
+                            // popped the customer details route, which
+                            // caused Flutter's "_dependencies.isEmpty"
+                            // assertion on some devices.
+
+                            setDialogState(() {
+                              _savingPayment = true;
+                            });
+
+                            Navigator.pop(dialogContext);
+
+                            await _submitPayment(
+                              amount: amount,
+                              paymentMode: paymentMode,
+                              remarks: remarksController.text.trim(),
+                            );
+                          },
+
+                    child: _savingPayment
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text("SAVE PAYMENT"),
                   ),
                 ],
               );
@@ -1473,9 +1012,7 @@ class _RentCustomerDetailsScreenState
           );
         },
       );
-
     } finally {
-
       amountController.dispose();
 
       remarksController.dispose();
@@ -1491,83 +1028,52 @@ class _RentCustomerDetailsScreenState
     required String paymentMode,
     required String remarks,
   }) async {
-
     try {
+      final response = await RentManagementService.addRentPayment(
+        customerId: customer.id,
 
-      final response =
-          await RentManagementService
-              .addRentPayment(
+        amount: amount,
 
-        customerId:
-            customer.id,
+        paymentMode: paymentMode,
 
-        amount:
-            amount,
-
-        paymentMode:
-            paymentMode,
-
-        remarks:
-            remarks,
+        remarks: remarks,
       );
 
       if (!mounted) {
         return false;
       }
 
-      final rent =
-          response["rent"]
-              as Map<String, dynamic>?;
+      final rent = response["rent"] as Map<String, dynamic>?;
 
-      final newPaid =
-          rent?["paid_amount"];
+      final newPaid = rent?["paid_amount"];
 
-      final newBalance =
-          rent?["balance"];
+      final newBalance = rent?["balance"];
 
-      final newStatus =
-          rent?["status"];
+      final newStatus = rent?["status"];
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             "Payment saved successfully"
             "${newPaid != null ? " • Paid: ₹$newPaid" : ""}"
             "${newBalance != null ? " • Balance: ₹$newBalance" : ""}",
           ),
-          backgroundColor:
-              Colors.green,
+          backgroundColor: Colors.green,
         ),
       );
 
-      Navigator.of(
-        context,
-      ).pop(true);
+      Navigator.of(context).pop(true);
 
       return true;
-
     } catch (e) {
-
       if (!mounted) {
         return false;
       }
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            e
-                .toString()
-                .replaceFirst(
-                  "Exception: ",
-                  "",
-                ),
-          ),
-          backgroundColor:
-              Colors.red,
+          content: Text(e.toString().replaceFirst("Exception: ", "")),
+          backgroundColor: Colors.red,
         ),
       );
 
@@ -1580,72 +1086,42 @@ class _RentCustomerDetailsScreenState
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-
-    final statusColor =
-        _statusColor(
-      customer.status,
-    );
+  Widget build(BuildContext context) {
+    final statusColor = _statusColor(customer.status);
 
     return Scaffold(
-
       appBar: AppBar(
-
-        title: Text(
-          customer.name.isEmpty
-              ? "Customer Rent"
-              : customer.name,
-        ),
+        title: Text(customer.name.isEmpty ? "Customer Rent" : customer.name),
       ),
 
       body: ListView(
-
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
 
         children: [
-
           // ------------------------------------------------------
           // CUSTOMER INFO
           // ------------------------------------------------------
-
           Card(
-
             child: Padding(
-
-              padding:
-                  const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
 
               child: Column(
-
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
 
                 children: [
-
                   Text(
                     customer.name,
-                    style:
-                        const TextStyle(
+                    style: const TextStyle(
                       fontSize: 21,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 6,
-                  ),
+                  const SizedBox(height: 6),
 
-                  Text(
-                    "Customer ID: ${customer.customerId}",
-                  ),
+                  Text("Customer ID: ${customer.customerId}"),
 
-                  Text(
-                    "Card: ${customer.cardNumber}",
-                  ),
+                  Text("Card: ${customer.cardNumber}"),
 
                   if (customer.oldCardNumber.trim().isNotEmpty)
                     Text(
@@ -1656,56 +1132,34 @@ class _RentCustomerDetailsScreenState
                       ),
                     ),
 
-                  Text(
-                    "Phone: ${customer.phone}",
-                  ),
+                  Text("Phone: ${customer.phone}"),
 
-                  if (customer.roModel
-                      .isNotEmpty)
-
-                    Text(
-                      "RO Model: ${customer.roModel}",
-                    ),
+                  if (customer.roModel.isNotEmpty)
+                    Text("RO Model: ${customer.roModel}"),
                 ],
               ),
             ),
           ),
 
-          const SizedBox(
-            height: 12,
-          ),
+          const SizedBox(height: 12),
 
           // ------------------------------------------------------
           // CURRENT RENT
           // ------------------------------------------------------
-
           Card(
-
             child: Padding(
-
-              padding:
-                  const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
 
               child: Column(
-
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
 
                 children: [
-
                   const Text(
                     "Current Rent",
-                    style:
-                        TextStyle(
-                      fontSize: 19,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                   ),
 
-                  const SizedBox(
-                    height: 16,
-                  ),
+                  const SizedBox(height: 16),
 
                   _detailRow(
                     "Expected Rent",
@@ -1722,92 +1176,51 @@ class _RentCustomerDetailsScreenState
                     "₹${customer.balance.toStringAsFixed(2)}",
                   ),
 
-                  _detailRow(
-                    "Due Date",
-                    customer.dueDate,
-                  ),
+                  _detailRow("Due Date", customer.dueDate),
 
-                  const SizedBox(
-                    height: 10,
-                  ),
+                  const SizedBox(height: 10),
 
                   // ------------------------------------------------
                   // ADD PAYMENT BUTTON
                   // ------------------------------------------------
-
                   SizedBox(
-                    width:
-                        double.infinity,
+                    width: double.infinity,
 
-                    child:
-                        ElevatedButton.icon(
+                    child: ElevatedButton.icon(
+                      onPressed: customer.balance <= 0
+                          ? null
+                          : _showAddPaymentDialog,
 
-                      onPressed:
-                          customer.balance <= 0
-                              ? null
-                              : _showAddPaymentDialog,
+                      icon: const Icon(Icons.add_card),
 
-                      icon:
-                          const Icon(
-                        Icons.add_card,
-                      ),
-
-                      label:
-                          const Text(
-                        "ADD PAYMENT",
-                      ),
+                      label: const Text("ADD PAYMENT"),
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 10,
-                  ),
+                  const SizedBox(height: 10),
 
                   // ------------------------------------------------
                   // STATUS
                   // ------------------------------------------------
-
                   Container(
+                    width: double.infinity,
 
-                    width:
-                        double.infinity,
+                    padding: const EdgeInsets.all(10),
 
-                    padding:
-                        const EdgeInsets.all(
-                      10,
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.10),
+
+                      borderRadius: BorderRadius.circular(10),
                     ),
 
-                    decoration:
-                        BoxDecoration(
+                    child: Text(
+                      _statusText(customer.status),
 
-                      color:
-                          statusColor
-                              .withOpacity(
-                        0.10,
-                      ),
+                      textAlign: TextAlign.center,
 
-                      borderRadius:
-                          BorderRadius.circular(
-                        10,
-                      ),
-                    ),
-
-                    child:
-                        Text(
-
-                      _statusText(
-                        customer.status,
-                      ),
-
-                      textAlign:
-                          TextAlign.center,
-
-                      style:
-                          TextStyle(
-                        color:
-                            statusColor,
-                        fontWeight:
-                            FontWeight.bold,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
@@ -1816,41 +1229,25 @@ class _RentCustomerDetailsScreenState
             ),
           ),
 
-          const SizedBox(
-            height: 12,
-          ),
+          const SizedBox(height: 12),
 
           // ------------------------------------------------------
           // RO DETAILS
           // ------------------------------------------------------
-
           Card(
-
             child: Padding(
-
-              padding:
-                  const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
 
               child: Column(
-
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
 
                 children: [
-
                   const Text(
                     "RO Details",
-                    style:
-                        TextStyle(
-                      fontSize: 19,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                   ),
 
-                  const SizedBox(
-                    height: 12,
-                  ),
+                  const SizedBox(height: 12),
 
                   _detailRow(
                     "Monthly Rent",
@@ -1869,67 +1266,37 @@ class _RentCustomerDetailsScreenState
 
                   _detailRow(
                     "Installation Date",
-                    customer
-                            .installationDate ??
-                        "-",
+                    customer.installationDate ?? "-",
                   ),
                 ],
               ),
             ),
           ),
 
-          const SizedBox(
-            height: 12,
-          ),
+          const SizedBox(height: 12),
 
           // ------------------------------------------------------
           // HISTORY
           // ------------------------------------------------------
-
           Card(
-
             child: Padding(
-
-              padding:
-                  const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
 
               child: Column(
-
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
 
                 children: [
-
                   const Text(
                     "Rent History",
-                    style:
-                        TextStyle(
-                      fontSize: 19,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                   ),
 
-                  const SizedBox(
-                    height: 12,
-                  ),
+                  const SizedBox(height: 12),
 
-                  if (customer.history
-                      .isEmpty)
-
-                    const Text(
-                      "No rent history available.",
-                    )
-
+                  if (customer.history.isEmpty)
+                    const Text("No rent history available.")
                   else
-
-                    ...customer.history
-                        .map(
-                      (item) =>
-                          _historyItem(
-                        item,
-                      ),
-                    ),
+                    ...customer.history.map((item) => _historyItem(item)),
                 ],
               ),
             ),
@@ -1943,41 +1310,17 @@ class _RentCustomerDetailsScreenState
   // DETAIL ROW
   // ============================================================
 
-  Widget _detailRow(
-    String title,
-    String value,
-  ) {
-
+  Widget _detailRow(String title, String value) {
     return Padding(
-
-      padding:
-          const EdgeInsets.only(
-        bottom: 9,
-      ),
+      padding: const EdgeInsets.only(bottom: 9),
 
       child: Row(
-
         children: [
-
           Expanded(
-            child: Text(
-              title,
-              style:
-                  const TextStyle(
-                color:
-                    Colors.grey,
-              ),
-            ),
+            child: Text(title, style: const TextStyle(color: Colors.grey)),
           ),
 
-          Text(
-            value,
-            style:
-                const TextStyle(
-              fontWeight:
-                  FontWeight.w600,
-            ),
-          ),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -1987,83 +1330,40 @@ class _RentCustomerDetailsScreenState
   // HISTORY ITEM
   // ============================================================
 
-  Widget _historyItem(
-    RentHistoryItem item,
-  ) {
-
-    final color =
-        _statusColor(
-      item.status,
-    );
+  Widget _historyItem(RentHistoryItem item) {
+    final color = _statusColor(item.status);
 
     return Container(
+      margin: const EdgeInsets.only(bottom: 10),
 
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
+      padding: const EdgeInsets.all(12),
 
-      padding:
-          const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
 
-      decoration:
-          BoxDecoration(
-
-        border:
-            Border.all(
-          color:
-              Colors.grey.shade300,
-        ),
-
-        borderRadius:
-            BorderRadius.circular(
-          10,
-        ),
+        borderRadius: BorderRadius.circular(10),
       ),
 
       child: Column(
-
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
 
         children: [
-
           Row(
             children: [
-
               Expanded(
                 child: Text(
-                  item.rentMonth ??
-                      "-",
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
+                  item.rentMonth ?? "-",
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
 
               Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
 
-                padding:
-                    const EdgeInsets
-                        .symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.10),
 
-                decoration:
-                    BoxDecoration(
-
-                  color:
-                      color.withOpacity(
-                    0.10,
-                  ),
-
-                  borderRadius:
-                      BorderRadius.circular(
-                    20,
-                  ),
+                  borderRadius: BorderRadius.circular(20),
                 ),
 
                 child: Text(
@@ -2071,47 +1371,28 @@ class _RentCustomerDetailsScreenState
                   style: TextStyle(
                     color: color,
                     fontSize: 10,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
             ],
           ),
 
-          const SizedBox(
-            height: 8,
-          ),
+          const SizedBox(height: 8),
 
-          Text(
-            "Expected: ₹${item.expectedRent.toStringAsFixed(2)}",
-          ),
+          Text("Expected: ₹${item.expectedRent.toStringAsFixed(2)}"),
 
-          Text(
-            "Paid: ₹${item.paidAmount.toStringAsFixed(2)}",
-          ),
+          Text("Paid: ₹${item.paidAmount.toStringAsFixed(2)}"),
 
-          Text(
-            "Balance: ₹${item.balance.toStringAsFixed(2)}",
-          ),
+          Text("Balance: ₹${item.balance.toStringAsFixed(2)}"),
 
           if (item.remarks.isNotEmpty)
-
             Padding(
-
-              padding:
-                  const EdgeInsets.only(
-                top: 5,
-              ),
+              padding: const EdgeInsets.only(top: 5),
 
               child: Text(
                 "Remarks: ${item.remarks}",
-                style:
-                    const TextStyle(
-                  color:
-                      Colors.grey,
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
               ),
             ),
         ],

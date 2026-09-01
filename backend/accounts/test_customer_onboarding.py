@@ -36,7 +36,7 @@ class CustomerOnboardingTests(TestCase):
         otp = self._register_and_get_otp(customer.phone, customer.name)
         response = self.client.post(
             "/api/auth/verify-otp/",
-            {"phone": customer.phone, "otp": otp},
+            {"phone": customer.phone, "otp": otp, "new_password": "Strong@123"},
             format="json",
         )
 
@@ -52,7 +52,7 @@ class CustomerOnboardingTests(TestCase):
         otp = self._register_and_get_otp(phone, "New Shopper")
         response = self.client.post(
             "/api/auth/verify-otp/",
-            {"phone": phone, "otp": otp},
+            {"phone": phone, "otp": otp, "new_password": "Strong@123"},
             format="json",
         )
         self.assertEqual(response.status_code, 200)
@@ -91,6 +91,24 @@ class CustomerOnboardingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         user.refresh_from_db()
         self.assertTrue(user.check_password("NewStrong@123"))
+
+    def test_legacy_password_field_remains_supported_after_otp(self):
+        user = User.objects.create_user(
+            phone="9200000006",
+            password="OldStrong@123",
+            role="CUSTOMER",
+            is_verified=False,
+        )
+        self.client.post("/api/auth/send-otp/", {"phone": user.phone}, format="json")
+        otp = PhoneOTP.objects.get(user=user).otp
+        response = self.client.post(
+            "/api/auth/verify-otp/",
+            {"phone": user.phone, "otp": otp, "password": "LegacyStrong@123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("LegacyStrong@123"))
 
     def test_five_wrong_passwords_temporarily_lock_account_and_are_audited(self):
         user = User.objects.create_user(

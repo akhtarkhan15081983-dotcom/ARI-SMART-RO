@@ -8,10 +8,15 @@ from .views import (
     AssignmentEmployeeListAPIView,
     FaceEnrollmentAPIView,
     AdminFaceEnrollmentControlAPIView,
+    EmployeeManagementAPIView,
 )
-from .hrms import LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView
+from .hrms import EmployeeHrmsDashboardAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView
 
 urlpatterns = [
+    path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
+    path("employees/hrms/dashboard/", EmployeeHrmsDashboardAPIView.as_view(), name="hrms-dashboard"),
+    path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
+    path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
     path("employees/hrms/leaves/", LeaveRequestAPIView.as_view(), name="hrms-leaves"),
     path("employees/hrms/leaves/<int:leave_id>/review/", LeaveReviewAPIView.as_view(), name="hrms-leave-review"),
     path("employees/hrms/payroll/", PayrollAPIView.as_view(), name="hrms-payroll"),

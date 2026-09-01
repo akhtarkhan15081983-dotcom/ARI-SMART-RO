@@ -90,6 +90,35 @@ class ApiService {
     return storage.write(key: "user_id", value: userId);
   }
 
+  static Future<Map<String, String>?> rememberedCredentials() async {
+    final enabled = await storage.read(key: "remember_login");
+    if (enabled != "true") return null;
+    final phone = await storage.read(key: "remembered_phone");
+    final password = await storage.read(key: "remembered_password");
+    if (phone == null ||
+        phone.isEmpty ||
+        password == null ||
+        password.isEmpty) {
+      return null;
+    }
+    return {"phone": phone, "password": password};
+  }
+
+  static Future<void> saveRememberedCredentials({
+    required String phone,
+    required String password,
+  }) async {
+    await storage.write(key: "remember_login", value: "true");
+    await storage.write(key: "remembered_phone", value: phone);
+    await storage.write(key: "remembered_password", value: password);
+  }
+
+  static Future<void> clearRememberedCredentials() async {
+    await storage.delete(key: "remember_login");
+    await storage.delete(key: "remembered_phone");
+    await storage.delete(key: "remembered_password");
+  }
+
   static Future<void> saveLoginData({
     required String accessToken,
     String? refreshToken,
@@ -168,6 +197,10 @@ class ApiService {
   }
 
   static Future<void> logout() async {
-    await storage.deleteAll();
+    // Preserve device identity and optional Keystore-backed remembered login.
+    await storage.delete(key: "access");
+    await storage.delete(key: "refresh");
+    await storage.delete(key: "role");
+    await storage.delete(key: "user_id");
   }
 }

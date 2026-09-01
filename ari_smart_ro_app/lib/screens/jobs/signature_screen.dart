@@ -11,7 +11,6 @@ class SignatureScreen extends StatefulWidget {
 }
 
 class _SignatureScreenState extends State<SignatureScreen> {
-
   final SignatureController controller = SignatureController(
     penStrokeWidth: 3,
     penColor: Colors.black,
@@ -24,13 +23,10 @@ class _SignatureScreenState extends State<SignatureScreen> {
   }
 
   Future<void> _save() async {
-
     if (controller.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please sign first"),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Please sign first")));
       return;
     }
 
@@ -43,26 +39,16 @@ class _SignatureScreenState extends State<SignatureScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
-      appBar: AppBar(
-        title: const Text("Customer Signature"),
-      ),
+      appBar: AppBar(title: const Text("Customer Signature")),
 
       body: Column(
-
         children: [
-
           Expanded(
-
             child: Container(
-
               margin: const EdgeInsets.all(15),
 
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
-              ),
+              decoration: BoxDecoration(border: Border.all(color: Colors.grey)),
 
               child: Signature(
                 controller: controller,
@@ -72,17 +58,12 @@ class _SignatureScreenState extends State<SignatureScreen> {
           ),
 
           Padding(
-
             padding: const EdgeInsets.all(16),
 
             child: Row(
-
               children: [
-
                 Expanded(
-
                   child: ElevatedButton(
-
                     onPressed: () {
                       controller.clear();
                     },
@@ -94,19 +75,15 @@ class _SignatureScreenState extends State<SignatureScreen> {
                 const SizedBox(width: 10),
 
                 Expanded(
-
                   child: ElevatedButton(
-
                     onPressed: _save,
 
                     child: const Text("Save"),
                   ),
                 ),
-
               ],
             ),
-          )
-
+          ),
         ],
       ),
     );

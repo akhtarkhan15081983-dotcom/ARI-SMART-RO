@@ -8,65 +8,44 @@ import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class LiveLocationService {
-
   final storage = const FlutterSecureStorage();
 
   Timer? _timer;
 
   bool _running = false;
 
-  
-
   void startTracking() {
-
-    if(_running) return;
+    if (_running) return;
 
     _running = true;
 
-    _timer = Timer.periodic(
-      const Duration(seconds:10),
-      (_) async {
-
-        await sendCurrentLocation();
-
-      },
-    );
-
+    _timer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      await sendCurrentLocation();
+    });
   }
 
-  void stopTracking(){
-
+  void stopTracking() {
     _timer?.cancel();
 
-    _running=false;
-
+    _running = false;
   }
 
-  Future<void> sendCurrentLocation() async{
-
-    try{
-
-      Position position =
-          await Geolocator.getCurrentPosition(
+  Future<void> sendCurrentLocation() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
       final response = await http.post(
-
-        Uri.parse(
-          "${ApiService.baseUrl}/employees/live-location/",
-        ),
+        Uri.parse("${ApiService.baseUrl}/employees/live-location/"),
 
         headers: await ApiService.authHeaders(),
 
         body: jsonEncode({
+          "live_latitude": position.latitude,
 
-          "live_latitude":position.latitude,
-
-          "live_longitude":position.longitude,
-
+          "live_longitude": position.longitude,
         }),
-
       );
 
       print("LIVE LOCATION : ${response.statusCode}");
@@ -76,13 +55,8 @@ class LiveLocationService {
       if (response.statusCode == 401) {
         stopTracking();
       }
-      
-    }catch(e){
-
+    } catch (e) {
       print(e);
-
     }
-
   }
-
 }

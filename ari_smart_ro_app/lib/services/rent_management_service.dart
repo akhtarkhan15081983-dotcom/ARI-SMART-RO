@@ -9,56 +9,31 @@ class RentManagementService {
   // GET ALL CUSTOMER RENT RECORDS
   // ============================================================
 
-  static Future<Map<String, dynamic>>
-      getRentManagement() async {
+  static Future<Map<String, dynamic>> getRentManagement() async {
+    final headers = await ApiService.authHeaders();
 
-    final headers =
-        await ApiService.authHeaders();
+    final url = Uri.parse("${ApiService.baseUrl}/customers/rent-management/");
 
-    final url = Uri.parse(
-      "${ApiService.baseUrl}/customers/rent-management/",
-    );
+    final response = await http.get(url, headers: headers);
 
-    final response = await http.get(
-      url,
-      headers: headers,
-    );
+    print("========== RENT MANAGEMENT ==========");
 
-    print(
-      "========== RENT MANAGEMENT ==========",
-    );
+    print("Status: ${response.statusCode}");
 
-    print(
-      "Status: ${response.statusCode}",
-    );
+    print("Body: ${response.body}");
 
-    print(
-      "Body: ${response.body}",
-    );
-
-    print(
-      "====================================",
-    );
+    print("====================================");
 
     if (response.statusCode == 200) {
-
-      return jsonDecode(
-        response.body,
-      ) as Map<String, dynamic>;
+      return jsonDecode(response.body) as Map<String, dynamic>;
     }
 
     if (response.statusCode == 401) {
-
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     if (response.statusCode == 403) {
-
-      throw Exception(
-        "You do not have permission to view rent management.",
-      );
+      throw Exception("You do not have permission to view rent management.");
     }
 
     throw Exception(
@@ -71,9 +46,7 @@ class RentManagementService {
   // ADD RENT PAYMENT
   // ============================================================
 
-  static Future<Map<String, dynamic>>
-      addRentPayment({
-
+  static Future<Map<String, dynamic>> addRentPayment({
     required int customerId,
 
     required double amount,
@@ -83,53 +56,34 @@ class RentManagementService {
     String? paymentDate,
 
     String? remarks,
-
   }) async {
-
-    final headers =
-        await ApiService.authHeaders();
+    final headers = await ApiService.authHeaders();
 
     final url = Uri.parse(
       "${ApiService.baseUrl}/customers/rent-management/payment/",
     );
 
     final body = <String, dynamic>{
+      "customer_id": customerId,
 
-      "customer_id":
-          customerId,
+      "amount": amount,
 
-      "amount":
-          amount,
-
-      "payment_mode":
-          paymentMode,
+      "payment_mode": paymentMode,
     };
 
-    if (paymentDate != null &&
-        paymentDate.isNotEmpty) {
-
-      body["payment_date"] =
-          paymentDate;
+    if (paymentDate != null && paymentDate.isNotEmpty) {
+      body["payment_date"] = paymentDate;
     }
 
-    if (remarks != null &&
-        remarks.trim().isNotEmpty) {
-
-      body["remarks"] =
-          remarks.trim();
+    if (remarks != null && remarks.trim().isNotEmpty) {
+      body["remarks"] = remarks.trim();
     }
 
-    print(
-      "========== RENT PAYMENT ==========",
-    );
+    print("========== RENT PAYMENT ==========");
 
-    print(
-      "URL: $url",
-    );
+    print("URL: $url");
 
-    print(
-      "BODY: ${jsonEncode(body)}",
-    );
+    print("BODY: ${jsonEncode(body)}");
 
     final response = await http.post(
       url,
@@ -137,39 +91,22 @@ class RentManagementService {
       body: jsonEncode(body),
     );
 
-    print(
-      "Status: ${response.statusCode}",
-    );
+    print("Status: ${response.statusCode}");
 
-    print(
-      "Body: ${response.body}",
-    );
+    print("Body: ${response.body}");
 
-    print(
-      "==================================",
-    );
+    print("==================================");
 
-    if (response.statusCode == 201 ||
-        response.statusCode == 200) {
-
-      return jsonDecode(
-        response.body,
-      ) as Map<String, dynamic>;
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
     }
 
     if (response.statusCode == 401) {
-
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     if (response.statusCode == 403) {
-
-      final data =
-          _decodeResponse(
-        response.body,
-      );
+      final data = _decodeResponse(response.body);
 
       throw Exception(
         data["message"]?.toString() ??
@@ -178,57 +115,33 @@ class RentManagementService {
     }
 
     if (response.statusCode == 400) {
+      final data = _decodeResponse(response.body);
 
-      final data =
-          _decodeResponse(
-        response.body,
-      );
+      final message = data["message"]?.toString();
 
-      final message =
-          data["message"]?.toString();
-
-      if (message != null &&
-          message.isNotEmpty) {
-
-        throw Exception(
-          message,
-        );
+      if (message != null && message.isNotEmpty) {
+        throw Exception(message);
       }
 
       if (data["detail"] != null) {
-
-        throw Exception(
-          data["detail"].toString(),
-        );
+        throw Exception(data["detail"].toString());
       }
 
-      throw Exception(
-        "Invalid payment details.",
-      );
+      throw Exception("Invalid payment details.");
     }
 
     if (response.statusCode == 404) {
+      final data = _decodeResponse(response.body);
 
-      final data =
-          _decodeResponse(
-        response.body,
-      );
-
-      throw Exception(
-        data["message"]?.toString() ??
-            "Customer not found.",
-      );
+      throw Exception(data["message"]?.toString() ?? "Customer not found.");
     }
 
-    final data =
-        _decodeResponse(
-      response.body,
-    );
+    final data = _decodeResponse(response.body);
 
     throw Exception(
       data["message"]?.toString() ??
           "Failed to record rent payment. "
-          "Status: ${response.statusCode}",
+              "Status: ${response.statusCode}",
     );
   }
 
@@ -242,64 +155,39 @@ class RentManagementService {
   //   Only selected customer's payments
   // ============================================================
 
-  static Future<Map<String, dynamic>>
-      getPaymentHistory({
-
+  static Future<Map<String, dynamic>> getPaymentHistory({
     int? customerId,
-
   }) async {
-
-    final headers =
-        await ApiService.authHeaders();
+    final headers = await ApiService.authHeaders();
 
     String endpoint =
         "${ApiService.baseUrl}"
         "/customers/rent-management/payments/";
 
     if (customerId != null) {
-
-      endpoint =
-          "$endpoint?customer_id=$customerId";
+      endpoint = "$endpoint?customer_id=$customerId";
     }
 
-    final url =
-        Uri.parse(endpoint);
+    final url = Uri.parse(endpoint);
 
-    print(
-      "========== PAYMENT HISTORY ==========",
-    );
+    print("========== PAYMENT HISTORY ==========");
 
-    print(
-      "URL: $url",
-    );
+    print("URL: $url");
 
-    final response =
-        await http.get(
-      url,
-      headers: headers,
-    );
+    final response = await http.get(url, headers: headers);
 
-    print(
-      "Status: ${response.statusCode}",
-    );
+    print("Status: ${response.statusCode}");
 
-    print(
-      "Body: ${response.body}",
-    );
+    print("Body: ${response.body}");
 
-    print(
-      "=====================================",
-    );
+    print("=====================================");
 
     // ----------------------------------------------------------
     // SUCCESS
     // ----------------------------------------------------------
 
     if (response.statusCode == 200) {
-
-      return jsonDecode(
-        response.body,
-      ) as Map<String, dynamic>;
+      return jsonDecode(response.body) as Map<String, dynamic>;
     }
 
     // ----------------------------------------------------------
@@ -307,10 +195,7 @@ class RentManagementService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 401) {
-
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     // ----------------------------------------------------------
@@ -318,11 +203,7 @@ class RentManagementService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 403) {
-
-      final data =
-          _decodeResponse(
-        response.body,
-      );
+      final data = _decodeResponse(response.body);
 
       throw Exception(
         data["message"]?.toString() ??
@@ -334,15 +215,12 @@ class RentManagementService {
     // OTHER ERROR
     // ----------------------------------------------------------
 
-    final data =
-        _decodeResponse(
-      response.body,
-    );
+    final data = _decodeResponse(response.body);
 
     throw Exception(
       data["message"]?.toString() ??
           "Failed to load payment history. "
-          "Status: ${response.statusCode}",
+              "Status: ${response.statusCode}",
     );
   }
 
@@ -350,26 +228,16 @@ class RentManagementService {
   // DECODE ERROR RESPONSE
   // ============================================================
 
-  static Map<String, dynamic>
-      _decodeResponse(
-    String body,
-  ) {
-
+  static Map<String, dynamic> _decodeResponse(String body) {
     try {
+      final decoded = jsonDecode(body);
 
-      final decoded =
-          jsonDecode(body);
-
-      if (decoded
-          is Map<String, dynamic>) {
-
+      if (decoded is Map<String, dynamic>) {
         return decoded;
       }
 
       return {};
-
     } catch (_) {
-
       return {};
     }
   }

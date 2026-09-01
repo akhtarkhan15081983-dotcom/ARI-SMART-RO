@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -88,7 +87,8 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
   }
 
   bool _isOnline(dynamic engineer) =>
-      engineer is Map && (engineer['online'] == true || engineer['online'] == 1);
+      engineer is Map &&
+      (engineer['online'] == true || engineer['online'] == 1);
 
   String _timeAgo(dynamic updatedAt) {
     final rawValue = updatedAt?.toString();
@@ -108,15 +108,13 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
         '${timestamp.toLocal().month.toString().padLeft(2, '0')}/'
         '${timestamp.toLocal().year}';
   }
-    double _calculateDistance(LatLng current, LatLng destination) {
-      const Distance distance = Distance();
 
-      return distance.as(
-        LengthUnit.Kilometer,
-        current,
-        destination,
-      );
-    }
+  double _calculateDistance(LatLng current, LatLng destination) {
+    const Distance distance = Distance();
+
+    return distance.as(LengthUnit.Kilometer, current, destination);
+  }
+
   Future<void> _showMyLocation() async {
     try {
       var serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -148,12 +146,14 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
       _showMessage('Phone number is not available.');
       return;
     }
-    final uri = Uri(scheme: 'tel', path: phone.replaceAll(RegExp(r'[^0-9+]'), ''));
+    final uri = Uri(
+      scheme: 'tel',
+      path: phone.replaceAll(RegExp(r'[^0-9+]'), ''),
+    );
     if (!await launchUrl(uri)) _showMessage('Could not open the phone app.');
   }
 
   Future<void> _navigateTo(LatLng location) async {
-
     final current = await Geolocator.getCurrentPosition();
 
     final uri = Uri.parse(
@@ -163,21 +163,19 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
       "&travelmode=driving",
     );
 
-    if (!await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    )) {
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       _showMessage("Could not open Google Maps.");
     }
   }
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showEngineerDetails(dynamic engineer, LatLng location) async {
-    
     _mapController.move(location, 17);
 
     final name = _value(engineer, 'name', fallback: 'Engineer');
@@ -189,10 +187,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
     try {
       final position = await Geolocator.getCurrentPosition();
 
-      currentLocation = LatLng(
-        position.latitude,
-        position.longitude,
-      );
+      currentLocation = LatLng(position.latitude, position.longitude);
     } catch (_) {}
 
     final distanceKm = currentLocation == null
@@ -233,11 +228,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                         ? NetworkImage(photoUrl)
                         : null,
                     child: photoUrl.isEmpty
-                        ? const Icon(
-                            Icons.person,
-                            size: 34,
-                            color: Colors.grey,
-                          )
+                        ? const Icon(Icons.person, size: 34, color: Colors.grey)
                         : null,
                   ),
                   const SizedBox(width: 12),
@@ -245,7 +236,10 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(name, style: Theme.of(context).textTheme.titleLarge),
+                        Text(
+                          name,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
                         const SizedBox(height: 6),
                         _StatusBadge(online: online),
                       ],
@@ -265,7 +259,9 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                 icon: Icons.access_time_outlined,
                 color: Colors.orange,
                 label: 'Last updated',
-                value: _timeAgo(engineer is Map ? engineer['updated_at'] : null),
+                value: _timeAgo(
+                  engineer is Map ? engineer['updated_at'] : null,
+                ),
               ),
               const SizedBox(height: 12),
 
@@ -364,10 +360,14 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(initialCenter: _fallbackCenter, initialZoom: 12),
+            options: const MapOptions(
+              initialCenter: _fallbackCenter,
+              initialZoom: 12,
+            ),
             children: [
               TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                urlTemplate:
+                    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
                 subdomains: const ['a', 'b', 'c', 'd'],
                 userAgentPackageName: 'com.arismartro.app',
               ),
@@ -405,25 +405,27 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
-                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 4),
+                ],
               ),
               child: Text(
                 name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             Stack(
               alignment: Alignment.center,
               children: [
-
                 Icon(
                   Icons.location_pin,
-                  color: online
-                      ? Colors.green
-                      : Colors.red,
+                  color: online ? Colors.green : Colors.red,
                   size: 46,
                 ),
 
@@ -435,18 +437,12 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
 
                     backgroundImage:
                         _value(engineer, "photo", fallback: "").isNotEmpty
-                            ? NetworkImage(
-                                _value(engineer, "photo", fallback: ""),
-                              )
-                            : null,
+                        ? NetworkImage(_value(engineer, "photo", fallback: ""))
+                        : null,
 
-                    child:
-                        _value(engineer, "photo", fallback: "").isEmpty
-                            ? const Icon(
-                                Icons.person,
-                                size: 12,
-                              )
-                            : null,
+                    child: _value(engineer, "photo", fallback: "").isEmpty
+                        ? const Icon(Icons.person, size: 12)
+                        : null,
                   ),
                 ),
               ],
@@ -473,18 +469,32 @@ class _StatusBadge extends StatelessWidget {
     final color = online ? Colors.green : Colors.red;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: color.withOpacity(.12), borderRadius: BorderRadius.circular(20)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.circle, size: 8, color: color),
-        const SizedBox(width: 6),
-        Text(online ? 'Online' : 'Offline', style: TextStyle(color: color, fontWeight: FontWeight.w700)),
-      ]),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.circle, size: 8, color: color),
+          const SizedBox(width: 6),
+          Text(
+            online ? 'Online' : 'Offline',
+            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.icon, required this.color, required this.label, required this.value});
+  const _InfoCard({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.value,
+  });
   final IconData icon;
   final Color color;
   final String label;
@@ -492,18 +502,41 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: color.withOpacity(.08), borderRadius: BorderRadius.circular(14)),
-        child: Row(children: [
-          CircleAvatar(backgroundColor: Colors.white, foregroundColor: color, child: Icon(icon)),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
-            const SizedBox(height: 2),
-            Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-          ])),
-        ]),
-      );
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .08),
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      children: [
+        CircleAvatar(
+          backgroundColor: Colors.white,
+          foregroundColor: color,
+          child: Icon(icon),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _ErrorBanner extends StatelessWidget {
@@ -513,19 +546,25 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Align(
-        alignment: Alignment.topCenter,
-        child: Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-          decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.cloud_off_outlined, color: Colors.red),
-            const SizedBox(width: 8),
-            Flexible(child: Text(message)),
-            IconButton(onPressed: onRetry, icon: const Icon(Icons.refresh)),
-          ]),
-        ),
-      );
+    alignment: Alignment.topCenter,
+    child: Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off_outlined, color: Colors.red),
+          const SizedBox(width: 8),
+          Flexible(child: Text(message)),
+          IconButton(onPressed: onRetry, icon: const Icon(Icons.refresh)),
+        ],
+      ),
+    ),
+  );
 }
 
 class _EmptyState extends StatelessWidget {
@@ -533,13 +572,19 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.all(24),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-        child: const Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.location_off_outlined, size: 40, color: Colors.grey),
-          SizedBox(height: 8),
-          Text('No engineer locations available.'),
-        ]),
-      );
+    margin: const EdgeInsets.all(24),
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: const Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.location_off_outlined, size: 40, color: Colors.grey),
+        SizedBox(height: 8),
+        Text('No engineer locations available.'),
+      ],
+    ),
+  );
 }

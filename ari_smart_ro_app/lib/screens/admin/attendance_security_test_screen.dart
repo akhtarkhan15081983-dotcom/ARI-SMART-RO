@@ -10,10 +10,12 @@ class AttendanceSecurityTestScreen extends StatefulWidget {
   const AttendanceSecurityTestScreen({super.key});
 
   @override
-  State<AttendanceSecurityTestScreen> createState() => _AttendanceSecurityTestScreenState();
+  State<AttendanceSecurityTestScreen> createState() =>
+      _AttendanceSecurityTestScreenState();
 }
 
-class _AttendanceSecurityTestScreenState extends State<AttendanceSecurityTestScreen> {
+class _AttendanceSecurityTestScreenState
+    extends State<AttendanceSecurityTestScreen> {
   static const double _officeLatitude = 27.149028;
   static const double _officeLongitude = 78.045000;
   static const double _radiusMeters = 50;
@@ -30,22 +32,47 @@ class _AttendanceSecurityTestScreenState extends State<AttendanceSecurityTestScr
 
   Future<void> _testGps() async {
     if (_gpsBusy) return;
-    setState(() { _gpsBusy = true; _gpsPassed = null; _gpsMessage = 'Checking current GPS…'; });
+    setState(() {
+      _gpsBusy = true;
+      _gpsPassed = null;
+      _gpsMessage = 'Checking current GPS…';
+    });
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) throw Exception('Turn on GPS first.');
+      if (!await Geolocator.isLocationServiceEnabled())
+        throw Exception('Turn on GPS first.');
       var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) throw Exception('Location permission is required.');
-      final p = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 25)));
-      final distance = Geolocator.distanceBetween(p.latitude, p.longitude, _officeLatitude, _officeLongitude);
+      if (permission == LocationPermission.denied)
+        permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever)
+        throw Exception('Location permission is required.');
+      final p = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 25),
+        ),
+      );
+      final distance = Geolocator.distanceBetween(
+        p.latitude,
+        p.longitude,
+        _officeLatitude,
+        _officeLongitude,
+      );
       if (!mounted) return;
       setState(() {
         _distance = distance;
         _gpsPassed = distance <= _radiusMeters;
-        _gpsMessage = distance <= _radiusMeters ? 'PASS — ${distance.toStringAsFixed(0)}m from office' : 'FAIL — ${distance.toStringAsFixed(0)}m from office (limit 50m)';
+        _gpsMessage = distance <= _radiusMeters
+            ? 'PASS — ${distance.toStringAsFixed(0)}m from office'
+            : 'FAIL — ${distance.toStringAsFixed(0)}m from office (limit 50m)';
       });
     } catch (e) {
-      if (mounted) setState(() { _gpsPassed = false; _gpsMessage = 'FAIL — ${e.toString().replaceFirst('Exception: ', '')}'; });
+      if (mounted)
+        setState(() {
+          _gpsPassed = false;
+          _gpsMessage =
+              'FAIL — ${e.toString().replaceFirst('Exception: ', '')}';
+        });
     } finally {
       if (mounted) setState(() => _gpsBusy = false);
     }
@@ -53,24 +80,47 @@ class _AttendanceSecurityTestScreenState extends State<AttendanceSecurityTestScr
 
   Future<void> _testSelfie() async {
     if (_selfieBusy) return;
-    setState(() { _selfieBusy = true; _selfiePassed = null; _selfieMessage = 'Waiting for camera…'; _selfie = null; });
+    setState(() {
+      _selfieBusy = true;
+      _selfiePassed = null;
+      _selfieMessage = 'Waiting for camera…';
+      _selfie = null;
+    });
     try {
-      final image = await _picker.pickImage(source: ImageSource.camera, preferredCameraDevice: CameraDevice.front, imageQuality: 85, maxWidth: 1440);
+      final image = await _picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.front,
+        imageQuality: 85,
+        maxWidth: 1440,
+      );
       if (image == null) {
         if (mounted) setState(() => _selfieMessage = 'Test cancelled');
         return;
       }
       final result = await SelfieQualityService.validate(image.path);
       if (!mounted) return;
-      setState(() { _selfie = image; _selfiePassed = result.isValid; _selfieMessage = '${result.isValid ? 'PASS' : 'FAIL'} — ${result.message}'; });
+      setState(() {
+        _selfie = image;
+        _selfiePassed = result.isValid;
+        _selfieMessage =
+            '${result.isValid ? 'PASS' : 'FAIL'} — ${result.message}';
+      });
     } catch (_) {
-      if (mounted) setState(() { _selfiePassed = false; _selfieMessage = 'FAIL — Unable to test selfie.'; });
+      if (mounted)
+        setState(() {
+          _selfiePassed = false;
+          _selfieMessage = 'FAIL — Unable to test selfie.';
+        });
     } finally {
       if (mounted) setState(() => _selfieBusy = false);
     }
   }
 
-  Color? _resultColor(bool? value) => value == null ? null : value ? Colors.green.shade700 : Colors.red.shade700;
+  Color? _resultColor(bool? value) => value == null
+      ? null
+      : value
+      ? Colors.green.shade700
+      : Colors.red.shade700;
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +133,10 @@ class _AttendanceSecurityTestScreenState extends State<AttendanceSecurityTestScr
             color: const Color(0xFFEAF4FF),
             child: const Padding(
               padding: EdgeInsets.all(16),
-              child: Text('ADMIN TEST MODE\n\nThese checks do not create, change, check in, or check out any attendance record.', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: Text(
+                'ADMIN TEST MODE\n\nThese checks do not create, change, check in, or check out any attendance record.',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -105,12 +158,29 @@ class _AttendanceSecurityTestScreenState extends State<AttendanceSecurityTestScr
             busy: _selfieBusy,
             buttonText: 'Test Selfie',
             onPressed: _testSelfie,
-            trailing: _selfie == null ? null : ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(_selfie!.path), width: 72, height: 72, fit: BoxFit.cover)),
+            trailing: _selfie == null
+                ? null
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(_selfie!.path),
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
           ),
           const SizedBox(height: 20),
-          Text('Test cases', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          Text(
+            'Test cases',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
-          const Text('• Clear single face looking forward → should PASS\n• No face → should FAIL\n• Two people/faces → should FAIL\n• Face too far away → should FAIL\n• Head strongly turned or tilted → should FAIL'),
+          const Text(
+            '• Clear single face looking forward → should PASS\n• No face → should FAIL\n• Two people/faces → should FAIL\n• Face too far away → should FAIL\n• Head strongly turned or tilted → should FAIL',
+          ),
           if (_distance != null) ...[
             const SizedBox(height: 16),
             Text('Last GPS distance: ${_distance!.toStringAsFixed(1)}m'),
@@ -122,7 +192,16 @@ class _AttendanceSecurityTestScreenState extends State<AttendanceSecurityTestScr
 }
 
 class _TestCard extends StatelessWidget {
-  const _TestCard({required this.icon, required this.title, required this.message, required this.busy, required this.buttonText, required this.onPressed, this.resultColor, this.trailing});
+  const _TestCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.busy,
+    required this.buttonText,
+    required this.onPressed,
+    this.resultColor,
+    this.trailing,
+  });
   final IconData icon;
   final String title;
   final String message;
@@ -137,18 +216,49 @@ class _TestCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, size: 34),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(message, style: TextStyle(color: resultColor, fontWeight: resultColor == null ? FontWeight.normal : FontWeight.w700)),
-            const SizedBox(height: 12),
-            FilledButton.icon(onPressed: busy ? null : onPressed, icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow), label: Text(buttonText)),
-          ])),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-        ]),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 34),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    message,
+                    style: TextStyle(
+                      color: resultColor,
+                      fontWeight: resultColor == null
+                          ? FontWeight.normal
+                          : FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: busy ? null : onPressed,
+                    icon: busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.play_arrow),
+                    label: Text(buttonText),
+                  ),
+                ],
+              ),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+          ],
+        ),
       ),
     );
   }

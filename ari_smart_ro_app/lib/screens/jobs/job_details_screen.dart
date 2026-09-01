@@ -166,9 +166,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   Future<void> _scanParts() async {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => QRScanScreen(
-          jobId: widget.jobId,
-        ),
+        builder: (_) => QRScanScreen(jobId: widget.jobId),
       ),
     );
 
@@ -182,6 +180,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       _showMessage('Installation workflow started.');
     }
   }
+
   Future<void> _saveInstallation() async {
     final inputTds = int.tryParse(_inputTdsController.text.trim());
     final outputTds = int.tryParse(_outputTdsController.text.trim());
@@ -815,6 +814,7 @@ class _PrimaryAction extends StatelessWidget {
     );
   }
 }
+
 class _ErrorView extends StatelessWidget {
   const _ErrorView({
     required this.onRetry,

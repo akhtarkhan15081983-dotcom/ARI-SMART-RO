@@ -97,6 +97,16 @@ class DashboardItems {
   static List<DashboardItem> admin = [
     andy,
     const DashboardItem(
+      title: "Employees",
+      icon: Icons.badge_rounded,
+      route: "employee_management",
+    ),
+    const DashboardItem(
+      title: "Inventory Control",
+      icon: Icons.qr_code_2_rounded,
+      route: "inventory_workflow",
+    ),
+    const DashboardItem(
       title: "Customers",
       icon: Icons.people,
       route: "customers",
@@ -127,7 +137,9 @@ class DashboardItems {
       icon: Icons.verified_user,
       route: "attendance_security_test",
     ),
-    ...engineer.where((item) => item.route != "andy"),
+    ...engineer.where(
+      (item) => item.route != "andy" && item.route != "customers",
+    ),
     const DashboardItem(title: "Live Map", icon: Icons.map, route: "map"),
     const DashboardItem(
       title: "Engineer Live Location",
@@ -139,6 +151,11 @@ class DashboardItems {
   static List<DashboardItem> manager = [...admin];
 
   static List<DashboardItem> office = [
+    const DashboardItem(
+      title: "Inventory Control",
+      icon: Icons.qr_code_2_rounded,
+      route: "inventory_workflow",
+    ),
     const DashboardItem(
       title: "Attendance",
       icon: Icons.fingerprint,

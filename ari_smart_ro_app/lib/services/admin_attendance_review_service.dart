@@ -5,9 +5,13 @@ import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class AdminAttendanceReviewService {
-  Future<List<Map<String, dynamic>>> getReviews({String status = 'PENDING'}) async {
+  Future<List<Map<String, dynamic>>> getReviews({
+    String status = 'PENDING',
+  }) async {
     final response = await http.get(
-      Uri.parse('${ApiService.baseUrl}/attendance/admin/reviews/?status=$status'),
+      Uri.parse(
+        '${ApiService.baseUrl}/attendance/admin/reviews/?status=$status',
+      ),
       headers: await ApiService.authHeaders(),
     );
 
@@ -25,12 +29,11 @@ class AdminAttendanceReviewService {
     String note = '',
   }) async {
     final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/attendance/admin/reviews/$attendanceId/'),
+      Uri.parse(
+        '${ApiService.baseUrl}/attendance/admin/reviews/$attendanceId/',
+      ),
       headers: await ApiService.authHeaders(),
-      body: jsonEncode({
-        'action': action,
-        'note': note,
-      }),
+      body: jsonEncode({'action': action, 'note': note}),
     );
 
     Map<String, dynamic> data = <String, dynamic>{};

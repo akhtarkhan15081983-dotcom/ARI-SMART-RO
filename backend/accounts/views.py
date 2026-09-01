@@ -201,9 +201,9 @@ class VerifyOTPAPIView(APIView):
         otp = request.data.get(
             "otp"
         )
-        new_password = request.data.get("new_password")
-
-        new_password = request.data.get(
+        # Accept the explicit onboarding field and retain compatibility with
+        # older app builds that submitted the generic `password` key.
+        new_password = request.data.get("new_password") or request.data.get(
             "password"
         )
 

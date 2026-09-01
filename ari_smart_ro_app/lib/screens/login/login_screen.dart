@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../../controllers/login_controller.dart';
+import '../../services/api_service.dart';
 import 'customer_onboarding_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -18,6 +19,22 @@ class _LoginScreenState extends State<LoginScreen> {
   final loginController = LoginController();
 
   bool isLoading = false;
+  bool _hidePassword = true;
+  bool _rememberMe = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedLogin();
+  }
+
+  Future<void> _loadRememberedLogin() async {
+    final credentials = await ApiService.rememberedCredentials();
+    if (!mounted || credentials == null) return;
+    phoneController.text = credentials['phone'] ?? '';
+    passwordController.text = credentials['password'] ?? '';
+    setState(() => _rememberMe = true);
+  }
 
   @override
   void dispose() {
@@ -66,6 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: phoneController,
                 keyboardType: TextInputType.phone,
+                autofillHints: const [AutofillHints.telephoneNumber],
                 decoration: InputDecoration(
                   labelText: "Phone Number",
                   prefixIcon: const Icon(Icons.phone),
@@ -93,10 +111,24 @@ class _LoginScreenState extends State<LoginScreen> {
               // Password
               TextField(
                 controller: passwordController,
-                obscureText: true,
+                obscureText: _hidePassword,
+                enableSuggestions: false,
+                autocorrect: false,
+                textInputAction: TextInputAction.done,
+                autofillHints: const [AutofillHints.password],
                 decoration: InputDecoration(
                   labelText: "Password",
                   prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    tooltip: _hidePassword ? 'Show password' : 'Hide password',
+                    onPressed: () =>
+                        setState(() => _hidePassword = !_hidePassword),
+                    icon: Icon(
+                      _hidePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                  ),
 
                   filled: true,
                   fillColor: Colors.white,
@@ -115,8 +147,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _rememberMe,
+                onChanged: isLoading
+                    ? null
+                    : (value) => setState(() => _rememberMe = value ?? false),
+                title: const Text('Remember phone and password'),
+                subtitle: const Text('Stored securely on this device'),
+              ),
 
-              const SizedBox(height: 30),
+              const SizedBox(height: 12),
 
               SizedBox(
                 width: double.infinity,
@@ -141,6 +183,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           });
 
                           if (success) {
+                            if (_rememberMe) {
+                              await ApiService.saveRememberedCredentials(
+                                phone: phoneController.text.trim(),
+                                password: passwordController.text,
+                              );
+                            } else {
+                              await ApiService.clearRememberedCredentials();
+                            }
+                            if (!context.mounted) return;
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(

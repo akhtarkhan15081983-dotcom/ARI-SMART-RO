@@ -26,13 +26,12 @@ class BagService {
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
 
-      return data
-          .map((e) => BagItemModel.fromJson(e))
-          .toList();
+      return data.map((e) => BagItemModel.fromJson(e)).toList();
     }
 
     throw Exception("Unable to load bag items");
   }
+
   Future<List<BagItemModel>> getAdminEngineerBags() async {
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/inventory/admin/engineer-bags/"),
@@ -47,9 +46,8 @@ class BagService {
     }
     throw Exception("Unable to load engineer bags (${response.statusCode})");
   }
-  Future<Map<String, dynamic>> verifyQRCode(
-    String serialNumber,
-  ) async {
+
+  Future<Map<String, dynamic>> verifyQRCode(String serialNumber) async {
     final token = await storage.read(key: "access");
     final engineerId = await storage.read(key: "user_id");
 
@@ -70,6 +68,4 @@ class BagService {
 
     return jsonDecode(response.body);
   }
-
 }
-

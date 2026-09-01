@@ -10,19 +10,13 @@ class CustomerHistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My History'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('My History'), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
             'View your ARI SMART RO activity',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -34,9 +28,7 @@ class CustomerHistoryScreen extends StatelessWidget {
             title: 'Rent & Payment History',
             subtitle: 'Current rent, dues and previous rent records',
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const RentPaymentScreen(),
-              ),
+              MaterialPageRoute(builder: (_) => const RentPaymentScreen()),
             ),
           ),
           const SizedBox(height: 12),
@@ -45,9 +37,7 @@ class CustomerHistoryScreen extends StatelessWidget {
             title: 'Service History',
             subtitle: 'Review service requests and service activity',
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const ServiceListScreen(),
-              ),
+              MaterialPageRoute(builder: (_) => const ServiceListScreen()),
             ),
           ),
           const SizedBox(height: 12),
@@ -56,9 +46,7 @@ class CustomerHistoryScreen extends StatelessWidget {
             title: 'Complaint History',
             subtitle: 'Track complaints and their current status',
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const ComplaintListScreen(),
-              ),
+              MaterialPageRoute(builder: (_) => const ComplaintListScreen()),
             ),
           ),
         ],
@@ -88,13 +76,8 @@ class _HistoryTile extends StatelessWidget {
           horizontal: 16,
           vertical: 10,
         ),
-        leading: CircleAvatar(
-          child: Icon(icon),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
+        leading: CircleAvatar(child: Icon(icon)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(subtitle),

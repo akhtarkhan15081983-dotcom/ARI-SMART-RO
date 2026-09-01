@@ -7,13 +7,10 @@ class AssetSelectionScreen extends StatefulWidget {
   const AssetSelectionScreen({super.key});
 
   @override
-  State<AssetSelectionScreen> createState() =>
-      _AssetSelectionScreenState();
+  State<AssetSelectionScreen> createState() => _AssetSelectionScreenState();
 }
 
-class _AssetSelectionScreenState
-    extends State<AssetSelectionScreen> {
-
+class _AssetSelectionScreenState extends State<AssetSelectionScreen> {
   final AssetService service = AssetService();
 
   late Future<List<AssetModel>> futureAssets;
@@ -27,57 +24,36 @@ class _AssetSelectionScreenState
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
-      appBar: AppBar(
-        title: const Text("Select RO Machine"),
-      ),
+      appBar: AppBar(title: const Text("Select RO Machine")),
 
       body: FutureBuilder<List<AssetModel>>(
-
         future: futureAssets,
 
         builder: (context, snapshot) {
-
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
-
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
           }
 
           if (snapshot.hasError) {
-
-            return Center(
-              child: Text(
-                snapshot.error.toString(),
-              ),
-            );
+            return Center(child: Text(snapshot.error.toString()));
           }
 
           final assets = snapshot.data!;
           print("TOTAL ASSETS = ${assets.length}");
 
           if (assets.isEmpty) {
-
-            return const Center(
-              child: Text("No Machine Available"),
-            );
+            return const Center(child: Text("No Machine Available"));
           }
 
           return ListView.builder(
-
             itemCount: assets.length,
 
             itemBuilder: (context, index) {
-
               final asset = assets[index];
               print("ASSET : ${asset.assetId}");
 
               return Card(
-
                 margin: const EdgeInsets.all(8),
 
                 child: Padding(
@@ -85,7 +61,6 @@ class _AssetSelectionScreenState
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
                       const Icon(
                         Icons.water_drop,
                         color: Colors.blue,
@@ -98,7 +73,6 @@ class _AssetSelectionScreenState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-
                             Text(
                               asset.assetId,
                               style: const TextStyle(
@@ -111,7 +85,6 @@ class _AssetSelectionScreenState
 
                             Text("Status : ${asset.status}"),
                             Text("Serial : ${asset.serialNumber}"),
-
                           ],
                         ),
                       ),
@@ -122,7 +95,6 @@ class _AssetSelectionScreenState
                         },
                         child: const Text("Select"),
                       ),
-
                     ],
                   ),
                 ),

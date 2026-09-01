@@ -50,8 +50,9 @@ class AttendanceModel {
           : double.tryParse(json['longitude'].toString()),
       selfie: json['selfie'],
       remarks: json['remarks'],
-      identityReviewStatus:
-          (json['identity_review_status'] ?? 'PENDING').toString().toUpperCase(),
+      identityReviewStatus: (json['identity_review_status'] ?? 'PENDING')
+          .toString()
+          .toUpperCase(),
       identityReviewNote: json['identity_review_note']?.toString(),
     );
   }

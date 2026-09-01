@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "referrals",
     "andy",
     "reporting",
+    "tenancy",
 ]
 
 MIDDLEWARE = [

@@ -55,10 +55,7 @@ class _MyROScreenState extends State<MyROScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("My RO"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text("My RO"), centerTitle: true),
 
       body: FutureBuilder<CustomerModel?>(
         future: _customerFuture,
@@ -68,11 +65,8 @@ class _MyROScreenState extends State<MyROScreen> {
           // LOADING
           // ======================================================
 
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
           }
 
           // ======================================================
@@ -84,8 +78,7 @@ class _MyROScreenState extends State<MyROScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
-                  mainAxisAlignment:
-                      MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(
                       Icons.error_outline,
@@ -109,9 +102,7 @@ class _MyROScreenState extends State<MyROScreen> {
                     Text(
                       snapshot.error.toString(),
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(color: Colors.grey),
                     ),
 
                     const SizedBox(height: 20),
@@ -137,16 +128,11 @@ class _MyROScreenState extends State<MyROScreen> {
             return RefreshIndicator(
               onRefresh: _refresh,
               child: ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
                   SizedBox(height: 180),
 
-                  Icon(
-                    Icons.water_drop_outlined,
-                    size: 70,
-                    color: Colors.blue,
-                  ),
+                  Icon(Icons.water_drop_outlined, size: 70, color: Colors.blue),
 
                   SizedBox(height: 20),
 
@@ -165,9 +151,7 @@ class _MyROScreenState extends State<MyROScreen> {
                   Center(
                     child: Text(
                       "Pull down to refresh.",
-                      style: TextStyle(
-                        color: Colors.grey,
-                      ),
+                      style: TextStyle(color: Colors.grey),
                     ),
                   ),
                 ],
@@ -189,28 +173,23 @@ class _MyROScreenState extends State<MyROScreen> {
                 // ==================================================
                 // RO HEADER
                 // ==================================================
-
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
 
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF2196F3),
-                        Color(0xFF42A5F5),
-                      ],
+                      colors: [Color(0xFF2196F3), Color(0xFF42A5F5)],
 
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
 
-                    borderRadius:
-                        BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(18),
 
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withValues(alpha: 0.15),
                         blurRadius: 10,
                         offset: const Offset(0, 5),
                       ),
@@ -254,11 +233,7 @@ class _MyROScreenState extends State<MyROScreen> {
                 // ==================================================
                 // CUSTOMER INFORMATION
                 // ==================================================
-
-                _sectionTitle(
-                  "Customer Information",
-                  Icons.person,
-                ),
+                _sectionTitle("Customer Information", Icons.person),
 
                 _infoCard(
                   children: [
@@ -274,11 +249,7 @@ class _MyROScreenState extends State<MyROScreen> {
                       Icons.badge_outlined,
                     ),
 
-                    _infoRow(
-                      "Phone",
-                      customer.phone,
-                      Icons.phone_outlined,
-                    ),
+                    _infoRow("Phone", customer.phone, Icons.phone_outlined),
                   ],
                 ),
 
@@ -287,11 +258,7 @@ class _MyROScreenState extends State<MyROScreen> {
                 // ==================================================
                 // RO INFORMATION
                 // ==================================================
-
-                _sectionTitle(
-                  "RO Information",
-                  Icons.water_drop_outlined,
-                ),
+                _sectionTitle("RO Information", Icons.water_drop_outlined),
 
                 _infoCard(
                   children: [
@@ -328,11 +295,7 @@ class _MyROScreenState extends State<MyROScreen> {
                 // ==================================================
                 // ASSIGNED ENGINEER
                 // ==================================================
-
-                _sectionTitle(
-                  "Service Engineer",
-                  Icons.engineering,
-                ),
+                _sectionTitle("Service Engineer", Icons.engineering),
 
                 _infoCard(
                   children: [
@@ -347,9 +310,7 @@ class _MyROScreenState extends State<MyROScreen> {
 
                     if (customer.assignedEngineer == null)
                       const Padding(
-                        padding: EdgeInsets.only(
-                          top: 8,
-                        ),
+                        padding: EdgeInsets.only(top: 8),
                         child: Row(
                           children: [
                             Icon(
@@ -363,9 +324,7 @@ class _MyROScreenState extends State<MyROScreen> {
                             Expanded(
                               child: Text(
                                 "Your service engineer has not been assigned yet.",
-                                style: TextStyle(
-                                  color: Colors.orange,
-                                ),
+                                style: TextStyle(color: Colors.orange),
                               ),
                             ),
                           ],
@@ -379,25 +338,15 @@ class _MyROScreenState extends State<MyROScreen> {
                 // ==================================================
                 // ADDRESS
                 // ==================================================
-
-                _sectionTitle(
-                  "RO Location",
-                  Icons.location_on,
-                ),
+                _sectionTitle("RO Location", Icons.location_on),
 
                 _infoCard(
                   children: [
-                    _infoRow(
-                      "Address",
-                      customer.address,
-                      Icons.home_outlined,
-                    ),
+                    _infoRow("Address", customer.address, Icons.home_outlined),
 
                     _infoRow(
                       "Area",
-                      customer.area.isEmpty
-                          ? "Not Available"
-                          : customer.area,
+                      customer.area.isEmpty ? "Not Available" : customer.area,
                       Icons.location_city,
                     ),
                   ],
@@ -408,48 +357,37 @@ class _MyROScreenState extends State<MyROScreen> {
                 // ==================================================
                 // STATUS
                 // ==================================================
-
-                _sectionTitle(
-                  "RO Status",
-                  Icons.check_circle,
-                ),
+                _sectionTitle("RO Status", Icons.check_circle),
 
                 Container(
                   padding: const EdgeInsets.all(18),
 
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.08),
+                    color: Colors.green.withValues(alpha: 0.08),
 
-                    borderRadius:
-                        BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(14),
 
                     border: Border.all(
-                      color: Colors.green.withOpacity(0.3),
+                      color: Colors.green.withValues(alpha: 0.3),
                     ),
                   ),
 
                   child: const Row(
                     children: [
-                      Icon(
-                        Icons.check_circle,
-                        color: Colors.green,
-                        size: 32,
-                      ),
+                      Icon(Icons.check_circle, color: Colors.green, size: 32),
 
                       SizedBox(width: 12),
 
                       Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               "RO ACTIVE",
                               style: TextStyle(
                                 color: Colors.green,
                                 fontSize: 18,
-                                fontWeight:
-                                    FontWeight.bold,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
 
@@ -457,9 +395,7 @@ class _MyROScreenState extends State<MyROScreen> {
 
                             Text(
                               "Your RO rental system is active.",
-                              style: TextStyle(
-                                color: Colors.grey,
-                              ),
+                              style: TextStyle(color: Colors.grey),
                             ),
                           ],
                         ),
@@ -473,7 +409,6 @@ class _MyROScreenState extends State<MyROScreen> {
                 // ==================================================
                 // REFRESH BUTTON
                 // ==================================================
-
                 SizedBox(
                   width: double.infinity,
                   height: 50,
@@ -481,28 +416,17 @@ class _MyROScreenState extends State<MyROScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _refresh,
 
-                    icon: const Icon(
-                      Icons.refresh,
-                    ),
+                    icon: const Icon(Icons.refresh),
 
-                    label: const Text(
-                      "Refresh RO Details",
-                    ),
+                    label: const Text("Refresh RO Details"),
 
-                    style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor:
-                          Colors.blue,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
 
-                      foregroundColor:
-                          Colors.white,
+                      foregroundColor: Colors.white,
 
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(
-                          12,
-                        ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
@@ -521,30 +445,19 @@ class _MyROScreenState extends State<MyROScreen> {
   // SECTION TITLE
   // ============================================================
 
-  Widget _sectionTitle(
-    String title,
-    IconData icon,
-  ) {
+  Widget _sectionTitle(String title, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 8,
-      ),
+      padding: const EdgeInsets.only(bottom: 8),
 
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: Colors.blue,
-          ),
+          Icon(icon, color: Colors.blue),
 
           const SizedBox(width: 8),
 
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -555,21 +468,15 @@ class _MyROScreenState extends State<MyROScreen> {
   // INFO CARD
   // ============================================================
 
-  Widget _infoCard({
-    required List<Widget> children,
-  }) {
+  Widget _infoCard({required List<Widget> children}) {
     return Card(
       elevation: 3,
 
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
 
       child: Padding(
         padding: const EdgeInsets.all(14),
-        child: Column(
-          children: children,
-        ),
+        child: Column(children: children),
       ),
     );
   }
@@ -578,49 +485,32 @@ class _MyROScreenState extends State<MyROScreen> {
   // INFO ROW
   // ============================================================
 
-  Widget _infoRow(
-    String title,
-    String value,
-    IconData icon,
-  ) {
+  Widget _infoRow(String title, String value, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: 9,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 9),
 
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
 
         children: [
-          Icon(
-            icon,
-            color: Colors.blue,
-            size: 23,
-          ),
+          Icon(icon, color: Colors.blue, size: 23),
 
           const SizedBox(width: 12),
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
 
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 13,
-                  ),
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
 
                 const SizedBox(height: 2),
 
                 Text(
-                  value.isEmpty
-                      ? "Not Available"
-                      : value,
+                  value.isEmpty ? "Not Available" : value,
 
                   style: const TextStyle(
                     fontSize: 16,

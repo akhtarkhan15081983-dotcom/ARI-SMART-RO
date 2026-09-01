@@ -299,7 +299,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.download_for_offline_rounded),
-              label: const Text("Download complete Excel report"),
+              label: const Text("Download Business + HRMS Master Excel"),
             ),
           ),
         ],

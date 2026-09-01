@@ -64,144 +64,72 @@ class RentManagementCustomer {
   // FROM JSON
   // ============================================================
 
-  factory RentManagementCustomer.fromJson(
-    Map<String, dynamic> json,
-  ) {
-    final customer =
-        (json["customer"] ?? {})
-            as Map<String, dynamic>;
+  factory RentManagementCustomer.fromJson(Map<String, dynamic> json) {
+    final customer = (json["customer"] ?? {}) as Map<String, dynamic>;
 
-    final currentRent =
-        (json["current_rent"] ?? {})
-            as Map<String, dynamic>;
+    final currentRent = (json["current_rent"] ?? {}) as Map<String, dynamic>;
 
-    final ro =
-        (json["ro"] ?? {})
-            as Map<String, dynamic>;
+    final ro = (json["ro"] ?? {}) as Map<String, dynamic>;
 
-    final historyJson =
-        (json["history"] ?? []) as List;
+    final historyJson = (json["history"] ?? []) as List;
 
     return RentManagementCustomer(
       // ========================================================
       // CUSTOMER
       // ========================================================
+      id: _toInt(customer["id"]),
 
-      id: _toInt(
-        customer["id"],
-      ),
+      customerId: customer["customer_id"]?.toString() ?? "",
 
-      customerId:
-          customer["customer_id"]
-                  ?.toString() ??
-              "",
+      name: customer["name"]?.toString() ?? "",
 
-      name:
-          customer["name"]
-                  ?.toString() ??
-              "",
-
-      phone:
-          customer["phone"]
-                  ?.toString() ??
-              "",
+      phone: customer["phone"]?.toString() ?? "",
 
       // ========================================================
       // CURRENT CARD
       // ========================================================
-
-      cardNumber:
-          customer["card_number"]
-                  ?.toString() ??
-              "",
+      cardNumber: customer["card_number"]?.toString() ?? "",
 
       // ========================================================
       // OLD CARD
       // ========================================================
-
-      oldCardNumber:
-          customer["old_card_number"]
-                  ?.toString() ??
-              "",
+      oldCardNumber: customer["old_card_number"]?.toString() ?? "",
 
       // ========================================================
       // CURRENT RENT
       // ========================================================
+      rentMonthExpected: _toDouble(currentRent["expected_rent"]),
 
-      rentMonthExpected:
-          _toDouble(
-        currentRent[
-            "expected_rent"],
-      ),
+      paidAmount: _toDouble(currentRent["paid_amount"]),
 
-      paidAmount:
-          _toDouble(
-        currentRent[
-            "paid_amount"],
-      ),
+      balance: _toDouble(currentRent["balance"]),
 
-      balance:
-          _toDouble(
-        currentRent[
-            "balance"],
-      ),
+      status: currentRent["status"]?.toString() ?? "PENDING",
 
-      status:
-          currentRent[
-                  "status"]
-              ?.toString() ??
-          "PENDING",
-
-      dueDate:
-          currentRent[
-                  "due_date"]
-              ?.toString() ??
-          "",
+      dueDate: currentRent["due_date"]?.toString() ?? "",
 
       // ========================================================
       // RO DETAILS
       // ========================================================
+      roModel: ro["model"]?.toString() ?? "",
 
-      roModel:
-          ro["model"]
-                  ?.toString() ??
-              "",
+      monthlyRent: _toDouble(ro["monthly_rent"]),
 
-      monthlyRent:
-          _toDouble(
-        ro["monthly_rent"],
-      ),
+      installationCharge: _toDouble(ro["installation_charge"]),
 
-      installationCharge:
-          _toDouble(
-        ro["installation_charge"],
-      ),
+      securityDeposit: _toDouble(ro["security_deposit"]),
 
-      securityDeposit:
-          _toDouble(
-        ro["security_deposit"],
-      ),
-
-      installationDate:
-          ro["installation_date"]
-              ?.toString(),
+      installationDate: ro["installation_date"]?.toString(),
 
       // ========================================================
       // RENT HISTORY
       // ========================================================
-
-      history:
-          historyJson
-              .whereType<Map>()
-              .map(
-                (item) =>
-                    RentHistoryItem.fromJson(
-                  Map<String, dynamic>.from(
-                    item,
-                  ),
-                ),
-              )
-              .toList(),
+      history: historyJson
+          .whereType<Map>()
+          .map(
+            (item) => RentHistoryItem.fromJson(Map<String, dynamic>.from(item)),
+          )
+          .toList(),
     );
   }
 
@@ -209,37 +137,26 @@ class RentManagementCustomer {
   // INT CONVERTER
   // ============================================================
 
-  static int _toInt(
-    dynamic value,
-  ) {
+  static int _toInt(dynamic value) {
     if (value is int) {
       return value;
     }
 
-    return int.tryParse(
-          value?.toString() ?? "",
-        ) ??
-        0;
+    return int.tryParse(value?.toString() ?? "") ?? 0;
   }
 
   // ============================================================
   // DOUBLE CONVERTER
   // ============================================================
 
-  static double _toDouble(
-    dynamic value,
-  ) {
+  static double _toDouble(dynamic value) {
     if (value is num) {
       return value.toDouble();
     }
 
-    return double.tryParse(
-          value?.toString() ?? "",
-        ) ??
-        0.0;
+    return double.tryParse(value?.toString() ?? "") ?? 0.0;
   }
 }
-
 
 // ============================================================
 // RENT HISTORY
@@ -277,51 +194,25 @@ class RentHistoryItem {
   // FROM JSON
   // ============================================================
 
-  factory RentHistoryItem.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory RentHistoryItem.fromJson(Map<String, dynamic> json) {
     return RentHistoryItem(
-      id: _toInt(
-        json["id"],
-      ),
+      id: _toInt(json["id"]),
 
-      rentMonth:
-          json["rent_month"]
-              ?.toString(),
+      rentMonth: json["rent_month"]?.toString(),
 
-      expectedRent:
-          _toDouble(
-        json["expected_rent"],
-      ),
+      expectedRent: _toDouble(json["expected_rent"]),
 
-      paidAmount:
-          _toDouble(
-        json["paid_amount"],
-      ),
+      paidAmount: _toDouble(json["paid_amount"]),
 
-      balance:
-          _toDouble(
-        json["balance"],
-      ),
+      balance: _toDouble(json["balance"]),
 
-      status:
-          json["status"]
-                  ?.toString() ??
-              "PENDING",
+      status: json["status"]?.toString() ?? "PENDING",
 
-      rawValue:
-          json["raw_value"]
-                  ?.toString() ??
-              "",
+      rawValue: json["raw_value"]?.toString() ?? "",
 
-      remarks:
-          json["remarks"]
-                  ?.toString() ??
-              "",
+      remarks: json["remarks"]?.toString() ?? "",
 
-      createdAt:
-          json["created_at"]
-              ?.toString(),
+      createdAt: json["created_at"]?.toString(),
     );
   }
 
@@ -329,33 +220,23 @@ class RentHistoryItem {
   // INT CONVERTER
   // ============================================================
 
-  static int _toInt(
-    dynamic value,
-  ) {
+  static int _toInt(dynamic value) {
     if (value is int) {
       return value;
     }
 
-    return int.tryParse(
-          value?.toString() ?? "",
-        ) ??
-        0;
+    return int.tryParse(value?.toString() ?? "") ?? 0;
   }
 
   // ============================================================
   // DOUBLE CONVERTER
   // ============================================================
 
-  static double _toDouble(
-    dynamic value,
-  ) {
+  static double _toDouble(dynamic value) {
     if (value is num) {
       return value.toDouble();
     }
 
-    return double.tryParse(
-          value?.toString() ?? "",
-        ) ??
-        0.0;
+    return double.tryParse(value?.toString() ?? "") ?? 0.0;
   }
 }

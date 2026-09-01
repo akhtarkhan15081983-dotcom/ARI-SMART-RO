@@ -36,6 +36,7 @@ db.sqlite3
 **/*log.txt
 **/analysis_output.txt
 output/
+outputs/
 tmp/pdfs/final_render/
 tmp/pdfs/source_render/
 video-production/**/opening-hero-frame.png

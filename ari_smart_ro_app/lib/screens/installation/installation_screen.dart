@@ -6,16 +6,11 @@ import 'dart:io';
 import '../../models/customer_model.dart';
 
 class InstallationScreen extends StatefulWidget {
-
   final CustomerModel customer;
-  const InstallationScreen({
-  super.key,
-  required this.customer,
-});
+  const InstallationScreen({super.key, required this.customer});
 
   @override
-  State<InstallationScreen> createState() =>
-      _InstallationScreenState();
+  State<InstallationScreen> createState() => _InstallationScreenState();
 }
 
 class _InstallationScreenState extends State<InstallationScreen> {
@@ -46,7 +41,7 @@ class _InstallationScreenState extends State<InstallationScreen> {
       firstDate: DateTime(2024),
       lastDate: DateTime(2035),
     );
-   
+
     if (picked != null) {
       setState(() {
         selectedDate = picked;
@@ -55,23 +50,17 @@ class _InstallationScreenState extends State<InstallationScreen> {
   }
 
   Future<void> _captureGPS() async {
-
-    bool serviceEnabled =
-        await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please Turn ON GPS"),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Please Turn ON GPS")));
 
       return;
     }
 
-    LocationPermission permission =
-        await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -79,31 +68,24 @@ class _InstallationScreenState extends State<InstallationScreen> {
 
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Location Permission Required"),
-        ),
+        const SnackBar(content: Text("Location Permission Required")),
       );
 
       return;
     }
 
     currentPosition = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-      ),
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
 
     setState(() {
       gpsCaptured = true;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("GPS Captured Successfully"),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("GPS Captured Successfully")));
   }
 
   Future<void> _pickROPhoto() async {
@@ -116,22 +98,21 @@ class _InstallationScreenState extends State<InstallationScreen> {
       setState(() {
         roPhoto = image;
       });
-    
     }
   }
 
   Future<void> _pickCustomerPhoto() async {
-  final XFile? image = await _picker.pickImage(
-    source: ImageSource.camera,
-    imageQuality: 70,
-  );
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 70,
+    );
 
-  if (image != null) {
-    setState(() {
-      customerPhoto = image;
-    });
+    if (image != null) {
+      setState(() {
+        customerPhoto = image;
+      });
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +146,6 @@ class _InstallationScreenState extends State<InstallationScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
                     Row(
                       children: [
                         const Icon(Icons.person, color: Colors.blue),
@@ -199,32 +179,28 @@ class _InstallationScreenState extends State<InstallationScreen> {
                       children: [
                         const Icon(Icons.location_on, color: Colors.red),
                         const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(widget.customer.address),
-                        ),
+                        Expanded(child: Text(widget.customer.address)),
                       ],
                     ),
 
                     const SizedBox(height: 12),
 
                     Row(
-                      children:[
+                      children: [
                         Icon(Icons.location_city, color: Colors.orange),
                         SizedBox(width: 10),
-                        Expanded(
-                          child: Text("Area : ${widget.customer.area}"),
-                        ),
+                        Expanded(child: Text("Area : ${widget.customer.area}")),
                       ],
                     ),
 
                     const SizedBox(height: 12),
 
                     Row(
-                      children:[
+                      children: [
                         Icon(Icons.water_drop, color: Colors.blue),
                         SizedBox(width: 10),
                         Expanded(
-                          child:Text("RO Model : ${widget.customer.roModel}"),
+                          child: Text("RO Model : ${widget.customer.roModel}"),
                         ),
                       ],
                     ),
@@ -232,11 +208,13 @@ class _InstallationScreenState extends State<InstallationScreen> {
                     const SizedBox(height: 12),
 
                     Row(
-                      children:[
+                      children: [
                         Icon(Icons.payments, color: Colors.green),
                         SizedBox(width: 10),
                         Expanded(
-                          child: Text("Monthly Rent : ₹${widget.customer.monthlyRent}")
+                          child: Text(
+                            "Monthly Rent : ₹${widget.customer.monthlyRent}",
+                          ),
                         ),
                       ],
                     ),
@@ -244,11 +222,13 @@ class _InstallationScreenState extends State<InstallationScreen> {
                     const SizedBox(height: 12),
 
                     Row(
-                      children:[
+                      children: [
                         Icon(Icons.currency_rupee, color: Colors.deepPurple),
                         SizedBox(width: 10),
                         Expanded(
-                          child: Text("Installation Charge : ₹${widget.customer.installationCharge}"),
+                          child: Text(
+                            "Installation Charge : ₹${widget.customer.installationCharge}",
+                          ),
                         ),
                       ],
                     ),
@@ -256,11 +236,13 @@ class _InstallationScreenState extends State<InstallationScreen> {
                     const SizedBox(height: 12),
 
                     Row(
-                      children:[
+                      children: [
                         Icon(Icons.engineering, color: Colors.teal),
                         SizedBox(width: 10),
                         Expanded(
-                          child: Text("Assigned Engineer : ${widget.customer.assignedEngineer}"),
+                          child: Text(
+                            "Assigned Engineer : ${widget.customer.assignedEngineer}",
+                          ),
                         ),
                       ],
                     ),
@@ -270,8 +252,6 @@ class _InstallationScreenState extends State<InstallationScreen> {
             ),
 
             const SizedBox(height: 18),
-
-            
 
             const SizedBox(height: 18),
 
@@ -293,7 +273,6 @@ class _InstallationScreenState extends State<InstallationScreen> {
             ),
 
             const SizedBox(height: 18),
-                    
 
             TextField(
               keyboardType: TextInputType.number,
@@ -321,16 +300,16 @@ class _InstallationScreenState extends State<InstallationScreen> {
             ),
             const SizedBox(height: 18),
 
-              TextField(
-                decoration: InputDecoration(
-                  labelText: "Referral Name",
-                  hintText: "Enter Referral Name (Optional)",
-                  prefixIcon: const Icon(Icons.group_add),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+            TextField(
+              decoration: InputDecoration(
+                labelText: "Referral Name",
+                hintText: "Enter Referral Name (Optional)",
+                prefixIcon: const Icon(Icons.group_add),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
+            ),
 
             const SizedBox(height: 25),
             SizedBox(
@@ -356,7 +335,7 @@ class _InstallationScreenState extends State<InstallationScreen> {
                 ),
               ),
 
-const SizedBox(height: 15),
+            const SizedBox(height: 15),
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -379,7 +358,6 @@ const SizedBox(height: 15),
                 ),
               ),
 
-            
             const SizedBox(height: 15),
 
             SizedBox(
@@ -405,10 +383,7 @@ const SizedBox(height: 15),
                 ),
                 child: const Text(
                   "SAVE INSTALLATION",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),

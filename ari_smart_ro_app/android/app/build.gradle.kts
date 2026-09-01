@@ -10,6 +10,9 @@ plugins {
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 val isCiBuild = System.getenv("CI")?.equals("true", ignoreCase = true) == true
+val isReleaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
@@ -50,6 +53,10 @@ android {
             } else if (isCiBuild) {
                 // CI compiles a release artifact with the debug key. Production
                 // builds must provide android/key.properties and the upload key.
+                signingConfigs.getByName("debug")
+            } else if (!isReleaseBuildRequested) {
+                // Gradle configures every build type even for `assembleDebug`.
+                // Keep local debug testing independent from production keys.
                 signingConfigs.getByName("debug")
             } else {
                 throw GradleException(

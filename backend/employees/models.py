@@ -4,6 +4,13 @@ from django.utils import timezone
 
 
 class EmployeeProfile(models.Model):
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="employee_profiles",
+    )
 
     GENDER_CHOICES = [
         ("MALE", "Male"),
@@ -142,6 +149,25 @@ class LeaveRequest(models.Model):
 
     class Meta:
         ordering = ["-start_date", "-created_at"]
+
+
+class Holiday(models.Model):
+    date = models.DateField(unique=True)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=300, blank=True, default="")
+    is_paid = models.BooleanField(default=True)
+    declared_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="declared_holidays",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["date"]
+
+    def __str__(self):
+        return f"{self.date} - {self.name}"
 
 
 class PayrollRecord(models.Model):

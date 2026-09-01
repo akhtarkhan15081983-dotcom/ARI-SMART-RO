@@ -1,5 +1,8 @@
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
+
+import openpyxl
 
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -131,6 +134,21 @@ class ReportingAPITests(TestCase):
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         self.assertGreater(len(export.content), 1000)
+        workbook = openpyxl.load_workbook(BytesIO(export.content), read_only=True)
+        self.assertTrue({
+            "Executive Dashboard",
+            "Workbook Index",
+            "Customer Summary",
+            "Job Register",
+            "Complaint Register",
+            "Service Register",
+            "Installation Register",
+            "HR Executive Summary",
+            "HR Employee Master",
+            "HR Leave Register",
+            "HR Payroll Register",
+            "HR Holiday Calendar",
+        }.issubset(set(workbook.sheetnames)))
 
     def test_invalid_period_is_rejected(self):
         self.client.force_authenticate(self.admin)

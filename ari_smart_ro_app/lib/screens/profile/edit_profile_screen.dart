@@ -50,23 +50,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _emergencyContactController.text = profile.emergencyContact;
     } catch (_) {
       if (mounted) {
-        _showSnackBar('Unable to load your profile. Please try again.', isError: true);
+        _showSnackBar(
+          'Unable to load your profile. Please try again.',
+          isError: true,
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoadingProfile = false);
     }
   }
-  
 
   Future<void> _saveProfile() async {
     print("SAVE BUTTON CLICKED");
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) {
-
       print("FORM VALIDATION FAILED");
 
       return;
-
     }
 
     print("FORM VALIDATION PASSED");
@@ -91,7 +91,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
       if (mounted) {
-        _showSnackBar('Could not update your profile. Please try again.', isError: true);
+        _showSnackBar(
+          'Could not update your profile. Please try again.',
+          isError: true,
+        );
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -189,7 +192,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ],
                     ),
                     const SizedBox(height: 24),
-                    Text('Emergency contact', style: theme.textTheme.titleLarge),
+                    Text(
+                      'Emergency contact',
+                      style: theme.textTheme.titleLarge,
+                    ),
                     const SizedBox(height: 12),
                     _sectionCard(
                       context,
@@ -199,7 +205,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           label: 'Contact name',
                           icon: Icons.contact_emergency_outlined,
                           textCapitalization: TextCapitalization.words,
-                          validator: (value) => _required(value, 'Contact name'),
+                          validator: (value) =>
+                              _required(value, 'Contact name'),
                         ),
                         const SizedBox(height: 16),
                         _field(
@@ -221,7 +228,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           ? const SizedBox(
                               height: 22,
                               width: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2.5),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                              ),
                             )
                           : const Text('Save changes'),
                     ),

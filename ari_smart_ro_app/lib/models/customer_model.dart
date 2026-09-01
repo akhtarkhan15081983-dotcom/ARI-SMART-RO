@@ -36,7 +36,6 @@ class CustomerModel {
   });
 
   factory CustomerModel.fromJson(Map<String, dynamic> json) {
-
     print(json);
 
     return CustomerModel(
@@ -46,8 +45,7 @@ class CustomerModel {
 
       cardNumber: json["card_number"]?.toString() ?? "",
 
-      oldCardNumber:
-        json["old_card_number"]?.toString() ?? "",
+      oldCardNumber: json["old_card_number"]?.toString() ?? "",
 
       customerName: json["name"]?.toString() ?? "",
 
@@ -61,22 +59,15 @@ class CustomerModel {
 
       monthlyRent: json["monthly_rent"]?.toString() ?? "",
 
-      installationCharge:
-          json["installation_charge"]?.toString() ?? "",
+      installationCharge: json["installation_charge"]?.toString() ?? "",
 
       assignedEngineer: json["assigned_engineer"],
 
       engineerName: json["engineer_name"]?.toString() ?? "",
 
-      latitude: double.tryParse(
-            json["latitude"]?.toString() ?? "0",
-          ) ??
-          0,
+      latitude: double.tryParse(json["latitude"]?.toString() ?? "0") ?? 0,
 
-      longitude: double.tryParse(
-            json["longitude"]?.toString() ?? "0",
-          ) ??
-          0,
+      longitude: double.tryParse(json["longitude"]?.toString() ?? "0") ?? 0,
     );
   }
 }

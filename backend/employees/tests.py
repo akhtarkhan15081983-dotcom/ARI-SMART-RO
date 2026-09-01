@@ -6,6 +6,9 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from .models import EmployeeProfile
+from tenancy.models import Company, CompanyMembership, CompanySubscription, SubscriptionPlan
+from django.utils import timezone
+from datetime import timedelta
 
 
 class EmployeeAPITests(TestCase):
@@ -909,3 +912,42 @@ class EmployeeAPITests(TestCase):
             str(self.engineer),
             expected,
         )
+
+
+class TenantEmployeeManagementTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin_user = User.objects.create_user(
+            phone="9300000001", password="AdminStrong@123", role="ADMIN",
+            first_name="Bhawna", is_verified=True,
+        )
+        self.company = Company.objects.create(
+            name="Bhawna RO", slug="bhawna-ro-employees", phone="9300000001"
+        )
+        CompanyMembership.objects.create(company=self.company, user=self.admin_user, role="OWNER")
+        plan = SubscriptionPlan.objects.get(code="starter")
+        CompanySubscription.objects.create(
+            company=self.company, plan=plan, status="ACTIVE",
+            current_period_end=timezone.now() + timedelta(days=30),
+        )
+        self.client.force_authenticate(self.admin_user)
+
+    def test_company_admin_can_create_and_only_list_own_employee(self):
+        response = self.client.post(
+            "/api/employees/manage/",
+            {
+                "first_name": "Ravi", "last_name": "Engineer",
+                "phone": "9300000002", "email": "ravi@example.com",
+                "designation": "ENGINEER", "gender": "MALE",
+                "joining_date": "2026-09-01", "salary": "24000",
+                "initial_password": "EmployeeStrong@123",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        employee = EmployeeProfile.objects.get(user__phone="9300000002")
+        self.assertEqual(employee.company, self.company)
+        self.assertTrue(CompanyMembership.objects.filter(company=self.company, user=employee.user).exists())
+        listed = self.client.get("/api/employees/manage/")
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual([row["phone"] for row in listed.data["employees"]], ["9300000002"])

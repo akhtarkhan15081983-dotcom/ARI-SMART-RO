@@ -1782,9 +1782,9 @@ class CustomerRentAPITests(TestCase):
         self.staff_user = User.objects.create_user(
             phone="9100000002",
             password="Test@123",
-            first_name="Office",
-            last_name="Staff",
-            role="OFFICE",
+            first_name="Admin",
+            last_name="Manager",
+            role="ADMIN",
             is_verified=True,
         )
 
@@ -2010,6 +2010,17 @@ class CustomerRentAPITests(TestCase):
             response.data["count"],
             1,
         )
+
+    def test_office_cannot_view_admin_rent_management(self):
+        office = User.objects.create_user(
+            phone="9100000004",
+            password="Test@123",
+            role="OFFICE",
+            is_verified=True,
+        )
+        self.client.force_authenticate(user=office)
+        response = self.client.get("/api/customers/rent-management/")
+        self.assertEqual(response.status_code, 403)
 
     def test_customer_cannot_view_rent_management(self):
 

@@ -8,25 +8,19 @@ class ServiceListScreen extends StatefulWidget {
   const ServiceListScreen({super.key});
 
   @override
-  State<ServiceListScreen> createState() =>
-      _ServiceListScreenState();
+  State<ServiceListScreen> createState() => _ServiceListScreenState();
 }
 
-class _ServiceListScreenState
-    extends State<ServiceListScreen> {
-  final ServiceService _service =
-      ServiceService();
+class _ServiceListScreenState extends State<ServiceListScreen> {
+  final ServiceService _service = ServiceService();
 
-  late Future<List<ServiceModel>>
-      _futureServices;
+  late Future<List<ServiceModel>> _futureServices;
 
   // ============================================================
   // SEARCH
   // ============================================================
 
-  final TextEditingController
-      _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = "";
 
@@ -57,8 +51,7 @@ class _ServiceListScreenState
   // ============================================================
 
   void _loadServices() {
-    _futureServices =
-        _service.getServices();
+    _futureServices = _service.getServices();
   }
 
   // ============================================================
@@ -77,35 +70,22 @@ class _ServiceListScreenState
   // COMPLETE SERVICE
   // ============================================================
 
-  Future<void> _completeService(
-    int id,
-  ) async {
-    final success =
-        await _service.completeService(id);
+  Future<void> _completeService(int id) async {
+    final success = await _service.completeService(id);
 
     if (!mounted) return;
 
     if (success) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Service completed successfully.',
-          ),
-        ),
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Service completed successfully.')),
       );
 
       setState(() {
         _loadServices();
       });
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Failed to complete service.',
-          ),
-        ),
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to complete service.')),
       );
     }
   }
@@ -116,18 +96,13 @@ class _ServiceListScreenState
 
   Future<void> _exportReport() async {
     try {
-      final filePath =
-          await _service.exportServicesExcel();
+      final filePath = await _service.exportServicesExcel();
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        SnackBar(
-          content:
-              Text('Export saved: $filePath'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export saved: $filePath')));
 
       final uri = Uri.file(filePath);
 
@@ -137,13 +112,9 @@ class _ServiceListScreenState
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        SnackBar(
-          content:
-              Text('Export failed: $e'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
   }
 
@@ -151,57 +122,33 @@ class _ServiceListScreenState
   // FILTER SERVICES
   // ============================================================
 
-  List<ServiceModel> _filterServices(
-    List<ServiceModel> services,
-  ) {
-    final query =
-        _searchQuery.trim().toLowerCase();
+  List<ServiceModel> _filterServices(List<ServiceModel> services) {
+    final query = _searchQuery.trim().toLowerCase();
 
     if (query.isEmpty) {
       return services;
     }
 
     return services.where((service) {
-      final serviceId =
-          service.serviceId.toLowerCase();
+      final serviceId = service.serviceId.toLowerCase();
 
-      final customerId =
-          service.customer?.toString()
-                  .toLowerCase() ??
-              "";
+      final customerId = service.customer?.toString().toLowerCase() ?? "";
 
-      final engineerId =
-          service.engineer?.toString()
-                  .toLowerCase() ??
-              "";
+      final engineerId = service.engineer?.toString().toLowerCase() ?? "";
 
-      final assetId =
-          service.roAsset?.toString()
-                  .toLowerCase() ??
-              "";
+      final assetId = service.roAsset?.toString().toLowerCase() ?? "";
 
-      final serviceType =
-          service.serviceType.toLowerCase();
+      final serviceType = service.serviceType.toLowerCase();
 
-      final status =
-          service.status.toLowerCase();
+      final status = service.status.toLowerCase();
 
-      final scheduledDate =
-          service.scheduledDate
-              .toLowerCase();
+      final scheduledDate = service.scheduledDate.toLowerCase();
 
-      final completedDate =
-          service.completedDate
-                  ?.toLowerCase() ??
-              "";
+      final completedDate = service.completedDate?.toLowerCase() ?? "";
 
-      final nextServiceDate =
-          service.nextServiceDate
-                  ?.toLowerCase() ??
-              "";
+      final nextServiceDate = service.nextServiceDate?.toLowerCase() ?? "";
 
-      final remarks =
-          service.remarks.toLowerCase();
+      final remarks = service.remarks.toLowerCase();
 
       return serviceId.contains(query) ||
           customerId.contains(query) ||
@@ -220,79 +167,44 @@ class _ServiceListScreenState
   // SEARCH BOX
   // ============================================================
 
-  Widget _buildSearchBox(
-    int resultCount,
-    int totalCount,
-  ) {
+  Widget _buildSearchBox(int resultCount, int totalCount) {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextField(
-          controller:
-              _searchController,
+          controller: _searchController,
           onChanged: (value) {
             setState(() {
               _searchQuery = value;
             });
           },
-          textInputAction:
-              TextInputAction.search,
+          textInputAction: TextInputAction.search,
           decoration: InputDecoration(
-            hintText:
-                'Search service, customer, engineer, status...',
-            prefixIcon:
-                const Icon(Icons.search),
-            suffixIcon:
-                _searchQuery.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip:
-                            'Clear search',
-                        icon: const Icon(
-                          Icons.clear,
-                        ),
-                        onPressed: () {
-                          _searchController
-                              .clear();
+            hintText: 'Search service, customer, engineer, status...',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _searchQuery.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
 
-                          setState(() {
-                            _searchQuery =
-                                "";
-                          });
-                        },
-                      ),
+                      setState(() {
+                        _searchQuery = "";
+                      });
+                    },
+                  ),
             filled: true,
             fillColor: Colors.white,
-            border:
-                OutlineInputBorder(
-              borderRadius:
-                  BorderRadius.circular(
-                12,
-              ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
-            enabledBorder:
-                OutlineInputBorder(
-              borderRadius:
-                  BorderRadius.circular(
-                12,
-              ),
-              borderSide:
-                  BorderSide(
-                color:
-                    Colors.grey.shade300,
-              ),
-            ),
-            focusedBorder:
-                OutlineInputBorder(
-              borderRadius:
-                  BorderRadius.circular(
-                12,
-              ),
-              borderSide:
-                  const BorderSide(
-                width: 1.5,
-              ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(width: 1.5),
             ),
           ),
         ),
@@ -300,32 +212,19 @@ class _ServiceListScreenState
         const SizedBox(height: 10),
 
         Row(
-          mainAxisAlignment:
-              MainAxisAlignment
-                  .spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               _searchQuery.trim().isEmpty
                   ? '$totalCount service(s)'
                   : '$resultCount of $totalCount service(s)',
-              style:
-                  const TextStyle(
-                fontWeight:
-                    FontWeight.w600,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
 
-            if (_searchQuery
-                .trim()
-                .isNotEmpty)
+            if (_searchQuery.trim().isNotEmpty)
               const Text(
                 'Search active',
-                style:
-                    TextStyle(
-                  fontSize: 12,
-                  fontWeight:
-                      FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               ),
           ],
         ),
@@ -337,211 +236,113 @@ class _ServiceListScreenState
   // SERVICE CARD
   // ============================================================
 
-  Widget _buildServiceCard(
-    ServiceModel service,
-  ) {
+  Widget _buildServiceCard(ServiceModel service) {
     return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
       elevation: 4,
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(
-          12,
-        ),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ==================================================
             // HEADER
             // ==================================================
-
             Row(
               children: [
                 Expanded(
                   child: Text(
                     service.serviceId,
-                    style:
-                        const TextStyle(
+                    style: const TextStyle(
                       fontSize: 18,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
 
                 Container(
-                  padding:
-                      const EdgeInsets
-                          .symmetric(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 6,
                   ),
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        _statusColor(
-                      service.status,
-                    ),
-                    borderRadius:
-                        BorderRadius
-                            .circular(
-                      20,
-                    ),
+                  decoration: BoxDecoration(
+                    color: _statusColor(service.status),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     service.status,
-                    style:
-                        const TextStyle(
-                      color:
-                          Colors.white,
-                      fontWeight:
-                          FontWeight.bold,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(
-              height: 12,
-            ),
+            const SizedBox(height: 12),
 
             // ==================================================
             // DETAILS
             // ==================================================
+            _buildInfoRow('Service Type', service.serviceType),
 
-            _buildInfoRow(
-              'Service Type',
-              service.serviceType,
-            ),
+            _buildInfoRow('Scheduled', service.scheduledDate),
 
-            _buildInfoRow(
-              'Scheduled',
-              service.scheduledDate,
-            ),
+            _buildInfoRow('Customer ID', service.customer?.toString() ?? '-'),
 
-            _buildInfoRow(
-              'Customer ID',
-              service.customer
-                      ?.toString() ??
-                  '-',
-            ),
+            _buildInfoRow('Engineer ID', service.engineer?.toString() ?? '-'),
 
-            _buildInfoRow(
-              'Engineer ID',
-              service.engineer
-                      ?.toString() ??
-                  '-',
-            ),
+            _buildInfoRow('Asset ID', service.roAsset?.toString() ?? '-'),
 
-            _buildInfoRow(
-              'Asset ID',
-              service.roAsset
-                      ?.toString() ??
-                  '-',
-            ),
+            if (service.nextServiceDate != null)
+              _buildInfoRow('Next Service', service.nextServiceDate!),
 
-            if (service.nextServiceDate !=
-                null)
-              _buildInfoRow(
-                'Next Service',
-                service.nextServiceDate!,
-              ),
+            if (service.completedDate != null)
+              _buildInfoRow('Completed', service.completedDate!),
 
-            if (service.completedDate !=
-                null)
-              _buildInfoRow(
-                'Completed',
-                service.completedDate!,
-              ),
+            if (service.remarks.isNotEmpty) ...[
+              const SizedBox(height: 8),
 
-            if (service.remarks
-                .isNotEmpty) ...[
-              const SizedBox(
-                height: 8,
-              ),
-
-              Text(
-                'Remarks: ${service.remarks}',
-              ),
+              Text('Remarks: ${service.remarks}'),
             ],
 
-            const SizedBox(
-              height: 12,
-            ),
+            const SizedBox(height: 12),
 
             // ==================================================
             // ACTIONS
             // ==================================================
-
             Row(
               children: [
                 Expanded(
-                  child:
-                      ElevatedButton.icon(
+                  child: ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.of(
-                        context,
-                      ).push(
+                      Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) =>
-                              ServiceDetailScreen(
-                            service:
-                                service,
-                            onCompleted:
-                                _completeService,
+                          builder: (_) => ServiceDetailScreen(
+                            service: service,
+                            onCompleted: _completeService,
                           ),
                         ),
                       );
                     },
-                    icon:
-                        const Icon(
-                      Icons.visibility,
-                    ),
-                    label:
-                        const Text(
-                      'View',
-                    ),
+                    icon: const Icon(Icons.visibility),
+                    label: const Text('View'),
                   ),
                 ),
 
-                if (service.status
-                        .toUpperCase() !=
-                    'COMPLETED') ...[
-                  const SizedBox(
-                    width: 10,
-                  ),
+                if (service.status.toUpperCase() != 'COMPLETED') ...[
+                  const SizedBox(width: 10),
 
                   Expanded(
-                    child:
-                        ElevatedButton.icon(
-                      onPressed: () =>
-                          _completeService(
-                        service.id,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _completeService(service.id),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
                       ),
-                      style:
-                          ElevatedButton
-                              .styleFrom(
-                        backgroundColor:
-                            Colors.green,
-                      ),
-                      icon:
-                          const Icon(
-                        Icons.check,
-                      ),
-                      label:
-                          const Text(
-                        'Complete',
-                      ),
+                      icon: const Icon(Icons.check),
+                      label: const Text('Complete'),
                     ),
                   ),
                 ],
@@ -558,54 +359,33 @@ class _ServiceListScreenState
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title:
-            const Text(
-          'Service Requests',
-        ),
+        title: const Text('Service Requests'),
         centerTitle: true,
         actions: [
           IconButton(
-            icon:
-                const Icon(
-              Icons.file_download,
-            ),
-            tooltip:
-                'Export Service Report',
-            onPressed:
-                _exportReport,
+            icon: const Icon(Icons.file_download),
+            tooltip: 'Export Service Report',
+            onPressed: _exportReport,
           ),
         ],
       ),
 
-      body:
-          RefreshIndicator(
+      body: RefreshIndicator(
         onRefresh: _refresh,
 
-        child:
-            FutureBuilder<
-                List<ServiceModel>>(
-          future:
-              _futureServices,
+        child: FutureBuilder<List<ServiceModel>>(
+          future: _futureServices,
 
-          builder:
-              (context, snapshot) {
+          builder: (context, snapshot) {
             // ================================================
             // LOADING
             // ================================================
 
-            if (snapshot
-                    .connectionState ==
-                ConnectionState
-                    .waiting) {
-              return const Center(
-                child:
-                    CircularProgressIndicator(),
-              );
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
             }
 
             // ================================================
@@ -614,71 +394,36 @@ class _ServiceListScreenState
 
             if (snapshot.hasError) {
               return ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
                   SizedBox(
-                    height:
-                        MediaQuery.of(
-                          context,
-                        ).size.height *
-                        0.65,
-                    child:
-                        Center(
-                      child:
-                          Padding(
-                        padding:
-                            const EdgeInsets
-                                .all(
-                          24,
-                        ),
-                        child:
-                            Column(
-                          mainAxisSize:
-                              MainAxisSize
-                                  .min,
+                    height: MediaQuery.of(context).size.height * 0.65,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons
-                                  .error_outline,
-                              size: 60,
-                            ),
+                            const Icon(Icons.error_outline, size: 60),
 
-                            const SizedBox(
-                              height: 16,
-                            ),
+                            const SizedBox(height: 16),
 
                             Text(
-                              snapshot.error
-                                      ?.toString() ??
+                              snapshot.error?.toString() ??
                                   'Unable to load services.',
-                              textAlign:
-                                  TextAlign
-                                      .center,
+                              textAlign: TextAlign.center,
                             ),
 
-                            const SizedBox(
-                              height: 20,
-                            ),
+                            const SizedBox(height: 20),
 
-                            ElevatedButton
-                                .icon(
-                              onPressed:
-                                  () {
-                                setState(
-                                  () {
-                                    _loadServices();
-                                  },
-                                );
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _loadServices();
+                                });
                               },
-                              icon:
-                                  const Icon(
-                                Icons.refresh,
-                              ),
-                              label:
-                                  const Text(
-                                'Retry',
-                              ),
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Retry'),
                             ),
                           ],
                         ),
@@ -693,17 +438,13 @@ class _ServiceListScreenState
             // ALL SERVICES
             // ================================================
 
-            final allServices =
-                snapshot.data ?? [];
+            final allServices = snapshot.data ?? [];
 
             // ================================================
             // FILTERED SERVICES
             // ================================================
 
-            final services =
-                _filterServices(
-              allServices,
-            );
+            final services = _filterServices(allServices);
 
             // ================================================
             // NO RECORDS
@@ -711,21 +452,12 @@ class _ServiceListScreenState
 
             if (allServices.isEmpty) {
               return ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
                   SizedBox(
-                    height:
-                        MediaQuery.of(
-                          context,
-                        ).size.height *
-                        0.65,
-                    child:
-                        const Center(
-                      child:
-                          Text(
-                        'No service records found.',
-                      ),
+                    height: MediaQuery.of(context).size.height * 0.65,
+                    child: const Center(
+                      child: Text('No service records found.'),
                     ),
                   ),
                 ],
@@ -738,66 +470,38 @@ class _ServiceListScreenState
 
             if (services.isEmpty) {
               return ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
-                padding:
-                    const EdgeInsets.all(
-                  12,
-                ),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(12),
                 children: [
-                  _buildSearchBox(
-                    services.length,
-                    allServices.length,
-                  ),
+                  _buildSearchBox(services.length, allServices.length),
 
-                  const SizedBox(
-                    height: 30,
-                  ),
+                  const SizedBox(height: 30),
 
                   Center(
-                    child:
-                        Column(
+                    child: Column(
                       children: [
                         Icon(
-                          Icons
-                              .search_off,
+                          Icons.search_off,
                           size: 60,
-                          color:
-                              Colors.grey
-                                  .shade500,
+                          color: Colors.grey.shade500,
                         ),
 
-                        const SizedBox(
-                          height: 12,
-                        ),
+                        const SizedBox(height: 12),
 
                         const Text(
                           'No matching service found.',
-                          style:
-                              TextStyle(
-                            fontSize:
-                                16,
-                            fontWeight:
-                                FontWeight
-                                    .w600,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 6,
-                        ),
+                        const SizedBox(height: 6),
 
                         Text(
                           'Try Service ID, Customer ID, Engineer ID, status or service type.',
-                          textAlign:
-                              TextAlign
-                                  .center,
-                          style:
-                              TextStyle(
-                            color:
-                                Colors.grey
-                                    .shade600,
-                          ),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey.shade600),
                         ),
                       ],
                     ),
@@ -811,25 +515,14 @@ class _ServiceListScreenState
             // ================================================
 
             return ListView(
-              physics:
-                  const AlwaysScrollableScrollPhysics(),
-              padding:
-                  const EdgeInsets.all(
-                12,
-              ),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(12),
               children: [
-                _buildSearchBox(
-                  services.length,
-                  allServices.length,
-                ),
+                _buildSearchBox(services.length, allServices.length),
 
-                const SizedBox(
-                  height: 12,
-                ),
+                const SizedBox(height: 12),
 
-                ...services.map(
-                  _buildServiceCard,
-                ),
+                ...services.map(_buildServiceCard),
               ],
             );
           },
@@ -842,11 +535,8 @@ class _ServiceListScreenState
   // STATUS COLOR
   // ============================================================
 
-  Color _statusColor(
-    String status,
-  ) {
-    switch (
-        status.toUpperCase()) {
+  Color _statusColor(String status) {
+    switch (status.toUpperCase()) {
       case 'PENDING':
         return Colors.orange;
 
@@ -868,48 +558,26 @@ class _ServiceListScreenState
   // INFO ROW
   // ============================================================
 
-  Widget _buildInfoRow(
-    String label,
-    String value,
-  ) {
+  Widget _buildInfoRow(String label, String value) {
     return Padding(
-      padding:
-          const EdgeInsets.only(
-        bottom: 6,
-      ),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '$label: ',
-            style:
-                const TextStyle(
-              fontWeight:
-                  FontWeight.bold,
-            ),
-          ),
+          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold)),
 
-          Expanded(
-            child: Text(
-              value.isEmpty
-                  ? '-'
-                  : value,
-            ),
-          ),
+          Expanded(child: Text(value.isEmpty ? '-' : value)),
         ],
       ),
     );
   }
 }
 
-
 // ==================================================================
 // SERVICE DETAIL SCREEN
 // ==================================================================
 
-class ServiceDetailScreen
-    extends StatefulWidget {
+class ServiceDetailScreen extends StatefulWidget {
   const ServiceDetailScreen({
     super.key,
     required this.service,
@@ -918,18 +586,13 @@ class ServiceDetailScreen
 
   final ServiceModel service;
 
-  final Future<void> Function(
-    int id,
-  ) onCompleted;
+  final Future<void> Function(int id) onCompleted;
 
   @override
-  State<ServiceDetailScreen>
-      createState() =>
-          _ServiceDetailScreenState();
+  State<ServiceDetailScreen> createState() => _ServiceDetailScreenState();
 }
 
-class _ServiceDetailScreenState
-    extends State<ServiceDetailScreen> {
+class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   bool _isCompleting = false;
 
   // ============================================================
@@ -941,9 +604,7 @@ class _ServiceDetailScreenState
       _isCompleting = true;
     });
 
-    await widget.onCompleted(
-      widget.service.id,
-    );
+    await widget.onCompleted(widget.service.id);
 
     if (!mounted) return;
 
@@ -959,163 +620,82 @@ class _ServiceDetailScreenState
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title:
-            const Text(
-          'Service Details',
-        ),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Service Details'), centerTitle: true),
 
       body: Padding(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
 
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ==================================================
             // SERVICE ID
             // ==================================================
-
             Text(
               widget.service.serviceId,
-              style:
-                  const TextStyle(
-                fontSize: 22,
-                fontWeight:
-                    FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
 
-            const SizedBox(
-              height: 12,
-            ),
+            const SizedBox(height: 12),
 
             // ==================================================
             // DETAILS
             // ==================================================
+            _buildDetail('Status', widget.service.status),
 
-            _buildDetail(
-              'Status',
-              widget.service.status,
-            ),
+            _buildDetail('Type', widget.service.serviceType),
 
-            _buildDetail(
-              'Type',
-              widget.service.serviceType,
-            ),
-
-            _buildDetail(
-              'Scheduled',
-              widget.service.scheduledDate,
-            ),
+            _buildDetail('Scheduled', widget.service.scheduledDate),
 
             _buildDetail(
               'Customer ID',
-              widget.service.customer
-                      ?.toString() ??
-                  '-',
+              widget.service.customer?.toString() ?? '-',
             ),
 
             _buildDetail(
               'Engineer ID',
-              widget.service.engineer
-                      ?.toString() ??
-                  '-',
+              widget.service.engineer?.toString() ?? '-',
             ),
 
-            _buildDetail(
-              'Asset ID',
-              widget.service.roAsset
-                      ?.toString() ??
-                  '-',
-            ),
+            _buildDetail('Asset ID', widget.service.roAsset?.toString() ?? '-'),
 
-            if (widget
-                    .service
-                    .nextServiceDate !=
-                null)
-              _buildDetail(
-                'Next Service',
-                widget.service
-                    .nextServiceDate!,
-              ),
+            if (widget.service.nextServiceDate != null)
+              _buildDetail('Next Service', widget.service.nextServiceDate!),
 
-            if (widget
-                    .service
-                    .completedDate !=
-                null)
-              _buildDetail(
-                'Completed',
-                widget.service
-                    .completedDate!,
-              ),
+            if (widget.service.completedDate != null)
+              _buildDetail('Completed', widget.service.completedDate!),
 
-            if (widget
-                .service
-                .remarks
-                .isNotEmpty)
-              _buildDetail(
-                'Remarks',
-                widget.service
-                    .remarks,
-              ),
+            if (widget.service.remarks.isNotEmpty)
+              _buildDetail('Remarks', widget.service.remarks),
 
             const Spacer(),
 
             // ==================================================
             // COMPLETE BUTTON
             // ==================================================
-
-            if (widget
-                    .service
-                    .status
-                    .toUpperCase() !=
-                'COMPLETED')
+            if (widget.service.status.toUpperCase() != 'COMPLETED')
               SizedBox(
-                width:
-                    double.infinity,
-                child:
-                    ElevatedButton(
-                  onPressed:
-                      _isCompleting
-                          ? null
-                          : _markCompleted,
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isCompleting ? null : _markCompleted,
 
-                  style:
-                      ElevatedButton
-                          .styleFrom(
-                    backgroundColor:
-                        Colors.green,
-                    padding:
-                        const EdgeInsets
-                            .symmetric(
-                      vertical: 14,
-                    ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
 
-                  child:
-                      _isCompleting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child:
-                                  CircularProgressIndicator(
-                                color:
-                                    Colors.white,
-                                strokeWidth:
-                                    2,
-                              ),
-                            )
-                          : const Text(
-                              'Mark Completed',
-                            ),
+                  child: _isCompleting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Mark Completed'),
                 ),
               ),
           ],
@@ -1128,35 +708,15 @@ class _ServiceDetailScreenState
   // DETAIL ROW
   // ============================================================
 
-  Widget _buildDetail(
-    String label,
-    String value,
-  ) {
+  Widget _buildDetail(String label, String value) {
     return Padding(
-      padding:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '$label: ',
-            style:
-                const TextStyle(
-              fontWeight:
-                  FontWeight.bold,
-            ),
-          ),
+          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold)),
 
-          Expanded(
-            child: Text(
-              value.isEmpty
-                  ? '-'
-                  : value,
-            ),
-          ),
+          Expanded(child: Text(value.isEmpty ? '-' : value)),
         ],
       ),
     );

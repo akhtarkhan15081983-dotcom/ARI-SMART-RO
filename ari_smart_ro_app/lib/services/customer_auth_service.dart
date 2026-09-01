@@ -5,10 +5,7 @@ import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class CustomerAuthResult {
-  const CustomerAuthResult({
-    required this.success,
-    required this.message,
-  });
+  const CustomerAuthResult({required this.success, required this.message});
 
   final bool success;
   final String message;
@@ -48,11 +45,7 @@ class CustomerAuthService {
   }) {
     return _post(
       '/auth/verify-otp/',
-      {
-        'phone': phone,
-        'otp': otp,
-        'password': password,
-      },
+      {'phone': phone, 'otp': otp, 'password': password},
       successCodes: const {200},
     );
   }

@@ -14,12 +14,8 @@ class InstallationController {
   final outputTdsController = TextEditingController();
   final referralController = TextEditingController();
 
-  Future<bool> saveInstallation(
-    InstallationModel installation,
-  ) async {
-    return await installationService.saveInstallation(
-      installation,
-    );
+  Future<bool> saveInstallation(InstallationModel installation) async {
+    return await installationService.saveInstallation(installation);
   }
 
   void dispose() {

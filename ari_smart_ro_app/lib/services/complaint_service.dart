@@ -12,16 +12,12 @@ class ComplaintService {
 
   Future<List<ComplaintModel>> getComplaints() async {
     final response = await http.get(
-      Uri.parse(
-        '${ApiService.baseUrl}/complaints/',
-      ),
+      Uri.parse('${ApiService.baseUrl}/complaints/'),
       headers: await ApiService.authHeaders(),
     );
 
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(
-        response.body,
-      );
+      final decoded = jsonDecode(response.body);
 
       // --------------------------------------------------------
       // API RETURNS LIST
@@ -30,9 +26,7 @@ class ComplaintService {
       if (decoded is List) {
         return decoded
             .map(
-              (item) => ComplaintModel.fromJson(
-                item as Map<String, dynamic>,
-              ),
+              (item) => ComplaintModel.fromJson(item as Map<String, dynamic>),
             )
             .toList();
       }
@@ -41,13 +35,10 @@ class ComplaintService {
       // API RETURNS {"results": [...]}
       // --------------------------------------------------------
 
-      if (decoded is Map<String, dynamic> &&
-          decoded["results"] is List) {
+      if (decoded is Map<String, dynamic> && decoded["results"] is List) {
         return (decoded["results"] as List)
             .map(
-              (item) => ComplaintModel.fromJson(
-                item as Map<String, dynamic>,
-              ),
+              (item) => ComplaintModel.fromJson(item as Map<String, dynamic>),
             )
             .toList();
       }
@@ -56,9 +47,7 @@ class ComplaintService {
     }
 
     if (response.statusCode == 401) {
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     throw Exception(
@@ -71,36 +60,24 @@ class ComplaintService {
   // GET COMPLAINT DETAIL
   // ============================================================
 
-  Future<ComplaintModel> getComplaintDetail(
-    int id,
-  ) async {
+  Future<ComplaintModel> getComplaintDetail(int id) async {
     final response = await http.get(
-      Uri.parse(
-        '${ApiService.baseUrl}/complaints/$id/',
-      ),
+      Uri.parse('${ApiService.baseUrl}/complaints/$id/'),
       headers: await ApiService.authHeaders(),
     );
 
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(
-        response.body,
-      );
+      final decoded = jsonDecode(response.body);
 
-      return ComplaintModel.fromJson(
-        decoded as Map<String, dynamic>,
-      );
+      return ComplaintModel.fromJson(decoded as Map<String, dynamic>);
     }
 
     if (response.statusCode == 401) {
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     if (response.statusCode == 404) {
-      throw Exception(
-        "Complaint not found.",
-      );
+      throw Exception("Complaint not found.");
     }
 
     throw Exception(
@@ -113,9 +90,7 @@ class ComplaintService {
   // SEARCH COMPLAINTS
   // ============================================================
 
-  Future<List<ComplaintModel>> searchComplaints(
-    String query,
-  ) async {
+  Future<List<ComplaintModel>> searchComplaints(String query) async {
     final cleanQuery = query.trim();
 
     if (cleanQuery.isEmpty) {
@@ -124,11 +99,7 @@ class ComplaintService {
 
     final uri = Uri.parse(
       '${ApiService.baseUrl}/complaints/search/',
-    ).replace(
-      queryParameters: {
-        "q": cleanQuery,
-      },
-    );
+    ).replace(queryParameters: {"q": cleanQuery});
 
     final response = await http.get(
       uri,
@@ -136,9 +107,7 @@ class ComplaintService {
     );
 
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(
-        response.body,
-      );
+      final decoded = jsonDecode(response.body);
 
       // --------------------------------------------------------
       // API RETURNS LIST
@@ -147,9 +116,7 @@ class ComplaintService {
       if (decoded is List) {
         return decoded
             .map(
-              (item) => ComplaintModel.fromJson(
-                item as Map<String, dynamic>,
-              ),
+              (item) => ComplaintModel.fromJson(item as Map<String, dynamic>),
             )
             .toList();
       }
@@ -158,13 +125,10 @@ class ComplaintService {
       // API RETURNS {"results": [...]}
       // --------------------------------------------------------
 
-      if (decoded is Map<String, dynamic> &&
-          decoded["results"] is List) {
+      if (decoded is Map<String, dynamic> && decoded["results"] is List) {
         return (decoded["results"] as List)
             .map(
-              (item) => ComplaintModel.fromJson(
-                item as Map<String, dynamic>,
-              ),
+              (item) => ComplaintModel.fromJson(item as Map<String, dynamic>),
             )
             .toList();
       }
@@ -173,9 +137,7 @@ class ComplaintService {
     }
 
     if (response.statusCode == 401) {
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     throw Exception(
@@ -209,8 +171,7 @@ class ComplaintService {
       body["engineer"] = engineer;
     }
 
-    if (scheduledDate != null &&
-        scheduledDate.isNotEmpty) {
+    if (scheduledDate != null && scheduledDate.isNotEmpty) {
       body["scheduled_date"] = scheduledDate;
     }
 
@@ -223,9 +184,7 @@ class ComplaintService {
     }
 
     final response = await http.post(
-      Uri.parse(
-        '${ApiService.baseUrl}/complaints/create/',
-      ),
+      Uri.parse('${ApiService.baseUrl}/complaints/create/'),
       headers: {
         ...await ApiService.authHeaders(),
         "Content-Type": "application/json",
@@ -233,21 +192,14 @@ class ComplaintService {
       body: jsonEncode(body),
     );
 
-    if (response.statusCode == 200 ||
-        response.statusCode == 201) {
-      final decoded = jsonDecode(
-        response.body,
-      );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final decoded = jsonDecode(response.body);
 
-      return ComplaintModel.fromJson(
-        decoded as Map<String, dynamic>,
-      );
+      return ComplaintModel.fromJson(decoded as Map<String, dynamic>);
     }
 
     if (response.statusCode == 401) {
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     throw Exception(
@@ -277,59 +229,47 @@ class ComplaintService {
     final Map<String, dynamic> body = {};
 
     if (complaintType != null) {
-      body["complaint_type"] =
-          complaintType;
+      body["complaint_type"] = complaintType;
     }
 
     if (description != null) {
-      body["description"] =
-          description;
+      body["description"] = description;
     }
 
     if (priority != null) {
-      body["priority"] =
-          priority;
+      body["priority"] = priority;
     }
 
     if (status != null) {
-      body["status"] =
-          status;
+      body["status"] = status;
     }
 
     if (engineer != null) {
-      body["engineer"] =
-          engineer;
+      body["engineer"] = engineer;
     }
 
     if (scheduledDate != null) {
-      body["scheduled_date"] =
-          scheduledDate;
+      body["scheduled_date"] = scheduledDate;
     }
 
     if (engineerRemarks != null) {
-      body["engineer_remarks"] =
-          engineerRemarks;
+      body["engineer_remarks"] = engineerRemarks;
     }
 
     if (resolution != null) {
-      body["resolution"] =
-          resolution;
+      body["resolution"] = resolution;
     }
 
     if (latitude != null) {
-      body["latitude"] =
-          latitude;
+      body["latitude"] = latitude;
     }
 
     if (longitude != null) {
-      body["longitude"] =
-          longitude;
+      body["longitude"] = longitude;
     }
 
     final response = await http.patch(
-      Uri.parse(
-        '${ApiService.baseUrl}/complaints/$id/update/',
-      ),
+      Uri.parse('${ApiService.baseUrl}/complaints/$id/update/'),
       headers: {
         ...await ApiService.authHeaders(),
         "Content-Type": "application/json",
@@ -338,19 +278,13 @@ class ComplaintService {
     );
 
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(
-        response.body,
-      );
+      final decoded = jsonDecode(response.body);
 
-      return ComplaintModel.fromJson(
-        decoded as Map<String, dynamic>,
-      );
+      return ComplaintModel.fromJson(decoded as Map<String, dynamic>);
     }
 
     if (response.statusCode == 401) {
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     throw Exception(
@@ -364,10 +298,7 @@ class ComplaintService {
   // ASSIGN ENGINEER
   // ============================================================
 
-  Future<ComplaintModel> assignEngineer(
-    int complaintId,
-    int engineerId,
-  ) async {
+  Future<ComplaintModel> assignEngineer(int complaintId, int engineerId) async {
     return updateComplaint(
       complaintId,
       engineer: engineerId,
@@ -379,13 +310,9 @@ class ComplaintService {
   // MARK IN PROGRESS
   // ============================================================
 
-  Future<ComplaintModel> startComplaint(
-    int complaintId,
-  ) async {
+  Future<ComplaintModel> startComplaint(int complaintId) async {
     final response = await http.patch(
-      Uri.parse(
-        '${ApiService.baseUrl}/complaints/$complaintId/start/',
-      ),
+      Uri.parse('${ApiService.baseUrl}/complaints/$complaintId/start/'),
       headers: {
         ...await ApiService.authHeaders(),
         "Content-Type": "application/json",
@@ -397,9 +324,7 @@ class ComplaintService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(
-        response.body,
-      );
+      final decoded = jsonDecode(response.body);
 
       // Backend returns:
       //
@@ -412,8 +337,7 @@ class ComplaintService {
       if (decoded is Map<String, dynamic> &&
           decoded["complaint"] is Map<String, dynamic>) {
         return ComplaintModel.fromJson(
-          decoded["complaint"]
-              as Map<String, dynamic>,
+          decoded["complaint"] as Map<String, dynamic>,
         );
       }
 
@@ -424,14 +348,10 @@ class ComplaintService {
       // --------------------------------------------------------
 
       if (decoded is Map<String, dynamic>) {
-        return ComplaintModel.fromJson(
-          decoded,
-        );
+        return ComplaintModel.fromJson(decoded);
       }
 
-      throw Exception(
-        "Invalid response received while starting complaint.",
-      );
+      throw Exception("Invalid response received while starting complaint.");
     }
 
     // ----------------------------------------------------------
@@ -439,9 +359,7 @@ class ComplaintService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 401) {
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     // ----------------------------------------------------------
@@ -449,9 +367,7 @@ class ComplaintService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 403) {
-      throw Exception(
-        "You are not allowed to start this complaint.",
-      );
+      throw Exception("You are not allowed to start this complaint.");
     }
 
     // ----------------------------------------------------------
@@ -459,9 +375,7 @@ class ComplaintService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 404) {
-      throw Exception(
-        "Complaint not found.",
-      );
+      throw Exception("Complaint not found.");
     }
 
     // ----------------------------------------------------------
@@ -470,23 +384,16 @@ class ComplaintService {
 
     if (response.statusCode == 400) {
       try {
-        final decoded = jsonDecode(
-          response.body,
-        );
+        final decoded = jsonDecode(response.body);
 
-        if (decoded is Map<String, dynamic> &&
-            decoded["message"] != null) {
-          throw Exception(
-            decoded["message"].toString(),
-          );
+        if (decoded is Map<String, dynamic> && decoded["message"] != null) {
+          throw Exception(decoded["message"].toString());
         }
       } catch (_) {
         // Ignore JSON parsing error.
       }
 
-      throw Exception(
-        "Complaint cannot be started.",
-      );
+      throw Exception("Complaint cannot be started.");
     }
 
     // ----------------------------------------------------------
@@ -509,12 +416,8 @@ class ComplaintService {
   // already uses markInProgress().
   // ============================================================
 
-  Future<ComplaintModel> markInProgress(
-    int complaintId,
-  ) async {
-    return startComplaint(
-      complaintId,
-    );
+  Future<ComplaintModel> markInProgress(int complaintId) async {
+    return startComplaint(complaintId);
   }
 
   // ============================================================
@@ -530,8 +433,7 @@ class ComplaintService {
       complaintId,
       status: "RESOLVED",
       resolution: resolution,
-      engineerRemarks:
-          engineerRemarks,
+      engineerRemarks: engineerRemarks,
     );
   }
 
@@ -539,13 +441,9 @@ class ComplaintService {
   // CLOSE COMPLAINT
   // ============================================================
 
-  Future<ComplaintModel> closeComplaint(
-    int complaintId,
-  ) async {
+  Future<ComplaintModel> closeComplaint(int complaintId) async {
     final response = await http.patch(
-      Uri.parse(
-        '${ApiService.baseUrl}/complaints/$complaintId/close/',
-      ),
+      Uri.parse('${ApiService.baseUrl}/complaints/$complaintId/close/'),
       headers: {
         ...await ApiService.authHeaders(),
         "Content-Type": "application/json",
@@ -557,27 +455,20 @@ class ComplaintService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(
-        response.body,
-      );
+      final decoded = jsonDecode(response.body);
 
       if (decoded is Map<String, dynamic> &&
           decoded["complaint"] is Map<String, dynamic>) {
         return ComplaintModel.fromJson(
-          decoded["complaint"]
-              as Map<String, dynamic>,
+          decoded["complaint"] as Map<String, dynamic>,
         );
       }
 
       if (decoded is Map<String, dynamic>) {
-        return ComplaintModel.fromJson(
-          decoded,
-        );
+        return ComplaintModel.fromJson(decoded);
       }
 
-      throw Exception(
-        "Invalid response received while closing complaint.",
-      );
+      throw Exception("Invalid response received while closing complaint.");
     }
 
     // ----------------------------------------------------------
@@ -585,9 +476,7 @@ class ComplaintService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 401) {
-      throw Exception(
-        "Authentication expired. Please login again.",
-      );
+      throw Exception("Authentication expired. Please login again.");
     }
 
     // ----------------------------------------------------------
@@ -595,9 +484,7 @@ class ComplaintService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 403) {
-      throw Exception(
-        "You are not allowed to close this complaint.",
-      );
+      throw Exception("You are not allowed to close this complaint.");
     }
 
     // ----------------------------------------------------------
@@ -605,9 +492,7 @@ class ComplaintService {
     // ----------------------------------------------------------
 
     if (response.statusCode == 404) {
-      throw Exception(
-        "Complaint not found.",
-      );
+      throw Exception("Complaint not found.");
     }
 
     // ----------------------------------------------------------
@@ -616,23 +501,16 @@ class ComplaintService {
 
     if (response.statusCode == 400) {
       try {
-        final decoded = jsonDecode(
-          response.body,
-        );
+        final decoded = jsonDecode(response.body);
 
-        if (decoded is Map<String, dynamic> &&
-            decoded["message"] != null) {
-          throw Exception(
-            decoded["message"].toString(),
-          );
+        if (decoded is Map<String, dynamic> && decoded["message"] != null) {
+          throw Exception(decoded["message"].toString());
         }
       } catch (_) {
         // Ignore JSON parsing error.
       }
 
-      throw Exception(
-        "Complaint cannot be closed.",
-      );
+      throw Exception("Complaint cannot be closed.");
     }
 
     throw Exception(

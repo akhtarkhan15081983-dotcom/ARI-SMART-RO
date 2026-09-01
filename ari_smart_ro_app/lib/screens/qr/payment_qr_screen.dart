@@ -4,10 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 class PaymentQrScreen extends StatelessWidget {
   final double amount;
 
-  const PaymentQrScreen({
-    super.key,
-    required this.amount,
-  });
+  const PaymentQrScreen({super.key, required this.amount});
 
   // ============================================================
   // UPI DETAILS
@@ -45,9 +42,7 @@ class PaymentQrScreen extends StatelessWidget {
         centerTitle: true,
         title: const Text(
           'Pay Rent',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
 
@@ -56,13 +51,11 @@ class PaymentQrScreen extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-
               const SizedBox(height: 10),
 
               // ==================================================
               // TITLE
               // ==================================================
-
               const Text(
                 'Scan & Pay',
                 style: TextStyle(
@@ -77,10 +70,7 @@ class PaymentQrScreen extends StatelessWidget {
               const Text(
                 'Scan this QR code using any UPI app',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                ),
+                style: TextStyle(fontSize: 16, color: Colors.grey),
               ),
 
               const SizedBox(height: 25),
@@ -88,7 +78,6 @@ class PaymentQrScreen extends StatelessWidget {
               // ==================================================
               // QR CARD
               // ==================================================
-
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(25),
@@ -97,7 +86,7 @@ class PaymentQrScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(22),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.10),
+                      color: Colors.black.withValues(alpha: 0.10),
                       blurRadius: 15,
                       offset: const Offset(0, 6),
                     ),
@@ -106,11 +95,9 @@ class PaymentQrScreen extends StatelessWidget {
 
                 child: Column(
                   children: [
-
                     // ==================================================
                     // QR
                     // ==================================================
-
                     QrImageView(
                       data: upiUri,
                       version: QrVersions.auto,
@@ -124,7 +111,6 @@ class PaymentQrScreen extends StatelessWidget {
                     // ==================================================
                     // PAYEE
                     // ==================================================
-
                     const Text(
                       payeeName,
                       style: TextStyle(
@@ -137,10 +123,7 @@ class PaymentQrScreen extends StatelessWidget {
 
                     const Text(
                       upiId,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: Colors.grey,
-                      ),
+                      style: TextStyle(fontSize: 15, color: Colors.grey),
                     ),
 
                     const SizedBox(height: 25),
@@ -148,7 +131,6 @@ class PaymentQrScreen extends StatelessWidget {
                     // ==================================================
                     // AMOUNT
                     // ==================================================
-
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(
@@ -161,13 +143,9 @@ class PaymentQrScreen extends StatelessWidget {
                       ),
                       child: Column(
                         children: [
-
                           const Text(
                             'Amount to Pay',
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: Colors.grey,
-                            ),
+                            style: TextStyle(fontSize: 15, color: Colors.grey),
                           ),
 
                           const SizedBox(height: 5),
@@ -192,7 +170,6 @@ class PaymentQrScreen extends StatelessWidget {
               // ==================================================
               // INSTRUCTION
               // ==================================================
-
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(18),
@@ -203,7 +180,6 @@ class PaymentQrScreen extends StatelessWidget {
                 child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
                     Text(
                       'How to pay',
                       style: TextStyle(
@@ -216,34 +192,22 @@ class PaymentQrScreen extends StatelessWidget {
 
                     Text(
                       '1. Open Google Pay, PhonePe, Paytm or another UPI app.',
-                      style: TextStyle(
-                        fontSize: 15,
-                        height: 1.5,
-                      ),
+                      style: TextStyle(fontSize: 15, height: 1.5),
                     ),
 
                     Text(
                       '2. Scan the QR code above.',
-                      style: TextStyle(
-                        fontSize: 15,
-                        height: 1.5,
-                      ),
+                      style: TextStyle(fontSize: 15, height: 1.5),
                     ),
 
                     Text(
                       '3. Verify the amount and pay.',
-                      style: TextStyle(
-                        fontSize: 15,
-                        height: 1.5,
-                      ),
+                      style: TextStyle(fontSize: 15, height: 1.5),
                     ),
 
                     Text(
                       '4. Keep the payment confirmation for your records.',
-                      style: TextStyle(
-                        fontSize: 15,
-                        height: 1.5,
-                      ),
+                      style: TextStyle(fontSize: 15, height: 1.5),
                     ),
                   ],
                 ),
@@ -254,7 +218,6 @@ class PaymentQrScreen extends StatelessWidget {
               // ==================================================
               // BACK BUTTON
               // ==================================================
-
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -265,10 +228,7 @@ class PaymentQrScreen extends StatelessWidget {
                   icon: const Icon(Icons.arrow_back),
                   label: const Text(
                     'BACK TO RENT',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0878D1),

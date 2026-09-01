@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/referrals/', include('referrals.urls')),
     path('api/andy/', include('andy.urls')),
     path('api/reports/', include('reporting.urls')),
+    path('api/saas/', include('tenancy.urls')),
 ]
 
 if settings.DEBUG:

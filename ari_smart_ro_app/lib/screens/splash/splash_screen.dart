@@ -5,9 +5,11 @@ import 'package:video_player/video_player.dart';
 
 import '../../services/api_service.dart';
 import '../../services/referral_link_service.dart';
+import '../../services/tenant_brand_service.dart';
 import '../login/customer_onboarding_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../shop/shop_screen.dart';
+import '../tenancy/tenant_welcome_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -25,6 +27,8 @@ class _SplashScreenState extends State<SplashScreen>
   Timer? _fallbackTimer;
   bool _videoReady = false;
   bool _navigated = false;
+  TenantBrand? _tenantBrand;
+  String? _tenantError;
 
   static const Duration _splashDuration = Duration(milliseconds: 2500);
 
@@ -46,11 +50,30 @@ class _SplashScreenState extends State<SplashScreen>
       'assets/videos/ari_water_fill.mp4',
     );
 
-    _fallbackTimer = Timer(_splashDuration, _goToNext);
+    if (!TenantBrandService.isDedicatedBuild) {
+      _fallbackTimer = Timer(_splashDuration, _goToNext);
+    }
     _initializeSplash();
   }
 
   Future<void> _initializeSplash() async {
+    if (TenantBrandService.isDedicatedBuild) {
+      try {
+        final brand = await const TenantBrandService().resolveDedicated();
+        if (!mounted) return;
+        setState(() => _tenantBrand = brand);
+        await Future.delayed(const Duration(milliseconds: 1400));
+        await _goToNext();
+      } catch (error) {
+        if (mounted) {
+          setState(
+            () =>
+                _tenantError = error.toString().replaceFirst('Exception: ', ''),
+          );
+        }
+      }
+      return;
+    }
     try {
       await _videoController.initialize();
 
@@ -116,6 +139,9 @@ class _SplashScreenState extends State<SplashScreen>
       MaterialPageRoute(
         builder: (_) {
           if (hasSession) return const DashboardScreen();
+          if (_tenantBrand case final brand?) {
+            return TenantWelcomeScreen(brand: brand);
+          }
           if (referralCode != null) {
             return CustomerOnboardingScreen(referralCode: referralCode);
           }
@@ -136,6 +162,98 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (TenantBrandService.isDedicatedBuild) {
+      final brand = _tenantBrand;
+      final primary = brand?.primaryColor ?? const Color(0xFF102A43);
+      final secondary = brand?.secondaryColor ?? const Color(0xFF075985);
+      return Scaffold(
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [primary, secondary],
+            ),
+          ),
+          child: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: _tenantError != null
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.cloud_off_rounded,
+                            color: Colors.white,
+                            size: 58,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _tenantError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 18),
+                          FilledButton(
+                            onPressed: () {
+                              setState(() => _tenantError = null);
+                              _initializeSplash();
+                            },
+                            child: const Text('TRY AGAIN'),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 108,
+                            height: 108,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(28),
+                            ),
+                            child: brand == null || brand.logoUrl.isEmpty
+                                ? Icon(
+                                    Icons.business_rounded,
+                                    size: 58,
+                                    color: primary,
+                                  )
+                                : Image.network(
+                                    brand.logoUrl,
+                                    fit: BoxFit.contain,
+                                  ),
+                          ),
+                          const SizedBox(height: 22),
+                          Text(
+                            brand?.displayName ?? 'Loading workspace',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 27,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          if (brand?.tagline.isNotEmpty == true) ...[
+                            const SizedBox(height: 7),
+                            Text(
+                              brand!.tagline,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                          const SizedBox(height: 26),
+                          const CircularProgressIndicator(color: Colors.white),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFF00132E),
       body: Stack(

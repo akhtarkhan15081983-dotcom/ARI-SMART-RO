@@ -6,6 +6,7 @@ from .views import (
     PurchaseViewSet,
     PurchaseItemViewSet,
 )
+from .invoice_scan import InvoiceAnalyzeAPIView, InvoiceConfirmAPIView
 
 router = DefaultRouter()
 
@@ -28,5 +29,7 @@ router.register(
 )
 
 urlpatterns = [
+    path("purchases/invoice-scan/analyze/", InvoiceAnalyzeAPIView.as_view(), name="invoice-scan-analyze"),
+    path("purchases/invoice-scan/confirm/", InvoiceConfirmAPIView.as_view(), name="invoice-scan-confirm"),
     path("", include(router.urls)),
 ]

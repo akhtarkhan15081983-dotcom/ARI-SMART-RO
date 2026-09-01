@@ -45,9 +45,15 @@ class _EngineerBagAdminScreenState extends State<EngineerBagAdminScreen> {
                   children: [
                     const Icon(Icons.error_outline, size: 52),
                     const SizedBox(height: 12),
-                    Text('Engineer bags load nahi ho sake.\n${snapshot.error}', textAlign: TextAlign.center),
+                    Text(
+                      'Engineer bags load nahi ho sake.\n${snapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 16),
-                    FilledButton(onPressed: _refresh, child: const Text('Retry')),
+                    FilledButton(
+                      onPressed: _refresh,
+                      child: const Text('Retry'),
+                    ),
                   ],
                 ),
               ),
@@ -67,9 +73,17 @@ class _EngineerBagAdminScreenState extends State<EngineerBagAdminScreen> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     children: const [
                       SizedBox(height: 180),
-                      Icon(Icons.backpack_outlined, size: 56, color: Colors.grey),
+                      Icon(
+                        Icons.backpack_outlined,
+                        size: 56,
+                        color: Colors.grey,
+                      ),
                       SizedBox(height: 12),
-                      Center(child: Text('Kisi engineer ko koi part issue nahi hai.')),
+                      Center(
+                        child: Text(
+                          'Kisi engineer ko koi part issue nahi hai.',
+                        ),
+                      ),
                     ],
                   )
                 : ListView(
@@ -83,15 +97,27 @@ class _EngineerBagAdminScreenState extends State<EngineerBagAdminScreen> {
                       return Card(
                         margin: const EdgeInsets.only(bottom: 14),
                         child: ExpansionTile(
-                          leading: const CircleAvatar(child: Icon(Icons.engineering)),
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.engineering),
+                          ),
                           title: Text(name),
-                          subtitle: Text('${engineer.employeeId} • ${bagItems.length} issued part(s)'),
-                          children: bagItems.map((item) => ListTile(
-                            leading: const Icon(Icons.inventory_2_outlined),
-                            title: Text(item.partName),
-                            subtitle: Text('Serial: ${item.serialNumber?.trim().isNotEmpty == true ? item.serialNumber : 'N/A'}'),
-                            trailing: const Chip(label: Text('ISSUED')),
-                          )).toList(),
+                          subtitle: Text(
+                            '${engineer.employeeId} • ${bagItems.length} issued part(s)',
+                          ),
+                          children: bagItems
+                              .map(
+                                (item) => ListTile(
+                                  leading: const Icon(
+                                    Icons.inventory_2_outlined,
+                                  ),
+                                  title: Text(item.partName),
+                                  subtitle: Text(
+                                    'Serial: ${item.serialNumber?.trim().isNotEmpty == true ? item.serialNumber : 'N/A'}',
+                                  ),
+                                  trailing: const Chip(label: Text('ISSUED')),
+                                ),
+                              )
+                              .toList(),
                         ),
                       );
                     }).toList(),

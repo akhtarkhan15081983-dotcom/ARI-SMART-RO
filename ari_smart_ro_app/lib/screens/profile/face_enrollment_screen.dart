@@ -37,7 +37,9 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
       await _service.enrollFace(photoPath: _photo!.path, deviceId: deviceId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Face photo enrolled and this device is now bound.')),
+        const SnackBar(
+          content: Text('Face photo enrolled and this device is now bound.'),
+        ),
       );
       Navigator.pop(context, true);
     } catch (e) {
@@ -76,7 +78,9 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
                     color: const Color(0xFFEAF5FF),
                   ),
                   child: _photo == null
-                      ? const Center(child: Icon(Icons.face_retouching_natural, size: 110))
+                      ? const Center(
+                          child: Icon(Icons.face_retouching_natural, size: 110),
+                        )
                       : Image.file(File(_photo!.path), fit: BoxFit.cover),
                 ),
               ),
@@ -84,13 +88,19 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
               OutlinedButton.icon(
                 onPressed: _saving ? null : _capture,
                 icon: const Icon(Icons.camera_alt_outlined),
-                label: Text(_photo == null ? 'Open Front Camera' : 'Retake Photo'),
+                label: Text(
+                  _photo == null ? 'Open Front Camera' : 'Retake Photo',
+                ),
               ),
               const SizedBox(height: 10),
               FilledButton.icon(
                 onPressed: _photo == null || _saving ? null : _enroll,
                 icon: _saving
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.verified_user_outlined),
                 label: Text(_saving ? 'Enrolling...' : 'Enroll Face & Device'),
               ),

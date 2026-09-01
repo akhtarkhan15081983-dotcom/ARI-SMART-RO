@@ -62,8 +62,9 @@ class _WorkRouteScreenState extends State<WorkRouteScreen> {
       });
       if (_stops.isNotEmpty) _controller.move(_point(_stops.first)!, 13);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -98,8 +99,12 @@ class _WorkRouteScreenState extends State<WorkRouteScreen> {
         url += '&origin=${position.latitude},${position.longitude}';
       }
     } catch (_) {}
-    if (!await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication))
+    if (!await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    )) {
       _message('Google Maps could not be opened.');
+    }
   }
 
   void _message(String value) => ScaffoldMessenger.of(
@@ -159,7 +164,7 @@ class _WorkRouteScreenState extends State<WorkRouteScreen> {
                   CircleAvatar(
                     backgroundColor: _color(
                       event['type'].toString(),
-                    ).withOpacity(.12),
+                    ).withValues(alpha: .12),
                     child: Text(
                       '${event['sequence']}',
                       style: TextStyle(
@@ -363,8 +368,7 @@ class _WorkRouteScreenState extends State<WorkRouteScreen> {
                       : ListView.separated(
                           padding: const EdgeInsets.all(12),
                           itemCount: _stops.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 6),
+                          separatorBuilder: (_, _) => const SizedBox(height: 6),
                           itemBuilder: (_, index) {
                             final event = _stops[index],
                                 customer = Map<String, dynamic>.from(

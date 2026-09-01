@@ -12,6 +12,41 @@ class HrmsService {
 
   Future<List<Map<String, dynamic>>> leaves() async =>
       _list('/employees/hrms/leaves/', 'leaves');
+
+  Future<Map<String, dynamic>> dashboard() async {
+    final response = await http.get(
+      Uri.parse('${ApiService.baseUrl}/employees/hrms/dashboard/'),
+      headers: await ApiService.authHeaders(),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> holidays({int? year}) async => _list(
+    '/employees/hrms/holidays/${year == null ? '' : '?year=$year'}',
+    'holidays',
+  );
+
+  Future<void> declareHoliday({
+    required DateTime date,
+    required String name,
+    required String description,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ApiService.baseUrl}/employees/hrms/holidays/'),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({
+        'date': _date(date),
+        'name': name,
+        'description': description,
+        'is_paid': true,
+      }),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(_message(response));
+    }
+  }
+
   Future<List<Map<String, dynamic>>> payroll({String? month}) async {
     final suffix = month == null ? '' : '?month=$month';
     return _list('/employees/hrms/payroll/$suffix', 'payroll');
@@ -46,6 +81,19 @@ class HrmsService {
       }),
     );
     if (response.statusCode != 201) throw Exception(_message(response));
+  }
+
+  Future<void> reviewLeave({
+    required int leaveId,
+    required String status,
+    String note = '',
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ApiService.baseUrl}/employees/hrms/leaves/$leaveId/review/'),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({'status': status, 'review_note': note}),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
   }
 
   Future<int> generatePayroll(String month) async {

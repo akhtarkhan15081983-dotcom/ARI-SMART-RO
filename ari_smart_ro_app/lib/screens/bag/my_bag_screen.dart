@@ -11,32 +11,22 @@ class MyBagScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("My Bag"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text("My Bag"), centerTitle: true),
       body: FutureBuilder<List<BagItemModel>>(
         future: bagService.getMyBag(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
           }
 
           if (snapshot.hasError) {
-            return Center(
-              child: Text(snapshot.error.toString()),
-            );
+            return Center(child: Text(snapshot.error.toString()));
           }
 
           final items = snapshot.data ?? [];
 
           if (items.isEmpty) {
-            return const Center(
-              child: Text("No Parts Found"),
-            );
+            return const Center(child: Text("No Parts Found"));
           }
 
           return ListView.builder(
@@ -48,20 +38,13 @@ class MyBagScreen extends StatelessWidget {
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
                 child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.inventory),
-                  ),
+                  leading: const CircleAvatar(child: Icon(Icons.inventory)),
                   title: Text(item.partName),
                   subtitle: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        "Serial : ${item.serialNumber ?? "N/A"}",
-                      ),
-                      Text(
-                        "Status : ${item.status}",
-                      ),
+                      Text("Serial : ${item.serialNumber ?? "N/A"}"),
+                      Text("Status : ${item.status}"),
                     ],
                   ),
                 ),

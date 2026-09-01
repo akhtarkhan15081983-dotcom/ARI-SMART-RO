@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import EmployeeDocument, EmployeeProfile, HRPolicy, LeaveRequest, PayrollRecord
+from .models import EmployeeDocument, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
 
 
 @admin.register(EmployeeProfile)
@@ -42,6 +42,19 @@ class LeaveRequestAdmin(admin.ModelAdmin):
     list_filter = ("status", "leave_type", "is_paid", "start_date")
     search_fields = ("employee__employee_id", "employee__user__first_name", "employee__user__phone", "reason")
     readonly_fields = ("created_at", "reviewed_at")
+
+
+@admin.register(Holiday)
+class HolidayAdmin(admin.ModelAdmin):
+    list_display = ("date", "name", "is_paid", "declared_by")
+    list_filter = ("is_paid", "date")
+    search_fields = ("name", "description")
+    readonly_fields = ("declared_by", "created_at")
+
+    def save_model(self, request, obj, form, change):
+        if not obj.declared_by_id:
+            obj.declared_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(PayrollRecord)

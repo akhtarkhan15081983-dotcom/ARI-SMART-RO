@@ -36,6 +36,15 @@ class _AriSmartROAppState extends State<AriSmartROApp> {
       debugShowCheckedModeBanner: false,
       title: 'ARI SMART RO',
       theme: AppTheme.lightTheme,
+      themeMode: ThemeMode.light,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: MediaQuery.textScalerOf(
+            context,
+          ).clamp(minScaleFactor: 0.9, maxScaleFactor: 1.4),
+        ),
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: const SplashScreen(),
     );
   }

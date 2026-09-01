@@ -4,17 +4,13 @@ import '../../models/payment_history_model.dart';
 import '../../services/rent_management_service.dart';
 
 class PaymentHistoryScreen extends StatefulWidget {
-  const PaymentHistoryScreen({
-    super.key,
-  });
+  const PaymentHistoryScreen({super.key});
 
   @override
-  State<PaymentHistoryScreen> createState() =>
-      _PaymentHistoryScreenState();
+  State<PaymentHistoryScreen> createState() => _PaymentHistoryScreenState();
 }
 
-class _PaymentHistoryScreenState
-    extends State<PaymentHistoryScreen> {
+class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
   bool _isLoading = true;
 
   String? _error;
@@ -23,16 +19,13 @@ class _PaymentHistoryScreenState
 
   List<RentPaymentRecord> _filteredPayments = [];
 
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
 
-    _searchController.addListener(
-      _applySearch,
-    );
+    _searchController.addListener(_applySearch);
 
     _loadPaymentHistory();
   }
@@ -57,11 +50,9 @@ class _PaymentHistoryScreenState
     }
 
     try {
-      final response =
-          await RentManagementService.getPaymentHistory();
+      final response = await RentManagementService.getPaymentHistory();
 
-      final rawPayments =
-          response["payments"];
+      final rawPayments = response["payments"];
 
       final List<RentPaymentRecord> payments = [];
 
@@ -69,11 +60,7 @@ class _PaymentHistoryScreenState
         for (final item in rawPayments) {
           if (item is Map) {
             payments.add(
-              RentPaymentRecord.fromJson(
-                Map<String, dynamic>.from(
-                  item,
-                ),
-              ),
+              RentPaymentRecord.fromJson(Map<String, dynamic>.from(item)),
             );
           }
         }
@@ -86,10 +73,7 @@ class _PaymentHistoryScreenState
       setState(() {
         _payments = payments;
 
-        _filteredPayments =
-            List<RentPaymentRecord>.from(
-          payments,
-        );
+        _filteredPayments = List<RentPaymentRecord>.from(payments);
 
         _isLoading = false;
       });
@@ -99,12 +83,7 @@ class _PaymentHistoryScreenState
       }
 
       setState(() {
-        _error = e
-            .toString()
-            .replaceFirst(
-              "Exception: ",
-              "",
-            );
+        _error = e.toString().replaceFirst("Exception: ", "");
 
         _isLoading = false;
       });
@@ -116,62 +95,32 @@ class _PaymentHistoryScreenState
   // ============================================================
 
   void _applySearch() {
-    final query =
-        _searchController.text
-            .trim()
-            .toLowerCase();
+    final query = _searchController.text.trim().toLowerCase();
 
     if (query.isEmpty) {
       setState(() {
-        _filteredPayments =
-            List<RentPaymentRecord>.from(
-          _payments,
-        );
+        _filteredPayments = List<RentPaymentRecord>.from(_payments);
       });
 
       return;
     }
 
-    final filtered =
-        _payments.where(
-      (payment) {
-        return payment.customerName
-                .toLowerCase()
-                .contains(query) ||
-            payment.customerCode
-                .toLowerCase()
-                .contains(query) ||
-            payment.phone
-                .toLowerCase()
-                .contains(query) ||
-
-            // ==================================================
-            // CURRENT CARD NUMBER
-            // ==================================================
-
-            payment.cardNumber
-                .toLowerCase()
-                .contains(query) ||
-
-            // ==================================================
-            // OLD CARD NUMBER
-            // ==================================================
-
-            payment.oldCardNumber
-                .toLowerCase()
-                .contains(query) ||
-
-            payment.paymentMode
-                .toLowerCase()
-                .contains(query) ||
-            payment.collectedBy
-                .toLowerCase()
-                .contains(query) ||
-            payment.remarks
-                .toLowerCase()
-                .contains(query);
-      },
-    ).toList();
+    final filtered = _payments.where((payment) {
+      return payment.customerName.toLowerCase().contains(query) ||
+          payment.customerCode.toLowerCase().contains(query) ||
+          payment.phone.toLowerCase().contains(query) ||
+          // ==================================================
+          // CURRENT CARD NUMBER
+          // ==================================================
+          payment.cardNumber.toLowerCase().contains(query) ||
+          // ==================================================
+          // OLD CARD NUMBER
+          // ==================================================
+          payment.oldCardNumber.toLowerCase().contains(query) ||
+          payment.paymentMode.toLowerCase().contains(query) ||
+          payment.collectedBy.toLowerCase().contains(query) ||
+          payment.remarks.toLowerCase().contains(query);
+    }).toList();
 
     setState(() {
       _filteredPayments = filtered;
@@ -182,17 +131,13 @@ class _PaymentHistoryScreenState
   // FORMAT DATE
   // ============================================================
 
-  String _formatDate(
-    String? value,
-  ) {
-    if (value == null ||
-        value.isEmpty) {
+  String _formatDate(String? value) {
+    if (value == null || value.isEmpty) {
       return "-";
     }
 
     try {
-      final date =
-          DateTime.parse(value);
+      final date = DateTime.parse(value);
 
       return "${date.day.toString().padLeft(2, '0')}/"
           "${date.month.toString().padLeft(2, '0')}/"
@@ -206,9 +151,7 @@ class _PaymentHistoryScreenState
   // FORMAT AMOUNT
   // ============================================================
 
-  String _formatAmount(
-    double amount,
-  ) {
+  String _formatAmount(double amount) {
     return "₹${amount.toStringAsFixed(2)}";
   }
 
@@ -216,11 +159,8 @@ class _PaymentHistoryScreenState
   // PAYMENT ICON
   // ============================================================
 
-  IconData _paymentIcon(
-    String mode,
-  ) {
-    switch (
-        mode.trim().toUpperCase()) {
+  IconData _paymentIcon(String mode) {
+    switch (mode.trim().toUpperCase()) {
       case "CASH":
         return Icons.payments;
 
@@ -243,9 +183,7 @@ class _PaymentHistoryScreenState
   // PAYMENT DETAILS
   // ============================================================
 
-  void _showPaymentDetails(
-    RentPaymentRecord payment,
-  ) {
+  void _showPaymentDetails(RentPaymentRecord payment) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -254,29 +192,21 @@ class _PaymentHistoryScreenState
       builder: (_) {
         return SafeArea(
           child: Padding(
-            padding:
-                const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
 
             child: SingleChildScrollView(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
 
                 children: [
                   // ==================================================
                   // HEADER
                   // ==================================================
-
                   Row(
                     children: [
-                      const Icon(
-                        Icons.receipt_long,
-                        size: 28,
-                      ),
+                      const Icon(Icons.receipt_long, size: 28),
 
-                      const SizedBox(
-                        width: 10,
-                      ),
+                      const SizedBox(width: 10),
 
                       const Expanded(
                         child: Text(
@@ -284,23 +214,17 @@ class _PaymentHistoryScreenState
 
                           style: TextStyle(
                             fontSize: 20,
-                            fontWeight:
-                                FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
 
                       IconButton(
                         onPressed: () {
-                          Navigator.pop(
-                            context,
-                          );
+                          Navigator.pop(context);
                         },
 
-                        icon:
-                            const Icon(
-                          Icons.close,
-                        ),
+                        icon: const Icon(Icons.close),
                       ),
                     ],
                   ),
@@ -310,120 +234,63 @@ class _PaymentHistoryScreenState
                   // ==================================================
                   // CUSTOMER
                   // ==================================================
+                  _detailRow("Customer", payment.customerName),
 
-                  _detailRow(
-                    "Customer",
-                    payment.customerName,
-                  ),
+                  _detailRow("Customer ID", payment.customerCode),
 
-                  _detailRow(
-                    "Customer ID",
-                    payment.customerCode,
-                  ),
-
-                  _detailRow(
-                    "Phone",
-                    payment.phone,
-                  ),
+                  _detailRow("Phone", payment.phone),
 
                   // ==================================================
                   // CURRENT CARD
                   // ==================================================
-
-                  _detailRow(
-                    "Card Number",
-                    payment.cardNumber,
-                  ),
+                  _detailRow("Card Number", payment.cardNumber),
 
                   // ==================================================
                   // OLD CARD
                   // ==================================================
-
-                  if (payment
-                      .oldCardNumber
-                      .trim()
-                      .isNotEmpty)
-                    _detailRow(
-                      "Old Card Number",
-                      payment.oldCardNumber,
-                    ),
+                  if (payment.oldCardNumber.trim().isNotEmpty)
+                    _detailRow("Old Card Number", payment.oldCardNumber),
 
                   // ==================================================
                   // RENT MONTH
                   // ==================================================
-
-                  _detailRow(
-                    "Rent Month",
-                    _formatDate(
-                      payment.rentMonth,
-                    ),
-                  ),
+                  _detailRow("Rent Month", _formatDate(payment.rentMonth)),
 
                   // ==================================================
                   // PAYMENT DATE
                   // ==================================================
-
-                  _detailRow(
-                    "Payment Date",
-                    _formatDate(
-                      payment.paymentDate,
-                    ),
-                  ),
+                  _detailRow("Payment Date", _formatDate(payment.paymentDate)),
 
                   // ==================================================
                   // AMOUNT
                   // ==================================================
-
-                  _detailRow(
-                    "Amount",
-                    _formatAmount(
-                      payment.amount,
-                    ),
-                  ),
+                  _detailRow("Amount", _formatAmount(payment.amount)),
 
                   // ==================================================
                   // PAYMENT MODE
                   // ==================================================
-
-                  _detailRow(
-                    "Payment Mode",
-                    payment.paymentMode,
-                  ),
+                  _detailRow("Payment Mode", payment.paymentMode),
 
                   // ==================================================
                   // COLLECTED BY
                   // ==================================================
-
                   _detailRow(
                     "Collected By",
-                    payment.collectedBy
-                            .isEmpty
-                        ? "-"
-                        : payment.collectedBy,
+                    payment.collectedBy.isEmpty ? "-" : payment.collectedBy,
                   ),
 
                   // ==================================================
                   // REMARKS
                   // ==================================================
-
                   _detailRow(
                     "Remarks",
-                    payment.remarks
-                            .isEmpty
-                        ? "-"
-                        : payment.remarks,
+                    payment.remarks.isEmpty ? "-" : payment.remarks,
                   ),
 
                   // ==================================================
                   // CREATED AT
                   // ==================================================
-
-                  _detailRow(
-                    "Created At",
-                    _formatDate(
-                      payment.createdAt,
-                    ),
-                  ),
+                  _detailRow("Created At", _formatDate(payment.createdAt)),
                 ],
               ),
             ),
@@ -437,19 +304,12 @@ class _PaymentHistoryScreenState
   // DETAIL ROW
   // ============================================================
 
-  Widget _detailRow(
-    String title,
-    String value,
-  ) {
+  Widget _detailRow(String title, String value) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(
-        vertical: 7,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 7),
 
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
 
         children: [
           SizedBox(
@@ -458,21 +318,11 @@ class _PaymentHistoryScreenState
             child: Text(
               title,
 
-              style:
-                  const TextStyle(
-                fontWeight:
-                    FontWeight.w600,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
 
-          Expanded(
-            child: Text(
-              value.isEmpty
-                  ? "-"
-                  : value,
-            ),
-          ),
+          Expanded(child: Text(value.isEmpty ? "-" : value)),
         ],
       ),
     );
@@ -483,25 +333,18 @@ class _PaymentHistoryScreenState
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Payment History",
-        ),
+        title: const Text("Payment History"),
 
         centerTitle: true,
 
         actions: [
           IconButton(
-            onPressed:
-                _loadPaymentHistory,
+            onPressed: _loadPaymentHistory,
 
-            icon: const Icon(
-              Icons.refresh,
-            ),
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
@@ -511,53 +354,29 @@ class _PaymentHistoryScreenState
           // ======================================================
           // SEARCH
           // ======================================================
-
           Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
-              12,
-              12,
-              12,
-              8,
-            ),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
 
             child: TextField(
-              controller:
-                  _searchController,
+              controller: _searchController,
 
-              decoration:
-                  InputDecoration(
-                hintText:
-                    "Search name, ID, phone, card or old card...",
+              decoration: InputDecoration(
+                hintText: "Search name, ID, phone, card or old card...",
 
-                prefixIcon:
-                    const Icon(
-                  Icons.search,
-                ),
+                prefixIcon: const Icon(Icons.search),
 
-                suffixIcon:
-                    _searchController
-                            .text
-                            .isEmpty
-                        ? null
-                        : IconButton(
-                            onPressed: () {
-                              _searchController
-                                  .clear();
-                            },
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _searchController.clear();
+                        },
 
-                            icon:
-                                const Icon(
-                              Icons.clear,
-                            ),
-                          ),
+                        icon: const Icon(Icons.clear),
+                      ),
 
-                border:
-                    OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
@@ -566,36 +385,22 @@ class _PaymentHistoryScreenState
           // ======================================================
           // SEARCH RESULT COUNT
           // ======================================================
-
-          if (!_isLoading &&
-              _error == null)
+          if (!_isLoading && _error == null)
             Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(
-                14,
-                0,
-                14,
-                5,
-              ),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 5),
 
               child: Align(
-                alignment:
-                    Alignment.centerLeft,
+                alignment: Alignment.centerLeft,
 
                 child: Text(
-                  _searchController
-                          .text
-                          .trim()
-                          .isEmpty
+                  _searchController.text.trim().isEmpty
                       ? "${_payments.length} payments"
                       : "${_filteredPayments.length} payments found",
 
                   style: TextStyle(
-                    color:
-                        Colors.grey.shade700,
+                    color: Colors.grey.shade700,
 
-                    fontWeight:
-                        FontWeight.w600,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -604,11 +409,7 @@ class _PaymentHistoryScreenState
           // ======================================================
           // CONTENT
           // ======================================================
-
-          Expanded(
-            child:
-                _buildContent(),
-          ),
+          Expanded(child: _buildContent()),
         ],
       ),
     );
@@ -620,10 +421,7 @@ class _PaymentHistoryScreenState
 
   Widget _buildContent() {
     if (_isLoading) {
-      return const Center(
-        child:
-            CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     // ==========================================================
@@ -633,46 +431,26 @@ class _PaymentHistoryScreenState
     if (_error != null) {
       return Center(
         child: Padding(
-          padding:
-              const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
 
           child: Column(
-            mainAxisSize:
-                MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min,
 
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 55,
-              ),
+              const Icon(Icons.error_outline, size: 55),
 
-              const SizedBox(
-                height: 12,
-              ),
+              const SizedBox(height: 12),
 
-              Text(
-                _error!,
-                textAlign:
-                    TextAlign.center,
-              ),
+              Text(_error!, textAlign: TextAlign.center),
 
-              const SizedBox(
-                height: 15,
-              ),
+              const SizedBox(height: 15),
 
               ElevatedButton.icon(
-                onPressed:
-                    _loadPaymentHistory,
+                onPressed: _loadPaymentHistory,
 
-                icon:
-                    const Icon(
-                  Icons.refresh,
-                ),
+                icon: const Icon(Icons.refresh),
 
-                label:
-                    const Text(
-                  "Retry",
-                ),
+                label: const Text("Retry"),
               ),
             ],
           ),
@@ -686,29 +464,17 @@ class _PaymentHistoryScreenState
 
     if (_payments.isEmpty) {
       return RefreshIndicator(
-        onRefresh:
-            _loadPaymentHistory,
+        onRefresh: _loadPaymentHistory,
 
         child: ListView(
           children: const [
-            SizedBox(
-              height: 160,
-            ),
+            SizedBox(height: 160),
 
-            Icon(
-              Icons.receipt_long,
-              size: 60,
-            ),
+            Icon(Icons.receipt_long, size: 60),
 
-            SizedBox(
-              height: 15,
-            ),
+            SizedBox(height: 15),
 
-            Center(
-              child: Text(
-                "No payment history yet.",
-              ),
-            ),
+            Center(child: Text("No payment history yet.")),
           ],
         ),
       );
@@ -721,31 +487,20 @@ class _PaymentHistoryScreenState
     if (_filteredPayments.isEmpty) {
       return const Center(
         child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
 
           children: [
-            Icon(
-              Icons.search_off,
-              size: 55,
-            ),
+            Icon(Icons.search_off, size: 55),
 
-            SizedBox(
-              height: 12,
-            ),
+            SizedBox(height: 12),
 
-            Text(
-              "No matching payments found.",
-            ),
+            Text("No matching payments found."),
 
-            SizedBox(
-              height: 5,
-            ),
+            SizedBox(height: 5),
 
             Text(
               "Try customer name, ID, phone, current card or old card.",
-              textAlign:
-                  TextAlign.center,
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -757,99 +512,58 @@ class _PaymentHistoryScreenState
     // ==========================================================
 
     return RefreshIndicator(
-      onRefresh:
-          _loadPaymentHistory,
+      onRefresh: _loadPaymentHistory,
 
-      child:
-          ListView.builder(
-        padding:
-            const EdgeInsets.fromLTRB(
-          12,
-          4,
-          12,
-          20,
-        ),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
 
-        itemCount:
-            _filteredPayments.length,
+        itemCount: _filteredPayments.length,
 
-        itemBuilder:
-            (context, index) {
-          final payment =
-              _filteredPayments[
-                  index];
+        itemBuilder: (context, index) {
+          final payment = _filteredPayments[index];
 
           return Card(
-            margin:
-                const EdgeInsets.only(
-              bottom: 10,
-            ),
+            margin: const EdgeInsets.only(bottom: 10),
 
             child: InkWell(
-              borderRadius:
-                  BorderRadius.circular(
-                12,
-              ),
+              borderRadius: BorderRadius.circular(12),
 
               onTap: () {
-                _showPaymentDetails(
-                  payment,
-                );
+                _showPaymentDetails(payment);
               },
 
               child: Padding(
-                padding:
-                    const EdgeInsets.all(
-                  14,
-                ),
+                padding: const EdgeInsets.all(14),
 
                 child: Row(
                   children: [
                     // =================================================
                     // ICON
                     // =================================================
-
                     CircleAvatar(
-                      child: Icon(
-                        _paymentIcon(
-                          payment
-                              .paymentMode,
-                        ),
-                      ),
+                      child: Icon(_paymentIcon(payment.paymentMode)),
                     ),
 
-                    const SizedBox(
-                      width: 12,
-                    ),
+                    const SizedBox(width: 12),
 
                     // =================================================
                     // PAYMENT INFO
                     // =================================================
-
                     Expanded(
-                      child:
-                          Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment
-                                .start,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
 
                         children: [
                           Text(
-                            payment
-                                .customerName,
+                            payment.customerName,
 
-                            style:
-                                const TextStyle(
+                            style: const TextStyle(
                               fontSize: 16,
-                              fontWeight:
-                                  FontWeight
-                                      .bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
 
-                          const SizedBox(
-                            height: 4,
-                          ),
+                          const SizedBox(height: 4),
 
                           Text(
                             "${payment.customerCode}"
@@ -857,9 +571,7 @@ class _PaymentHistoryScreenState
                             "${payment.paymentMode}",
                           ),
 
-                          const SizedBox(
-                            height: 4,
-                          ),
+                          const SizedBox(height: 4),
 
                           Text(
                             "Card: "
@@ -869,28 +581,20 @@ class _PaymentHistoryScreenState
                           // =========================================
                           // OLD CARD
                           // =========================================
-
-                          if (payment
-                              .oldCardNumber
-                              .trim()
-                              .isNotEmpty)
+                          if (payment.oldCardNumber.trim().isNotEmpty)
                             Text(
                               "Old Card: "
                               "${payment.oldCardNumber}",
                             ),
 
-                          const SizedBox(
-                            height: 4,
-                          ),
+                          const SizedBox(height: 4),
 
                           Text(
                             "Date: "
                             "${_formatDate(payment.paymentDate)}",
                           ),
 
-                          if (payment
-                              .collectedBy
-                              .isNotEmpty)
+                          if (payment.collectedBy.isNotEmpty)
                             Text(
                               "Collected by: "
                               "${payment.collectedBy}",
@@ -899,24 +603,17 @@ class _PaymentHistoryScreenState
                       ),
                     ),
 
-                    const SizedBox(
-                      width: 8,
-                    ),
+                    const SizedBox(width: 8),
 
                     // =================================================
                     // AMOUNT
                     // =================================================
-
                     Text(
-                      _formatAmount(
-                        payment.amount,
-                      ),
+                      _formatAmount(payment.amount),
 
-                      style:
-                          const TextStyle(
+                      style: const TextStyle(
                         fontSize: 16,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],

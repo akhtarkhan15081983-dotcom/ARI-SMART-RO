@@ -9,33 +9,26 @@ import '../../models/engineer_model.dart';
 import 'customer_details_screen.dart';
 
 class CustomerListScreen extends StatefulWidget {
-  const CustomerListScreen({
-    super.key,
-  });
+  const CustomerListScreen({super.key});
 
   @override
-  State<CustomerListScreen> createState() =>
-      _CustomerListScreenState();
+  State<CustomerListScreen> createState() => _CustomerListScreenState();
 }
 
-class _CustomerListScreenState
-    extends State<CustomerListScreen> {
+class _CustomerListScreenState extends State<CustomerListScreen> {
   // ============================================================
   // SERVICES
   // ============================================================
 
-  final CustomerService service =
-      CustomerService();
+  final CustomerService service = CustomerService();
 
-  final EngineerService engineerService =
-      EngineerService();
+  final EngineerService engineerService = EngineerService();
 
   // ============================================================
   // SEARCH
   // ============================================================
 
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = "";
 
@@ -58,44 +51,23 @@ class _CustomerListScreenState
   // ============================================================
 
   List<CustomerModel> get _filteredCustomers {
-    final query =
-        _searchQuery.trim().toLowerCase();
+    final query = _searchQuery.trim().toLowerCase();
 
     if (query.isEmpty) {
       return _customers;
     }
 
-    return _customers.where(
-      (customer) {
-        return customer.customerName
-                .toLowerCase()
-                .contains(query) ||
-            customer.customerId
-                .toLowerCase()
-                .contains(query) ||
-            customer.phone
-                .toLowerCase()
-                .contains(query) ||
-            customer.cardNumber
-                .toLowerCase()
-                .contains(query) ||
-            customer.oldCardNumber
-                .toLowerCase()
-                .contains(query) ||
-            customer.area
-                .toLowerCase()
-                .contains(query) ||
-            customer.address
-                .toLowerCase()
-                .contains(query) ||
-            customer.roModel
-                .toLowerCase()
-                .contains(query) ||
-            customer.engineerName
-                .toLowerCase()
-                .contains(query);
-      },
-    ).toList();
+    return _customers.where((customer) {
+      return customer.customerName.toLowerCase().contains(query) ||
+          customer.customerId.toLowerCase().contains(query) ||
+          customer.phone.toLowerCase().contains(query) ||
+          customer.cardNumber.toLowerCase().contains(query) ||
+          customer.oldCardNumber.toLowerCase().contains(query) ||
+          customer.area.toLowerCase().contains(query) ||
+          customer.address.toLowerCase().contains(query) ||
+          customer.roModel.toLowerCase().contains(query) ||
+          customer.engineerName.toLowerCase().contains(query);
+    }).toList();
   }
 
   // ============================================================
@@ -128,21 +100,17 @@ class _CustomerListScreenState
 
   Future<void> _loadRole() async {
     try {
-      final role =
-          await ApiService.getRole();
+      final role = await ApiService.getRole();
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _role =
-            role?.trim().toUpperCase() ?? "";
+        _role = role?.trim().toUpperCase() ?? "";
       });
     } catch (e) {
-      debugPrint(
-        "CUSTOMER LIST ROLE ERROR: $e",
-      );
+      debugPrint("CUSTOMER LIST ROLE ERROR: $e");
     }
   }
 
@@ -158,8 +126,7 @@ class _CustomerListScreenState
     }
 
     try {
-      final customers =
-          await service.getCustomers();
+      final customers = await service.getCustomers();
 
       if (!mounted) {
         return;
@@ -181,14 +148,9 @@ class _CustomerListScreenState
         _isLoading = false;
       });
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        SnackBar(
-          content: Text(
-            "Failed to load customers: $e",
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Failed to load customers: $e")));
     }
   }
 
@@ -196,15 +158,10 @@ class _CustomerListScreenState
   // OPEN CUSTOMER DETAILS
   // ============================================================
 
-  void _openCustomerDetails(
-    CustomerModel customer,
-  ) {
+  void _openCustomerDetails(CustomerModel customer) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            CustomerDetailsScreen(
-          customer: customer,
-        ),
+        builder: (_) => CustomerDetailsScreen(customer: customer),
       ),
     );
   }
@@ -213,28 +170,21 @@ class _CustomerListScreenState
   // ASSIGN / REASSIGN CUSTOMER
   // ============================================================
 
-  Future<void> showEngineerDialog(
-    CustomerModel customer,
-  ) async {
+  Future<void> showEngineerDialog(CustomerModel customer) async {
     try {
-      final engineers =
-          await engineerService
-              .getEngineers();
+      final engineers = await engineerService.getEngineers();
 
       if (!mounted) {
         return;
       }
 
-      final messenger =
-          ScaffoldMessenger.of(context);
+      final messenger = ScaffoldMessenger.of(context);
 
       showDialog(
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text(
-              "Assign Engineer",
-            ),
+            title: const Text("Assign Engineer"),
 
             content: SizedBox(
               width: double.maxFinite,
@@ -242,42 +192,25 @@ class _CustomerListScreenState
               child: ListView.builder(
                 shrinkWrap: true,
 
-                itemCount:
-                    engineers.length,
+                itemCount: engineers.length,
 
-                itemBuilder:
-                    (context, index) {
-                  final EngineerModel
-                      engineer =
-                      engineers[index];
+                itemBuilder: (context, index) {
+                  final EngineerModel engineer = engineers[index];
 
                   return ListTile(
-                    leading:
-                        const Icon(
-                      Icons.engineering,
-                    ),
+                    leading: const Icon(Icons.engineering),
 
-                    title: Text(
-                      engineer.name,
-                    ),
+                    title: Text(engineer.name),
 
-                    subtitle: Text(
-                      engineer.phone,
-                    ),
+                    subtitle: Text(engineer.phone),
 
                     onTap: () async {
-                      Navigator.pop(
-                        dialogContext,
-                      );
+                      Navigator.pop(dialogContext);
 
-                      final bool success =
-                          await service
-                              .assignCustomer(
-                        customerId:
-                            customer.id,
+                      final bool success = await service.assignCustomer(
+                        customerId: customer.id,
 
-                        employeeId:
-                            engineer.id,
+                        employeeId: engineer.id,
                       );
 
                       if (!mounted) {
@@ -285,8 +218,7 @@ class _CustomerListScreenState
                       }
 
                       if (success) {
-                        messenger
-                            .showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text(
                               "${engineer.name} Assigned Successfully",
@@ -296,13 +228,8 @@ class _CustomerListScreenState
 
                         await _loadCustomers();
                       } else {
-                        messenger
-                            .showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              "Assignment Failed",
-                            ),
-                          ),
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text("Assignment Failed")),
                         );
                       }
                     },
@@ -318,14 +245,9 @@ class _CustomerListScreenState
         return;
       }
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString(),
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -335,13 +257,11 @@ class _CustomerListScreenState
 
   Widget _buildSearchBox() {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
 
       children: [
         TextField(
-          controller:
-              _searchController,
+          controller: _searchController,
 
           onChanged: (value) {
             setState(() {
@@ -349,87 +269,54 @@ class _CustomerListScreenState
             });
           },
 
-          textInputAction:
-              TextInputAction.search,
+          textInputAction: TextInputAction.search,
 
-          decoration:
-              InputDecoration(
-            hintText:
-                "Search name, ID, phone, card or old card...",
+          decoration: InputDecoration(
+            hintText: "Search name, ID, phone, card or old card...",
 
-            prefixIcon:
-                const Icon(
-              Icons.search,
-            ),
+            prefixIcon: const Icon(Icons.search),
 
-            suffixIcon:
-                _searchQuery.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip:
-                            "Clear search",
+            suffixIcon: _searchQuery.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: "Clear search",
 
-                        icon:
-                            const Icon(
-                          Icons.clear,
-                        ),
+                    icon: const Icon(Icons.clear),
 
-                        onPressed: () {
-                          _searchController
-                              .clear();
+                    onPressed: () {
+                      _searchController.clear();
 
-                          setState(() {
-                            _searchQuery =
-                                "";
-                          });
-                        },
-                      ),
+                      setState(() {
+                        _searchQuery = "";
+                      });
+                    },
+                  ),
 
             filled: true,
 
-            fillColor:
-                Theme.of(context)
-                    .colorScheme
-                    .surface,
+            fillColor: Theme.of(context).colorScheme.surface,
 
-            border:
-                OutlineInputBorder(
-              borderRadius:
-                  BorderRadius.circular(
-                14,
-              ),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
           ),
         ),
 
-        const SizedBox(
-          height: 8,
-        ),
+        const SizedBox(height: 8),
 
         Row(
           children: [
-            const Icon(
-              Icons.people_alt_outlined,
-              size: 18,
-            ),
+            const Icon(Icons.people_alt_outlined, size: 18),
 
-            const SizedBox(
-              width: 6,
-            ),
+            const SizedBox(width: 6),
 
             Text(
-              _searchQuery
-                      .trim()
-                      .isEmpty
+              _searchQuery.trim().isEmpty
                   ? "${_customers.length} customers"
                   : "${_filteredCustomers.length} customers found",
 
               style: TextStyle(
-                color:
-                    Colors.grey.shade700,
+                color: Colors.grey.shade700,
 
-                fontWeight:
-                    FontWeight.w600,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -442,98 +329,60 @@ class _CustomerListScreenState
   // CUSTOMER CARD
   // ============================================================
 
-  Widget _buildCustomerCard(
-    CustomerModel customer,
-    int index,
-  ) {
+  Widget _buildCustomerCard(CustomerModel customer, int index) {
     return Card(
       elevation: 3,
 
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
 
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(
-          12,
-        ),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
 
       child: InkWell(
-        borderRadius:
-            BorderRadius.circular(
-          12,
-        ),
+        borderRadius: BorderRadius.circular(12),
 
         // ======================================================
         // CARD TAP
         // ======================================================
-
         onTap: _role == "OFFICE"
             ? null
             : () {
-                _openCustomerDetails(
-                  customer,
-                );
+                _openCustomerDetails(customer);
               },
 
         child: Padding(
-          padding:
-              const EdgeInsets.all(
-            12,
-          ),
+          padding: const EdgeInsets.all(12),
 
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
 
             children: [
               // ==================================================
               // CUSTOMER HEADER
               // ==================================================
-
               Row(
                 children: [
-                  CircleAvatar(
-                    child: Text(
-                      "${index + 1}",
-                    ),
-                  ),
+                  CircleAvatar(child: Text("${index + 1}")),
 
-                  const SizedBox(
-                    width: 12,
-                  ),
+                  const SizedBox(width: 12),
 
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
 
                       children: [
                         Text(
-                          customer
-                              .customerName,
+                          customer.customerName,
 
-                          style:
-                              const TextStyle(
+                          style: const TextStyle(
                             fontSize: 18,
-                            fontWeight:
-                                FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
 
                         Text(
                           customer.phone,
 
-                          style:
-                              const TextStyle(
-                            color:
-                                Colors.grey,
-                          ),
+                          style: const TextStyle(color: Colors.grey),
                         ),
                       ],
                     ),
@@ -542,38 +391,30 @@ class _CustomerListScreenState
                   // =================================================
                   // DETAILS INDICATOR
                   // =================================================
-
                   if (_role != "OFFICE")
                     const Icon(
-                      Icons
-                          .arrow_forward_ios,
+                      Icons.arrow_forward_ios,
                       size: 16,
                       color: Colors.grey,
                     ),
                 ],
               ),
 
-              const Divider(
-                height: 20,
-              ),
+              const Divider(height: 20),
 
               // ==================================================
               // CUSTOMER ID
               // ==================================================
-
               Text(
                 "Customer ID : "
                 "${customer.customerId}",
               ),
 
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 5),
 
               // ==================================================
               // CURRENT CARD
               // ==================================================
-
               Text(
                 "Card No : "
                 "${customer.cardNumber}",
@@ -582,14 +423,8 @@ class _CustomerListScreenState
               // ==================================================
               // OLD CARD
               // ==================================================
-
-              if (customer
-                  .oldCardNumber
-                  .trim()
-                  .isNotEmpty) ...[
-                const SizedBox(
-                  height: 5,
-                ),
+              if (customer.oldCardNumber.trim().isNotEmpty) ...[
+                const SizedBox(height: 5),
 
                 Text(
                   "Old Card No : "
@@ -597,92 +432,70 @@ class _CustomerListScreenState
                 ),
               ],
 
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 5),
 
               // ==================================================
               // AREA
               // ==================================================
-
               Text(
                 "Area : "
                 "${customer.area}",
               ),
 
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 5),
 
               // ==================================================
               // ADDRESS
               // ==================================================
-
               Text(
                 "Address : "
                 "${customer.address}",
               ),
 
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 5),
 
               // ==================================================
               // RO MODEL
               // ==================================================
-
               Text(
                 "RO Model : "
                 "${customer.roModel}",
               ),
 
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 5),
 
               // ==================================================
               // MONTHLY RENT
               // ==================================================
-
               Text(
                 "Monthly Rent : "
                 "₹${customer.monthlyRent}",
               ),
 
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 5),
 
               // ==================================================
               // INSTALLATION
               // ==================================================
-
               Text(
                 "Installation : "
                 "₹${customer.installationCharge}",
               ),
 
-              const SizedBox(
-                height: 8,
-              ),
+              const SizedBox(height: 8),
 
               // ==================================================
               // ASSIGNED ENGINEER
               // ==================================================
-
-              if (customer.assignedEngineer !=
-                  null)
+              if (customer.assignedEngineer != null)
                 Text(
                   "Assigned Employee : "
                   "${customer.engineerName}",
 
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.green,
+                  style: const TextStyle(
+                    color: Colors.green,
 
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 )
               else
@@ -690,13 +503,10 @@ class _CustomerListScreenState
                   "Assigned Employee : "
                   "Not Assigned",
 
-                  style:
-                      TextStyle(
-                    color:
-                        Colors.red,
+                  style: TextStyle(
+                    color: Colors.red,
 
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
 
@@ -704,35 +514,21 @@ class _CustomerListScreenState
               // ASSIGN / REASSIGN
               // ENGINEER MUST NOT SEE THIS
               // ==================================================
-
               if (_role != "ENGINEER") ...[
-                const SizedBox(
-                  height: 15,
-                ),
+                const SizedBox(height: 15),
 
                 Align(
-                  alignment:
-                      Alignment.centerRight,
+                  alignment: Alignment.centerRight,
 
-                  child:
-                      ElevatedButton.icon(
+                  child: ElevatedButton.icon(
                     onPressed: () {
-                      showEngineerDialog(
-                        customer,
-                      );
+                      showEngineerDialog(customer);
                     },
 
-                    icon:
-                        const Icon(
-                      Icons.person_add,
-                    ),
+                    icon: const Icon(Icons.person_add),
 
                     label: Text(
-                      customer
-                                  .assignedEngineer ==
-                              null
-                          ? "Assign"
-                          : "Reassign",
+                      customer.assignedEngineer == null ? "Assign" : "Reassign",
                     ),
                   ),
                 ),
@@ -749,163 +545,100 @@ class _CustomerListScreenState
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final filtered =
-        _filteredCustomers;
+  Widget build(BuildContext context) {
+    final filtered = _filteredCustomers;
 
     return Scaffold(
       appBar: AppBar(
-        title:
-            const Text(
-          "Customer List",
-        ),
+        title: const Text("Customer List"),
 
         centerTitle: true,
 
         actions: [
           IconButton(
-            tooltip:
-                "Refresh",
+            tooltip: "Refresh",
 
-            onPressed:
-                _loadCustomers,
+            onPressed: _loadCustomers,
 
-            icon:
-                const Icon(
-              Icons.refresh,
-            ),
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
 
-      body:
-          _isLoading
-              ? const Center(
-                  child:
-                      CircularProgressIndicator(),
-                )
-              : RefreshIndicator(
-                  onRefresh:
-                      _loadCustomers,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadCustomers,
 
-                  child: ListView(
-                    padding:
-                        const EdgeInsets
-                            .all(
-                      10,
-                    ),
+              child: ListView(
+                padding: const EdgeInsets.all(10),
 
-                    children: [
-                      // ==========================================
-                      // SEARCH
-                      // ==========================================
+                children: [
+                  // ==========================================
+                  // SEARCH
+                  // ==========================================
+                  _buildSearchBox(),
 
-                      _buildSearchBox(),
+                  const SizedBox(height: 12),
 
-                      const SizedBox(
-                        height: 12,
-                      ),
+                  // ==========================================
+                  // NO CUSTOMERS
+                  // ==========================================
+                  if (_customers.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 80),
 
-                      // ==========================================
-                      // NO CUSTOMERS
-                      // ==========================================
+                      child: Center(child: Text("No Customers Found")),
+                    )
+                  // ==========================================
+                  // NO SEARCH RESULT
+                  // ==========================================
+                  else if (filtered.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 80),
 
-                      if (_customers.isEmpty)
-                        const Padding(
-                          padding:
-                              EdgeInsets.only(
-                            top: 80,
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.person_search,
+                            size: 60,
+                            color: Colors.grey.shade500,
                           ),
 
-                          child: Center(
-                            child: Text(
-                              "No Customers Found",
+                          const SizedBox(height: 12),
+
+                          const Text(
+                            "No matching customer found",
+
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        )
 
-                      // ==========================================
-                      // NO SEARCH RESULT
-                      // ==========================================
+                          const SizedBox(height: 6),
 
-                      else if (filtered
-                          .isEmpty)
-                        Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            top: 80,
+                          Text(
+                            "Try name, Customer ID, phone, current card or old card number.",
+
+                            textAlign: TextAlign.center,
+
+                            style: TextStyle(color: Colors.grey.shade600),
                           ),
-
-                          child:
-                              Column(
-                            children: [
-                              Icon(
-                                Icons
-                                    .person_search,
-                                size: 60,
-                                color: Colors
-                                    .grey
-                                    .shade500,
-                              ),
-
-                              const SizedBox(
-                                height: 12,
-                              ),
-
-                              const Text(
-                                "No matching customer found",
-
-                                style:
-                                    TextStyle(
-                                  fontSize:
-                                      17,
-                                  fontWeight:
-                                      FontWeight
-                                          .w600,
-                                ),
-                              ),
-
-                              const SizedBox(
-                                height: 6,
-                              ),
-
-                              Text(
-                                "Try name, Customer ID, phone, current card or old card number.",
-
-                                textAlign:
-                                    TextAlign
-                                        .center,
-
-                                style:
-                                    TextStyle(
-                                  color: Colors
-                                      .grey
-                                      .shade600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-
-                      // ==========================================
-                      // CUSTOMER CARDS
-                      // ==========================================
-
-                      else
-                        ...List.generate(
-                          filtered.length,
-                          (index) =>
-                              _buildCustomerCard(
-                            filtered[index],
-                            index,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+                        ],
+                      ),
+                    )
+                  // ==========================================
+                  // CUSTOMER CARDS
+                  // ==========================================
+                  else
+                    ...List.generate(
+                      filtered.length,
+                      (index) => _buildCustomerCard(filtered[index], index),
+                    ),
+                ],
+              ),
+            ),
     );
   }
 }

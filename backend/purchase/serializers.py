@@ -74,3 +74,4 @@ class PurchaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Purchase
         fields = "__all__"
+        read_only_fields = ("entry_source", "ocr_text", "ocr_confidence", "verified_by", "verified_at")

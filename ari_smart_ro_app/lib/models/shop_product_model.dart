@@ -31,7 +31,8 @@ class ShopProduct {
       modelName: json['model_name']?.toString() ?? '',
       categoryName: json['category_name']?.toString() ?? '',
       capacity: json['capacity']?.toString() ?? '',
-      sellingPrice: double.tryParse(json['selling_price']?.toString() ?? '') ?? 0,
+      sellingPrice:
+          double.tryParse(json['selling_price']?.toString() ?? '') ?? 0,
       warrantyMonths: (json['warranty_months'] as num?)?.toInt() ?? 0,
       mrp: double.tryParse(json['mrp']?.toString() ?? '') ?? 0,
       stockQuantity: (json['stock_quantity'] as num?)?.toInt() ?? 0,
@@ -42,7 +43,10 @@ class ShopProduct {
           .where((item) => item.isNotEmpty)
           .toList(),
       imageUrls: (json['images'] as List<dynamic>? ?? const [])
-          .map((item) => (item as Map<String, dynamic>)['image_url']?.toString() ?? '')
+          .map(
+            (item) =>
+                (item as Map<String, dynamic>)['image_url']?.toString() ?? '',
+          )
           .where((url) => url.isNotEmpty)
           .toList(),
     );

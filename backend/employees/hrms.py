@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
+from django.db.models import Sum
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
@@ -12,7 +13,7 @@ from rest_framework.views import APIView
 
 from attendance.models import Attendance
 from installation.models import Installation
-from .models import EmployeeProfile, HRPolicy, LeaveRequest, PayrollRecord
+from .models import EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
 
 
 MONEY = Decimal("0.01")
@@ -42,6 +43,7 @@ def calculate_payroll(employee, payroll_month):
     hourly_rate = daily_rate / Decimal(policy.daily_work_hours)
     attendance = list(Attendance.objects.filter(employee=employee, date__range=(start, month_end)))
     attendance_by_date = {row.date: row for row in attendance}
+    holiday_dates = set(Holiday.objects.filter(date__range=(start, month_end)).values_list("date", flat=True))
     leaves = list(LeaveRequest.objects.filter(employee=employee, status="APPROVED", start_date__lte=month_end, end_date__gte=start).order_by("created_at"))
 
     full_paid_remaining = policy.monthly_paid_leaves
@@ -70,6 +72,9 @@ def calculate_payroll(employee, payroll_month):
     current = start
     while current <= month_end:
         row = attendance_by_date.get(current)
+        if current in holiday_dates and row is None:
+            current += timedelta(days=1)
+            continue
         full_leave = (current, "FULL") in paid_leave_dates
         half_leave = (current, "HALF") in paid_leave_dates
         if row is None:
@@ -112,6 +117,163 @@ def calculate_payroll(employee, payroll_month):
         "rent_incentive": rent_incentive, "sale_incentive": sale_incentive, "net_salary": max(Decimal("0"), net),
         "snapshot": {"calendar_days": days_in_month, "absent_days": str(absent_days), "unpaid_leave_units": str(unpaid_leave_units), "rent_installations": rent_count, "sale_installations": sale_count, "daily_rate": str(_money(daily_rate)), "hourly_rate": str(_money(hourly_rate))},
     }
+
+
+class EmployeeHrmsDashboardAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            employee = request.user.employee_profile
+        except (AttributeError, EmployeeProfile.DoesNotExist):
+            return Response({"detail": "Employee profile not found."}, status=404)
+
+        today = timezone.localdate()
+        month_start = today.replace(day=1)
+        policy = HRPolicy.current()
+        attendance = Attendance.objects.filter(
+            employee=employee, date__range=(month_start, today)
+        )
+        rows = list(attendance)
+        total_hours = sum((Decimal(row.working_hours) for row in rows), Decimal("0"))
+        overtime_hours = sum(
+            (max(Decimal("0"), Decimal(row.working_hours) - Decimal(policy.daily_work_hours)) for row in rows),
+            Decimal("0"),
+        )
+        late_days = 0
+        half_days = 0
+        for row in rows:
+            if row.status == "HALF_DAY":
+                half_days += 1
+            if row.check_in:
+                check_in = timezone.localtime(row.check_in).time().replace(tzinfo=None)
+                if check_in >= policy.half_day_cutoff:
+                    if row.status != "HALF_DAY":
+                        half_days += 1
+                elif check_in > policy.office_start_time:
+                    late_days += 1
+
+        month_leaves = LeaveRequest.objects.filter(
+            employee=employee, start_date__lte=today.replace(day=calendar.monthrange(today.year, today.month)[1]),
+            end_date__gte=month_start,
+        )
+        approved = month_leaves.filter(status="APPROVED")
+        full_used = sum(
+            ((min(row.end_date, today) - max(row.start_date, month_start)).days + 1 for row in approved if row.leave_type == "FULL_DAY"),
+            0,
+        )
+        half_used = sum(
+            ((min(row.end_date, today) - max(row.start_date, month_start)).days + 1 for row in approved if row.leave_type == "HALF_DAY"),
+            0,
+        )
+        current_installations = Installation.objects.filter(
+            engineer=employee,
+            status="COMPLETED",
+            completed_date__date__range=(month_start, today),
+        )
+        new_rent = current_installations.filter(business_type="RENT").count()
+        new_sales = current_installations.filter(business_type="SALE").count()
+        latest_payroll = PayrollRecord.objects.filter(employee=employee).first()
+
+        return Response({
+            "employee": {
+                "name": employee.user.get_full_name() or employee.user.phone,
+                "employee_id": employee.employee_id,
+                "designation": employee.get_designation_display(),
+                "joining_date": employee.joining_date,
+            },
+            "month": month_start.strftime("%Y-%m"),
+            "attendance": {
+                "present_days": attendance.exclude(status="ABSENT").count(),
+                "half_days": half_days,
+                "late_days": late_days,
+                "total_hours": str(total_hours.quantize(MONEY)),
+                "overtime_hours": str(overtime_hours.quantize(MONEY)),
+                "pending_selfie_reviews": attendance.filter(identity_review_status="PENDING").count(),
+            },
+            "leave_balance": {
+                "paid_full_allowed": policy.monthly_paid_leaves,
+                "paid_full_used": full_used,
+                "paid_full_remaining": max(0, policy.monthly_paid_leaves - full_used),
+                "paid_half_allowed": policy.monthly_paid_half_days,
+                "paid_half_used": half_used,
+                "paid_half_remaining": max(0, policy.monthly_paid_half_days - half_used),
+                "pending_requests": month_leaves.filter(status="PENDING").count(),
+            },
+            "earnings": {
+                "monthly_salary": str(_money(employee.salary)),
+                "new_rent_installations": new_rent,
+                "new_sales": new_sales,
+                "future_rent_monthly_incentive": str(_money(Decimal(new_rent) * policy.rent_installation_monthly_incentive)),
+                "next_salary_sale_incentive": str(_money(Decimal(new_sales) * policy.sale_installation_incentive)),
+            },
+            "policy": {
+                "office_start_time": policy.office_start_time.strftime("%I:%M %p"),
+                "daily_work_hours": str(policy.daily_work_hours),
+                "late_penalty": str(policy.late_penalty_amount),
+                "leave_notice_days": policy.leave_notice_days,
+            },
+            "latest_payroll": None if latest_payroll is None else {
+                "month": latest_payroll.payroll_month,
+                "net_salary": str(latest_payroll.net_salary),
+                "status": latest_payroll.status,
+                "paid_at": latest_payroll.paid_at,
+            },
+        })
+
+
+class HolidayAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        year = request.query_params.get("year")
+        rows = Holiday.objects.select_related("declared_by")
+        if year:
+            try:
+                rows = rows.filter(date__year=int(year))
+            except ValueError:
+                return Response({"detail": "Year must be numeric."}, status=400)
+        return Response({"holidays": [{
+            "id": row.id,
+            "date": row.date,
+            "name": row.name,
+            "description": row.description,
+            "is_paid": row.is_paid,
+            "declared_by": row.declared_by.get_full_name() or row.declared_by.phone,
+        } for row in rows[:500]]})
+
+    def post(self, request):
+        if not _role(request.user, "ADMIN", "OFFICE"):
+            return Response({"detail": "Only admin or office can declare a holiday."}, status=403)
+        try:
+            holiday_date = date.fromisoformat(request.data.get("date", ""))
+        except ValueError:
+            return Response({"detail": "Valid holiday date is required."}, status=400)
+        name = (request.data.get("name") or "").strip()
+        if not name:
+            return Response({"detail": "Holiday name is required."}, status=400)
+        row, created = Holiday.objects.update_or_create(
+            date=holiday_date,
+            defaults={
+                "name": name[:120],
+                "description": (request.data.get("description") or "").strip()[:300],
+                "is_paid": bool(request.data.get("is_paid", True)),
+                "declared_by": request.user,
+            },
+        )
+        return Response({"id": row.id, "detail": "Holiday declared successfully."}, status=201 if created else 200)
+
+
+class HolidayDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, holiday_id):
+        if not _role(request.user, "ADMIN", "OFFICE"):
+            return Response({"detail": "Only admin or office can remove a holiday."}, status=403)
+        deleted, _ = Holiday.objects.filter(pk=holiday_id).delete()
+        if not deleted:
+            return Response({"detail": "Holiday not found."}, status=404)
+        return Response(status=204)
 
 
 class LeaveRequestAPIView(APIView):
@@ -231,6 +393,7 @@ class PayrollExcelReportAPIView(APIView):
             return Response({"detail": "Month must be YYYY-MM."}, status=400)
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
 
         rows = PayrollRecord.objects.filter(payroll_month=month).select_related("employee__user")
         workbook = Workbook()
@@ -250,9 +413,16 @@ class PayrollExcelReportAPIView(APIView):
             sheet.append([row.employee.employee_id, row.employee.user.get_full_name(), row.base_salary, row.payable_base, row.late_days, row.late_penalty, row.half_day_deduction, row.absence_deduction, row.overtime_hours, row.overtime_amount, row.rent_incentive, row.sale_incentive, row.other_earnings, row.other_deductions, row.net_salary, row.status])
         sheet.freeze_panes = "A3"
         sheet.auto_filter.ref = f"A2:P{max(2, sheet.max_row)}"
-        for column in sheet.columns:
-            letter = column[0].column_letter
-            sheet.column_dimensions[letter].width = min(28, max(12, max(len(str(cell.value or "")) for cell in column) + 2))
+        for column_index in range(1, sheet.max_column + 1):
+            letter = get_column_letter(column_index)
+            values = (
+                sheet.cell(row=row_index, column=column_index).value
+                for row_index in range(1, sheet.max_row + 1)
+            )
+            sheet.column_dimensions[letter].width = min(
+                28,
+                max(12, max(len(str(value or "")) for value in values) + 2),
+            )
         stream = BytesIO()
         workbook.save(stream)
         response = HttpResponse(stream.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

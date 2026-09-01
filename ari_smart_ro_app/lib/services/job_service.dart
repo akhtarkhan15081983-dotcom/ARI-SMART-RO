@@ -54,8 +54,7 @@ class JobService {
     print("ACCEPT STATUS : ${response.statusCode}");
     print(response.body);
 
-    return response.statusCode == 200 ||
-        response.statusCode == 201;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
 
   // =======================
@@ -82,48 +81,34 @@ class JobService {
   // CHANGE STATUS
   // =======================
 
-  Future<bool> changeJobStatus(
-    int jobId,
-    String status,
-  ) async {
+  Future<bool> changeJobStatus(int jobId, String status) async {
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/jobs/$jobId/change-status/"),
       headers: await _headers(),
-      body: jsonEncode({
-        "status": status,
-      }),
+      body: jsonEncode({"status": status}),
     );
 
     print("CHANGE STATUS : ${response.statusCode}");
     print("BODY : ${response.body}");
 
-    return response.statusCode == 200 ||
-        response.statusCode == 201;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
 
   // =======================
   // GPS
   // =======================
 
-  Future<bool> uploadGPS(
-    int jobId,
-    double latitude,
-    double longitude,
-  ) async {
+  Future<bool> uploadGPS(int jobId, double latitude, double longitude) async {
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/jobs/$jobId/gps/"),
       headers: await _headers(),
-      body: jsonEncode({
-        "latitude": latitude,
-        "longitude": longitude,
-      }),
+      body: jsonEncode({"latitude": latitude, "longitude": longitude}),
     );
 
     print("GPS STATUS : ${response.statusCode}");
     print("GPS BODY : ${response.body}");
 
-    return response.statusCode == 200 ||
-        response.statusCode == 201;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
 
   // =======================
@@ -147,12 +132,7 @@ class JobService {
     request.fields["media_type"] = "PHOTO";
     request.fields["description"] = description;
 
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        "file",
-        imagePath,
-      ),
-    );
+    request.files.add(await http.MultipartFile.fromPath("file", imagePath));
 
     final response = await request.send();
 
@@ -161,32 +141,24 @@ class JobService {
     print("PHOTO STATUS : ${response.statusCode}");
     print("PHOTO BODY : $body");
 
-    return response.statusCode == 200 ||
-        response.statusCode == 201;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
 
   // =======================
   // ADD PART TO JOB
   // =======================
 
-  Future<bool> addPartToJob(
-    int jobId,
-    int inventoryItemId,
-  ) async {
+  Future<bool> addPartToJob(int jobId, int inventoryItemId) async {
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/jobs/$jobId/parts/"),
       headers: await _headers(),
-      body: jsonEncode({
-        "inventory_item": inventoryItemId,
-        "quantity": 1,
-      }),
+      body: jsonEncode({"inventory_item": inventoryItemId, "quantity": 1}),
     );
 
     print("PART STATUS : ${response.statusCode}");
     print("PART BODY : ${response.body}");
 
-    return response.statusCode == 200 ||
-        response.statusCode == 201;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
 
   Future<bool> uploadSignature(
@@ -194,48 +166,37 @@ class JobService {
     Uint8List signatureBytes,
     String customerName,
   ) async {
-
     final token = await storage.read(key: "access");
 
     final dir = await getTemporaryDirectory();
 
-    final file = File(
-      "${dir.path}/signature.png",
-    );
+    final file = File("${dir.path}/signature.png");
 
     await file.writeAsBytes(signatureBytes);
 
     var request = http.MultipartRequest(
       "POST",
-      Uri.parse(
-        "${ApiService.baseUrl}/jobs/$jobId/signature/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/jobs/$jobId/signature/"),
     );
 
-    request.headers["Authorization"] =
-        "Bearer $token";
+    request.headers["Authorization"] = "Bearer $token";
 
-    request.fields["customer_name"] =
-        customerName;
+    request.fields["customer_name"] = customerName;
 
     request.files.add(
-      await http.MultipartFile.fromPath(
-        "signature",
-        file.path,
-      ),
+      await http.MultipartFile.fromPath("signature", file.path),
     );
 
     final response = await request.send();
 
-    final body =
-        await response.stream.bytesToString();
+    final body = await response.stream.bytesToString();
 
     print("SIGNATURE STATUS : ${response.statusCode}");
     print(body);
 
-    return response.statusCode == 200 ||
-        response.statusCode == 201;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
+
   Future<bool> completeInstallation({
     required int jobId,
     required int inputTds,
@@ -243,17 +204,12 @@ class JobService {
     required String referral,
     required String remarks,
   }) async {
-
     final response = await http.post(
-
-      Uri.parse(
-        "${ApiService.baseUrl}/installations/complete/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/installations/complete/"),
 
       headers: await _headers(),
 
       body: jsonEncode({
-
         "job": jobId,
 
         "input_tds": inputTds,
@@ -263,64 +219,41 @@ class JobService {
         "referral_name": referral,
 
         "remarks": remarks,
-
       }),
-
     );
 
     print("INSTALLATION STATUS : ${response.statusCode}");
     print(response.body);
 
-    return response.statusCode == 200 ||
-        response.statusCode == 201;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
 
   Future<String?> generateOTP(int jobId) async {
-
     final response = await http.post(
-    
-      Uri.parse(
-        "${ApiService.baseUrl}/jobs/$jobId/generate-otp/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/jobs/$jobId/generate-otp/"),
 
       headers: await _headers(),
-
     );
 
     print("GENERATE OTP STATUS : ${response.statusCode}");
     print(response.body);
 
     if (response.statusCode == 200) {
-
       final data = jsonDecode(response.body);
 
       return data["otp"];
-
     }
 
     return null;
   }
 
-  Future<bool> verifyOTP(
-    int jobId,
-    String otp,
-  ) async {
-
+  Future<bool> verifyOTP(int jobId, String otp) async {
     final response = await http.post(
-    
-
-      Uri.parse(
-        "${ApiService.baseUrl}/jobs/$jobId/verify-otp/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/jobs/$jobId/verify-otp/"),
 
       headers: await _headers(),
 
-      body: jsonEncode({
-
-        "otp": otp,
-
-      }),
-
+      body: jsonEncode({"otp": otp}),
     );
 
     print("VERIFY OTP STATUS : ${response.statusCode}");
@@ -328,5 +261,4 @@ class JobService {
 
     return response.statusCode == 200;
   }
-
 }

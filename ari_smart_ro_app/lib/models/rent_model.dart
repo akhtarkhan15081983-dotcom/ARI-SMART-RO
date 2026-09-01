@@ -11,33 +11,20 @@ class RentModel {
     required this.history,
   });
 
-  factory RentModel.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory RentModel.fromJson(Map<String, dynamic> json) {
     return RentModel(
-      customer: CustomerRentInfo.fromJson(
-        json["customer"] ?? {},
-      ),
+      customer: CustomerRentInfo.fromJson(json["customer"] ?? {}),
 
-      currentRent: CurrentRent.fromJson(
-        json["current_rent"] ?? {},
-      ),
+      currentRent: CurrentRent.fromJson(json["current_rent"] ?? {}),
 
-      ro: RORentInfo.fromJson(
-        json["ro"] ?? {},
-      ),
+      ro: RORentInfo.fromJson(json["ro"] ?? {}),
 
       history: (json["history"] as List? ?? [])
-          .map(
-            (e) => RentHistoryItem.fromJson(
-              e,
-            ),
-          )
+          .map((e) => RentHistoryItem.fromJson(e))
           .toList(),
     );
   }
 }
-
 
 // ================================================================
 // CUSTOMER
@@ -60,25 +47,18 @@ class CustomerRentInfo {
     required this.oldCardNumber,
   });
 
-  factory CustomerRentInfo.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory CustomerRentInfo.fromJson(Map<String, dynamic> json) {
     return CustomerRentInfo(
-      name:
-          json["name"]?.toString() ?? "",
+      name: json["name"]?.toString() ?? "",
 
-      customerId:
-          json["customer_id"]?.toString() ?? "",
+      customerId: json["customer_id"]?.toString() ?? "",
 
-      cardNumber:
-          json["card_number"]?.toString() ?? "",
+      cardNumber: json["card_number"]?.toString() ?? "",
 
-      oldCardNumber:
-          json["old_card_number"]?.toString() ?? "",
+      oldCardNumber: json["old_card_number"]?.toString() ?? "",
     );
   }
 }
-
 
 // ================================================================
 // CURRENT RENT
@@ -102,8 +82,7 @@ class CurrentRent {
   });
 
   bool get canPay {
-    return balance > 0 &&
-        status.toUpperCase() != "PAID";
+    return balance > 0 && status.toUpperCase() != "PAID";
   }
 
   String get formattedDueDate {
@@ -114,45 +93,21 @@ class CurrentRent {
     return dueDate;
   }
 
-  factory CurrentRent.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory CurrentRent.fromJson(Map<String, dynamic> json) {
     return CurrentRent(
-      status:
-          json["status"]?.toString() ??
-              "PENDING",
+      status: json["status"]?.toString() ?? "PENDING",
 
       expectedRent:
-          double.tryParse(
-                json["expected_rent"]
-                        ?.toString() ??
-                    "0",
-              ) ??
-              0,
+          double.tryParse(json["expected_rent"]?.toString() ?? "0") ?? 0,
 
-      paidAmount:
-          double.tryParse(
-                json["paid_amount"]
-                        ?.toString() ??
-                    "0",
-              ) ??
-              0,
+      paidAmount: double.tryParse(json["paid_amount"]?.toString() ?? "0") ?? 0,
 
-      balance:
-          double.tryParse(
-                json["balance"]
-                        ?.toString() ??
-                    "0",
-              ) ??
-              0,
+      balance: double.tryParse(json["balance"]?.toString() ?? "0") ?? 0,
 
-      dueDate:
-          json["due_date"]?.toString() ??
-              "",
+      dueDate: json["due_date"]?.toString() ?? "",
     );
   }
 }
-
 
 // ================================================================
 // RO INFORMATION
@@ -181,37 +136,20 @@ class RORentInfo {
     return installationDate;
   }
 
-  factory RORentInfo.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory RORentInfo.fromJson(Map<String, dynamic> json) {
     return RORentInfo(
-      model:
-          json["model"]?.toString() ?? "",
+      model: json["model"]?.toString() ?? "",
 
       installationCharge:
-          double.tryParse(
-                json["installation_charge"]
-                        ?.toString() ??
-                    "0",
-              ) ??
-              0,
+          double.tryParse(json["installation_charge"]?.toString() ?? "0") ?? 0,
 
       securityDeposit:
-          double.tryParse(
-                json["security_deposit"]
-                        ?.toString() ??
-                    "0",
-              ) ??
-              0,
+          double.tryParse(json["security_deposit"]?.toString() ?? "0") ?? 0,
 
-      installationDate:
-          json["installation_date"]
-                  ?.toString() ??
-              "",
+      installationDate: json["installation_date"]?.toString() ?? "",
     );
   }
 }
-
 
 // ================================================================
 // RENT HISTORY
@@ -242,59 +180,30 @@ class RentHistoryItem {
     return month;
   }
 
-  factory RentHistoryItem.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory RentHistoryItem.fromJson(Map<String, dynamic> json) {
     final expected =
-        double.tryParse(
-              json["expected_rent"]
-                      ?.toString() ??
-                  "0",
-            ) ??
-            0;
+        double.tryParse(json["expected_rent"]?.toString() ?? "0") ?? 0;
 
-    final paid =
-        double.tryParse(
-              json["paid_amount"]
-                      ?.toString() ??
-                  "0",
-            ) ??
-            0;
+    final paid = double.tryParse(json["paid_amount"]?.toString() ?? "0") ?? 0;
 
-    final serverBalance =
-        json["balance"];
+    final serverBalance = json["balance"];
 
-    final balance =
-        serverBalance != null
-            ? double.tryParse(
-                  serverBalance.toString(),
-                ) ??
-                0
-            : (expected - paid < 0
-                ? 0
-                : expected - paid);
+    final balance = serverBalance != null
+        ? double.tryParse(serverBalance.toString()) ?? 0
+        : (expected - paid < 0 ? 0 : expected - paid);
 
     return RentHistoryItem(
-      month:
-          json["rent_month"]?.toString() ??
-              json["month"]?.toString() ??
-              "",
+      month: json["rent_month"]?.toString() ?? json["month"]?.toString() ?? "",
 
-      expectedRent:
-          expected,
+      expectedRent: expected,
 
-      paidAmount:
-          paid,
+      paidAmount: paid,
 
-      balance:
-          balance.toDouble(),
+      balance: balance.toDouble(),
 
       status:
           json["status"]?.toString() ??
-              (paid >= expected &&
-                      expected > 0
-                  ? "PAID"
-                  : "PENDING"),
+          (paid >= expected && expected > 0 ? "PAID" : "PENDING"),
     );
   }
 }

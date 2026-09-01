@@ -35,14 +35,10 @@ class CustomerService {
 
       print("TOTAL CUSTOMERS : ${data.length}");
 
-      return data
-          .map((e) => CustomerModel.fromJson(e))
-          .toList();
+      return data.map((e) => CustomerModel.fromJson(e)).toList();
     }
 
-    throw Exception(
-      "Failed to load customers: ${response.statusCode}",
-    );
+    throw Exception("Failed to load customers: ${response.statusCode}");
   }
 
   // ============================================================
@@ -59,9 +55,7 @@ class CustomerService {
     final token = await storage.read(key: "access");
 
     final response = await http.get(
-      Uri.parse(
-        "${ApiService.baseUrl}/customers/my-customers/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/customers/my-customers/"),
       headers: {
         "Authorization": "Bearer $token",
         "Content-Type": "application/json",
@@ -76,9 +70,7 @@ class CustomerService {
 
       print("MY CUSTOMERS TOTAL : ${data.length}");
 
-      return data
-          .map((e) => CustomerModel.fromJson(e))
-          .toList();
+      return data.map((e) => CustomerModel.fromJson(e)).toList();
     }
 
     throw Exception(
@@ -100,13 +92,9 @@ class CustomerService {
     required int employeeId,
   }) async {
     final response = await http.post(
-      Uri.parse(
-        "${ApiService.baseUrl}/customers/$customerId/assign/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/customers/$customerId/assign/"),
       headers: await ApiService.authHeaders(),
-      body: jsonEncode({
-        "employee_id": employeeId,
-      }),
+      body: jsonEncode({"employee_id": employeeId}),
     );
 
     print("ASSIGN STATUS : ${response.statusCode}");
@@ -141,9 +129,7 @@ class CustomerService {
     double securityDeposit = 0,
   }) async {
     final response = await http.post(
-      Uri.parse(
-        "${ApiService.baseUrl}/customers/walk-in/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/customers/walk-in/"),
       headers: await ApiService.authHeaders(),
       body: jsonEncode({
         "name": name,

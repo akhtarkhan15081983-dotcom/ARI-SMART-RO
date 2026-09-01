@@ -52,15 +52,9 @@ class JobModel {
 
       customerName: json["customer_name"] ?? "",
 
-      customerPhone:
-          json["customer_phone"] ??
-          json["phone"] ??
-          "",
+      customerPhone: json["customer_phone"] ?? json["phone"] ?? "",
 
-      customerAddress:
-          json["customer_address"] ??
-          json["address"] ??
-          "",
+      customerAddress: json["customer_address"] ?? json["address"] ?? "",
 
       phone: json["phone"] ?? "",
       address: json["address"] ?? "",
@@ -70,13 +64,9 @@ class JobModel {
       assetId: json["asset_id"] ?? "",
       engineerName: json["engineer_name"] ?? "",
 
-      latitude: double.tryParse(
-              json["latitude"].toString()) ??
-          0,
+      latitude: double.tryParse(json["latitude"].toString()) ?? 0,
 
-      longitude: double.tryParse(
-              json["longitude"].toString()) ??
-          0,
+      longitude: double.tryParse(json["longitude"].toString()) ?? 0,
 
       jobType: json["job_type"] ?? "",
 
@@ -84,8 +74,7 @@ class JobModel {
 
       status: json["status"] ?? "",
 
-      scheduledDate:
-          json["scheduled_date"] ?? "",
+      scheduledDate: json["scheduled_date"] ?? "",
 
       remarks: json["remarks"] ?? "",
     );

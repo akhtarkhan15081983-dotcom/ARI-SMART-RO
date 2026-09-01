@@ -12,10 +12,7 @@ import '../../services/job_service.dart';
 class QRScanScreen extends StatefulWidget {
   final int jobId;
 
-  const QRScanScreen({
-    super.key,
-    required this.jobId,
-  });
+  const QRScanScreen({super.key, required this.jobId});
 
   @override
   State<QRScanScreen> createState() => _QRScanScreenState();
@@ -95,10 +92,7 @@ class _QRScanScreenState extends State<QRScanScreen> {
         _isCameraPaused = true;
       });
 
-      _showMessage(
-        'Unable to start camera. Please try again.',
-        Colors.red,
-      );
+      _showMessage('Unable to start camera. Please try again.', Colors.red);
     }
   }
 
@@ -150,9 +144,7 @@ class _QRScanScreenState extends State<QRScanScreen> {
     // Stop immediately so the same QR cannot trigger repeatedly.
     await _pauseCamera();
 
-    final alreadyScanned = scannedParts.any(
-      (part) => part['qr'] == value,
-    );
+    final alreadyScanned = scannedParts.any((part) => part['qr'] == value);
 
     if (alreadyScanned) {
       _showMessage(
@@ -259,6 +251,7 @@ class _QRScanScreenState extends State<QRScanScreen> {
       if (mounted) setState(() => _isSavingInstallation = false);
     }
   }
+
   Future<void> _generateOtp() async {
     if (_isSavingInstallation) return;
 
@@ -272,10 +265,7 @@ class _QRScanScreenState extends State<QRScanScreen> {
       if (!mounted) return;
 
       if (otp == null) {
-        _showMessage(
-          'Unable to generate OTP. Please try again.',
-          Colors.red,
-        );
+        _showMessage('Unable to generate OTP. Please try again.', Colors.red);
         return;
       }
 
@@ -290,10 +280,7 @@ class _QRScanScreenState extends State<QRScanScreen> {
     } catch (_) {
       if (!mounted) return;
 
-      _showMessage(
-        'Unable to generate OTP.',
-        Colors.red,
-      );
+      _showMessage('Unable to generate OTP.', Colors.red);
     } finally {
       if (mounted) {
         setState(() {
@@ -303,77 +290,58 @@ class _QRScanScreenState extends State<QRScanScreen> {
     }
   }
 
-Future<void> _verifyOtp() async {
-  final otp = otpController.text.trim();
+  Future<void> _verifyOtp() async {
+    final otp = otpController.text.trim();
 
-  if (otp.isEmpty) {
-    _showMessage(
-      'Please enter customer OTP.',
-      Colors.red,
-    );
-    return;
-  }
-
-  if (otp.length != 6) {
-    _showMessage(
-      'OTP must be 6 digits.',
-      Colors.red,
-    );
-    return;
-  }
-
-  if (_isSavingInstallation) return;
-
-  setState(() {
-    _isSavingInstallation = true;
-  });
-
-  try {
-    final success = await jobService.verifyOTP(
-      widget.jobId,
-      otp,
-    );
-
-    if (!mounted) return;
-
-    if (!success) {
-      _showMessage(
-        'Invalid OTP.',
-        Colors.red,
-      );
+    if (otp.isEmpty) {
+      _showMessage('Please enter customer OTP.', Colors.red);
       return;
     }
 
+    if (otp.length != 6) {
+      _showMessage('OTP must be 6 digits.', Colors.red);
+      return;
+    }
+
+    if (_isSavingInstallation) return;
+
     setState(() {
-      _otpVerified = true;
-      _step = _InstallationStep.signature;
+      _isSavingInstallation = true;
     });
 
-    _showMessage(
-      'Customer OTP verified successfully.',
-      Colors.green,
-    );
-  } catch (_) {
-    if (!mounted) return;
+    try {
+      final success = await jobService.verifyOTP(widget.jobId, otp);
 
-    _showMessage(
-      'Unable to verify OTP.',
-      Colors.red,
-    );
-  } finally {
-    if (mounted) {
+      if (!mounted) return;
+
+      if (!success) {
+        _showMessage('Invalid OTP.', Colors.red);
+        return;
+      }
+
       setState(() {
-        _isSavingInstallation = false;
+        _otpVerified = true;
+        _step = _InstallationStep.signature;
       });
+
+      _showMessage('Customer OTP verified successfully.', Colors.green);
+    } catch (_) {
+      if (!mounted) return;
+
+      _showMessage('Unable to verify OTP.', Colors.red);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingInstallation = false;
+        });
+      }
     }
   }
-}
+
   Future<void> _captureSignature() async {
     final result = await Navigator.push<Uint8List>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const SignatureScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const SignatureScreen()),
     );
 
     if (result == null || !mounted) return;
@@ -383,10 +351,7 @@ Future<void> _verifyOtp() async {
       _step = _InstallationStep.details;
     });
 
-    _showMessage(
-      'Customer signature captured.',
-      Colors.green,
-    );
+    _showMessage('Customer signature captured.', Colors.green);
   }
 
   Future<void> _completeInstallation() async {
@@ -395,50 +360,31 @@ Future<void> _verifyOtp() async {
       return;
     }
     if (!_otpVerified) {
-      _showMessage(
-        'Please verify customer OTP first.',
-        Colors.red,
-      );
+      _showMessage('Please verify customer OTP first.', Colors.red);
       return;
     }
 
     if (inputTdsController.text.trim().isEmpty) {
-      _showMessage(
-        'Please enter Input TDS.',
-        Colors.red,
-      );
+      _showMessage('Please enter Input TDS.', Colors.red);
       return;
     }
 
     if (outputTdsController.text.trim().isEmpty) {
-      _showMessage(
-        'Please enter Output TDS.',
-        Colors.red,
-      );
+      _showMessage('Please enter Output TDS.', Colors.red);
       return;
     }
 
-    final inputTds = int.tryParse(
-      inputTdsController.text.trim(),
-    );
+    final inputTds = int.tryParse(inputTdsController.text.trim());
 
-    final outputTds = int.tryParse(
-      outputTdsController.text.trim(),
-    );
+    final outputTds = int.tryParse(outputTdsController.text.trim());
 
     if (inputTds == null || inputTds < 0) {
-      _showMessage(
-        'Please enter a valid Input TDS.',
-        Colors.red,
-      );
+      _showMessage('Please enter a valid Input TDS.', Colors.red);
       return;
     }
 
     if (outputTds == null || outputTds < 0) {
-      _showMessage(
-        'Please enter a valid Output TDS.',
-        Colors.red,
-      );
+      _showMessage('Please enter a valid Output TDS.', Colors.red);
       return;
     }
     if (customerNameController.text.trim().isEmpty) {
@@ -486,7 +432,10 @@ Future<void> _verifyOtp() async {
       _showMessage('Installation completed successfully.', Colors.green);
       Navigator.pop(context, true);
     } catch (_) {
-      _showMessage('Unable to complete installation. Please try again.', Colors.red);
+      _showMessage(
+        'Unable to complete installation. Please try again.',
+        Colors.red,
+      );
     } finally {
       if (mounted) setState(() => _isSavingInstallation = false);
     }
@@ -573,12 +522,7 @@ Future<void> _verifyOtp() async {
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  16,
-                  8,
-                  16,
-                  16,
-                ),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: SizedBox(
                   width: double.infinity,
                   child: _buildPrimaryAction(),
@@ -610,33 +554,57 @@ Future<void> _verifyOtp() async {
     }
   }
 
-  Widget _buildScanner() => Column(children: [
-        Expanded(flex: 3, child: Stack(fit: StackFit.expand, children: [
-          MobileScanner(controller: controller, onDetect: _onDetect),
-          if (_isCameraPaused) _cameraPausedOverlay(),
-          if (_isProcessingScan && !_isCameraPaused)
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
-        ])),
-        Expanded(flex: 2, child: _scannedPartsList()),
-      ]);
+  Widget _buildScanner() => Column(
+    children: [
+      Expanded(
+        flex: 3,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            MobileScanner(controller: controller, onDetect: _onDetect),
+            if (_isCameraPaused) _cameraPausedOverlay(),
+            if (_isProcessingScan && !_isCameraPaused)
+              const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+          ],
+        ),
+      ),
+      Expanded(flex: 2, child: _scannedPartsList()),
+    ],
+  );
 
   Widget _cameraPausedOverlay() => Container(
-        color: Colors.black54,
-        alignment: Alignment.center,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.pause_circle_filled, color: Colors.white, size: 58),
-          const SizedBox(height: 12),
-          Text(_isProcessingScan ? 'Verifying part...' : 'Camera paused',
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-        ]),
-      );
+    color: Colors.black54,
+    alignment: Alignment.center,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.pause_circle_filled, color: Colors.white, size: 58),
+        const SizedBox(height: 12),
+        Text(
+          _isProcessingScan ? 'Verifying part...' : 'Camera paused',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _scannedPartsList() => scannedParts.isEmpty
-      ? const Center(child: Text('No parts scanned yet.', style: TextStyle(color: Colors.grey)))
+      ? const Center(
+          child: Text(
+            'No parts scanned yet.',
+            style: TextStyle(color: Colors.grey),
+          ),
+        )
       : ListView.separated(
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: scannedParts.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
+          separatorBuilder: (_, _) => const Divider(height: 1),
           itemBuilder: (context, index) => ListTile(
             leading: const Icon(Icons.check_circle, color: Colors.green),
             title: Text(scannedParts[index]['qr'].toString()),
@@ -645,54 +613,38 @@ Future<void> _verifyOtp() async {
         );
 
   Widget _buildProofStep() {
-
     Widget child;
 
     switch (_step) {
-      
       case _InstallationStep.photo:
-
         child = _proofCard(
           icon: Icons.camera_alt_outlined,
           title: 'Capture customer photo',
-          message:
-              'Take a clear photo as proof of the completed installation.',
+          message: 'Take a clear photo as proof of the completed installation.',
           preview: _customerPhoto == null
               ? null
-              : Image.file(
-                  _customerPhoto!,
-                  height: 220,
-                ),
+              : Image.file(_customerPhoto!, height: 220),
         );
         break;
 
       case _InstallationStep.signature:
-
         child = _proofCard(
           icon: Icons.draw_outlined,
           title: 'Capture customer signature',
-          message:
-              'Ask the customer to sign and confirm the installation.',
+          message: 'Ask the customer to sign and confirm the installation.',
         );
         break;
       case _InstallationStep.otp:
         child = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(
-              Icons.verified_user,
-              size: 72,
-              color: Colors.green,
-            ),
+            const Icon(Icons.verified_user, size: 72, color: Colors.green),
 
             const SizedBox(height: 16),
 
             const Text(
               'Verify Customer OTP',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
 
@@ -713,9 +665,7 @@ Future<void> _verifyOtp() async {
                     children: [
                       const Text(
                         'Customer OTP',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
 
                       const SizedBox(height: 8),
@@ -750,11 +700,9 @@ Future<void> _verifyOtp() async {
         );
         break;
       case _InstallationStep.details:
-
         child = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-
             const Text(
               'Enter final installation details.',
               style: TextStyle(fontSize: 16),
@@ -817,7 +765,6 @@ Future<void> _verifyOtp() async {
         break;
 
       case _InstallationStep.scanning:
-
         child = const SizedBox.shrink();
         break;
     }
@@ -827,23 +774,43 @@ Future<void> _verifyOtp() async {
       child: child,
     );
   }
-  Widget _proofCard({required IconData icon, required String title, required String message, Widget? preview}) => Column(
-        children: [
-          Icon(icon, size: 72, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(height: 16),
-          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Text(message, textAlign: TextAlign.center),
-          if (preview != null) ...[const SizedBox(height: 20), preview],
-        ],
-      );
+
+  Widget _proofCard({
+    required IconData icon,
+    required String title,
+    required String message,
+    Widget? preview,
+  }) => Column(
+    children: [
+      Icon(icon, size: 72, color: Theme.of(context).colorScheme.primary),
+      const SizedBox(height: 16),
+      Text(
+        title,
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 8),
+      Text(message, textAlign: TextAlign.center),
+      if (preview != null) ...[const SizedBox(height: 20), preview],
+    ],
+  );
 
   Widget _buildPrimaryAction() {
     if (_step == _InstallationStep.scanning) {
       if (_isCameraPaused && !_isProcessingScan) {
-        return OutlinedButton.icon(onPressed: _scanNextPart, icon: const Icon(Icons.qr_code_scanner), label: const Text('Scan Next Part'));
+        return OutlinedButton.icon(
+          onPressed: _scanNextPart,
+          icon: const Icon(Icons.qr_code_scanner),
+          label: const Text('Scan Next Part'),
+        );
       }
-      return ElevatedButton.icon(onPressed: totalParts == 0 || _isProcessingScan ? null : _finishScanning, icon: const Icon(Icons.check_circle), label: const Text('Finish Scanning'));
+      return ElevatedButton.icon(
+        onPressed: totalParts == 0 || _isProcessingScan
+            ? null
+            : _finishScanning,
+        icon: const Icon(Icons.check_circle),
+        label: const Text('Finish Scanning'),
+      );
     }
     final action = switch (_step) {
       _InstallationStep.photo => _captureCustomerPhoto,
@@ -851,12 +818,10 @@ Future<void> _verifyOtp() async {
       _InstallationStep.details => _completeInstallation,
 
       _InstallationStep.otp =>
-          _generatedOtp == null ? _generateOtp : _verifyOtp,
+        _generatedOtp == null ? _generateOtp : _verifyOtp,
 
       _InstallationStep.signature =>
-        _signatureBytes == null
-            ? _captureSignature
-            : _completeInstallation,
+        _signatureBytes == null ? _captureSignature : _completeInstallation,
 
       _InstallationStep.scanning => null,
     };
@@ -866,27 +831,28 @@ Future<void> _verifyOtp() async {
       _InstallationStep.details => 'Complete Installation',
 
       _InstallationStep.otp =>
-          _generatedOtp == null ? 'Generate OTP' : 'Verify OTP',
+        _generatedOtp == null ? 'Generate OTP' : 'Verify OTP',
 
       _InstallationStep.signature =>
-        _signatureBytes == null
-            ? 'Capture Signature'
-            : 'Complete Installation',
+        _signatureBytes == null ? 'Capture Signature' : 'Complete Installation',
 
       _InstallationStep.scanning => '',
     };
     return ElevatedButton.icon(
       onPressed: _isSavingInstallation ? null : action,
-      icon: _isSavingInstallation ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_circle),
+      icon: _isSavingInstallation
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.check_circle),
       label: Text(label),
     );
   }
 }
 
-enum _InstallationStep {
-  scanning,
-  photo,
-  details,
-  otp,
-  signature,
-}
+enum _InstallationStep { scanning, photo, details, otp, signature }

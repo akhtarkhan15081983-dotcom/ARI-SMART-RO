@@ -24,7 +24,9 @@ class AdminFaceSecurityService {
     required bool allow,
   }) async {
     final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/employees/$employeeId/face-enrollment-control/'),
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/$employeeId/face-enrollment-control/',
+      ),
       headers: await ApiService.authHeaders(),
       body: jsonEncode({
         'action': allow ? 'allow_reenrollment' : 'cancel_reenrollment',
@@ -36,7 +38,9 @@ class AdminFaceSecurityService {
         : <String, dynamic>{};
 
     if (response.statusCode != 200) {
-      throw Exception(data['message']?.toString() ?? 'Unable to update enrollment permission');
+      throw Exception(
+        data['message']?.toString() ?? 'Unable to update enrollment permission',
+      );
     }
 
     return data['message']?.toString() ?? 'Updated';

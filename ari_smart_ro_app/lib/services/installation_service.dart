@@ -9,21 +9,16 @@ import 'api_service.dart';
 class InstallationService {
   final storage = const FlutterSecureStorage();
 
-  Future<bool> saveInstallation(
-      InstallationModel installation) async {
+  Future<bool> saveInstallation(InstallationModel installation) async {
     final token = await storage.read(key: "access");
 
     final response = await http.post(
-      Uri.parse(
-        "${ApiService.baseUrl}/installations/complete/",
-      ),
+      Uri.parse("${ApiService.baseUrl}/installations/complete/"),
       headers: {
         "Authorization": "Bearer $token",
         "Content-Type": "application/json",
       },
-      body: jsonEncode(
-        installation.toJson(),
-      ),
+      body: jsonEncode(installation.toJson()),
     );
 
     print("Status Code : ${response.statusCode}");
