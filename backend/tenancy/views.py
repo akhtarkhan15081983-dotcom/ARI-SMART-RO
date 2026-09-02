@@ -184,7 +184,7 @@ class SuperAdminCompanyLifecycleAPIView(PlatformSuperAdminMixin, APIView):
     @transaction.atomic
     def post(self, request, company_id):
         try:
-            company = Company.objects.select_for_update().select_related("subscription").get(pk=company_id)
+            company = Company.objects.select_for_update().get(pk=company_id)
         except Company.DoesNotExist:
             return Response({"success": False, "message": "Company not found."}, status=404)
         action = str(request.data.get("action", "")).upper()
@@ -227,7 +227,7 @@ class SuperAdminCompanyLifecycleAPIView(PlatformSuperAdminMixin, APIView):
     @transaction.atomic
     def delete(self, request, company_id):
         try:
-            company = Company.objects.select_for_update().select_related("subscription").get(pk=company_id)
+            company = Company.objects.select_for_update().get(pk=company_id)
         except Company.DoesNotExist:
             return Response({"success": False, "message": "Company not found."}, status=404)
         confirmation = str(request.data.get("confirmation", "")).strip()
