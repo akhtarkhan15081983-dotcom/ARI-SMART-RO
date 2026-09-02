@@ -20,6 +20,12 @@ def _discount_label(item):
     return ""
 
 
+def _decimal_string(value):
+    """Return a compact decimal string without unnecessary trailing zeroes."""
+    normalized = Decimal(value).normalize()
+    return format(normalized, "f")
+
+
 class CustomerEngagementAPIView(APIView):
     permission_classes = [AllowAny]
 
@@ -71,7 +77,7 @@ class CustomerEngagementAPIView(APIView):
                     paid_amount__lt=models.F("expected_rent"),
                 ).order_by("rent_month").values_list("rent_month", flat=True).first()
                 payment_alert = {
-                    "amount_due": str(balance),
+                    "amount_due": _decimal_string(balance),
                     "oldest_due_month": oldest.isoformat() if oldest else None,
                     "title": "Rent payment due",
                     "message": f"₹{balance.quantize(Decimal('1'))} is pending on your ARI account.",
