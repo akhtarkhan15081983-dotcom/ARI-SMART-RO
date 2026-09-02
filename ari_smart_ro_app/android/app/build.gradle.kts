@@ -29,8 +29,6 @@ android {
 
     defaultConfig {
         applicationId = "com.arismartro.app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -51,18 +49,18 @@ android {
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else if (isCiBuild) {
-                // CI compiles a release artifact with the debug key. Production
-                // builds must provide android/key.properties and the upload key.
                 signingConfigs.getByName("debug")
             } else if (!isReleaseBuildRequested) {
-                // Gradle configures every build type even for `assembleDebug`.
-                // Keep local debug testing independent from production keys.
                 signingConfigs.getByName("debug")
             } else {
                 throw GradleException(
                     "Release signing is not configured. Create android/key.properties first."
                 )
             }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
