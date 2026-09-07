@@ -170,9 +170,14 @@ elif MEDIA_STORAGE_BACKEND == "s3":
     AWS_STORAGE_BUCKET_NAME = _required_env("AWS_STORAGE_BUCKET_NAME")
     AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "ap-south-1").strip()
     AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL", "").strip() or None
-    AWS_QUERYSTRING_AUTH = True
+    # Product photos are intentionally public catalogue assets.  Keep their
+    # URLs stable so the Flutter app, product sharing and QR links continue to
+    # work after a Render redeploy.  Never use this bucket for private records.
+    AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN", "").strip() or None
+    AWS_QUERYSTRING_AUTH = False
     AWS_DEFAULT_ACL = None
     AWS_S3_FILE_OVERWRITE = False
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
     STORAGES["default"] = {
         "BACKEND": "storages.backends.s3.S3Storage",
     }
