@@ -169,10 +169,10 @@ class CustomerShopCatalogAPIView(APIView):
         category_id = request.GET.get("category", "").strip()
 
         queryset = ROModel.objects.select_related("category").prefetch_related("images").filter(
+            Q(business_type="SALE", selling_price__gt=0)
+            | Q(business_type="RENT", monthly_rent__gt=0),
             is_active=True,
             category__is_active=True,
-            business_type="SALE",
-            selling_price__gt=0,
         )
 
         if keyword:

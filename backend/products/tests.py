@@ -15,26 +15,27 @@ class CustomerShopCatalogTests(APITestCase):
         self.client.force_authenticate(self.user)
         self.category = ProductCategory.objects.create(name='Domestic RO')
 
-    def _model(self, name, business_type='SALE', price=10000, active=True):
+    def _model(self, name, business_type='SALE', price=10000, rent=0, active=True):
         return ROModel.objects.create(
             category=self.category,
             model_name=name,
             capacity='12 LPH',
             business_type=business_type,
             selling_price=price,
+            monthly_rent=rent,
             warranty_months=12,
             is_active=active,
         )
 
-    def test_catalog_only_returns_sellable_active_products(self):
+    def test_catalog_returns_sellable_and_rentable_active_products(self):
         visible = self._model('Visible RO')
-        self._model('Rental RO', business_type='RENT')
+        rental = self._model('Rental RO', business_type='RENT', rent=300)
         self._model('Free RO', price=0)
         self._model('Inactive RO', active=False)
         response = self.client.get(reverse('customer-shop-catalog'))
         self.assertEqual(response.status_code, 200)
         ids = [item['id'] for item in response.data['products']]
-        self.assertEqual(ids, [visible.id])
+        self.assertEqual(ids, [rental.id, visible.id])
 
     def test_catalog_search_filters_products(self):
         self._model('Aqua Prime')

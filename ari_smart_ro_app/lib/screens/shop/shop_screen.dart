@@ -38,6 +38,7 @@ class _ShopScreenState extends State<ShopScreen> {
   late Future<List<ShopProduct>> _catalog;
   Future<CustomerEngagementData>? _engagement;
   String _selectedCategory = 'All';
+  String _selectedOffer = 'All';
   int _unreadCount = 0;
 
   @override
@@ -68,6 +69,7 @@ class _ShopScreenState extends State<ShopScreen> {
   void _loadCatalog({String? query}) {
     setState(() {
       _selectedCategory = 'All';
+      _selectedOffer = 'All';
       _catalog = widget.service.fetchCatalog(
         query: query ?? _searchController.text,
       );
@@ -84,12 +86,11 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   void _openLogin() => Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
+    context,
+  ).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
 
-  void _openPage(Widget screen) => Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => screen));
+  void _openPage(Widget screen) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
   void _openMemberFeature(Widget screen) {
     if (widget.guestMode) {
@@ -110,9 +111,7 @@ class _ShopScreenState extends State<ShopScreen> {
       : _openMemberFeature(const ServiceListScreen());
 
   void _openRent() => widget.guestMode
-      ? _openPage(
-          const GuestServiceDetailScreen(type: GuestServiceType.rental),
-        )
+      ? _openPage(const GuestServiceDetailScreen(type: GuestServiceType.rental))
       : _openMemberFeature(const RentPaymentScreen());
 
   void _handleGuestNavigation(int index) {
@@ -233,32 +232,26 @@ class _ShopScreenState extends State<ShopScreen> {
                 ],
               ),
               const SizedBox(height: 18),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '₹${product.sellingPrice.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      color: navy,
-                      fontSize: 27,
-                      fontWeight: FontWeight.w900,
+              _ProductPrice(product: product, large: true),
+              if (product.businessType == 'RENT') ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _InfoPill(
+                      icon: Icons.security_outlined,
+                      label:
+                          'Deposit ₹${product.securityDeposit.toStringAsFixed(0)}',
                     ),
-                  ),
-                  if (product.mrp > product.sellingPrice) ...[
-                    const SizedBox(width: 10),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        '₹${product.mrp.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: muted,
-                          decoration: TextDecoration.lineThrough,
-                        ),
-                      ),
+                    _InfoPill(
+                      icon: Icons.home_repair_service_outlined,
+                      label:
+                          'Install ₹${product.installationCharge.toStringAsFixed(0)}',
                     ),
                   ],
-                ],
-              ),
+                ),
+              ],
               if (product.description.trim().isNotEmpty) ...[
                 const SizedBox(height: 22),
                 const _SectionTitle('About this purifier'),
@@ -272,7 +265,9 @@ class _ShopScreenState extends State<ShopScreen> {
                 const SizedBox(height: 22),
                 const _SectionTitle('Key features'),
                 const SizedBox(height: 10),
-                ...product.features.take(6).map(
+                ...product.features
+                    .take(6)
+                    .map(
                       (feature) => Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Row(
@@ -304,8 +299,12 @@ class _ShopScreenState extends State<ShopScreen> {
                   ),
                   label: Text(
                     widget.guestMode
-                        ? 'LOGIN TO CONTINUE'
-                        : 'CONTACT ARI TEAM',
+                        ? (product.businessType == 'RENT'
+                              ? 'LOGIN TO RENT'
+                              : 'LOGIN TO BUY')
+                        : (product.businessType == 'RENT'
+                              ? 'REQUEST RENTAL'
+                              : 'CONTACT ARI TEAM'),
                   ),
                 ),
               ),
@@ -332,11 +331,16 @@ class _ShopScreenState extends State<ShopScreen> {
                   .map((item) => item.categoryName)
                   .where((name) => name.trim().isNotEmpty),
             }.toList();
-            final visible = _selectedCategory == 'All'
+            final categoryVisible = _selectedCategory == 'All'
                 ? products
                 : products
-                    .where((item) => item.categoryName == _selectedCategory)
-                    .toList();
+                      .where((item) => item.categoryName == _selectedCategory)
+                      .toList();
+            final visible = _selectedOffer == 'All'
+                ? categoryVisible
+                : categoryVisible
+                      .where((item) => item.businessType == _selectedOffer)
+                      .toList();
 
             return RefreshIndicator(
               onRefresh: _refresh,
@@ -386,12 +390,20 @@ class _ShopScreenState extends State<ShopScreen> {
                           _openMemberFeature(const ReferralScreen()),
                     ),
                   ),
+                  SliverToBoxAdapter(
+                    child: _OfferStrip(
+                      selected: _selectedOffer,
+                      onSelected: (value) =>
+                          setState(() => _selectedOffer = value),
+                    ),
+                  ),
                   if (_engagement != null && !widget.guestMode)
                     SliverToBoxAdapter(
                       child: FutureBuilder<CustomerEngagementData>(
                         future: _engagement,
                         builder: (_, engagementSnapshot) {
-                          final data = engagementSnapshot.data ??
+                          final data =
+                              engagementSnapshot.data ??
                               CustomerEngagementData.empty;
                           if (data.items.isEmpty && data.paymentAlert == null) {
                             return const SizedBox.shrink();
@@ -432,7 +444,10 @@ class _ShopScreenState extends State<ShopScreen> {
                                 SizedBox(height: 3),
                                 Text(
                                   'Smart water solutions selected by ARI',
-                                  style: TextStyle(color: muted, fontSize: 12.5),
+                                  style: TextStyle(
+                                    color: muted,
+                                    fontSize: 12.5,
+                                  ),
                                 ),
                               ],
                             ),
@@ -475,11 +490,11 @@ class _ShopScreenState extends State<ShopScreen> {
                         ),
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: .68,
-                        ),
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
+                              childAspectRatio: .68,
+                            ),
                       ),
                     ),
                   SliverToBoxAdapter(
@@ -543,69 +558,66 @@ class _TopHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 12, 12, 10),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [_ShopScreenState.blue, _ShopScreenState.cyan],
-                ),
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x220B6FD3),
-                    blurRadius: 18,
-                    offset: Offset(0, 7),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.water_drop_rounded, color: Colors.white),
+    padding: const EdgeInsets.fromLTRB(18, 12, 12, 10),
+    child: Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [_ShopScreenState.blue, _ShopScreenState.cyan],
             ),
-            const SizedBox(width: 11),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ARI SMART RO',
-                    style: TextStyle(
-                      color: _ShopScreenState.ink,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  SizedBox(height: 1),
-                  Text(
-                    'Pure water. Smarter living.',
-                    style: TextStyle(
-                      color: _ShopScreenState.muted,
-                      fontSize: 11.5,
-                    ),
-                  ),
-                ],
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x220B6FD3),
+                blurRadius: 18,
+                offset: Offset(0, 7),
               ),
-            ),
-            if (!guestMode)
-              Badge(
-                isLabelVisible: unreadCount > 0,
-                label: Text(unreadCount > 9 ? '9+' : '$unreadCount'),
-                child: IconButton.filledTonal(
-                  onPressed: onRefresh,
-                  icon: const Icon(Icons.notifications_none_rounded),
-                ),
-              )
-            else
-              TextButton.icon(
-                onPressed: onLogin,
-                icon: const Icon(Icons.person_outline_rounded, size: 20),
-                label: const Text('Login'),
-              ),
-          ],
+            ],
+          ),
+          child: const Icon(Icons.water_drop_rounded, color: Colors.white),
         ),
-      );
+        const SizedBox(width: 11),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ARI SMART RO',
+                style: TextStyle(
+                  color: _ShopScreenState.ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              SizedBox(height: 1),
+              Text(
+                'Pure water. Smarter living.',
+                style: TextStyle(color: _ShopScreenState.muted, fontSize: 11.5),
+              ),
+            ],
+          ),
+        ),
+        if (!guestMode)
+          Badge(
+            isLabelVisible: unreadCount > 0,
+            label: Text(unreadCount > 9 ? '9+' : '$unreadCount'),
+            child: IconButton.filledTonal(
+              onPressed: onRefresh,
+              icon: const Icon(Icons.notifications_none_rounded),
+            ),
+          )
+        else
+          TextButton.icon(
+            onPressed: onLogin,
+            icon: const Icon(Icons.person_outline_rounded, size: 20),
+            label: const Text('Login'),
+          ),
+      ],
+    ),
+  );
 }
 
 class _StoreSearch extends StatelessWidget {
@@ -616,39 +628,39 @@ class _StoreSearch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 6, 18, 8),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x0D0B3954),
-                blurRadius: 18,
-                offset: Offset(0, 6),
-              ),
-            ],
+    padding: const EdgeInsets.fromLTRB(18, 6, 18, 8),
+    child: Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D0B3954),
+            blurRadius: 18,
+            offset: Offset(0, 6),
           ),
-          child: TextField(
-            controller: controller,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => onSearch(),
-            decoration: InputDecoration(
-              hintText: 'Search RO, filters, parts or service',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: IconButton(
-                tooltip: 'Search',
-                onPressed: onSearch,
-                icon: const Icon(Icons.arrow_forward_rounded),
-              ),
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              filled: false,
-            ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        textInputAction: TextInputAction.search,
+        onSubmitted: (_) => onSearch(),
+        decoration: InputDecoration(
+          hintText: 'Search RO, filters, parts or service',
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: IconButton(
+            tooltip: 'Search',
+            onPressed: onSearch,
+            icon: const Icon(Icons.arrow_forward_rounded),
           ),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          filled: false,
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _DeliveryStrip extends StatelessWidget {
@@ -659,46 +671,46 @@ class _DeliveryStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
-        child: InkWell(
+    padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE9F6FC),
           borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE9F6FC),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFD0EAF5)),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  color: _ShopScreenState.blue,
-                  size: 20,
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    guestMode
-                        ? 'Login to set delivery & service location'
-                        : 'Delivery and service support at your saved location',
-                    style: const TextStyle(
-                      color: _ShopScreenState.ink,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: _ShopScreenState.muted,
-                ),
-              ],
-            ),
-          ),
+          border: Border.all(color: const Color(0xFFD0EAF5)),
         ),
-      );
+        child: Row(
+          children: [
+            const Icon(
+              Icons.location_on_outlined,
+              color: _ShopScreenState.blue,
+              size: 20,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                guestMode
+                    ? 'Login to set delivery & service location'
+                    : 'Delivery and service support at your saved location',
+                style: const TextStyle(
+                  color: _ShopScreenState.ink,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: _ShopScreenState.muted,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _HeroBanner extends StatelessWidget {
@@ -709,107 +721,107 @@ class _HeroBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 2, 18, 18),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 220),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [
-                _ShopScreenState.navy,
-                _ShopScreenState.blue,
-                _ShopScreenState.cyan,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x330B6FD3),
-                blurRadius: 28,
-                offset: Offset(0, 12),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                right: 14,
-                bottom: 12,
-                child: SizedBox(
-                  width: 135,
-                  height: 170,
-                  child: product == null || product!.imageUrls.isEmpty
-                      ? const _ProductVisual(size: 92, light: true)
-                      : Image.network(
-                          product!.imageUrls.first,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) =>
-                              const _ProductVisual(size: 92, light: true),
-                        ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(22, 24, 155, 22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: .14),
-                        borderRadius: BorderRadius.circular(50),
-                      ),
-                      child: const Text(
-                        'SMART WATER CARE',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Upgrade your\nwater experience',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 25,
-                        height: 1.08,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 9),
-                    const Text(
-                      'Purifiers, filters, service and care—inside one premium app.',
-                      style: TextStyle(
-                        color: Color(0xDDFFFFFF),
-                        fontSize: 12.5,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: onExplore,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: _ShopScreenState.navy,
-                        minimumSize: const Size(0, 42),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                      ),
-                      child: const Text('Explore range'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+    padding: const EdgeInsets.fromLTRB(18, 2, 18, 18),
+    child: Container(
+      constraints: const BoxConstraints(minHeight: 220),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            _ShopScreenState.navy,
+            _ShopScreenState.blue,
+            _ShopScreenState.cyan,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-      );
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x330B6FD3),
+            blurRadius: 28,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: 14,
+            bottom: 12,
+            child: SizedBox(
+              width: 135,
+              height: 170,
+              child: product == null || product!.imageUrls.isEmpty
+                  ? const _ProductVisual(size: 92, light: true)
+                  : Image.network(
+                      product!.imageUrls.first,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) =>
+                          const _ProductVisual(size: 92, light: true),
+                    ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 24, 155, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .14),
+                    borderRadius: BorderRadius.circular(50),
+                  ),
+                  child: const Text(
+                    'SMART WATER CARE',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Upgrade your\nwater experience',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 25,
+                    height: 1.08,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                const Text(
+                  'Purifiers, filters, service and care—inside one premium app.',
+                  style: TextStyle(
+                    color: Color(0xDDFFFFFF),
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: onExplore,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: _ShopScreenState.navy,
+                    minimumSize: const Size(0, 42),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: const Text('Explore range'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _QuickActions extends StatelessWidget {
@@ -900,6 +912,75 @@ class _QuickActions extends StatelessWidget {
   }
 }
 
+class _OfferStrip extends StatelessWidget {
+  const _OfferStrip({required this.selected, required this.onSelected});
+
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    const offers = [
+      ('All', 'Explore all', Icons.apps_rounded),
+      ('SALE', 'Buy an RO', Icons.shopping_bag_outlined),
+      ('RENT', 'RO on rent', Icons.currency_rupee_rounded),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+      child: Row(
+        children: offers.map((offer) {
+          final active = selected == offer.$1;
+          return Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(right: offer.$1 == 'RENT' ? 0 : 8),
+              child: InkWell(
+                onTap: () => onSelected(offer.$1),
+                borderRadius: BorderRadius.circular(16),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 11,
+                    horizontal: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: active ? _ShopScreenState.navy : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: active
+                          ? _ShopScreenState.navy
+                          : const Color(0xFFE0EAF0),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        offer.$3,
+                        size: 18,
+                        color: active ? Colors.white : _ShopScreenState.blue,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        offer.$2,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          color: active ? Colors.white : _ShopScreenState.ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
 class _CategoryStrip extends StatelessWidget {
   const _CategoryStrip({
     required this.categories,
@@ -965,109 +1046,126 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        child: InkWell(
-          onTap: onTap,
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(22),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(22),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFE2EBF0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: _ShopScreenState.ice,
-                          borderRadius: BorderRadius.circular(17),
-                        ),
-                        child: product.imageUrls.isEmpty
-                            ? const _ProductVisual(size: 70)
-                            : Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Image.network(
-                                  product.imageUrls.first,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, _, _) =>
-                                      const _ProductVisual(size: 70),
-                                ),
-                              ),
-                      ),
-                      if (discount > 0)
-                        Positioned(
-                          left: 13,
-                          top: 13,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0F9D72),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '$discount% OFF',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w900,
-                              ),
+          border: Border.all(color: const Color(0xFFE2EBF0)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _ShopScreenState.ice,
+                      borderRadius: BorderRadius.circular(17),
+                    ),
+                    child: product.imageUrls.isEmpty
+                        ? const _ProductVisual(size: 70)
+                        : Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Image.network(
+                              product.imageUrls.first,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) =>
+                                  const _ProductVisual(size: 70),
                             ),
                           ),
-                        ),
-                    ],
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        product.modelName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                  if (discount > 0)
+                    Positioned(
+                      left: 13,
+                      top: 13,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F9D72),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$discount% OFF',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  Positioned(
+                    right: 13,
+                    top: 13,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: product.businessType == 'RENT'
+                            ? const Color(0xFF7C3AED)
+                            : const Color(0xFF075985),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        product.businessType == 'RENT' ? 'ON RENT' : 'BUY',
                         style: const TextStyle(
-                          color: _ShopScreenState.ink,
-                          fontSize: 13.5,
+                          color: Colors.white,
+                          fontSize: 9,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 5),
-                      Text(
-                        '${product.capacity} • ${product.warrantyMonths} mo warranty',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _ShopScreenState.muted,
-                          fontSize: 10.5,
-                        ),
-                      ),
-                      const SizedBox(height: 9),
-                      Text(
-                        '₹${product.sellingPrice.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: _ShopScreenState.navy,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.modelName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _ShopScreenState.ink,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '${product.capacity} • ${product.warrantyMonths} mo warranty',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _ShopScreenState.muted,
+                      fontSize: 10.5,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  _ProductPrice(product: product),
+                ],
+              ),
+            ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _ServiceBanner extends StatelessWidget {
@@ -1078,65 +1176,62 @@ class _ServiceBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
-        child: Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFE8F7FC), Color(0xFFF4FBFE)],
-            ),
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: const Color(0xFFD5EDF5)),
+    padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+    child: Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE8F7FC), Color(0xFFF4FBFE)],
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFFD5EDF5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.home_repair_service_rounded,
+            color: _ShopScreenState.blue,
+            size: 34,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 13),
+          const Text(
+            'Already own an RO?',
+            style: TextStyle(
+              color: _ShopScreenState.ink,
+              fontSize: 21,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'Book service, manage maintenance and keep your purifier performing at its best.',
+            style: TextStyle(color: _ShopScreenState.muted, height: 1.45),
+          ),
+          const SizedBox(height: 16),
+          Row(
             children: [
-              const Icon(
-                Icons.home_repair_service_rounded,
-                color: _ShopScreenState.blue,
-                size: 34,
-              ),
-              const SizedBox(height: 13),
-              const Text(
-                'Already own an RO?',
-                style: TextStyle(
-                  color: _ShopScreenState.ink,
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onService,
+                  icon: const Icon(Icons.build_rounded),
+                  label: const Text('Book Service'),
                 ),
               ),
-              const SizedBox(height: 5),
-              const Text(
-                'Book service, manage maintenance and keep your purifier performing at its best.',
-                style: TextStyle(
-                  color: _ShopScreenState.muted,
-                  height: 1.45,
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onAmc,
+                  icon: const Icon(Icons.verified_outlined),
+                  label: const Text('AMC Plans'),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: onService,
-                      icon: const Icon(Icons.build_rounded),
-                      label: const Text('Book Service'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onAmc,
-                      icon: const Icon(Icons.verified_outlined),
-                      label: const Text('AMC Plans'),
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 }
 
 class _TrustStrip extends StatelessWidget {
@@ -1191,6 +1286,56 @@ class _TrustStrip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ProductPrice extends StatelessWidget {
+  const _ProductPrice({required this.product, this.large = false});
+
+  final ShopProduct product;
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) {
+    final rent = product.businessType == 'RENT';
+    final amount = rent ? product.monthlyRent : product.sellingPrice;
+    final color = rent ? const Color(0xFF6D28D9) : _ShopScreenState.navy;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          '₹${amount.toStringAsFixed(0)}',
+          style: TextStyle(
+            color: color,
+            fontSize: large ? 27 : 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 3),
+          child: Text(
+            rent ? '/ month' : 'one-time',
+            style: TextStyle(
+              color: _ShopScreenState.muted,
+              fontSize: large ? 13 : 10,
+            ),
+          ),
+        ),
+        if (!rent && large && product.mrp > product.sellingPrice) ...[
+          const SizedBox(width: 10),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '₹${product.mrp.toStringAsFixed(0)}',
+              style: const TextStyle(
+                color: _ShopScreenState.muted,
+                decoration: TextDecoration.lineThrough,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1273,21 +1418,25 @@ class _CatalogError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          children: [
-            const Icon(Icons.cloud_off_rounded, size: 42, color: _ShopScreenState.muted),
-            const SizedBox(height: 10),
-            const Text('Unable to load the store right now.'),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Try again'),
-            ),
-          ],
+    padding: const EdgeInsets.all(28),
+    child: Column(
+      children: [
+        const Icon(
+          Icons.cloud_off_rounded,
+          size: 42,
+          color: _ShopScreenState.muted,
         ),
-      );
+        const SizedBox(height: 10),
+        const Text('Unable to load the store right now.'),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Try again'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _EmptyCatalog extends StatelessWidget {
@@ -1295,19 +1444,23 @@ class _EmptyCatalog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.all(34),
-        child: Column(
-          children: [
-            Icon(Icons.inventory_2_outlined, size: 44, color: _ShopScreenState.muted),
-            SizedBox(height: 12),
-            Text(
-              'No products found. Try another category or search term.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: _ShopScreenState.muted),
-            ),
-          ],
+    padding: EdgeInsets.all(34),
+    child: Column(
+      children: [
+        Icon(
+          Icons.inventory_2_outlined,
+          size: 44,
+          color: _ShopScreenState.muted,
         ),
-      );
+        SizedBox(height: 12),
+        Text(
+          'No products found. Try another category or search term.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: _ShopScreenState.muted),
+        ),
+      ],
+    ),
+  );
 }
 
 class _ProductVisual extends StatelessWidget {
@@ -1318,22 +1471,22 @@ class _ProductVisual extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: light
-                ? Colors.white.withValues(alpha: .14)
-                : const Color(0xFFE7F5FB),
-            borderRadius: BorderRadius.circular(size * .28),
-          ),
-          child: Icon(
-            Icons.water_drop_rounded,
-            size: size * .48,
-            color: light ? Colors.white : _ShopScreenState.blue,
-          ),
-        ),
-      );
+    child: Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: light
+            ? Colors.white.withValues(alpha: .14)
+            : const Color(0xFFE7F5FB),
+        borderRadius: BorderRadius.circular(size * .28),
+      ),
+      child: Icon(
+        Icons.water_drop_rounded,
+        size: size * .48,
+        color: light ? Colors.white : _ShopScreenState.blue,
+      ),
+    ),
+  );
 }
 
 class _InfoPill extends StatelessWidget {
@@ -1344,27 +1497,27 @@ class _InfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0F7FA),
-          borderRadius: BorderRadius.circular(50),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF0F7FA),
+      borderRadius: BorderRadius.circular(50),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: _ShopScreenState.blue),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: const TextStyle(
+            color: _ShopScreenState.ink,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: _ShopScreenState.blue),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: const TextStyle(
-                color: _ShopScreenState.ink,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -1374,11 +1527,11 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-          color: _ShopScreenState.ink,
-          fontSize: 18,
-          fontWeight: FontWeight.w900,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      color: _ShopScreenState.ink,
+      fontSize: 18,
+      fontWeight: FontWeight.w900,
+    ),
+  );
 }
