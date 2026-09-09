@@ -17,9 +17,15 @@ from .views import (
     CustomerProfileAPIView,
     MyROAPIView,
     CustomerLocationCaptureAPIView,
+    PublicCustomerRequestAPIView,
 )
 
 urlpatterns = [
+    path(
+        "public-requests/",
+        PublicCustomerRequestAPIView.as_view(),
+        name="public-customer-request",
+    ),
     path(
         "<int:pk>/capture-location/",
         CustomerLocationCaptureAPIView.as_view(),

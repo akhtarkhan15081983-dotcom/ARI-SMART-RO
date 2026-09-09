@@ -1,5 +1,22 @@
 from django.contrib import admin
-from .models import Customer, CustomerLocationLog
+from .models import Customer, CustomerLocationLog, PublicCustomerRequest
+
+
+@admin.register(PublicCustomerRequest)
+class PublicCustomerRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        "request_number", "request_type", "customer_name", "phone", "product",
+        "plan_name", "total_amount", "status", "created_at",
+    )
+    list_filter = ("request_type", "status", "payment_method", "created_at")
+    search_fields = (
+        "request_number", "customer_name", "phone", "product__model_name", "plan_name",
+    )
+    readonly_fields = (
+        "request_number", "unit_price", "total_amount", "source", "created_at", "updated_at",
+    )
+    autocomplete_fields = ("product",)
+    date_hierarchy = "created_at"
 
 
 @admin.register(Customer)

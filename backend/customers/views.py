@@ -1,5 +1,6 @@
 from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 from accounts.permissions import (
     IsAdminOrManager,
     IsEngineer,
@@ -10,7 +11,8 @@ from accounts.permissions import (
     user_role,
 )
 from employees.models import EmployeeProfile
-from .models import Customer
+from .models import Customer, PublicCustomerRequest
+from .serializers import PublicCustomerRequestSerializer
 
 from django.db.models import Q
 from rest_framework.views import APIView
@@ -36,6 +38,27 @@ from referrals.services import (
     calculate_max_redeemable,
     redeem_wallet,
 )
+
+
+class PublicCustomerRequestAPIView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "public_request"
+
+    def post(self, request):
+        serializer = PublicCustomerRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        public_request = serializer.save()
+        return Response(
+            {
+                "success": True,
+                "request_number": public_request.request_number,
+                "status": public_request.status,
+                "message": "Request received. The ARI team will call to confirm the details.",
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class CustomerLocationCaptureAPIView(APIView):

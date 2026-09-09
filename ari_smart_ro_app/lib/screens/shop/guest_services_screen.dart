@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../login/login_screen.dart';
+import 'public_request_screen.dart';
 
 enum GuestServiceType { service, amc, rental, complaint }
 
@@ -29,7 +29,7 @@ class GuestServiceDetailScreen extends StatelessWidget {
         'Completion confirmation and future service reminder',
       ],
       process:
-          'Sign in → choose your RO → describe the issue → select a suitable visit → track completion.',
+          'Enter contact and RO details → describe the issue → submit without login → our team confirms the visit.',
     ),
     GuestServiceType.amc => (
       icon: Icons.verified_outlined,
@@ -43,7 +43,7 @@ class GuestServiceDetailScreen extends StatelessWidget {
         'Plan coverage and applicable charges shown before confirmation',
       ],
       process:
-          'Sign in → verify your installed RO → review eligible plan → confirm coverage with the ARI team.',
+          'Review the complete plan → enter purifier and address details → submit without login → confirm coverage with the ARI team.',
     ),
     GuestServiceType.rental => (
       icon: Icons.currency_rupee_rounded,
@@ -57,7 +57,7 @@ class GuestServiceDetailScreen extends StatelessWidget {
         'Tracked maintenance, complaint and machine history',
       ],
       process:
-          'Create account → submit requirement → office verification → agreement → scheduled installation.',
+          'Choose a rental model → submit requirement without login → office verification → agreement → scheduled installation.',
     ),
     GuestServiceType.complaint => (
       icon: Icons.report_problem_outlined,
@@ -71,7 +71,7 @@ class GuestServiceDetailScreen extends StatelessWidget {
         'Permanent history linked with your customer profile',
       ],
       process:
-          'Sign in → select RO → describe the problem → submit → track engineer and resolution.',
+          'Enter RO and problem details → submit without login → receive request number → ARI team schedules support.',
     ),
   };
 
@@ -167,11 +167,22 @@ class GuestServiceDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 22),
           FilledButton.icon(
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const LoginScreen())),
-            icon: const Icon(Icons.login_rounded),
-            label: const Text('LOGIN TO CONTINUE'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PublicRequestScreen(
+                  requestType: switch (type) {
+                    GuestServiceType.service => 'SERVICE',
+                    GuestServiceType.amc => 'AMC',
+                    GuestServiceType.rental => 'RENTAL',
+                    GuestServiceType.complaint => 'COMPLAINT',
+                  },
+                  title: content.title,
+                  planName: content.title,
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.edit_document),
+            label: const Text('CONTINUE WITHOUT LOGIN'),
           ),
           const SizedBox(height: 10),
           const Text(
@@ -192,16 +203,13 @@ class GuestServiceDetailScreen extends StatelessWidget {
 class GuestServicesScreen extends StatelessWidget {
   const GuestServicesScreen({super.key});
 
-  void _login(BuildContext context) => Navigator.of(
-    context,
-  ).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
-
   void _showService(
     BuildContext context, {
     required IconData icon,
     required String title,
     required String description,
     required List<String> benefits,
+    required String requestType,
   }) {
     showModalBottomSheet<void>(
       context: context,
@@ -247,10 +255,18 @@ class GuestServicesScreen extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: () {
                     Navigator.pop(sheetContext);
-                    _login(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PublicRequestScreen(
+                          requestType: requestType,
+                          title: title,
+                          planName: title,
+                        ),
+                      ),
+                    );
                   },
-                  icon: const Icon(Icons.login_rounded),
-                  label: const Text('LOGIN TO BOOK / TRACK'),
+                  icon: const Icon(Icons.edit_document),
+                  label: const Text('BOOK WITHOUT LOGIN'),
                 ),
               ),
             ],
@@ -316,6 +332,7 @@ class GuestServicesScreen extends StatelessWidget {
               'Digital service history and parts record',
               'TDS readings and completion confirmation',
             ],
+            requestType: 'SERVICE',
           ),
         ),
         _ServiceCard(
@@ -333,6 +350,7 @@ class GuestServicesScreen extends StatelessWidget {
               'Transparent visit and replacement history',
               'Coverage details available inside your account',
             ],
+            requestType: 'AMC',
           ),
         ),
         _ServiceCard(
@@ -350,6 +368,7 @@ class GuestServicesScreen extends StatelessWidget {
               'Clear rent and payment history',
               'Digital agreement for eligible rental customers',
             ],
+            requestType: 'RENTAL',
           ),
         ),
         _ServiceCard(
@@ -367,13 +386,22 @@ class GuestServicesScreen extends StatelessWidget {
               'Assigned engineer information',
               'Resolution notes stored in your history',
             ],
+            requestType: 'COMPLAINT',
           ),
         ),
         const SizedBox(height: 10),
         FilledButton.icon(
-          onPressed: () => _login(context),
-          icon: const Icon(Icons.login),
-          label: const Text('LOGIN TO BOOK SERVICE'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const PublicRequestScreen(
+                requestType: 'SERVICE',
+                title: 'Book RO service',
+                planName: 'RO Service & Repair',
+              ),
+            ),
+          ),
+          icon: const Icon(Icons.calendar_month_rounded),
+          label: const Text('BOOK SERVICE WITHOUT LOGIN'),
         ),
       ],
     ),

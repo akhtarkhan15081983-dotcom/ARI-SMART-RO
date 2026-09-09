@@ -9,7 +9,9 @@ import '../rent/rent_payment_screen.dart';
 import '../service/service_list_screen.dart';
 import 'about_ari_screen.dart';
 import 'guest_account_screen.dart';
+import 'guest_referral_plan_screen.dart';
 import 'guest_services_screen.dart';
+import 'public_request_screen.dart';
 
 class ShopScreen extends StatefulWidget {
   const ShopScreen({
@@ -289,22 +291,25 @@ class _ShopScreenState extends State<ShopScreen> {
               SizedBox(
                 height: 54,
                 child: FilledButton.icon(
-                  onPressed: widget.guestMode
-                      ? _openLogin
-                      : () => Navigator.pop(context),
-                  icon: Icon(
-                    widget.guestMode
-                        ? Icons.login_rounded
-                        : Icons.support_agent_rounded,
-                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _openPage(
+                      PublicRequestScreen(
+                        requestType: product.businessType == 'RENT'
+                            ? 'RENTAL'
+                            : 'PURCHASE',
+                        title: product.businessType == 'RENT'
+                            ? 'Request rental'
+                            : 'Guest checkout',
+                        product: product,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.shopping_bag_rounded),
                   label: Text(
-                    widget.guestMode
-                        ? (product.businessType == 'RENT'
-                              ? 'LOGIN TO RENT'
-                              : 'LOGIN TO BUY')
-                        : (product.businessType == 'RENT'
-                              ? 'REQUEST RENTAL'
-                              : 'CONTACT ARI TEAM'),
+                    product.businessType == 'RENT'
+                        ? 'REQUEST RENTAL — NO LOGIN'
+                        : 'BUY NOW — NO LOGIN',
                   ),
                 ),
               ),
@@ -386,8 +391,9 @@ class _ShopScreenState extends State<ShopScreen> {
                         _searchController.text = 'filter';
                         _loadCatalog(query: 'filter');
                       },
-                      onReferral: () =>
-                          _openMemberFeature(const ReferralScreen()),
+                      onReferral: () => widget.guestMode
+                          ? _openPage(const GuestReferralPlanScreen())
+                          : _openMemberFeature(const ReferralScreen()),
                     ),
                   ),
                   SliverToBoxAdapter(

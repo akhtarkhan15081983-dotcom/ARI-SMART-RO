@@ -221,6 +221,7 @@ REST_FRAMEWORK = {
         "sim_start": os.getenv("DJANGO_SIM_START_THROTTLE", "3/min"),
         "sim_poll": os.getenv("DJANGO_SIM_POLL_THROTTLE", "30/min"),
         "sms_gateway": os.getenv("DJANGO_SMS_GATEWAY_THROTTLE", "120/min"),
+        "public_request": os.getenv("DJANGO_PUBLIC_REQUEST_THROTTLE", "8/hour"),
     },
 }
 

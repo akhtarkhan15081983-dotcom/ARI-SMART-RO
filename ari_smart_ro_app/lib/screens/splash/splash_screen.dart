@@ -48,10 +48,7 @@ class _SplashScreenState extends State<SplashScreen>
       curve: Curves.easeOutCubic,
     );
     _scale = Tween<double>(begin: .94, end: 1).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeOutBack,
-      ),
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOutBack),
     );
     _videoController = VideoPlayerController.asset(
       'assets/videos/ari_water_fill.mp4',
@@ -74,8 +71,8 @@ class _SplashScreenState extends State<SplashScreen>
       } catch (error) {
         if (mounted) {
           setState(
-            () => _tenantError =
-                error.toString().replaceFirst('Exception: ', ''),
+            () =>
+                _tenantError = error.toString().replaceFirst('Exception: ', ''),
           );
         }
       }
@@ -129,6 +126,9 @@ class _SplashScreenState extends State<SplashScreen>
         pageBuilder: (_, animation, _) {
           if (hasSession) return const DashboardScreen();
           if (_tenantBrand case final brand?) {
+            if (brand.showPublicShop) {
+              return const ShopScreen(guestMode: true);
+            }
             return TenantWelcomeScreen(brand: brand);
           }
           if (referralCode != null) {
@@ -371,7 +371,10 @@ class _SplashScreenState extends State<SplashScreen>
                                     size: 58,
                                     color: primary,
                                   )
-                                : Image.network(brand.logoUrl, fit: BoxFit.contain),
+                                : Image.network(
+                                    brand.logoUrl,
+                                    fit: BoxFit.contain,
+                                  ),
                           ),
                           const SizedBox(height: 24),
                           Text(

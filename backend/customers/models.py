@@ -1,7 +1,79 @@
 from django.db import models
 from django.utils import timezone
+import uuid
 
 from accounts.models import User
+
+
+def public_request_number():
+    return f"ARI-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:8].upper()}"
+
+
+class PublicCustomerRequest(models.Model):
+    REQUEST_TYPES = [
+        ("PURCHASE", "Product Purchase"),
+        ("RENTAL", "Product Rental"),
+        ("SERVICE", "RO Service"),
+        ("AMC", "AMC Plan"),
+        ("COMPLAINT", "Complaint"),
+        ("REFERRAL", "Referral Enquiry"),
+    ]
+    STATUS_CHOICES = [
+        ("NEW", "New"),
+        ("CONTACTED", "Customer Contacted"),
+        ("CONFIRMED", "Confirmed"),
+        ("COMPLETED", "Completed"),
+        ("CANCELLED", "Cancelled"),
+    ]
+    PAYMENT_CHOICES = [
+        ("COD", "Cash/UPI on Delivery"),
+        ("OFFICE", "Confirm with ARI Team"),
+    ]
+
+    request_number = models.CharField(
+        max_length=25,
+        unique=True,
+        default=public_request_number,
+        editable=False,
+    )
+    request_type = models.CharField(max_length=15, choices=REQUEST_TYPES)
+    product = models.ForeignKey(
+        "products.ROModel",
+        on_delete=models.PROTECT,
+        related_name="public_requests",
+        null=True,
+        blank=True,
+    )
+    plan_name = models.CharField(max_length=150, blank=True)
+    customer_name = models.CharField(max_length=150)
+    phone = models.CharField(max_length=10, db_index=True)
+    alternate_phone = models.CharField(max_length=10, blank=True)
+    email = models.EmailField(blank=True)
+    address = models.TextField()
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=100)
+    pincode = models.CharField(max_length=6)
+    quantity = models.PositiveSmallIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    payment_method = models.CharField(
+        max_length=10,
+        choices=PAYMENT_CHOICES,
+        default="OFFICE",
+    )
+    preferred_date = models.DateField(null=True, blank=True)
+    referral_code = models.CharField(max_length=30, blank=True)
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default="NEW")
+    source = models.CharField(max_length=30, default="MOBILE_GUEST")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.request_number} - {self.customer_name}"
 
 
 class Customer(models.Model):

@@ -1,6 +1,59 @@
 from rest_framework import serializers
 
-from .models import Customer
+from .models import Customer, PublicCustomerRequest
+
+
+class PublicCustomerRequestSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.model_name", read_only=True)
+
+    class Meta:
+        model = PublicCustomerRequest
+        fields = [
+            "id", "request_number", "request_type", "product", "product_name",
+            "plan_name", "customer_name", "phone", "alternate_phone", "email",
+            "address", "city", "state", "pincode", "quantity", "unit_price",
+            "total_amount", "payment_method", "preferred_date", "referral_code",
+            "notes", "status", "created_at",
+        ]
+        read_only_fields = [
+            "id", "request_number", "product_name", "unit_price", "total_amount",
+            "status", "created_at",
+        ]
+
+    def validate_phone(self, value):
+        digits = "".join(character for character in value if character.isdigit())
+        if len(digits) == 12 and digits.startswith("91"):
+            digits = digits[2:]
+        if len(digits) != 10 or digits[0] not in "6789":
+            raise serializers.ValidationError("Enter a valid 10-digit Indian mobile number.")
+        return digits
+
+    def validate_pincode(self, value):
+        if len(value) != 6 or not value.isdigit():
+            raise serializers.ValidationError("Enter a valid 6-digit pincode.")
+        return value
+
+    def validate(self, attrs):
+        request_type = attrs.get("request_type")
+        product = attrs.get("product")
+        if request_type == "PURCHASE" and product is None:
+            raise serializers.ValidationError({"product": "Select a product."})
+        if product is not None and not product.is_active:
+            raise serializers.ValidationError({"product": "This product is not currently available."})
+        if request_type == "PURCHASE" and product and product.stock_quantity < attrs.get("quantity", 1):
+            raise serializers.ValidationError({"quantity": "Requested quantity is not in stock."})
+        return attrs
+
+    def create(self, validated_data):
+        product = validated_data.get("product")
+        quantity = validated_data.get("quantity", 1)
+        request_type = validated_data["request_type"]
+        if product is not None:
+            unit_price = product.monthly_rent if request_type == "RENTAL" else product.selling_price
+            validated_data["unit_price"] = unit_price
+            validated_data["total_amount"] = unit_price * quantity
+            validated_data.setdefault("plan_name", product.model_name)
+        return super().create(validated_data)
 
 
 # ============================================================
