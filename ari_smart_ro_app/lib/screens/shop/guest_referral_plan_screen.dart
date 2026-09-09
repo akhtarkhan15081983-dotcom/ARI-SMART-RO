@@ -34,7 +34,7 @@ class GuestReferralPlanScreen extends StatelessWidget {
               ),
               SizedBox(height: 8),
               Text(
-                'The full ARI referral plan is public. Login is needed later only to securely hold and redeem your personal rewards.',
+                'Invite friends to ARI and receive eligible rewards after verification and successful installation.',
                 style: TextStyle(color: Colors.white70, height: 1.45),
               ),
             ],
@@ -77,7 +77,7 @@ class GuestReferralPlanScreen extends StatelessWidget {
             ),
           ),
           icon: const Icon(Icons.support_agent_rounded),
-          label: const Text('ASK ABOUT REFERRAL — NO LOGIN'),
+          label: const Text('ASK ABOUT REFERRAL'),
         ),
       ],
     ),

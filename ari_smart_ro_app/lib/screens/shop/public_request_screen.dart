@@ -111,7 +111,7 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'No login was required. Our team will call you to verify the details.',
+                'Our team will call you shortly to verify the details.',
               ),
               const SizedBox(height: 14),
               SelectableText(
@@ -170,13 +170,16 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     children: [
-                      Icon(Icons.lock_open_rounded, color: Colors.white),
-                      SizedBox(width: 9),
+                      const Icon(
+                        Icons.description_outlined,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 9),
                       Text(
-                        'Guest checkout',
-                        style: TextStyle(
+                        _isPurchase ? 'Order details' : 'Request details',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w900,
                           fontSize: 18,
@@ -391,9 +394,7 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
               label: Text(
                 _submitting
                     ? 'SUBMITTING...'
-                    : (_isPurchase
-                          ? 'PLACE ORDER WITHOUT LOGIN'
-                          : 'SUBMIT WITHOUT LOGIN'),
+                    : (_isPurchase ? 'PLACE ORDER' : 'SUBMIT REQUEST'),
               ),
             ),
             const SizedBox(height: 10),

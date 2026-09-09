@@ -300,7 +300,7 @@ class _ShopScreenState extends State<ShopScreen> {
                             : 'PURCHASE',
                         title: product.businessType == 'RENT'
                             ? 'Request rental'
-                            : 'Guest checkout',
+                            : 'Place order',
                         product: product,
                       ),
                     );
@@ -308,8 +308,8 @@ class _ShopScreenState extends State<ShopScreen> {
                   icon: const Icon(Icons.shopping_bag_rounded),
                   label: Text(
                     product.businessType == 'RENT'
-                        ? 'REQUEST RENTAL — NO LOGIN'
-                        : 'BUY NOW — NO LOGIN',
+                        ? 'REQUEST RENTAL'
+                        : 'BUY NOW',
                   ),
                 ),
               ),
@@ -699,7 +699,7 @@ class _DeliveryStrip extends StatelessWidget {
             Expanded(
               child: Text(
                 guestMode
-                    ? 'Login to set delivery & service location'
+                    ? 'Set delivery & service location'
                     : 'Delivery and service support at your saved location',
                 style: const TextStyle(
                   color: _ShopScreenState.ink,

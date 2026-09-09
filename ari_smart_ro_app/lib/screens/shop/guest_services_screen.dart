@@ -29,7 +29,7 @@ class GuestServiceDetailScreen extends StatelessWidget {
         'Completion confirmation and future service reminder',
       ],
       process:
-          'Enter contact and RO details → describe the issue → submit without login → our team confirms the visit.',
+          'Enter contact and RO details → describe the issue → submit request → our team confirms the visit.',
     ),
     GuestServiceType.amc => (
       icon: Icons.verified_outlined,
@@ -43,7 +43,7 @@ class GuestServiceDetailScreen extends StatelessWidget {
         'Plan coverage and applicable charges shown before confirmation',
       ],
       process:
-          'Review the complete plan → enter purifier and address details → submit without login → confirm coverage with the ARI team.',
+          'Review the complete plan → enter purifier and address details → submit request → confirm coverage with the ARI team.',
     ),
     GuestServiceType.rental => (
       icon: Icons.currency_rupee_rounded,
@@ -57,7 +57,7 @@ class GuestServiceDetailScreen extends StatelessWidget {
         'Tracked maintenance, complaint and machine history',
       ],
       process:
-          'Choose a rental model → submit requirement without login → office verification → agreement → scheduled installation.',
+          'Choose a rental model → submit requirement → office verification → agreement → scheduled installation.',
     ),
     GuestServiceType.complaint => (
       icon: Icons.report_problem_outlined,
@@ -71,7 +71,7 @@ class GuestServiceDetailScreen extends StatelessWidget {
         'Permanent history linked with your customer profile',
       ],
       process:
-          'Enter RO and problem details → submit without login → receive request number → ARI team schedules support.',
+          'Enter RO and problem details → submit → receive request number → ARI team schedules support.',
     ),
   };
 
@@ -182,7 +182,7 @@ class GuestServiceDetailScreen extends StatelessWidget {
               ),
             ),
             icon: const Icon(Icons.edit_document),
-            label: const Text('CONTINUE WITHOUT LOGIN'),
+            label: const Text('CONTINUE'),
           ),
           const SizedBox(height: 10),
           const Text(
@@ -266,7 +266,7 @@ class GuestServicesScreen extends StatelessWidget {
                     );
                   },
                   icon: const Icon(Icons.edit_document),
-                  label: const Text('BOOK WITHOUT LOGIN'),
+                  label: const Text('BOOK NOW'),
                 ),
               ),
             ],
@@ -401,7 +401,7 @@ class GuestServicesScreen extends StatelessWidget {
             ),
           ),
           icon: const Icon(Icons.calendar_month_rounded),
-          label: const Text('BOOK SERVICE WITHOUT LOGIN'),
+          label: const Text('BOOK SERVICE'),
         ),
       ],
     ),
