@@ -170,16 +170,30 @@ elif MEDIA_STORAGE_BACKEND == "s3":
     AWS_STORAGE_BUCKET_NAME = _required_env("AWS_STORAGE_BUCKET_NAME")
     AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "ap-south-1").strip()
     AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL", "").strip() or None
-    # Product photos are intentionally public catalogue assets.  Keep their
-    # URLs stable so the Flutter app, product sharing and QR links continue to
-    # work after a Render redeploy.  Never use this bucket for private records.
-    AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN", "").strip() or None
-    AWS_QUERYSTRING_AUTH = False
+    # Default uploads include invoices, agreements and employee selfies.
+    # Never expose them through a public domain or unsigned URL.
+    AWS_S3_CUSTOM_DOMAIN = None
+    AWS_QUERYSTRING_AUTH = True
+    AWS_QUERYSTRING_EXPIRE = 3600
     AWS_DEFAULT_ACL = None
     AWS_S3_FILE_OVERWRITE = False
     AWS_S3_SIGNATURE_VERSION = "s3v4"
     STORAGES["default"] = {
         "BACKEND": "storages.backends.s3.S3Storage",
+    }
+    product_bucket = _required_env("AWS_PRODUCT_BUCKET_NAME")
+    if product_bucket == AWS_STORAGE_BUCKET_NAME:
+        raise ImproperlyConfigured("Public products and private media must use separate buckets.")
+    product_domain = _required_env("AWS_PRODUCT_CUSTOM_DOMAIN")
+    if "://" in product_domain or "/" in product_domain:
+        raise ImproperlyConfigured("AWS_PRODUCT_CUSTOM_DOMAIN must be a hostname without https:// or slashes.")
+    STORAGES["products"] = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": product_bucket,
+            "custom_domain": product_domain,
+            "querystring_auth": False,
+        },
     }
 else:
     raise ImproperlyConfigured(

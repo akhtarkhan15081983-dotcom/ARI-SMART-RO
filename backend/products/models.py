@@ -1,5 +1,6 @@
 from django.db import models
 from partmaster.models import PartMaster
+from .storage import product_image_storage
 
 
 class ProductCategory(models.Model):
@@ -94,7 +95,7 @@ class ROModelImage(models.Model):
         on_delete=models.CASCADE,
         related_name="images",
     )
-    image = models.ImageField(upload_to="products/ro_models/")
+    image = models.ImageField(upload_to="products/ro_models/", storage=product_image_storage)
     alt_text = models.CharField(max_length=160, blank=True)
     sort_order = models.PositiveIntegerField(default=0)
 

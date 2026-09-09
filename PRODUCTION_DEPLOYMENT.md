@@ -43,9 +43,9 @@ If `DJANGO_MEDIA_STORAGE_BACKEND=filesystem` is selected, mount the persistent v
 
 Render's free filesystem is temporary. It can keep product names in PostgreSQL while deleting the corresponding image files on a redeploy, which causes image `404` errors in the app. Use Cloudflare R2 once to keep photos permanently.
 
-1. In Cloudflare, open **R2 Object Storage** and create a bucket, for example `ari-smart-ro-media`.
-2. In that bucket, open **Settings** and connect a public custom domain such as `media.yourdomain.com`. A public R2 development URL can be used for testing, but a custom domain is the production choice.
-3. Create an R2 API token limited to this bucket with **Object Read & Write**. Copy the access key and secret immediately; do not send the secret in chat or store it in Git.
+1. Create two R2 buckets: `ari-smart-ro-media` for private uploads, and `ari-smart-ro-products` for public catalogue images.
+2. Keep public access disabled on `ari-smart-ro-media`. Only connect a public custom domain such as `products.yourdomain.com` to `ari-smart-ro-products`. An R2 development URL is for testing, not production traffic.
+3. Create an R2 API token limited to these two buckets with **Object Read & Write**. Save the access key and secret securely; do not send the secret in chat or store it in Git.
 4. In Render, open `ari-smart-ro-api` → **Environment** and set the values below directly:
 
 ```text
@@ -55,10 +55,11 @@ AWS_SECRET_ACCESS_KEY=<R2 secret key>
 AWS_STORAGE_BUCKET_NAME=ari-smart-ro-media
 AWS_S3_REGION_NAME=auto
 AWS_S3_ENDPOINT_URL=https://<Cloudflare account ID>.r2.cloudflarestorage.com
-AWS_S3_CUSTOM_DOMAIN=media.yourdomain.com
+AWS_PRODUCT_BUCKET_NAME=ari-smart-ro-products
+AWS_PRODUCT_CUSTOM_DOMAIN=products.yourdomain.com
 ```
 
-5. Save the settings and deploy the latest code. Upload one test product image in Django Admin, then open it in the app. That image will remain available across redeploys.
+5. Deploy code with the separate product storage first, then save all environment values together. Upload one test product image in Django Admin and check it in the app. Verify a private document is in the private bucket, its unsigned URL is denied, and its authorized signed URL works. Default media links expire after one hour; clients must refresh their authorized API response to obtain a fresh URL. This migration changes storage selection only; it does not copy existing files.
 
 Photos that were already deleted from Render cannot be recovered from the database because it only retains their file names. Re-upload each original source photo once after R2 is active; every photo uploaded after that is permanent until you deliberately delete it.
 
