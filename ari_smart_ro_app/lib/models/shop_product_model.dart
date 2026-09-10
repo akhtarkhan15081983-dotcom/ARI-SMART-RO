@@ -9,6 +9,8 @@ class ShopProduct {
     required this.installationCharge,
     required this.securityDeposit,
     required this.businessType,
+    required this.availableForSale,
+    required this.availableForRent,
     required this.warrantyMonths,
     required this.mrp,
     required this.stockQuantity,
@@ -26,6 +28,8 @@ class ShopProduct {
   final double installationCharge;
   final double securityDeposit;
   final String businessType;
+  final bool availableForSale;
+  final bool availableForRent;
   final int warrantyMonths;
   final double mrp;
   final int stockQuantity;
@@ -33,7 +37,14 @@ class ShopProduct {
   final List<String> features;
   final List<String> imageUrls;
 
+  bool supportsOffer(String offer) => switch (offer) {
+    'SALE' => availableForSale,
+    'RENT' => availableForRent,
+    _ => true,
+  };
+
   factory ShopProduct.fromJson(Map<String, dynamic> json) {
+    final businessType = json['business_type']?.toString() ?? 'SALE';
     return ShopProduct(
       id: (json['id'] as num?)?.toInt() ?? 0,
       modelName: json['model_name']?.toString() ?? '',
@@ -46,7 +57,11 @@ class ShopProduct {
           double.tryParse(json['installation_charge']?.toString() ?? '') ?? 0,
       securityDeposit:
           double.tryParse(json['security_deposit']?.toString() ?? '') ?? 0,
-      businessType: json['business_type']?.toString() ?? 'SALE',
+      businessType: businessType,
+      availableForSale:
+          json['available_for_sale'] as bool? ?? businessType == 'SALE',
+      availableForRent:
+          json['available_for_rent'] as bool? ?? businessType == 'RENT',
       warrantyMonths: (json['warranty_months'] as num?)?.toInt() ?? 0,
       mrp: double.tryParse(json['mrp']?.toString() ?? '') ?? 0,
       stockQuantity: (json['stock_quantity'] as num?)?.toInt() ?? 0,

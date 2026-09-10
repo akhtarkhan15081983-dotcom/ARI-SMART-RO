@@ -40,6 +40,10 @@ class PublicCustomerRequestSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"product": "Select a product."})
         if product is not None and not product.is_active:
             raise serializers.ValidationError({"product": "This product is not currently available."})
+        if request_type == "PURCHASE" and product and not product.available_for_sale:
+            raise serializers.ValidationError({"product": "This product is not available for sale."})
+        if request_type == "RENTAL" and product and not product.available_for_rent:
+            raise serializers.ValidationError({"product": "This product is not available for rent."})
         if request_type == "PURCHASE" and product and product.stock_quantity < attrs.get("quantity", 1):
             raise serializers.ValidationError({"quantity": "Requested quantity is not in stock."})
         return attrs

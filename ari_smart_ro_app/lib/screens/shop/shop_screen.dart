@@ -235,7 +235,7 @@ class _ShopScreenState extends State<ShopScreen> {
               ),
               const SizedBox(height: 18),
               _ProductPrice(product: product, large: true),
-              if (product.businessType == 'RENT') ...[
+              if (product.availableForRent) ...[
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
@@ -288,30 +288,57 @@ class _ShopScreenState extends State<ShopScreen> {
                     ),
               ],
               const SizedBox(height: 22),
-              SizedBox(
-                height: 54,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _openPage(
-                      PublicRequestScreen(
-                        requestType: product.businessType == 'RENT'
-                            ? 'RENTAL'
-                            : 'PURCHASE',
-                        title: product.businessType == 'RENT'
-                            ? 'Request rental'
-                            : 'Place order',
-                        product: product,
+              Row(
+                children: [
+                  if (product.availableForSale)
+                    Expanded(
+                      child: SizedBox(
+                        height: 54,
+                        child: FilledButton.icon(
+                          onPressed: product.stockQuantity > 0
+                              ? () {
+                                  Navigator.pop(context);
+                                  _openPage(
+                                    PublicRequestScreen(
+                                      requestType: 'PURCHASE',
+                                      title: 'Place order',
+                                      product: product,
+                                    ),
+                                  );
+                                }
+                              : null,
+                          icon: const Icon(Icons.shopping_bag_rounded),
+                          label: Text(
+                            product.stockQuantity > 0
+                                ? 'BUY NOW'
+                                : 'OUT OF STOCK',
+                          ),
+                        ),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.shopping_bag_rounded),
-                  label: Text(
-                    product.businessType == 'RENT'
-                        ? 'REQUEST RENTAL'
-                        : 'BUY NOW',
-                  ),
-                ),
+                    ),
+                  if (product.availableForSale && product.availableForRent)
+                    const SizedBox(width: 10),
+                  if (product.availableForRent)
+                    Expanded(
+                      child: SizedBox(
+                        height: 54,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _openPage(
+                              PublicRequestScreen(
+                                requestType: 'RENTAL',
+                                title: 'Request rental',
+                                product: product,
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.currency_rupee_rounded),
+                          label: const Text('RENT NOW'),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ],
           ),
@@ -344,7 +371,7 @@ class _ShopScreenState extends State<ShopScreen> {
             final visible = _selectedOffer == 'All'
                 ? categoryVisible
                 : categoryVisible
-                      .where((item) => item.businessType == _selectedOffer)
+                      .where((item) => item.supportsOffer(_selectedOffer))
                       .toList();
 
             return RefreshIndicator(
@@ -1046,7 +1073,11 @@ class _ProductCard extends StatelessWidget {
   final VoidCallback onTap;
 
   int get discount {
-    if (product.mrp <= 0 || product.sellingPrice >= product.mrp) return 0;
+    if (!product.availableForSale ||
+        product.mrp <= 0 ||
+        product.sellingPrice >= product.mrp) {
+      return 0;
+    }
     return ((product.mrp - product.sellingPrice) / product.mrp * 100).round();
   }
 
@@ -1119,13 +1150,19 @@ class _ProductCard extends StatelessWidget {
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: product.businessType == 'RENT'
+                        color:
+                            product.availableForRent &&
+                                !product.availableForSale
                             ? const Color(0xFF7C3AED)
                             : const Color(0xFF075985),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        product.businessType == 'RENT' ? 'ON RENT' : 'BUY',
+                        product.availableForSale && product.availableForRent
+                            ? 'BUY • RENT'
+                            : product.availableForRent
+                            ? 'ON RENT'
+                            : 'BUY',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 9,
@@ -1304,46 +1341,88 @@ class _ProductPrice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rent = product.businessType == 'RENT';
-    final amount = rent ? product.monthlyRent : product.sellingPrice;
-    final color = rent ? const Color(0xFF6D28D9) : _ShopScreenState.navy;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          '₹${amount.toStringAsFixed(0)}',
-          style: TextStyle(
-            color: color,
-            fontSize: large ? 27 : 17,
-            fontWeight: FontWeight.w900,
+        if (product.availableForSale)
+          _PriceLine(
+            amount: product.sellingPrice,
+            suffix: 'buy',
+            color: _ShopScreenState.navy,
+            large: large,
+            mrp: product.mrp,
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 3),
-          child: Text(
-            rent ? '/ month' : 'one-time',
-            style: TextStyle(
-              color: _ShopScreenState.muted,
-              fontSize: large ? 13 : 10,
-            ),
+        if (product.availableForSale && product.availableForRent)
+          SizedBox(height: large ? 7 : 3),
+        if (product.availableForRent)
+          _PriceLine(
+            amount: product.monthlyRent,
+            suffix: '/ month rent',
+            color: const Color(0xFF6D28D9),
+            large: large,
           ),
-        ),
-        if (!rent && large && product.mrp > product.sellingPrice) ...[
-          const SizedBox(width: 10),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              '₹${product.mrp.toStringAsFixed(0)}',
-              style: const TextStyle(
-                color: _ShopScreenState.muted,
-                decoration: TextDecoration.lineThrough,
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }
+}
+
+class _PriceLine extends StatelessWidget {
+  const _PriceLine({
+    required this.amount,
+    required this.suffix,
+    required this.color,
+    required this.large,
+    this.mrp = 0,
+  });
+
+  final double amount;
+  final String suffix;
+  final Color color;
+  final bool large;
+  final double mrp;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      Text(
+        '₹${amount.toStringAsFixed(0)}',
+        style: TextStyle(
+          color: color,
+          fontSize: large ? 27 : 16,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      Flexible(
+        child: Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 3),
+          child: Text(
+            suffix,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: _ShopScreenState.muted,
+              fontSize: large ? 13 : 9.5,
+            ),
+          ),
+        ),
+      ),
+      if (large && mrp > amount) ...[
+        const SizedBox(width: 10),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            '₹${mrp.toStringAsFixed(0)}',
+            style: const TextStyle(
+              color: _ShopScreenState.muted,
+              decoration: TextDecoration.lineThrough,
+            ),
+          ),
+        ),
+      ],
+    ],
+  );
 }
 
 class _EngagementCard extends StatelessWidget {

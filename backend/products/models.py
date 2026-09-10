@@ -38,7 +38,18 @@ class ROModel(models.Model):
 
     business_type = models.CharField(
         max_length=10,
-        choices=BUSINESS_TYPES
+        choices=BUSINESS_TYPES,
+        help_text="Legacy primary type. Store visibility is controlled by the Sale and Rent options below.",
+    )
+
+    available_for_sale = models.BooleanField(
+        default=True,
+        help_text="Show the Buy option when a valid selling price is configured.",
+    )
+
+    available_for_rent = models.BooleanField(
+        default=False,
+        help_text="Show the Rent option when a valid monthly rent is configured.",
     )
 
     monthly_rent = models.DecimalField(

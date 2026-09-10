@@ -71,3 +71,23 @@ class PublicCustomerRequestTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_checkout_rejects_an_option_disabled_for_product(self):
+        self.product.available_for_sale = False
+        self.product.available_for_rent = True
+        self.product.monthly_rent = "499.00"
+        self.product.save(
+            update_fields=["available_for_sale", "available_for_rent", "monthly_rent"]
+        )
+        sale_response = self.client.post(
+            self.url,
+            {**self.contact, "request_type": "PURCHASE", "product": self.product.id},
+            format="json",
+        )
+        rent_response = self.client.post(
+            self.url,
+            {**self.contact, "request_type": "RENTAL", "product": self.product.id},
+            format="json",
+        )
+        self.assertEqual(sale_response.status_code, 400)
+        self.assertEqual(rent_response.status_code, 201)
