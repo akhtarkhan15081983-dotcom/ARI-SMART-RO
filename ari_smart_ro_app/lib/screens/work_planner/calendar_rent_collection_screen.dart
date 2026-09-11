@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../services/rent_management_service.dart';
 
@@ -38,12 +39,41 @@ class _CalendarRentCollectionScreenState
     }
     setState(() => _saving = true);
     try {
+      Position? position;
+      final hasSavedLocation =
+          double.tryParse(_customer["latitude"]?.toString() ?? "") != null &&
+          double.tryParse(_customer["longitude"]?.toString() ?? "") != null;
+      if (!hasSavedLocation) {
+        if (!await Geolocator.isLocationServiceEnabled()) {
+          throw Exception(
+            "Please switch on phone location to verify this customer.",
+          );
+        }
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          throw Exception(
+            "Location permission is required for first rent collection.",
+          );
+        }
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+          ),
+        );
+      }
       await RentManagementService.addRentPayment(
         customerId: _customer['id'] as int,
         amount: amount,
         paymentMode: _mode,
         paymentDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
         remarks: _remarks.text,
+        latitude: position?.latitude,
+        longitude: position?.longitude,
+        accuracy: position?.accuracy,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

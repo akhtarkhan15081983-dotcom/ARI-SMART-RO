@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import EmployeeDocument, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
+from .models import EmployeeDocument, EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
 
 
 @admin.register(EmployeeProfile)
@@ -70,3 +70,16 @@ class EmployeeDocumentAdmin(admin.ModelAdmin):
     list_display = ("employee", "document_type", "document_number", "expiry_date", "verified", "uploaded_at")
     list_filter = ("document_type", "verified", "expiry_date")
     search_fields = ("employee__employee_id", "employee__user__first_name", "document_number")
+
+
+@admin.register(EmployeePenalty)
+class EmployeePenaltyAdmin(admin.ModelAdmin):
+    list_display = ("employee", "penalty_date", "amount", "reason", "status", "created_by", "approved_by")
+    list_filter = ("status", "penalty_date")
+    search_fields = ("employee__employee_id", "employee__user__first_name", "employee__user__phone", "reason")
+    readonly_fields = ("created_by", "approved_by", "approved_at", "cancelled_at", "created_at", "updated_at")
+
+    def save_model(self, request, obj, form, change):
+        if not obj.created_by_id:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)

@@ -200,6 +200,46 @@ class PayrollRecord(models.Model):
         constraints = [models.UniqueConstraint(fields=["employee", "payroll_month"], name="unique_employee_payroll_month")]
 
 
+class EmployeePenalty(models.Model):
+    STATUS_CHOICES = [
+        ("DRAFT", "Draft"),
+        ("APPROVED", "Approved"),
+        ("CANCELLED", "Cancelled"),
+    ]
+
+    employee = models.ForeignKey(
+        EmployeeProfile,
+        on_delete=models.PROTECT,
+        related_name="penalties",
+    )
+    penalty_date = models.DateField(default=timezone.localdate)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.CharField(max_length=500)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="DRAFT")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_employee_penalties",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="approved_employee_penalties",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-penalty_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.employee.employee_id} - {self.amount} - {self.status}"
+
+
 class EmployeeDocument(models.Model):
     employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name="hr_documents")
     document_type = models.CharField(max_length=50)

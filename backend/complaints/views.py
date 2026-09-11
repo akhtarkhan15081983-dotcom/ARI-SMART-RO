@@ -133,6 +133,8 @@ class ComplaintCreateAPIView(generics.CreateAPIView):
                 customer=customer,
                 engineer=None,
                 priority="NORMAL",
+                latitude=customer.latitude,
+                longitude=customer.longitude,
             )
 
             return
@@ -144,7 +146,14 @@ class ComplaintCreateAPIView(generics.CreateAPIView):
         # Staff customer / engineer select kar sakta hai.
         # ----------------------------------------------------
 
-        serializer.save()
+        customer = serializer.validated_data.get("customer")
+        location = {}
+        if customer is not None:
+            if serializer.validated_data.get("latitude") is None:
+                location["latitude"] = customer.latitude
+            if serializer.validated_data.get("longitude") is None:
+                location["longitude"] = customer.longitude
+        serializer.save(**location)
 
 
 # ============================================================

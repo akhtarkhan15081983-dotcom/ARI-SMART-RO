@@ -12,6 +12,7 @@ class HrmsScreen extends StatefulWidget {
 class _HrmsScreenState extends State<HrmsScreen> {
   final _service = HrmsService();
   List<Map<String, dynamic>> _leaves = [], _payroll = [], _holidays = [];
+  List<Map<String, dynamic>> _penalties = [], _penaltyEmployees = [];
   Map<String, dynamic> _dashboard = {};
   bool _loading = true;
   String _role = '';
@@ -35,6 +36,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
         _service.payroll(month: _role == 'ADMIN' ? _monthValue : null),
         if (_role != 'ADMIN') _service.dashboard(),
         _service.holidays(year: DateTime.now().year),
+        _service.penalties(),
       ]);
       if (mounted) {
         setState(() {
@@ -45,6 +47,15 @@ class _HrmsScreenState extends State<HrmsScreen> {
               : Map<String, dynamic>.from(values[2] as Map);
           _holidays = List<Map<String, dynamic>>.from(
             values[_role == 'ADMIN' ? 2 : 3] as List,
+          );
+          final penaltyData = Map<String, dynamic>.from(
+            values[_role == 'ADMIN' ? 3 : 4] as Map,
+          );
+          _penalties = List<Map<String, dynamic>>.from(
+            penaltyData['penalties'] as List? ?? const [],
+          );
+          _penaltyEmployees = List<Map<String, dynamic>>.from(
+            penaltyData['employees'] as List? ?? const [],
           );
         });
       }
@@ -150,6 +161,120 @@ class _HrmsScreenState extends State<HrmsScreen> {
       await _load();
     } catch (e) {
       _show(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _createPenalty() async {
+    if (_penaltyEmployees.isEmpty) {
+      _show('No active employee is available.');
+      return;
+    }
+    int employeeId = (_penaltyEmployees.first['id'] as num).toInt();
+    DateTime penaltyDate = DateTime.now();
+    String amount = '', reason = '';
+    final submit = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: const Text('Create employee penalty'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<int>(
+                  initialValue: employeeId,
+                  decoration: const InputDecoration(labelText: 'Employee'),
+                  items: _penaltyEmployees
+                      .map(
+                        (row) => DropdownMenuItem(
+                          value: (row['id'] as num).toInt(),
+                          child: Text('${row['name']} (${row['employee_id']})'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setLocal(() => employeeId = value ?? employeeId),
+                ),
+                TextField(
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Penalty amount',
+                  ),
+                  onChanged: (value) => amount = value,
+                ),
+                TextField(
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason / audit note',
+                  ),
+                  onChanged: (value) => reason = value,
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Penalty date'),
+                  subtitle: Text(
+                    '${penaltyDate.day}/${penaltyDate.month}/${penaltyDate.year}',
+                  ),
+                  trailing: const Icon(Icons.calendar_month),
+                  onTap: () async {
+                    final value = await showDatePicker(
+                      context: context,
+                      initialDate: penaltyDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (value != null) setLocal(() => penaltyDate = value);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('CANCEL'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('SAVE DRAFT'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final parsedAmount = double.tryParse(amount.trim());
+    if (submit != true) return;
+    if (parsedAmount == null || parsedAmount <= 0 || reason.trim().isEmpty) {
+      _show('Enter a valid amount and reason.');
+      return;
+    }
+    try {
+      await _service.createPenalty(
+        employeeId: employeeId,
+        date: penaltyDate,
+        amount: parsedAmount,
+        reason: reason.trim(),
+      );
+      _show('Penalty draft created. Approve it after verification.');
+      await _load();
+    } catch (error) {
+      _show(error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _penaltyAction(Map<String, dynamic> row, String action) async {
+    try {
+      await _service.penaltyAction((row['id'] as num).toInt(), action);
+      _show(
+        action == 'APPROVE'
+            ? 'Penalty approved for payroll.'
+            : 'Penalty cancelled.',
+      );
+      await _load();
+    } catch (error) {
+      _show(error.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -265,6 +390,8 @@ class _HrmsScreenState extends State<HrmsScreen> {
                 const SizedBox(height: 14),
                 _holidaySection(),
                 const SizedBox(height: 14),
+                _penaltySection(),
+                const SizedBox(height: 14),
                 Text(
                   'Salary & incentives',
                   style: Theme.of(
@@ -307,6 +434,10 @@ class _HrmsScreenState extends State<HrmsScreen> {
                         _line(
                           'Absence deduction',
                           '- ${_money(row['absence_deduction'])}',
+                        ),
+                        _line(
+                          'Manual approved penalties',
+                          '- ${_money(row['other_deductions'])}',
                         ),
                         _line(
                           'Overtime (${row['overtime_hours']} hr)',
@@ -415,6 +546,73 @@ class _HrmsScreenState extends State<HrmsScreen> {
   Map<String, dynamic> _map(String key) =>
       Map<String, dynamic>.from(_dashboard[key] as Map? ?? const {});
 
+  Widget _penaltySection() => _sectionCard(
+    icon: Icons.gavel_outlined,
+    title: 'Employee penalty register',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_penalties.isEmpty)
+          const Text(
+            'No manual penalties recorded.',
+            style: TextStyle(color: Color(0xFF687386)),
+          )
+        else
+          ..._penalties
+              .take(20)
+              .map(
+                (row) => Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: Column(
+                    children: [
+                      ListTile(
+                        title: Text(
+                          '${row['employee_name']} • ${_money(row['amount'])}',
+                        ),
+                        subtitle: Text(
+                          '${row['penalty_date']}\n${row['reason']}',
+                        ),
+                        isThreeLine: true,
+                        trailing: Chip(label: Text(row['status'].toString())),
+                      ),
+                      if (_role == 'ADMIN' && row['status'] == 'DRAFT')
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () =>
+                                      _penaltyAction(row, 'CANCEL'),
+                                  child: const Text('CANCEL'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: () =>
+                                      _penaltyAction(row, 'APPROVE'),
+                                  child: const Text('APPROVE'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+        if (_role == 'ADMIN') ...[
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _createPenalty,
+            icon: const Icon(Icons.add),
+            label: const Text('CREATE PENALTY DRAFT'),
+          ),
+        ],
+      ],
+    ),
+  );
   Widget _adminReportOverview() {
     final pendingLeaves = _leaves
         .where((row) => row['status'] == 'PENDING')

@@ -220,9 +220,9 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
   // CALL CUSTOMER
   // ============================================================
 
-  Future<void> _callCustomer(String phone) async {
+  Future<void> _callPhone(String phone, String person) async {
     if (phone.trim().isEmpty) {
-      _showMessage('Customer phone number is not available.');
+      _showMessage('$person phone number is not available.');
       return;
     }
 
@@ -322,8 +322,10 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                             child: OutlinedButton.icon(
                               onPressed: _isSaving
                                   ? null
-                                  : () =>
-                                        _callCustomer(complaint.customerPhone),
+                                  : () => _callPhone(
+                                      complaint.customerPhone,
+                                      'Customer',
+                                    ),
                               icon: const Icon(Icons.call),
                               label: const Text('Call'),
                             ),
@@ -378,6 +380,19 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                     children: [
                       _InfoRow('Name', complaint.displayEngineer),
                       _InfoRow('Engineer ID', complaint.engineerIdDisplay),
+                      if (complaint.engineerPhone.isNotEmpty) ...[
+                        _InfoRow('Phone', complaint.engineerPhone),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                _callPhone(complaint.engineerPhone, 'Engineer'),
+                            icon: const Icon(Icons.call),
+                            label: const Text('Call Engineer'),
+                          ),
+                        ),
+                      ],
                       _InfoRow(
                         'Remarks',
                         complaint.engineerRemarks.isEmpty

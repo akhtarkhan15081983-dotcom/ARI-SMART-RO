@@ -358,6 +358,7 @@ class CustomerLocationLog(models.Model):
     SOURCE_CHOICES = [
         ("WORK_CALENDAR", "Work Calendar"),
         ("WORK_ROUTE", "Work Route"),
+        ("RENT_COLLECTION", "Rent Collection"),
     ]
 
     customer = models.ForeignKey(

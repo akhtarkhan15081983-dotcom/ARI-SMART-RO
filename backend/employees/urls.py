@@ -10,7 +10,7 @@ from .views import (
     AdminFaceEnrollmentControlAPIView,
     EmployeeManagementAPIView,
 )
-from .hrms import EmployeeHrmsDashboardAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView
+from .hrms import EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView
 
 urlpatterns = [
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
@@ -21,6 +21,8 @@ urlpatterns = [
     path("employees/hrms/leaves/<int:leave_id>/review/", LeaveReviewAPIView.as_view(), name="hrms-leave-review"),
     path("employees/hrms/payroll/", PayrollAPIView.as_view(), name="hrms-payroll"),
     path("employees/hrms/payroll/<int:payroll_id>/action/", PayrollActionAPIView.as_view(), name="hrms-payroll-action"),
+    path("employees/hrms/penalties/", EmployeePenaltyAPIView.as_view(), name="hrms-penalties"),
+    path("employees/hrms/penalties/<int:penalty_id>/action/", EmployeePenaltyActionAPIView.as_view(), name="hrms-penalty-action"),
     path("employees/hrms/reports/payroll.xlsx", PayrollExcelReportAPIView.as_view(), name="hrms-payroll-excel"),
     path(
         "employees/live-location/",

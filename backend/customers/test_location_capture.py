@@ -102,3 +102,27 @@ class CustomerLocationCaptureAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(CustomerLocationLog.objects.count(), 0)
+
+class RentCollectionLocationTests(CustomerLocationCaptureAPITests):
+    def test_first_engineer_rent_collection_captures_customer_location(self):
+        self.customer.monthly_rent = "300.00"
+        self.customer.save(update_fields=["monthly_rent"])
+        self.client.force_authenticate(self.engineer_user)
+        response = self.client.post(
+            reverse("rent-management-payment"),
+            {
+                "customer_id": self.customer.id,
+                "amount": "300.00",
+                "payment_mode": "CASH",
+                "latitude": "28.3670000",
+                "longitude": "79.4300000",
+                "accuracy": "7.25",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["location_captured"])
+        self.customer.refresh_from_db()
+        self.assertEqual(str(self.customer.latitude), "28.3670000")
+        log = CustomerLocationLog.objects.get(source="RENT_COLLECTION")
+        self.assertEqual(log.captured_by, self.engineer)

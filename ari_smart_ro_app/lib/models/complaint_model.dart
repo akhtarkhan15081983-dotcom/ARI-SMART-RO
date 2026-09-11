@@ -13,6 +13,7 @@ class ComplaintModel {
   // Engineer
   final int? engineer;
   final String engineerName;
+  final String engineerPhone;
   final String engineerIdDisplay;
 
   // Complaint
@@ -55,6 +56,7 @@ class ComplaintModel {
 
     required this.engineer,
     required this.engineerName,
+    required this.engineerPhone,
     required this.engineerIdDisplay,
 
     required this.complaintType,
@@ -106,6 +108,8 @@ class ComplaintModel {
       engineer: _toNullableInt(json["engineer"]),
 
       engineerName: json["engineer_name"]?.toString() ?? "",
+
+      engineerPhone: json["engineer_phone"]?.toString() ?? "",
 
       engineerIdDisplay: json["engineer_id_display"]?.toString() ?? "",
 

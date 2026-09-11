@@ -34,6 +34,8 @@ class ComplaintSerializer(
 
     engineer_name = serializers.SerializerMethodField()
 
+    engineer_phone = serializers.SerializerMethodField()
+
     engineer_id_display = serializers.CharField(
         source="engineer.employee_id",
         read_only=True,
@@ -63,6 +65,7 @@ class ComplaintSerializer(
             # Engineer
             "engineer",
             "engineer_name",
+            "engineer_phone",
             "engineer_id_display",
 
             # Complaint
@@ -104,6 +107,7 @@ class ComplaintSerializer(
             "old_card_number",
 
             "engineer_name",
+            "engineer_phone",
             "engineer_id_display",
 
             "linked_service_id_display",
@@ -137,3 +141,8 @@ class ComplaintSerializer(
             )
             or obj.engineer.employee_id
         )
+
+    def get_engineer_phone(self, obj):
+        if not obj.engineer:
+            return ""
+        return getattr(obj.engineer.user, "phone", "") or ""

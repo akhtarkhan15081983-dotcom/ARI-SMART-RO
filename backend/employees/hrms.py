@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 
 from attendance.models import Attendance
 from installation.models import Installation
-from .models import EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
+from .models import EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
 
 
 MONEY = Decimal("0.01")
@@ -108,14 +108,24 @@ def calculate_payroll(employee, payroll_month):
             sale_count += 1
     rent_incentive = _money(Decimal(rent_count) * policy.rent_installation_monthly_incentive)
     sale_incentive = _money(Decimal(sale_count) * policy.sale_installation_incentive)
-    net = _money(payable_base - late_penalty - half_day_deduction - absence_deduction + overtime_amount + rent_incentive + sale_incentive)
+    approved_penalties = EmployeePenalty.objects.filter(
+        employee=employee,
+        status="APPROVED",
+        penalty_date__range=(start, month_end),
+    )
+    manual_penalty = _money(
+        approved_penalties.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    )
+    penalty_ids = list(approved_penalties.values_list("id", flat=True))
+    net = _money(payable_base - late_penalty - half_day_deduction - absence_deduction - manual_penalty + overtime_amount + rent_incentive + sale_incentive)
     return {
         "base_salary": _money(employee.salary), "payable_base": payable_base,
         "late_days": late_days, "late_penalty": late_penalty,
         "half_day_deduction": half_day_deduction, "absence_deduction": absence_deduction,
         "overtime_hours": overtime_hours.quantize(MONEY), "overtime_amount": overtime_amount,
-        "rent_incentive": rent_incentive, "sale_incentive": sale_incentive, "net_salary": max(Decimal("0"), net),
-        "snapshot": {"calendar_days": days_in_month, "absent_days": str(absent_days), "unpaid_leave_units": str(unpaid_leave_units), "rent_installations": rent_count, "sale_installations": sale_count, "daily_rate": str(_money(daily_rate)), "hourly_rate": str(_money(hourly_rate))},
+        "rent_incentive": rent_incentive, "sale_incentive": sale_incentive,
+        "other_deductions": manual_penalty, "net_salary": max(Decimal("0"), net),
+        "snapshot": {"calendar_days": days_in_month, "absent_days": str(absent_days), "unpaid_leave_units": str(unpaid_leave_units), "rent_installations": rent_count, "sale_installations": sale_count, "daily_rate": str(_money(daily_rate)), "hourly_rate": str(_money(hourly_rate)), "manual_penalty_ids": penalty_ids, "manual_penalty_count": len(penalty_ids), "manual_penalty_amount": str(manual_penalty)},
     }
 
 
@@ -332,7 +342,7 @@ class PayrollAPIView(APIView):
                 rows = rows.filter(payroll_month=_month(request.query_params["month"]))
         else:
             rows = rows.filter(employee__user=request.user)
-        return Response({"payroll": [{"id": r.id, "employee": r.employee.employee_id, "employee_name": r.employee.user.get_full_name(), "month": r.payroll_month, "base_salary": r.base_salary, "late_penalty": r.late_penalty, "half_day_deduction": r.half_day_deduction, "absence_deduction": r.absence_deduction, "overtime_hours": r.overtime_hours, "overtime_amount": r.overtime_amount, "rent_incentive": r.rent_incentive, "sale_incentive": r.sale_incentive, "net_salary": r.net_salary, "status": r.status, "snapshot": r.calculation_snapshot} for r in rows[:1000]]})
+        return Response({"payroll": [{"id": r.id, "employee": r.employee.employee_id, "employee_name": r.employee.user.get_full_name(), "month": r.payroll_month, "base_salary": r.base_salary, "late_penalty": r.late_penalty, "half_day_deduction": r.half_day_deduction, "absence_deduction": r.absence_deduction, "overtime_hours": r.overtime_hours, "overtime_amount": r.overtime_amount, "rent_incentive": r.rent_incentive, "sale_incentive": r.sale_incentive, "other_earnings": r.other_earnings, "other_deductions": r.other_deductions, "net_salary": r.net_salary, "status": r.status, "snapshot": r.calculation_snapshot} for r in rows[:1000]]})
 
     @transaction.atomic
     def post(self, request):
@@ -354,7 +364,7 @@ class PayrollAPIView(APIView):
             PayrollRecord.objects.update_or_create(employee=employee, payroll_month=month, defaults={
                 "base_salary": result["base_salary"], "payable_base": result["payable_base"], "late_days": result["late_days"], "late_penalty": result["late_penalty"],
                 "half_day_deduction": result["half_day_deduction"], "absence_deduction": result["absence_deduction"], "overtime_hours": result["overtime_hours"], "overtime_amount": result["overtime_amount"],
-                "rent_incentive": result["rent_incentive"], "sale_incentive": result["sale_incentive"], "net_salary": result["net_salary"], "calculation_snapshot": result["snapshot"],
+                "rent_incentive": result["rent_incentive"], "sale_incentive": result["sale_incentive"], "other_deductions": result["other_deductions"], "net_salary": result["net_salary"], "calculation_snapshot": result["snapshot"],
             })
             generated += 1
         return Response({"detail": "Payroll draft generated.", "records": generated})
@@ -379,6 +389,84 @@ class PayrollActionAPIView(APIView):
         else:
             return Response({"detail": "Invalid action for current payroll status."}, status=400)
         return Response({"detail": f"Payroll marked {row.status.lower()}."})
+
+
+class EmployeePenaltyAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        rows = EmployeePenalty.objects.select_related("employee__user", "created_by", "approved_by")
+        if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+            rows = rows.filter(employee__user=request.user)
+        data = [{
+            "id": row.id,
+            "employee_id": row.employee_id,
+            "employee": row.employee.employee_id,
+            "employee_name": row.employee.user.get_full_name() or row.employee.user.phone,
+            "penalty_date": row.penalty_date,
+            "amount": row.amount,
+            "reason": row.reason,
+            "status": row.status,
+            "created_by": row.created_by.get_full_name() or row.created_by.phone,
+            "approved_by": None if row.approved_by is None else (row.approved_by.get_full_name() or row.approved_by.phone),
+            "approved_at": row.approved_at,
+        } for row in rows[:1000]]
+        response = {"penalties": data}
+        if _role(request.user, "ADMIN"):
+            response["employees"] = [{
+                "id": employee.id,
+                "employee_id": employee.employee_id,
+                "name": employee.user.get_full_name() or employee.user.phone,
+            } for employee in EmployeeProfile.objects.filter(is_active=True).select_related("user")]
+        return Response(response)
+
+    def post(self, request):
+        if not _role(request.user, "ADMIN"):
+            return Response({"detail": "Only admin can create an employee penalty."}, status=403)
+        employee = EmployeeProfile.objects.filter(pk=request.data.get("employee_id"), is_active=True).first()
+        if employee is None:
+            return Response({"detail": "Active employee is required."}, status=400)
+        try:
+            penalty_date = date.fromisoformat(request.data.get("penalty_date", ""))
+            amount = _money(request.data.get("amount", ""))
+        except (ValueError, TypeError, ArithmeticError):
+            return Response({"detail": "Valid penalty date and amount are required."}, status=400)
+        reason = (request.data.get("reason") or "").strip()
+        if amount <= 0 or not reason:
+            return Response({"detail": "Amount must be greater than zero and reason is required."}, status=400)
+        row = EmployeePenalty.objects.create(
+            employee=employee,
+            penalty_date=penalty_date,
+            amount=amount,
+            reason=reason,
+            created_by=request.user,
+        )
+        return Response({"id": row.id, "status": row.status, "detail": "Penalty saved as draft for approval."}, status=201)
+
+
+class EmployeePenaltyActionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, penalty_id):
+        if not _role(request.user, "ADMIN"):
+            return Response({"detail": "Only admin can approve or cancel a penalty."}, status=403)
+        row = EmployeePenalty.objects.select_for_update().filter(pk=penalty_id, status="DRAFT").first()
+        if row is None:
+            return Response({"detail": "Draft penalty not found."}, status=404)
+        action = request.data.get("action")
+        if action == "APPROVE":
+            row.status = "APPROVED"
+            row.approved_by = request.user
+            row.approved_at = timezone.now()
+            row.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
+        elif action == "CANCEL":
+            row.status = "CANCELLED"
+            row.cancelled_at = timezone.now()
+            row.save(update_fields=["status", "cancelled_at", "updated_at"])
+        else:
+            return Response({"detail": "Action must be APPROVE or CANCEL."}, status=400)
+        return Response({"detail": f"Penalty {row.status.lower()}.", "status": row.status})
 
 
 class PayrollExcelReportAPIView(APIView):

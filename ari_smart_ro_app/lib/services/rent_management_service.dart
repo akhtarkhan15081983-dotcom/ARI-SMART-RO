@@ -56,6 +56,9 @@ class RentManagementService {
     String? paymentDate,
 
     String? remarks,
+    double? latitude,
+    double? longitude,
+    double? accuracy,
   }) async {
     final headers = await ApiService.authHeaders();
 
@@ -77,6 +80,12 @@ class RentManagementService {
 
     if (remarks != null && remarks.trim().isNotEmpty) {
       body["remarks"] = remarks.trim();
+    }
+
+    if (latitude != null && longitude != null) {
+      body["latitude"] = latitude;
+      body["longitude"] = longitude;
+      if (accuracy != null) body["accuracy"] = accuracy;
     }
 
     print("========== RENT PAYMENT ==========");

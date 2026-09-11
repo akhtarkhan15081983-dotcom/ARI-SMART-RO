@@ -1926,6 +1926,10 @@ class RentPaymentCreateAPIView(APIView):
             "",
         )
 
+        latitude = request.data.get("latitude")
+        longitude = request.data.get("longitude")
+        accuracy = request.data.get("accuracy")
+
         # ====================================================
         # REQUIRED FIELDS
         # ====================================================
@@ -1992,6 +1996,29 @@ class RentPaymentCreateAPIView(APIView):
                     },
                     status=status.HTTP_403_FORBIDDEN,
                 )
+
+            if customer.latitude is None or customer.longitude is None:
+                try:
+                    captured_latitude = Decimal(str(latitude))
+                    captured_longitude = Decimal(str(longitude))
+                    captured_accuracy = None if accuracy in (None, "") else Decimal(str(accuracy))
+                except Exception:
+                    return Response({"success": False, "message": "Customer location is required for first rent collection."}, status=status.HTTP_400_BAD_REQUEST)
+                if not (Decimal("-90") <= captured_latitude <= Decimal("90") and Decimal("-180") <= captured_longitude <= Decimal("180")):
+                    return Response({"success": False, "message": "Invalid customer location."}, status=status.HTTP_400_BAD_REQUEST)
+                pending_location_capture = (
+                    engineer,
+                    captured_latitude,
+                    captured_longitude,
+                    captured_accuracy,
+                )
+                location_captured = False
+            else:
+                pending_location_capture = None
+                location_captured = False
+        else:
+            pending_location_capture = None
+            location_captured = False
 
         # ====================================================
         # MONTHLY RENT VALIDATION
@@ -2520,6 +2547,24 @@ class RentPaymentCreateAPIView(APIView):
             )
         )
 
+        # Save first-time GPS only after every payment validation has passed.
+        # Failed collection attempts must not change customer data.
+        if pending_location_capture is not None:
+            engineer, captured_latitude, captured_longitude, captured_accuracy = (
+                pending_location_capture
+            )
+            customer.latitude = captured_latitude
+            customer.longitude = captured_longitude
+            customer.save(update_fields=["latitude", "longitude"])
+            CustomerLocationLog.objects.create(
+                customer=customer,
+                captured_by=engineer,
+                latitude=captured_latitude,
+                longitude=captured_longitude,
+                accuracy=captured_accuracy,
+                source="RENT_COLLECTION",
+            )
+            location_captured = True
         # ====================================================
         # NEW BALANCE
         # ====================================================
@@ -2569,6 +2614,8 @@ class RentPaymentCreateAPIView(APIView):
 
                 "message":
                     "Rent payment recorded successfully.",
+
+                "location_captured": location_captured,
 
                 "payment": {
                     "id":

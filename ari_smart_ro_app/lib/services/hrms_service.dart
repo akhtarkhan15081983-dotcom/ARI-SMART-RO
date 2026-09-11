@@ -47,6 +47,45 @@ class HrmsService {
     }
   }
 
+  Future<Map<String, dynamic>> penalties() async {
+    final response = await http.get(
+      Uri.parse('${ApiService.baseUrl}/employees/hrms/penalties/'),
+      headers: await ApiService.authHeaders(),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<void> createPenalty({
+    required int employeeId,
+    required DateTime date,
+    required double amount,
+    required String reason,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ApiService.baseUrl}/employees/hrms/penalties/'),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({
+        'employee_id': employeeId,
+        'penalty_date': _date(date),
+        'amount': amount,
+        'reason': reason,
+      }),
+    );
+    if (response.statusCode != 201) throw Exception(_message(response));
+  }
+
+  Future<void> penaltyAction(int penaltyId, String action) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/penalties/$penaltyId/action/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({'action': action}),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+  }
+
   Future<List<Map<String, dynamic>>> payroll({String? month}) async {
     final suffix = month == null ? '' : '?month=$month';
     return _list('/employees/hrms/payroll/$suffix', 'payroll');
