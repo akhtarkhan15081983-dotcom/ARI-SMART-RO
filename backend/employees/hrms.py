@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 
 from attendance.models import Attendance
 from installation.models import Installation
+from jobs.models import Job
 from .models import EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
 
 
@@ -117,15 +118,42 @@ def calculate_payroll(employee, payroll_month):
         approved_penalties.aggregate(total=Sum("amount"))["total"] or Decimal("0")
     )
     penalty_ids = list(approved_penalties.values_list("id", flat=True))
-    net = _money(payable_base - late_penalty - half_day_deduction - absence_deduction - manual_penalty + overtime_amount + rent_incentive + sale_incentive)
+    work_penalty_days = 0
+    work_penalty_jobs = []
+    calculation_end = min(month_end, timezone.localdate())
+    jobs = Job.objects.filter(
+        engineer=employee,
+        scheduled_date__date__lte=calculation_end,
+    ).exclude(status="CANCELLED")
+    for job in jobs.only("id", "job_id", "scheduled_date", "completed_at"):
+        scheduled_day = timezone.localtime(job.scheduled_date).date()
+        penalty_start = scheduled_day + timedelta(days=2)
+        completed_day = (
+            timezone.localtime(job.completed_at).date()
+            if job.completed_at else calculation_end
+        )
+        penalty_end = min(completed_day, calculation_end)
+        range_start = max(start, penalty_start)
+        if penalty_end < range_start:
+            continue
+        days = (penalty_end - range_start).days + 1
+        work_penalty_days += days
+        work_penalty_jobs.append({
+            "job_id": job.job_id,
+            "penalty_days": days,
+            "amount": str(_money(Decimal(days) * Decimal("10"))),
+        })
+    work_delay_penalty = _money(Decimal(work_penalty_days) * Decimal("10"))
+    total_other_deductions = _money(manual_penalty + work_delay_penalty)
+    net = _money(payable_base - late_penalty - half_day_deduction - absence_deduction - total_other_deductions + overtime_amount + rent_incentive + sale_incentive)
     return {
         "base_salary": _money(employee.salary), "payable_base": payable_base,
         "late_days": late_days, "late_penalty": late_penalty,
         "half_day_deduction": half_day_deduction, "absence_deduction": absence_deduction,
         "overtime_hours": overtime_hours.quantize(MONEY), "overtime_amount": overtime_amount,
         "rent_incentive": rent_incentive, "sale_incentive": sale_incentive,
-        "other_deductions": manual_penalty, "net_salary": max(Decimal("0"), net),
-        "snapshot": {"calendar_days": days_in_month, "absent_days": str(absent_days), "unpaid_leave_units": str(unpaid_leave_units), "rent_installations": rent_count, "sale_installations": sale_count, "daily_rate": str(_money(daily_rate)), "hourly_rate": str(_money(hourly_rate)), "manual_penalty_ids": penalty_ids, "manual_penalty_count": len(penalty_ids), "manual_penalty_amount": str(manual_penalty)},
+        "other_deductions": total_other_deductions, "net_salary": max(Decimal("0"), net),
+        "snapshot": {"calendar_days": days_in_month, "absent_days": str(absent_days), "unpaid_leave_units": str(unpaid_leave_units), "rent_installations": rent_count, "sale_installations": sale_count, "daily_rate": str(_money(daily_rate)), "hourly_rate": str(_money(hourly_rate)), "manual_penalty_ids": penalty_ids, "manual_penalty_count": len(penalty_ids), "manual_penalty_amount": str(manual_penalty), "work_delay_penalty_days": work_penalty_days, "work_delay_penalty_amount": str(work_delay_penalty), "work_delay_penalty_rate": "10.00", "work_delay_penalty_jobs": work_penalty_jobs},
     }
 
 

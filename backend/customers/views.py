@@ -32,6 +32,7 @@ from assets.models.asset import ROAsset
 from decimal import Decimal
 from django.db import transaction
 from .models import CustomerLocationLog, CustomerRentHistory, CustomerRentPayment
+from .rent_policy import RENT_GRACE_DAYS, rent_due_date, rent_penalty
 from referrals.services import claim_welcome_reward
 
 from referrals.services import (
@@ -1487,6 +1488,22 @@ class CustomerRentAPIView(APIView):
 
                     "due_date": due_date.isoformat(),
 
+                    "grace_days": RENT_GRACE_DAYS,
+
+                    "penalty_days": rent_penalty(
+                        Decimal(str(balance)), due_date
+                    )["penalty_days"],
+
+                    "penalty_amount": float(rent_penalty(
+                        Decimal(str(balance)), due_date
+                    )["penalty_amount"]),
+
+                    "total_due": float(
+                        Decimal(str(balance)) + rent_penalty(
+                            Decimal(str(balance)), due_date
+                        )["penalty_amount"]
+                    ),
+
                     "status": payment_status,
                 },
 
@@ -1798,6 +1815,22 @@ class RentManagementAPIView(APIView):
 
                         "due_date":
                             due_date.isoformat(),
+
+                        "grace_days": RENT_GRACE_DAYS,
+
+                        "penalty_days": rent_penalty(
+                            Decimal(str(balance)), due_date
+                        )["penalty_days"],
+
+                        "penalty_amount": float(rent_penalty(
+                            Decimal(str(balance)), due_date
+                        )["penalty_amount"]),
+
+                        "total_due": float(
+                            Decimal(str(balance)) + rent_penalty(
+                                Decimal(str(balance)), due_date
+                            )["penalty_amount"]
+                        ),
                     },
 
                     "ro": {
@@ -2252,6 +2285,14 @@ class RentPaymentCreateAPIView(APIView):
             - current_paid,
             Decimal("0.00"),
         )
+        due_date_for_payment = rent_due_date(customer, rent_month)
+        late_policy = rent_penalty(
+            current_balance,
+            due_date_for_payment,
+            payment_date_obj,
+        )
+        current_penalty = late_policy["penalty_amount"]
+        current_total_due = current_balance + current_penalty
 
         # ====================================================
         # NOTHING OUTSTANDING
@@ -2278,14 +2319,14 @@ class RentPaymentCreateAPIView(APIView):
         # REQUESTED TOTAL CANNOT EXCEED OUTSTANDING
         # ====================================================
 
-        if requested_amount > current_balance:
+        if requested_amount > current_total_due:
 
             return Response(
                 {
                     "success": False,
                     "message": (
                         "Payment amount cannot be greater "
-                        "than the current outstanding balance."
+                        "than the current total payable amount."
                     ),
 
                     "expected_rent":
@@ -2494,7 +2535,7 @@ class RentPaymentCreateAPIView(APIView):
 
         rent_record.paid_amount = (
             current_paid
-            + actual_payment_amount
+            + min(requested_amount, current_balance)
         )
 
         rent_record.save(

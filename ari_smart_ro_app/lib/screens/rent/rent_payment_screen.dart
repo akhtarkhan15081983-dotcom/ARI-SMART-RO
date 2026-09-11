@@ -120,7 +120,7 @@ class _RentPaymentScreenState extends State<RentPaymentScreen> {
 
                   onPay: rent.currentRent.canPay
                       ? () {
-                          _openPaymentQr(rent.currentRent.balance);
+                          _openPaymentQr(rent.currentRent.totalDue);
                         }
                       : null,
                 ),
@@ -245,6 +245,18 @@ class _CurrentRentCard extends StatelessWidget {
             _MoneyRow(label: "Paid Amount", amount: rent.paidAmount),
 
             _MoneyRow(label: "Balance", amount: rent.balance, bold: true),
+
+            if (rent.penaltyAmount > 0) ...[
+              _MoneyRow(
+                label: "Late penalty (${rent.penaltyDays} days × ₹10)",
+                amount: rent.penaltyAmount,
+              ),
+              _MoneyRow(
+                label: "Total Payable",
+                amount: rent.totalDue,
+                bold: true,
+              ),
+            ],
 
             const SizedBox(height: 12),
 

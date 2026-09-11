@@ -1,14 +1,14 @@
 from decimal import Decimal
 
 from django.db import models
-from django.db.models import Q, Sum
-from django.db.models.functions import Coalesce
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from customers.models import CustomerRentHistory
+from customers.rent_policy import rent_alert_schedule, rent_due_date, rent_penalty
 from .models import CustomerEngagement, CustomerEngagementRead
 
 
@@ -64,25 +64,57 @@ class CustomerEngagementAPIView(APIView):
         payment_alert = None
         customer = getattr(request.user, "customer_profile", None) if request.user.is_authenticated else None
         if customer is not None:
-            due = CustomerRentHistory.objects.filter(
-                customer=customer, rent_month__lte=timezone.localdate(),
-            ).aggregate(
-                expected=Coalesce(Sum("expected_rent"), Decimal("0")),
-                paid=Coalesce(Sum("paid_amount"), Decimal("0")),
+            today = timezone.localdate()
+            current_month = today.replace(day=1)
+            outstanding = list(CustomerRentHistory.objects.filter(
+                customer=customer, rent_month__lte=current_month,
+                paid_amount__lt=models.F("expected_rent"),
+            ).order_by("rent_month"))
+            balance = sum(
+                (max(Decimal("0"), row.expected_rent - row.paid_amount) for row in outstanding),
+                Decimal("0"),
             )
-            balance = max(Decimal("0"), due["expected"] - due["paid"])
-            if balance > 0:
-                oldest = CustomerRentHistory.objects.filter(
-                    customer=customer, rent_month__lte=timezone.localdate(),
-                    paid_amount__lt=models.F("expected_rent"),
-                ).order_by("rent_month").values_list("rent_month", flat=True).first()
+            penalty_amount = Decimal("0")
+            penalty_days = 0
+            for row in outstanding:
+                policy = rent_penalty(
+                    row.expected_rent - row.paid_amount,
+                    rent_due_date(customer, row.rent_month),
+                    today,
+                )
+                penalty_amount += policy["penalty_amount"]
+                penalty_days += policy["penalty_days"]
+
+            current_due_date = rent_due_date(customer, current_month)
+            schedule = rent_alert_schedule(current_due_date, now)
+            current_record = next(
+                (row for row in outstanding if row.rent_month == current_month),
+                None,
+            )
+            should_alert = balance > 0 and (
+                schedule["active"] or current_due_date < today or current_record is None
+            )
+            if should_alert:
+                total_due = balance + penalty_amount
+                oldest = outstanding[0].rent_month if outstanding else None
                 payment_alert = {
                     "amount_due": _decimal_string(balance),
+                    "rent_penalty": _decimal_string(penalty_amount),
+                    "total_due": _decimal_string(total_due),
+                    "penalty_days": penalty_days,
                     "oldest_due_month": oldest.isoformat() if oldest else None,
-                    "title": "Rent payment due",
-                    "message": f"₹{balance.quantize(Decimal('1'))} is pending on your ARI account.",
+                    "due_date": current_due_date.isoformat(),
+                    "title": "Rent payment reminder" if today <= current_due_date else "Rent payment overdue",
+                    "message": (
+                        f"₹{total_due.quantize(Decimal('1'))} is due including "
+                        f"₹{penalty_amount.quantize(Decimal('1'))} late penalty."
+                        if penalty_amount else
+                        f"₹{balance.quantize(Decimal('1'))} rent is due on {current_due_date:%d %b}."
+                    ),
                     "action": "RENT",
                     "action_label": "PAY / VIEW RENT",
+                    "repeat_interval_hours": schedule["repeat_interval_hours"],
+                    "next_alert_at": schedule["next_alert_at"].isoformat() if schedule["next_alert_at"] else None,
                 }
 
         return Response({

@@ -70,6 +70,9 @@ class CurrentRent {
   final double expectedRent;
   final double paidAmount;
   final double balance;
+  final double penaltyAmount;
+  final double totalDue;
+  final int penaltyDays;
 
   final String dueDate;
 
@@ -78,6 +81,9 @@ class CurrentRent {
     required this.expectedRent,
     required this.paidAmount,
     required this.balance,
+    required this.penaltyAmount,
+    required this.totalDue,
+    required this.penaltyDays,
     required this.dueDate,
   });
 
@@ -103,6 +109,17 @@ class CurrentRent {
       paidAmount: double.tryParse(json["paid_amount"]?.toString() ?? "0") ?? 0,
 
       balance: double.tryParse(json["balance"]?.toString() ?? "0") ?? 0,
+
+      penaltyAmount:
+          double.tryParse(json["penalty_amount"]?.toString() ?? "0") ?? 0,
+
+      totalDue:
+          double.tryParse(
+            json["total_due"]?.toString() ?? json["balance"]?.toString() ?? "0",
+          ) ??
+          0,
+
+      penaltyDays: int.tryParse(json["penalty_days"]?.toString() ?? "0") ?? 0,
 
       dueDate: json["due_date"]?.toString() ?? "",
     );

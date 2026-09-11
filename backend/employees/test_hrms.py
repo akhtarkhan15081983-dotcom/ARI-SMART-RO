@@ -5,7 +5,11 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from accounts.models import User
+from assets.models import ROAsset
 from attendance.models import Attendance
+from customers.models import Customer
+from jobs.models import Job
+from products.models import ProductCategory, ROModel
 from .hrms import calculate_payroll
 from .models import EmployeePenalty, EmployeeProfile, HRPolicy
 
@@ -43,6 +47,25 @@ class HRMSPolicyTests(APITestCase):
         self.assertEqual(result["half_day_deduction"], Decimal("500.00"))
         self.assertEqual(result["net_salary"], Decimal("500.00"))
 
+    def test_unfinished_assigned_work_deducts_ten_rupees_per_day(self):
+        category = ProductCategory.objects.create(name="HRMS Test RO")
+        model = ROModel.objects.create(
+            category=category, model_name="Test RO", capacity="12 LPH",
+            business_type="RENT",
+        )
+        customer = Customer.objects.create(
+            name="Delay Test", phone="9111111188", address="Agra",
+            city="Agra", state="UP", pincode="282001", ro_model="Test RO",
+        )
+        asset = ROAsset.objects.create(ro_model=model, current_customer=customer)
+        Job.objects.create(
+            customer=customer, ro_asset=asset, engineer=self.employee,
+            job_type="SERVICE", scheduled_date=timezone.make_aware(datetime(2026, 2, 26, 8, 0)),
+        )
+        result = calculate_payroll(self.employee, date(2026, 2, 1))
+        self.assertEqual(result["snapshot"]["work_delay_penalty_days"], 1)
+        self.assertEqual(result["snapshot"]["work_delay_penalty_amount"], "10.00")
+        self.assertEqual(result["other_deductions"], Decimal("10.00"))
     def test_leave_requires_one_day_notice(self):
         self.client.force_authenticate(self.user)
         today = timezone.localdate().isoformat()

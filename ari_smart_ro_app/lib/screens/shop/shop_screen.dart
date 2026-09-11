@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/shop_product_model.dart';
@@ -42,16 +44,24 @@ class _ShopScreenState extends State<ShopScreen> {
   String _selectedCategory = 'All';
   String _selectedOffer = 'All';
   int _unreadCount = 0;
+  Timer? _rentAlertTimer;
 
   @override
   void initState() {
     super.initState();
     _catalog = widget.service.fetchCatalog();
     _engagement = _loadEngagement();
+    if (!widget.guestMode) {
+      _rentAlertTimer = Timer.periodic(const Duration(hours: 3), (_) {
+        if (!mounted) return;
+        setState(() => _engagement = _loadEngagement());
+      });
+    }
   }
 
   @override
   void dispose() {
+    _rentAlertTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }

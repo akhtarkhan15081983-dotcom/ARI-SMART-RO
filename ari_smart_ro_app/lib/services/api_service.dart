@@ -1,17 +1,14 @@
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiService {
   static const String _configuredBaseUrl = String.fromEnvironment(
     "API_BASE_URL",
-    defaultValue: "",
+    defaultValue: "https://ari-smart-ro-api.onrender.com/api",
   );
-
-  static const String _developmentBaseUrl = "http://127.0.0.1:8000/api";
 
   static String get baseUrl {
     final configured = _configuredBaseUrl.trim();
@@ -21,11 +18,7 @@ class ApiService {
           : configured;
     }
 
-    if (kReleaseMode) {
-      throw StateError("API_BASE_URL is required for a release build.");
-    }
-
-    return _developmentBaseUrl;
+    return "https://ari-smart-ro-api.onrender.com/api";
   }
 
   static const FlutterSecureStorage storage = FlutterSecureStorage();
