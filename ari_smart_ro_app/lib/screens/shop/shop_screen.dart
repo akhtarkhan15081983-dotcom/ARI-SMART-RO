@@ -401,7 +401,6 @@ class _ShopScreenState extends State<ShopScreen> {
                   ),
                   SliverToBoxAdapter(
                     child: _HeroBanner(
-                      product: products.isEmpty ? null : products.first,
                       onExplore: () {
                         _searchController.clear();
                         _loadCatalog(query: '');
@@ -610,7 +609,13 @@ class _TopHeader extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.water_drop_rounded, color: Colors.white),
+          child: Padding(
+            padding: const EdgeInsets.all(7),
+            child: Image.asset(
+              'assets/images/ari_smart_ro_icon.png',
+              fit: BoxFit.contain,
+            ),
+          ),
         ),
         const SizedBox(width: 11),
         const Expanded(
@@ -747,9 +752,8 @@ class _DeliveryStrip extends StatelessWidget {
 }
 
 class _HeroBanner extends StatelessWidget {
-  const _HeroBanner({required this.product, required this.onExplore});
+  const _HeroBanner({required this.onExplore});
 
-  final ShopProduct? product;
   final VoidCallback onExplore;
 
   @override
@@ -758,14 +762,10 @@ class _HeroBanner extends StatelessWidget {
     child: Container(
       constraints: const BoxConstraints(minHeight: 220),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            _ShopScreenState.navy,
-            _ShopScreenState.blue,
-            _ShopScreenState.cyan,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        image: const DecorationImage(
+          image: AssetImage('assets/images/premium_store_hero_v2.png'),
+          fit: BoxFit.cover,
+          alignment: Alignment.centerRight,
         ),
         borderRadius: BorderRadius.circular(28),
         boxShadow: const [
@@ -778,20 +778,21 @@ class _HeroBanner extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Positioned(
-            right: 14,
-            bottom: 12,
-            child: SizedBox(
-              width: 135,
-              height: 170,
-              child: product == null || product!.imageUrls.isEmpty
-                  ? const _ProductVisual(size: 92, light: true)
-                  : Image.network(
-                      product!.imageUrls.first,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) =>
-                          const _ProductVisual(size: 92, light: true),
-                    ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                gradient: const LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  stops: [0, .52, 1],
+                  colors: [
+                    Color(0xF5052442),
+                    Color(0xB3052442),
+                    Color(0x00115E92),
+                  ],
+                ),
+              ),
             ),
           ),
           Padding(
@@ -809,7 +810,7 @@ class _HeroBanner extends StatelessWidget {
                     borderRadius: BorderRadius.circular(50),
                   ),
                   child: const Text(
-                    'SMART WATER CARE',
+                    'PREMIUM WATER CARE',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 10,
@@ -820,7 +821,7 @@ class _HeroBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Upgrade your\nwater experience',
+                  'Pure Water.\nBetter Life.',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 25,
@@ -830,7 +831,7 @@ class _HeroBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 9),
                 const Text(
-                  'Purifiers, filters, service and care—inside one premium app.',
+                  'Premium RO purifiers with trusted service for your family.',
                   style: TextStyle(
                     color: Color(0xDDFFFFFF),
                     fontSize: 12.5,
@@ -846,7 +847,7 @@ class _HeroBanner extends StatelessWidget {
                     minimumSize: const Size(0, 42),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
-                  child: const Text('Explore range'),
+                  child: const Text('Shop now  →'),
                 ),
               ],
             ),
@@ -1549,10 +1550,9 @@ class _EmptyCatalog extends StatelessWidget {
 }
 
 class _ProductVisual extends StatelessWidget {
-  const _ProductVisual({required this.size, this.light = false});
+  const _ProductVisual({required this.size});
 
   final double size;
-  final bool light;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -1560,15 +1560,13 @@ class _ProductVisual extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: light
-            ? Colors.white.withValues(alpha: .14)
-            : const Color(0xFFE7F5FB),
+        color: const Color(0xFFE7F5FB),
         borderRadius: BorderRadius.circular(size * .28),
       ),
       child: Icon(
         Icons.water_drop_rounded,
         size: size * .48,
-        color: light ? Colors.white : _ShopScreenState.blue,
+        color: _ShopScreenState.blue,
       ),
     ),
   );

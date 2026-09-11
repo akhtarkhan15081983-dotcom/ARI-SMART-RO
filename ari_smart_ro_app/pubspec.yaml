@@ -48,6 +48,7 @@ flutter:
   assets:
     - assets/images/ari_smart_ro_icon.png
     - assets/images/ari_launcher_icon.png
+    - assets/images/premium_store_hero_v2.png
     - assets/videos/ari_water_fill.mp4
 
 flutter_launcher_icons:

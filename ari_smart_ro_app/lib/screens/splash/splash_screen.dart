@@ -271,9 +271,47 @@ class _SplashScreenState extends State<SplashScreen>
                           letterSpacing: .5,
                         ),
                       ),
-                      const SizedBox(height: 36),
+                      const SizedBox(height: 30),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 15,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .10),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .20),
+                          ),
+                        ),
+                        child: const Row(
+                          children: [
+                            Expanded(
+                              child: _SplashPromise(
+                                icon: Icons.water_drop_outlined,
+                                label: 'Pure\nWater',
+                              ),
+                            ),
+                            _SplashDivider(),
+                            Expanded(
+                              child: _SplashPromise(
+                                icon: Icons.verified_user_outlined,
+                                label: 'Trusted\nQuality',
+                              ),
+                            ),
+                            _SplashDivider(),
+                            Expanded(
+                              child: _SplashPromise(
+                                icon: Icons.eco_outlined,
+                                label: 'Healthy\nLiving',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 30),
                       SizedBox(
-                        width: 150,
+                        width: 190,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(50),
                           child: const LinearProgressIndicator(
@@ -405,4 +443,40 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
   }
+}
+
+class _SplashPromise extends StatelessWidget {
+  const _SplashPromise({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Icon(icon, color: _SplashScreenState._cyan, size: 25),
+      const SizedBox(height: 7),
+      Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10.5,
+          height: 1.25,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    ],
+  );
+}
+
+class _SplashDivider extends StatelessWidget {
+  const _SplashDivider();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 1,
+    height: 46,
+    color: Colors.white.withValues(alpha: .17),
+  );
 }
