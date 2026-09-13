@@ -13,7 +13,7 @@ class DashboardItem {
 
 class DashboardItems {
   static const DashboardItem andy = DashboardItem(
-    title: "ANDY AI",
+    title: "ANDY AI\nComing Soon",
     icon: Icons.auto_awesome,
     route: "andy",
   );
