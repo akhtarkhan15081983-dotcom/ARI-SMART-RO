@@ -10,7 +10,6 @@ import '../admin/attendance_security_test_screen.dart';
 import '../admin/attendance_review_admin_screen.dart';
 import '../admin/engineer_bag_admin_screen.dart';
 import '../admin/saas_super_admin_screen.dart';
-import '../andy/andy_chat_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
 import '../bag/my_bag_screen.dart';
@@ -286,7 +285,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
         return;
       case 'andy':
-        _push(const AndyChatScreen());
+        _showComingSoon(
+          'ANDY AI voice assistant is coming soon. Baaki ARI SMART RO services abhi available hain.',
+        );
         return;
       case 'face_security_admin':
         if (_role == 'ADMIN') {
