@@ -7,7 +7,7 @@ import 'api_service.dart';
 class AdminFaceSecurityService {
   Future<List<Map<String, dynamic>>> getEngineers() async {
     final response = await http.get(
-      Uri.parse('${ApiService.baseUrl}/employees/engineers/'),
+      Uri.parse('${ApiService.baseUrl}/employees/face-security/'),
       headers: await ApiService.authHeaders(),
     );
 
@@ -19,18 +19,16 @@ class AdminFaceSecurityService {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<String> setReEnrollment({
+  Future<String> updateEnrollment({
     required int employeeId,
-    required bool allow,
+    required String action,
   }) async {
     final response = await http.post(
       Uri.parse(
         '${ApiService.baseUrl}/employees/$employeeId/face-enrollment-control/',
       ),
       headers: await ApiService.authHeaders(),
-      body: jsonEncode({
-        'action': allow ? 'allow_reenrollment' : 'cancel_reenrollment',
-      }),
+      body: jsonEncode({'action': action}),
     );
 
     final data = response.body.isNotEmpty
@@ -39,10 +37,25 @@ class AdminFaceSecurityService {
 
     if (response.statusCode != 200) {
       throw Exception(
-        data['message']?.toString() ?? 'Unable to update enrollment permission',
+        data['message']?.toString() ?? 'Unable to update face security',
       );
     }
 
     return data['message']?.toString() ?? 'Updated';
   }
+
+  Future<String> setReEnrollment({
+    required int employeeId,
+    required bool allow,
+  }) =>
+      updateEnrollment(
+        employeeId: employeeId,
+        action: allow ? 'allow_reenrollment' : 'cancel_reenrollment',
+      );
+
+  Future<String> verifyEnrollment(int employeeId) =>
+      updateEnrollment(employeeId: employeeId, action: 'verify_enrollment');
+
+  Future<String> rejectEnrollment(int employeeId) =>
+      updateEnrollment(employeeId: employeeId, action: 'reject_enrollment');
 }
