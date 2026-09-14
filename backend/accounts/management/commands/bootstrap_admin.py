@@ -5,12 +5,18 @@ from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
-    help = "Create the initial administrator from environment variables."
+    help = "Create the initial administrator from environment variables, or explicitly reset an existing admin."
 
     def handle(self, *args, **options):
         phone = os.getenv("DJANGO_BOOTSTRAP_ADMIN_PHONE", "").strip()
         password = os.getenv("DJANGO_BOOTSTRAP_ADMIN_PASSWORD", "")
         first_name = os.getenv("DJANGO_BOOTSTRAP_ADMIN_NAME", "Administrator").strip()
+        reset_existing = os.getenv("DJANGO_BOOTSTRAP_ADMIN_RESET", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
         if not phone and not password:
             self.stdout.write("Admin bootstrap skipped; credentials are not configured.")
@@ -34,8 +40,26 @@ class Command(BaseCommand):
                 "is_verified": True,
             },
         )
+
         if not created:
-            self.stdout.write("Admin bootstrap skipped; the phone already exists.")
+            if not reset_existing:
+                self.stdout.write("Admin bootstrap skipped; the phone already exists.")
+                return
+            if not (getattr(user, "is_superuser", False) or getattr(user, "role", "") == "ADMIN"):
+                raise CommandError("Refusing to reset a non-admin account.")
+
+            user.set_password(password)
+            update_fields = ["password"]
+
+            if hasattr(user, "failed_login_attempts"):
+                user.failed_login_attempts = 0
+                update_fields.append("failed_login_attempts")
+            if hasattr(user, "locked_until"):
+                user.locked_until = None
+                update_fields.append("locked_until")
+
+            user.save(update_fields=update_fields)
+            self.stdout.write(self.style.SUCCESS("Existing administrator password reset successfully."))
             return
 
         user.set_password(password)
