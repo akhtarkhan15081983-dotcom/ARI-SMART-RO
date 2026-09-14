@@ -197,18 +197,55 @@ class FaceEnrollmentAPIView(APIView):
         })
 
 
+class AdminFaceSecurityListAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        company = _request_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        employees = (
+            EmployeeProfile.objects.filter(company=company, is_active=True)
+            .select_related("user")
+            .order_by("user__first_name", "user__last_name", "id")
+        )
+        return Response([
+            {
+                "id": employee.id,
+                "employee_id": employee.employee_id,
+                "name": employee.user.get_full_name() or employee.user.phone,
+                "phone": employee.user.phone,
+                "designation": employee.designation,
+                "face_enrolled": employee.face_enrolled_at is not None,
+                "face_enrollment_verified": employee.face_enrollment_verified,
+                "face_enrollment_allowed": employee.face_enrollment_allowed,
+                "attendance_device_bound": bool(employee.attendance_device_id),
+                "has_enrollment_photo": bool(employee.photo),
+            }
+            for employee in employees
+        ])
+
+
 class AdminFaceEnrollmentControlAPIView(APIView):
     permission_classes = [IsAdmin]
 
     def post(self, request, employee_id):
-        if getattr(request.user, "role", "") != "ADMIN":
+        company = _request_company(request)
+        if company is None:
             return Response(
-                {"success": False, "message": "Only an admin can control face enrollment."},
+                {"success": False, "message": "Active company workspace not found."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         try:
-            employee = EmployeeProfile.objects.select_related("user").get(id=employee_id)
+            employee = EmployeeProfile.objects.select_related("user").get(
+                id=employee_id,
+                company=company,
+            )
         except EmployeeProfile.DoesNotExist:
             return Response(
                 {"success": False, "message": "Employee not found."},
@@ -216,6 +253,7 @@ class AdminFaceEnrollmentControlAPIView(APIView):
             )
 
         action = (request.data.get("action") or "").strip().lower()
+
         if action == "allow_reenrollment":
             employee.face_enrollment_allowed = True
             employee.save(update_fields=["face_enrollment_allowed"])
@@ -232,6 +270,57 @@ class AdminFaceEnrollmentControlAPIView(APIView):
                 "success": True,
                 "message": "Face/device re-enrollment authorization cancelled.",
                 "face_enrollment_allowed": False,
+            })
+
+        if action == "verify_enrollment":
+            if (
+                employee.face_enrolled_at is None
+                or not employee.photo
+                or not employee.attendance_device_id
+            ):
+                return Response(
+                    {
+                        "success": False,
+                        "message": "A face photo and bound attendance device are required before verification.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            employee.face_enrollment_verified = True
+            employee.face_enrollment_allowed = False
+            employee.save(update_fields=[
+                "face_enrollment_verified",
+                "face_enrollment_allowed",
+            ])
+            return Response({
+                "success": True,
+                "message": "Face and attendance device enrollment verified by admin.",
+                "face_enrollment_verified": True,
+            })
+
+        if action in {"reject_enrollment", "reset_enrollment"}:
+            employee.photo = None
+            employee.face_enrolled_at = None
+            employee.face_enrollment_verified = False
+            employee.face_enrollment_allowed = False
+            employee.attendance_device_id = ""
+            employee.save(update_fields=[
+                "photo",
+                "face_enrolled_at",
+                "face_enrollment_verified",
+                "face_enrollment_allowed",
+                "attendance_device_id",
+            ])
+            message = (
+                "Enrollment rejected. The employee must capture a fresh face photo and bind the device again."
+                if action == "reject_enrollment"
+                else "Face and attendance device enrollment reset."
+            )
+            return Response({
+                "success": True,
+                "message": message,
+                "face_enrollment_verified": False,
+                "face_enrollment_allowed": False,
+                "attendance_device_bound": False,
             })
 
         return Response(
