@@ -94,6 +94,55 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
     }
   }
 
+  Future<void> _reviewEnrollment(
+    Map<String, dynamic> employee,
+    bool approve,
+  ) async {
+    final id = employee['id'] as int;
+    final name = employee['name']?.toString() ?? 'Employee';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(approve ? 'Verify Enrollment?' : 'Reject Enrollment?'),
+        content: Text(
+          approve
+              ? 'Confirm that $name\'s enrollment photo is the correct employee. This will mark the face/device enrollment as verified.'
+              : '$name\'s current face/device enrollment will be cleared. Attendance history will not be deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(approve ? 'Verify' : 'Reject & Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _busyId = id);
+    try {
+      final message = approve
+          ? await _service.verifyEnrollment(id)
+          : await _service.rejectEnrollment(id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -166,6 +215,32 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
                                   : Colors.green.shade700,
                             ),
                           ),
+                          if (enrolled && !verified) ...[
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    onPressed: _busyId == id
+                                        ? null
+                                        : () => _reviewEnrollment(e, true),
+                                    icon: const Icon(Icons.verified_outlined),
+                                    label: const Text('Verify Enrollment'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _busyId == id
+                                        ? null
+                                        : () => _reviewEnrollment(e, false),
+                                    icon: const Icon(Icons.restart_alt),
+                                    label: const Text('Reject & Reset'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                           const SizedBox(height: 14),
                           SizedBox(
                             width: double.infinity,
