@@ -8,6 +8,7 @@ from .views import (
     AssignmentEmployeeListAPIView,
     FaceEnrollmentAPIView,
     AdminFaceEnrollmentControlAPIView,
+    AdminFaceSecurityListAPIView,
     EmployeeManagementAPIView,
 )
 from .hrms import EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView
@@ -43,6 +44,11 @@ urlpatterns = [
         "employees/face-enrollment/",
         FaceEnrollmentAPIView.as_view(),
         name="face-enrollment",
+    ),
+    path(
+        "employees/face-security/",
+        AdminFaceSecurityListAPIView.as_view(),
+        name="admin-face-security-list",
     ),
     path(
         "employees/<int:employee_id>/face-enrollment-control/",
