@@ -35,6 +35,8 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
 
   String _searchQuery = "";
 
+  _AssignmentFilter _assignmentFilter = _AssignmentFilter.all;
+
   // ============================================================
   // ROLE
   // ============================================================
@@ -56,12 +58,15 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
   List<CustomerModel> get _filteredCustomers {
     final query = _searchQuery.trim().toLowerCase();
 
-    if (query.isEmpty) {
-      return _customers;
-    }
-
     return _customers.where((customer) {
-      return customer.customerName.toLowerCase().contains(query) ||
+      final matchesAssignment = switch (_assignmentFilter) {
+        _AssignmentFilter.all => true,
+        _AssignmentFilter.unassigned => customer.assignedEngineer == null,
+        _AssignmentFilter.assigned => customer.assignedEngineer != null,
+      };
+
+      final matchesSearch = query.isEmpty ||
+          customer.customerName.toLowerCase().contains(query) ||
           customer.customerId.toLowerCase().contains(query) ||
           customer.phone.toLowerCase().contains(query) ||
           customer.cardNumber.toLowerCase().contains(query) ||
@@ -70,6 +75,8 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
           customer.address.toLowerCase().contains(query) ||
           customer.roModel.toLowerCase().contains(query) ||
           customer.engineerName.toLowerCase().contains(query);
+
+      return matchesAssignment && matchesSearch;
     }).toList();
   }
 
@@ -223,65 +230,32 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
 
       final messenger = ScaffoldMessenger.of(context);
 
-      showDialog(
+      showDialog<void>(
         context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text("Assign Engineer"),
+        builder: (dialogContext) => _EngineerPickerDialog(
+          engineers: engineers,
+          onSelected: (engineer) async {
+            Navigator.pop(dialogContext);
 
-            content: SizedBox(
-              width: double.maxFinite,
+            final bool success = await service.assignCustomer(
+              customerId: customer.id,
+              employeeId: engineer.id,
+            );
 
-              child: ListView.builder(
-                shrinkWrap: true,
+            if (!mounted) return;
 
-                itemCount: engineers.length,
-
-                itemBuilder: (context, index) {
-                  final EngineerModel engineer = engineers[index];
-
-                  return ListTile(
-                    leading: const Icon(Icons.engineering),
-
-                    title: Text(engineer.name),
-
-                    subtitle: Text(engineer.phone),
-
-                    onTap: () async {
-                      Navigator.pop(dialogContext);
-
-                      final bool success = await service.assignCustomer(
-                        customerId: customer.id,
-
-                        employeeId: engineer.id,
-                      );
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      if (success) {
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              "${engineer.name} Assigned Successfully",
-                            ),
-                          ),
-                        );
-
-                        await _loadCustomers();
-                      } else {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text("Assignment Failed")),
-                        );
-                      }
-                    },
-                  );
-                },
-              ),
-            ),
-          );
-        },
+            if (success) {
+              messenger.showSnackBar(
+                SnackBar(content: Text("${engineer.name} Assigned Successfully")),
+              );
+              await _loadCustomers();
+            } else {
+              messenger.showSnackBar(
+                const SnackBar(content: Text("Assignment Failed")),
+              );
+            }
+          },
+        ),
       );
     } catch (e) {
       if (!mounted) {
@@ -345,6 +319,19 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
 
         const SizedBox(height: 8),
 
+        Wrap(
+          spacing: 8,
+          children: _AssignmentFilter.values.map((filter) {
+            return ChoiceChip(
+              label: Text(filter.label),
+              selected: _assignmentFilter == filter,
+              onSelected: (_) => setState(() => _assignmentFilter = filter),
+            );
+          }).toList(),
+        ),
+
+        const SizedBox(height: 8),
+
         Row(
           children: [
             const Icon(Icons.people_alt_outlined, size: 18),
@@ -352,7 +339,8 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
             const SizedBox(width: 6),
 
             Text(
-              _searchQuery.trim().isEmpty
+              _searchQuery.trim().isEmpty &&
+                      _assignmentFilter == _AssignmentFilter.all
                   ? "${_customers.length} customers"
                   : "${_filteredCustomers.length} customers found",
 
@@ -712,6 +700,109 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+enum _AssignmentFilter {
+  all("All"),
+  unassigned("Unassigned"),
+  assigned("Assigned");
+
+  const _AssignmentFilter(this.label);
+  final String label;
+}
+
+class _EngineerPickerDialog extends StatefulWidget {
+  const _EngineerPickerDialog({
+    required this.engineers,
+    required this.onSelected,
+  });
+
+  final List<EngineerModel> engineers;
+  final ValueChanged<EngineerModel> onSelected;
+
+  @override
+  State<_EngineerPickerDialog> createState() => _EngineerPickerDialogState();
+}
+
+class _EngineerPickerDialogState extends State<_EngineerPickerDialog> {
+  final TextEditingController _controller = TextEditingController();
+  String _query = "";
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _query.trim().toLowerCase();
+    final filtered = widget.engineers.where((engineer) {
+      return query.isEmpty ||
+          engineer.name.toLowerCase().contains(query) ||
+          engineer.phone.toLowerCase().contains(query) ||
+          engineer.employeeId.toLowerCase().contains(query);
+    }).toList();
+
+    return AlertDialog(
+      title: const Text("Assign Engineer"),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 430,
+        child: Column(
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              onChanged: (value) => setState(() => _query = value),
+              decoration: InputDecoration(
+                hintText: "Search name, ID or phone...",
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: "Clear search",
+                        onPressed: () {
+                          _controller.clear();
+                          setState(() => _query = "");
+                        },
+                        icon: const Icon(Icons.clear),
+                      ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: filtered.isEmpty
+                  ? const Center(child: Text("No matching employee found"))
+                  : ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final engineer = filtered[index];
+                        return ListTile(
+                          leading: const Icon(Icons.engineering),
+                          title: Text(engineer.name),
+                          subtitle: Text(
+                            [engineer.employeeId, engineer.phone]
+                                .where((value) => value.trim().isNotEmpty)
+                                .join(" • "),
+                          ),
+                          onTap: () => widget.onSelected(engineer),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("Cancel"),
+        ),
+      ],
     );
   }
 }
