@@ -89,6 +89,11 @@ class CustomerSerializer(serializers.ModelSerializer):
         default="",
     )
 
+    qr_payload = serializers.SerializerMethodField()
+
+    def get_qr_payload(self, obj):
+        return f"ARI-SMART-RO:CUSTOMER:{obj.customer_id}"
+
     class Meta:
 
         model = Customer
@@ -142,6 +147,8 @@ class CustomerSerializer(serializers.ModelSerializer):
             "assigned_engineer",
 
             "engineer_name",
+
+            "qr_payload",
 
             "is_active",
         ]
