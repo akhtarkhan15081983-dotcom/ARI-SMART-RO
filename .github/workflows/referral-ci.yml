@@ -82,6 +82,22 @@ jobs:
           flutter build appbundle --release
           --dart-define=API_BASE_URL=https://api.example.invalid/api
 
+      - name: Build installable Android APK
+        run: >-
+          flutter build apk --release
+          --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+
+      - name: Rename APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.2.apk
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-v1.0.2-APK
+          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.2.apk
+          if-no-files-found: error
+          retention-days: 30
+
   container:
     runs-on: ubuntu-latest
     steps:
