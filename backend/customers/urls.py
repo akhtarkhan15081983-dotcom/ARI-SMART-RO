@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .bulk_import import CustomerBulkImportAPIView, CustomerQRCodeAPIView
 from .views import (
     CustomerListAPIView,
     MyCustomersAPIView,
@@ -54,6 +55,16 @@ urlpatterns = [
     ),
 
     # ========================================================
+    # BULK CUSTOMER IMPORT
+    # ========================================================
+
+    path(
+        "bulk-import/",
+        CustomerBulkImportAPIView.as_view(),
+        name="customer-bulk-import",
+    ),
+
+    # ========================================================
     # CUSTOMER LIST
     # ========================================================
 
@@ -71,6 +82,16 @@ urlpatterns = [
         "create/",
         CustomerCreateAPIView.as_view(),
         name="customer-create",
+    ),
+
+    # ========================================================
+    # CUSTOMER QR
+    # ========================================================
+
+    path(
+        "<int:pk>/qr/",
+        CustomerQRCodeAPIView.as_view(),
+        name="customer-qr",
     ),
 
     # ========================================================
