@@ -1015,14 +1015,14 @@ class WalkInCustomerAPIView(APIView):
         # the remaining amount is saved as refundable/security deposit.
         payload = request.data.copy()
         try:
-            total_received = Decimal(
-                str(
-                    request.data.get(
-                        "total_amount_received",
-                        request.data.get("installation_charge", 0),
-                    )
-                )
-            )
+            if request.data.get("total_amount_received") not in (None, ""):
+                total_received = Decimal(str(request.data.get("total_amount_received")))
+            else:
+                # Backward compatibility with older app builds that send
+                # installation/security as separate fields.
+                legacy_installation = Decimal(str(request.data.get("installation_charge", 0) or 0))
+                legacy_security = Decimal(str(request.data.get("security_deposit", 0) or 0))
+                total_received = legacy_installation + legacy_security
         except Exception:
             return Response(
                 {"success": False, "message": "Enter a valid amount received."},
