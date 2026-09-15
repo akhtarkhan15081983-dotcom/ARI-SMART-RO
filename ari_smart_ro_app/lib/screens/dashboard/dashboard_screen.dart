@@ -66,11 +66,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       icon: Icons.report_problem,
       route: 'complaint',
     ),
-    DashboardItem(
-      title: 'Referral',
-      icon: Icons.card_giftcard,
-      route: 'referral',
-    ),
+    DashboardItems.referral,
     DashboardItem(title: 'Shop', icon: Icons.shopping_cart, route: 'shop'),
     DashboardItem(title: 'History', icon: Icons.history, route: 'history'),
     DashboardItem(title: 'Profile', icon: Icons.person, route: 'profile'),

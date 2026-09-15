@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -29,18 +30,35 @@ class ReferralMeAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if request.user.role != "CUSTOMER":
-            return Response({"success": False, "message": "Only customers can access referral wallet."}, status=403)
+        expire_rewards()
         profile = get_or_create_profile(request.user)
         rewards = WalletReward.objects.filter(owner=request.user).order_by("activated_at", "id")
         referrals = Referral.objects.filter(referrer=request.user).select_related("referred_user")
+        transactions = WalletLedgerEntry.objects.filter(user=request.user).select_related("reward")[:100]
         total = sum((r.remaining_amount for r in rewards if r.status in {"ACTIVE", "PARTIAL"}), Decimal("0.00"))
         points_value = sum((r.remaining_amount for r in rewards if r.reward_type == "APP_REFERRAL_POINTS" and r.status in {"ACTIVE", "PARTIAL"}), Decimal("0.00"))
+        referral_stats = referrals.aggregate(
+            total=Count("id"),
+            pending=Count("id", filter=Q(status="PENDING")),
+            qualified=Count("id", filter=Q(status="QUALIFIED")),
+            under_review=Count("id", filter=Q(status="REVIEW")),
+        )
+        credited = WalletLedgerEntry.objects.filter(
+            user=request.user,
+            entry_type="CREDIT",
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
         return Response({
             "success": True,
             "referral_code": profile.referral_code,
             "wallet_balance": total,
             "points_balance": int(points_value * 10),
+            "lifetime_earnings": credited,
+            "referral_stats": referral_stats,
+            "capabilities": {
+                "can_refer": True,
+                "can_apply_referral_code": request.user.role == "CUSTOMER",
+                "can_claim_welcome_reward": request.user.role == "CUSTOMER",
+            },
             "program": {
                 "app_referral_points": 100,
                 "app_referral_value": "10.00",
@@ -52,6 +70,7 @@ class ReferralMeAPIView(APIView):
             },
             "rewards": WalletRewardSerializer(rewards, many=True).data,
             "referrals": ReferralSerializer(referrals, many=True).data,
+            "transactions": WalletLedgerEntrySerializer(transactions, many=True).data,
         })
 
 
@@ -105,7 +124,12 @@ class WalletHistoryAPIView(APIView):
 
     def get(self, request):
         entries = WalletLedgerEntry.objects.filter(user=request.user).select_related("reward")
-        return Response({"success": True, "count": entries.count(), "entries": WalletLedgerEntrySerializer(entries, many=True).data})
+        total_count = entries.count()
+        return Response({
+            "success": True,
+            "count": total_count,
+            "entries": WalletLedgerEntrySerializer(entries[:100], many=True).data,
+        })
 
 
 class WalletQuoteAPIView(APIView):

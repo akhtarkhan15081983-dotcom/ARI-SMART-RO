@@ -22,6 +22,11 @@ class DashboardItems {
     icon: Icons.analytics_outlined,
     route: "reports",
   );
+  static const DashboardItem referral = DashboardItem(
+    title: "Refer & Wallet",
+    icon: Icons.card_giftcard,
+    route: "referral",
+  );
 
   static List<DashboardItem> engineer = [
     andy,
@@ -91,6 +96,7 @@ class DashboardItems {
       icon: Icons.report_problem,
       route: "complaint",
     ),
+    referral,
     const DashboardItem(title: "Profile", icon: Icons.person, route: "profile"),
   ];
 
@@ -181,6 +187,7 @@ class DashboardItems {
       icon: Icons.report_problem,
       route: "complaint",
     ),
+    referral,
     const DashboardItem(title: "Profile", icon: Icons.person, route: "profile"),
   ];
 }
