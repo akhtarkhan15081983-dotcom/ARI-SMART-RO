@@ -1184,43 +1184,39 @@ class AssignCustomerAPIView(APIView):
 
         # ---------------------------------------------------------
         # ENGINEER
-        #
-        # Existing engineer workflow यहाँ चलता रहेगा।
         # ---------------------------------------------------------
-        job, created = Job.objects.get_or_create(
-
-            customer=customer,
-
-            defaults={
-                "engineer": employee,
-
-                "job_type": "INSTALLATION",
-
-                "priority": "MEDIUM",
-
-                "scheduled_date": timezone.now(),
-
-                "status": "ASSIGNED",
-
-                "customer_otp": str(
-                    random.randint(100000, 999999)
-                ),
-            }
+        # Assignment must not fail just because this customer has no
+        # installation/job record yet. Previously get_or_create(customer=...)
+        # could try to create a Job without a required RO asset, causing a 500
+        # after the customer assignment had already been saved.
+        #
+        # If a job already exists, reassign the latest active job. Otherwise
+        # save only the customer assignment and return success.
+        # ---------------------------------------------------------
+        job = (
+            Job.objects
+            .filter(customer=customer)
+            .exclude(status="COMPLETED")
+            .order_by("-created_at", "-id")
+            .first()
         )
 
-        if not created:
-
+        otp = None
+        if job is not None:
             job.engineer = employee
-
             job.status = "ASSIGNED"
-
-            job.customer_otp = str(
-                random.randint(100000, 999999)
-            )
-
+            job.customer_otp = str(random.randint(100000, 999999))
             job.otp_verified = False
-
-            job.save()
+            job.save(
+                update_fields=[
+                    "engineer",
+                    "status",
+                    "customer_otp",
+                    "otp_verified",
+                    "updated_at",
+                ]
+            )
+            otp = job.customer_otp
 
         return Response(
             {
@@ -1230,8 +1226,8 @@ class AssignCustomerAPIView(APIView):
                 "employee_id": employee.id,
                 "employee_name": employee.user.get_full_name(),
                 "role": employee.user.role,
-                "job_id": job.id,
-                "otp": job.customer_otp,
+                "job_id": job.id if job is not None else None,
+                "otp": otp,
             },
             status=status.HTTP_200_OK,
         )
