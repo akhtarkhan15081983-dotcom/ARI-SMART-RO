@@ -1558,6 +1558,7 @@ class RentManagementAPIView(APIView):
     ALLOWED_ROLES = [
         "ADMIN",
         "MANAGER",
+        "ENGINEER",
     ]
 
     def get(self, request):
@@ -1572,7 +1573,7 @@ class RentManagementAPIView(APIView):
                 {
                     "success": False,
                     "message": (
-                        "Only Admin, Manager or Office "
+                        "Only Admin, Manager or Engineer "
                         "can access rent management."
                     ),
                 },
@@ -1583,9 +1584,16 @@ class RentManagementAPIView(APIView):
         # CUSTOMERS
         # ----------------------------------------------------
 
-        customers = Customer.objects.filter(
-            is_active=True
-        ).order_by(
+        customers = Customer.objects.filter(is_active=True)
+
+        if request.user.role == "ENGINEER":
+            engineer = getattr(request.user, "employee_profile", None)
+            if engineer is None:
+                customers = Customer.objects.none()
+            else:
+                customers = customers.filter(assigned_engineer=engineer)
+
+        customers = customers.order_by(
             "name",
             "id",
         )

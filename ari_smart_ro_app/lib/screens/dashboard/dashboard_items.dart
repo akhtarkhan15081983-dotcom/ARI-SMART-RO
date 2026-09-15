@@ -89,7 +89,7 @@ class DashboardItems {
     const DashboardItem(
       title: "Rent Collection",
       icon: Icons.payments,
-      route: "rent",
+      route: "rent_management",
     ),
     const DashboardItem(
       title: "Complaint",
@@ -144,7 +144,10 @@ class DashboardItems {
       route: "attendance_security_test",
     ),
     ...engineer.where(
-      (item) => item.route != "andy" && item.route != "customers",
+      (item) =>
+          item.route != "andy" &&
+          item.route != "customers" &&
+          item.route != "rent_management",
     ),
     const DashboardItem(title: "Live Map", icon: Icons.map, route: "map"),
     const DashboardItem(
