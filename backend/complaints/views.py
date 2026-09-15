@@ -40,22 +40,25 @@ def restrict_complaints_for_user(queryset, user):
     """
     Apply complaint visibility at the database layer.
 
-    ADMIN / MANAGER / OFFICE:
-        Operational roles can see all complaints.
+    ADMIN / MANAGER:
+        Can see all complaints.
 
-    ENGINEER:
-        Can see and work only complaints assigned to that engineer.
+    ENGINEER / OFFICE:
+        Can see complaints tied to their assigned customers/work.
 
     CUSTOMER:
         Can see only their own complaints.
     """
     role = getattr(user, "role", None)
 
-    if role in {"ADMIN", "MANAGER", "OFFICE"}:
+    if role in {"ADMIN", "MANAGER"}:
         return queryset
 
-    if role == "ENGINEER":
-        return queryset.filter(engineer__user=user)
+    if role in {"ENGINEER", "OFFICE"}:
+        return queryset.filter(
+            Q(engineer__user=user)
+            | Q(customer__assigned_engineer__user=user)
+        ).distinct()
 
     if role == "CUSTOMER":
         customer = get_logged_in_customer(user)
@@ -157,7 +160,8 @@ class ComplaintCreateAPIView(generics.CreateAPIView):
         # to the logged-in engineer.
         # ----------------------------------------------------
 
-        if getattr(self.request.user, "role", None) == "ENGINEER":
+        role = getattr(self.request.user, "role", None)
+        if role in {"ENGINEER", "OFFICE"}:
             from rest_framework.exceptions import ValidationError
 
             customer = serializer.validated_data.get("customer")
@@ -180,11 +184,14 @@ class ComplaintCreateAPIView(generics.CreateAPIView):
             if serializer.validated_data.get("longitude") is None:
                 location["longitude"] = customer.longitude
 
-            serializer.save(engineer=employee, **location)
+            if role == "ENGINEER":
+                serializer.save(engineer=employee, **location)
+            else:
+                serializer.save(**location)
             return
 
         # ----------------------------------------------------
-        # ADMIN / MANAGER / OFFICE CREATION
+        # ADMIN / MANAGER CREATION
         # ----------------------------------------------------
 
         customer = serializer.validated_data.get("customer")
@@ -287,10 +294,12 @@ class ComplaintAssignEngineerAPIView(
         try:
 
             complaint = (
-                Complaint.objects
-                .select_related(
-                    "customer",
-                    "engineer__user",
+                restrict_complaints_for_user(
+                    Complaint.objects.select_related(
+                        "customer",
+                        "engineer__user",
+                    ),
+                    request.user,
                 )
                 .get(pk=pk)
             )
