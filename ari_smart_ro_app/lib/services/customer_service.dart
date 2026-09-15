@@ -156,9 +156,8 @@ class CustomerService {
     required int roModel,
     required int assetId,
 
-    double installationCharge = 0,
+    double totalAmountReceived = 600,
     double monthlyRent = 0,
-    double securityDeposit = 0,
   }) async {
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/customers/walk-in/"),
@@ -180,9 +179,8 @@ class CustomerService {
         "ro_model": roModel,
         "asset_id": assetId,
 
-        "installation_charge": installationCharge,
+        "total_amount_received": totalAmountReceived,
         "monthly_rent": monthlyRent,
-        "security_deposit": securityDeposit,
       }),
     );
 

@@ -638,7 +638,7 @@ class MyCustomersAPIView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user.role != "ENGINEER":
+        if self.request.user.role not in {"ENGINEER", "OFFICE"}:
             return Customer.objects.none()
 
         return Customer.objects.filter(
@@ -1011,8 +1011,39 @@ class WalkInCustomerAPIView(APIView):
 
     def post(self, request):
 
+        # Customer pays one upfront amount. Installation is always ₹600;
+        # the remaining amount is saved as refundable/security deposit.
+        payload = request.data.copy()
+        try:
+            if request.data.get("total_amount_received") not in (None, ""):
+                total_received = Decimal(str(request.data.get("total_amount_received")))
+            else:
+                # Backward compatibility with older app builds that send
+                # installation/security as separate fields.
+                legacy_installation = Decimal(str(request.data.get("installation_charge", 0) or 0))
+                legacy_security = Decimal(str(request.data.get("security_deposit", 0) or 0))
+                total_received = legacy_installation + legacy_security
+        except Exception:
+            return Response(
+                {"success": False, "message": "Enter a valid amount received."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        fixed_installation_charge = Decimal("600.00")
+        if total_received < fixed_installation_charge:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Amount received cannot be less than ₹600 installation charge.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload["installation_charge"] = str(fixed_installation_charge)
+        payload["security_deposit"] = str(total_received - fixed_installation_charge)
+
         serializer = WalkInCustomerSerializer(
-            data=request.data
+            data=payload
         )
 
         if serializer.is_valid():
@@ -1153,43 +1184,39 @@ class AssignCustomerAPIView(APIView):
 
         # ---------------------------------------------------------
         # ENGINEER
-        #
-        # Existing engineer workflow यहाँ चलता रहेगा।
         # ---------------------------------------------------------
-        job, created = Job.objects.get_or_create(
-
-            customer=customer,
-
-            defaults={
-                "engineer": employee,
-
-                "job_type": "INSTALLATION",
-
-                "priority": "MEDIUM",
-
-                "scheduled_date": timezone.now(),
-
-                "status": "ASSIGNED",
-
-                "customer_otp": str(
-                    random.randint(100000, 999999)
-                ),
-            }
+        # Assignment must not fail just because this customer has no
+        # installation/job record yet. Previously get_or_create(customer=...)
+        # could try to create a Job without a required RO asset, causing a 500
+        # after the customer assignment had already been saved.
+        #
+        # If a job already exists, reassign the latest active job. Otherwise
+        # save only the customer assignment and return success.
+        # ---------------------------------------------------------
+        job = (
+            Job.objects
+            .filter(customer=customer)
+            .exclude(status="COMPLETED")
+            .order_by("-created_at", "-id")
+            .first()
         )
 
-        if not created:
-
+        otp = None
+        if job is not None:
             job.engineer = employee
-
             job.status = "ASSIGNED"
-
-            job.customer_otp = str(
-                random.randint(100000, 999999)
-            )
-
+            job.customer_otp = str(random.randint(100000, 999999))
             job.otp_verified = False
-
-            job.save()
+            job.save(
+                update_fields=[
+                    "engineer",
+                    "status",
+                    "customer_otp",
+                    "otp_verified",
+                    "updated_at",
+                ]
+            )
+            otp = job.customer_otp
 
         return Response(
             {
@@ -1199,8 +1226,8 @@ class AssignCustomerAPIView(APIView):
                 "employee_id": employee.id,
                 "employee_name": employee.user.get_full_name(),
                 "role": employee.user.role,
-                "job_id": job.id,
-                "otp": job.customer_otp,
+                "job_id": job.id if job is not None else None,
+                "otp": otp,
             },
             status=status.HTTP_200_OK,
         )

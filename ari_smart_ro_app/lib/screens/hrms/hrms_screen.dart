@@ -71,8 +71,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
   }
 
   Future<void> _requestLeave() async {
-    DateTime start = DateTime.now().add(const Duration(days: 1)),
-        end = DateTime.now().add(const Duration(days: 1));
+    DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
     String type = 'FULL_DAY', reason = '';
     final submit = await showDialog<bool>(
       context: context,
@@ -98,30 +97,31 @@ class _HrmsScreenState extends State<HrmsScreen> {
                   ],
                   onChanged: (value) => setLocal(() => type = value!),
                 ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Monthly allowance: 2 full-day dates and 2 half-day dates. '
+                  'Select one date for this request.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF687386)),
+                ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.date_range_outlined),
-                  title: const Text('Select leave dates'),
+                  leading: const Icon(Icons.event_outlined),
+                  title: const Text('Leave date'),
                   subtitle: Text(
-                    start == end
-                        ? '${start.day}/${start.month}/${start.year}'
-                        : '${start.day}/${start.month}/${start.year} – ${end.day}/${end.month}/${end.year}',
+                    '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}',
                   ),
                   trailing: const Icon(Icons.calendar_month),
                   onTap: () async {
-                    final value = await showDateRangePicker(
+                    final value = await showDatePicker(
                       context: context,
+                      initialDate: selectedDate,
                       firstDate: DateTime.now().add(const Duration(days: 1)),
                       lastDate: DateTime.now().add(const Duration(days: 365)),
-                      initialDateRange: DateTimeRange(start: start, end: end),
-                      helpText: 'CHOOSE LEAVE PERIOD',
-                      confirmText: 'USE THESE DATES',
+                      helpText: 'CHOOSE LEAVE DATE',
+                      confirmText: 'USE THIS DATE',
                     );
                     if (value != null) {
-                      setLocal(() {
-                        start = value.start;
-                        end = value.end;
-                      });
+                      setLocal(() => selectedDate = value);
                     }
                   },
                 ),
@@ -153,8 +153,8 @@ class _HrmsScreenState extends State<HrmsScreen> {
     try {
       await _service.requestLeave(
         type: type,
-        start: start,
-        end: end,
+        start: selectedDate,
+        end: selectedDate,
         reason: reason,
       );
       _show('Leave request submitted for approval.');

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/attendance_model.dart';
@@ -45,7 +47,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   final AttendanceService _attendanceService = AttendanceService();
   final LiveLocationService _liveLocationService = LiveLocationService();
   final SaasAdminService _saasAdminService = const SaasAdminService();
@@ -79,11 +82,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _isLoadingRole = true,
       _isExitDialogShowing = false;
 
+  Timer? _dashboardRefreshTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadDashboard();
     _startLiveLocationIfRequired();
+    _dashboardRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) _loadDashboard();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _loadDashboard();
+    }
   }
 
   Future<void> _startLiveLocationIfRequired() async {
@@ -556,6 +572,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _dashboardRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _liveLocationService.stopTracking();
     super.dispose();
   }
@@ -699,6 +717,8 @@ class _CommandGrid extends StatelessWidget {
                         children: [
                           Text(
                             group.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                           const SizedBox(height: 3),

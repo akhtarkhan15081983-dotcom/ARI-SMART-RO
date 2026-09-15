@@ -12,6 +12,13 @@ from .models import Complaint
 class ComplaintWorkflowTests(APITestCase):
     def setUp(self):
         self.office = User.objects.create_user(phone="9222222201", password="test", role="OFFICE")
+        self.office_profile = EmployeeProfile.objects.create(
+            user=self.office,
+            employee_id="EMP-OFFICE-1",
+            joining_date=date.today(),
+            designation="OFFICE",
+            gender="MALE",
+        )
         self.engineer_user = User.objects.create_user(
             phone="9222222202", password="test", role="ENGINEER", first_name="Service", last_name="Engineer"
         )
@@ -32,6 +39,7 @@ class ComplaintWorkflowTests(APITestCase):
             ro_model="ARI RO",
             latitude=Decimal("28.3670000"),
             longitude=Decimal("79.4300000"),
+            assigned_engineer=self.office_profile,
         )
 
     def test_office_complaint_copies_saved_location_and_returns_engineer_phone(self):
@@ -47,3 +55,68 @@ class ComplaintWorkflowTests(APITestCase):
         self.assertEqual(complaint.latitude, self.customer.latitude)
         self.assertEqual(complaint.longitude, self.customer.longitude)
         self.assertEqual(response.data["engineer_phone"], self.engineer_user.phone)
+
+    def test_office_sees_only_complaints_for_assigned_customers(self):
+        assigned = Complaint.objects.create(
+            customer=self.customer,
+            complaint_type="WATER_LEAKAGE",
+            description="Assigned office complaint",
+        )
+        other_office_user = User.objects.create_user(
+            phone="9222222203", password="test", role="OFFICE"
+        )
+        other_office = EmployeeProfile.objects.create(
+            user=other_office_user,
+            employee_id="EMP-OFFICE-2",
+            joining_date=date.today(),
+            designation="OFFICE",
+            gender="MALE",
+        )
+        other_customer = Customer.objects.create(
+            name="Other Office Customer",
+            phone="8222222202",
+            address="Other address",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI RO",
+            assigned_engineer=other_office,
+        )
+        Complaint.objects.create(
+            customer=other_customer,
+            complaint_type="OTHER",
+            description="Other office complaint",
+        )
+
+        self.client.force_authenticate(self.office)
+        response = self.client.get("/api/complaints/")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data}
+        self.assertEqual(ids, {assigned.id})
+
+    def test_engineer_sees_only_assigned_work(self):
+        engineer_customer = Customer.objects.create(
+            name="Engineer Customer",
+            phone="8222222203",
+            address="Engineer address",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI RO",
+            assigned_engineer=self.engineer,
+        )
+        visible = Complaint.objects.create(
+            customer=engineer_customer,
+            engineer=self.engineer,
+            complaint_type="RO_NOT_WORKING",
+        )
+        Complaint.objects.create(
+            customer=self.customer,
+            complaint_type="OTHER",
+        )
+
+        self.client.force_authenticate(self.engineer_user)
+        response = self.client.get("/api/complaints/")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data}
+        self.assertEqual(ids, {visible.id})

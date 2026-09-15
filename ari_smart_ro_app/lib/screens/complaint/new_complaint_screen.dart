@@ -160,7 +160,19 @@ class _NewComplaintScreenState extends State<NewComplaintScreen> {
     }
 
     // ==========================================================
-    // STAFF
+    // ENGINEER / OFFICE
+    // ==========================================================
+    // Complaint creation is limited to customers assigned to the
+    // logged-in employee.
+    // ==========================================================
+
+    if (normalizedRole == "ENGINEER" || normalizedRole == "OFFICE") {
+      await Future.wait([_loadAssignedCustomers(), _loadEngineers()]);
+      return;
+    }
+
+    // ==========================================================
+    // ADMIN / MANAGER
     // ==========================================================
 
     await Future.wait([_loadCustomers(), _loadEngineers()]);
@@ -195,7 +207,35 @@ class _NewComplaintScreenState extends State<NewComplaintScreen> {
   }
 
   // ============================================================
-  // LOAD ALL / ASSIGNED CUSTOMERS
+  // LOAD ASSIGNED CUSTOMERS
+  // ============================================================
+
+  Future<void> _loadAssignedCustomers() async {
+    try {
+      final customers = await _customerService.getMyCustomers();
+
+      if (!mounted) return;
+
+      setState(() {
+        _customers = customers;
+        _loadingCustomers = false;
+        if (customers.length == 1) {
+          _selectedCustomer = customers.first;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _loadingCustomers = false;
+      });
+
+      _showError("Unable to load assigned customers.\n$e");
+    }
+  }
+
+  // ============================================================
+  // LOAD ALL CUSTOMERS
   // ============================================================
 
   Future<void> _loadCustomers() async {
