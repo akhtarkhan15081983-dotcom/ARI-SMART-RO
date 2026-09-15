@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -101,6 +102,37 @@ class CustomerService {
     print("ASSIGN BODY : ${response.body}");
 
     return response.statusCode == 200;
+  }
+
+  // ============================================================
+  // BULK CUSTOMER IMPORT
+  // ============================================================
+  Future<Map<String, dynamic>> bulkImportCustomers({
+    required String filename,
+    required Uint8List bytes,
+    bool previewOnly = false,
+  }) async {
+    final token = await storage.read(key: "access");
+    final request = http.MultipartRequest(
+      "POST",
+      Uri.parse("${ApiService.baseUrl}/customers/bulk-import/"),
+    );
+
+    request.headers["Authorization"] = "Bearer $token";
+    request.fields["preview_only"] = previewOnly ? "true" : "false";
+    request.files.add(
+      http.MultipartFile.fromBytes("file", bytes, filename: filename),
+    );
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode != 200) {
+      throw Exception(data["detail"]?.toString() ?? "Customer import failed.");
+    }
+
+    return data;
   }
 
   // ============================================================
