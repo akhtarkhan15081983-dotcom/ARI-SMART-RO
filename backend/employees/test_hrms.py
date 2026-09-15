@@ -75,6 +75,62 @@ class HRMSPolicyTests(APITestCase):
         }, format="json")
         self.assertEqual(response.status_code, 400)
 
+    def test_single_date_full_leave_is_allowed_and_monthly_limit_is_two(self):
+        self.client.force_authenticate(self.user)
+        today = timezone.localdate()
+        if today.month == 12:
+            month_start = date(today.year + 1, 1, 1)
+        else:
+            month_start = date(today.year, today.month + 1, 1)
+
+        for day in (2, 3):
+            selected = month_start.replace(day=day).isoformat()
+            response = self.client.post("/api/employees/hrms/leaves/", {
+                "leave_type": "FULL_DAY",
+                "start_date": selected,
+                "end_date": selected,
+                "reason": "Personal work",
+            }, format="json")
+            self.assertEqual(response.status_code, 201)
+
+        selected = month_start.replace(day=4).isoformat()
+        response = self.client.post("/api/employees/hrms/leaves/", {
+            "leave_type": "FULL_DAY",
+            "start_date": selected,
+            "end_date": selected,
+            "reason": "Extra leave",
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Only 2 full-day", response.data["detail"])
+
+    def test_single_date_half_leave_is_allowed_and_monthly_limit_is_two(self):
+        self.client.force_authenticate(self.user)
+        today = timezone.localdate()
+        if today.month == 12:
+            month_start = date(today.year + 1, 1, 1)
+        else:
+            month_start = date(today.year, today.month + 1, 1)
+
+        for day in (5, 6):
+            selected = month_start.replace(day=day).isoformat()
+            response = self.client.post("/api/employees/hrms/leaves/", {
+                "leave_type": "HALF_DAY",
+                "start_date": selected,
+                "end_date": selected,
+                "reason": "Half-day personal work",
+            }, format="json")
+            self.assertEqual(response.status_code, 201)
+
+        selected = month_start.replace(day=7).isoformat()
+        response = self.client.post("/api/employees/hrms/leaves/", {
+            "leave_type": "HALF_DAY",
+            "start_date": selected,
+            "end_date": selected,
+            "reason": "Extra half day",
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Only 2 half-day", response.data["detail"])
+
 class EmployeePenaltyWorkflowTests(HRMSPolicyTests):
     def setUp(self):
         super().setUp()
