@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -15,16 +17,36 @@ class AssignedCustomersScreen extends StatefulWidget {
       _AssignedCustomersScreenState();
 }
 
-class _AssignedCustomersScreenState extends State<AssignedCustomersScreen> {
+class _AssignedCustomersScreenState extends State<AssignedCustomersScreen>
+    with WidgetsBindingObserver {
   final CustomerService customerService = CustomerService();
   final WorkPlannerService _workPlannerService = WorkPlannerService();
 
   late Future<List<CustomerModel>> _customersFuture;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadCustomers();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _refreshCustomers();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _refreshCustomers();
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   // ============================================================
@@ -48,7 +70,7 @@ class _AssignedCustomersScreenState extends State<AssignedCustomersScreen> {
   // ============================================================
 
   Future<void> _makePhoneCall(String phone) async {
-    final cleanPhone = phone.trim();
+    final cleanPhone = phone.trim().replaceAll(RegExp(r'[^0-9+]'), '');
 
     if (cleanPhone.isEmpty) {
       _showMessage('Customer phone number is not available.', Colors.red);
@@ -58,9 +80,11 @@ class _AssignedCustomersScreenState extends State<AssignedCustomersScreen> {
     final Uri uri = Uri(scheme: 'tel', path: cleanPhone);
 
     try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
+      final opened = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) {
         _showMessage('Unable to open phone dialer.', Colors.red);
       }
     } catch (_) {
