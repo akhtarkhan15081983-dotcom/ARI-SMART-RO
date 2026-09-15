@@ -9,7 +9,6 @@ plugins {
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
-val isCiBuild = System.getenv("CI")?.equals("true", ignoreCase = true) == true
 val isReleaseBuildRequested = gradle.startParameter.taskNames.any {
     it.contains("release", ignoreCase = true)
 }
@@ -46,16 +45,14 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else if (isCiBuild) {
+            signingConfig = if (!isReleaseBuildRequested) {
                 signingConfigs.getByName("debug")
-            } else if (!isReleaseBuildRequested) {
-                signingConfigs.getByName("debug")
-            } else {
+            } else if (!keystorePropertiesFile.exists()) {
                 throw GradleException(
                     "Release signing is not configured. Create android/key.properties first."
                 )
+            } else {
+                signingConfigs.getByName("release")
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

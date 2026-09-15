@@ -6,6 +6,7 @@ import '../../services/customer_service.dart';
 import '../../services/engineer_service.dart';
 import '../../services/api_service.dart';
 import '../../models/engineer_model.dart';
+import '../../utils/search_utils.dart';
 
 import 'customer_details_screen.dart';
 import 'customer_bulk_import_screen.dart';
@@ -56,8 +57,6 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
   // ============================================================
 
   List<CustomerModel> get _filteredCustomers {
-    final query = _searchQuery.trim().toLowerCase();
-
     return _customers.where((customer) {
       final matchesAssignment = switch (_assignmentFilter) {
         _AssignmentFilter.all => true,
@@ -65,16 +64,17 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
         _AssignmentFilter.assigned => customer.assignedEngineer != null,
       };
 
-      final matchesSearch = query.isEmpty ||
-          customer.customerName.toLowerCase().contains(query) ||
-          customer.customerId.toLowerCase().contains(query) ||
-          customer.phone.toLowerCase().contains(query) ||
-          customer.cardNumber.toLowerCase().contains(query) ||
-          customer.oldCardNumber.toLowerCase().contains(query) ||
-          customer.area.toLowerCase().contains(query) ||
-          customer.address.toLowerCase().contains(query) ||
-          customer.roModel.toLowerCase().contains(query) ||
-          customer.engineerName.toLowerCase().contains(query);
+      final matchesSearch = matchesAllSearchTerms(_searchQuery, [
+        customer.customerName,
+        customer.customerId,
+        customer.phone,
+        customer.cardNumber,
+        customer.oldCardNumber,
+        customer.area,
+        customer.address,
+        customer.roModel,
+        customer.engineerName,
+      ]);
 
       return matchesAssignment && matchesSearch;
     }).toList();
@@ -176,7 +176,6 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
     );
   }
 
-
   void _showCustomerQr(CustomerModel customer) {
     final payload = "ARI-SMART-RO:CUSTOMER:${customer.customerId}";
     showDialog(
@@ -188,13 +187,19 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
           children: [
             QrImageView(data: payload, size: 220),
             const SizedBox(height: 12),
-            Text(customer.customerId, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              customer.customerId,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 4),
             const Text('Scan this QR to identify the customer.'),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );
@@ -246,7 +251,9 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
 
             if (success) {
               messenger.showSnackBar(
-                SnackBar(content: Text("${engineer.name} Assigned Successfully")),
+                SnackBar(
+                  content: Text("${engineer.name} Assigned Successfully"),
+                ),
               );
               await _loadCustomers();
             } else {
@@ -563,7 +570,9 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                       },
                       icon: const Icon(Icons.person_add),
                       label: Text(
-                        customer.assignedEngineer == null ? "Assign" : "Reassign",
+                        customer.assignedEngineer == null
+                            ? "Assign"
+                            : "Reassign",
                       ),
                     ),
                 ],
@@ -731,9 +740,6 @@ class _EngineerPickerDialogState extends State<_EngineerPickerDialog> {
   String _query = "";
   String _designation = "ALL";
 
-  String _normalize(String value) =>
-      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-
   @override
   void dispose() {
     _controller.dispose();
@@ -742,29 +748,17 @@ class _EngineerPickerDialogState extends State<_EngineerPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final terms = _query
-        .trim()
-        .toLowerCase()
-        .split(RegExp(r'\s+'))
-        .where((term) => term.isNotEmpty)
-        .toList();
     final filtered = widget.engineers.where((engineer) {
-      final matchesDesignation = _designation == "ALL" ||
+      final matchesDesignation =
+          _designation == "ALL" ||
           engineer.designation.toUpperCase() == _designation;
-      final searchable = [
+      final matchesSearch = matchesAllSearchTerms(_query, [
         engineer.name,
         engineer.phone,
         engineer.employeeId,
         engineer.role,
         engineer.designation,
-      ];
-      final matchesSearch = terms.every((term) {
-        final normalizedTerm = _normalize(term);
-        return searchable.any((value) {
-          return value.toLowerCase().contains(term) ||
-              _normalize(value).contains(normalizedTerm);
-        });
-      });
+      ]);
       return matchesDesignation && matchesSearch;
     }).toList();
 
@@ -824,10 +818,10 @@ class _EngineerPickerDialogState extends State<_EngineerPickerDialog> {
                           title: Text(engineer.name),
                           subtitle: Text(
                             [
-                              engineer.employeeId,
-                              engineer.phone,
-                              engineer.designation,
-                            ]
+                                  engineer.employeeId,
+                                  engineer.phone,
+                                  engineer.designation,
+                                ]
                                 .where((value) => value.trim().isNotEmpty)
                                 .join(" • "),
                           ),

@@ -87,10 +87,11 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
     if (submit != true) return;
     final quantity = int.tryParse(qty.text) ?? 0;
     if (quantity < 1) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Enter a valid quantity')));
+      }
       return;
     }
     try {
@@ -105,10 +106,11 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
       ).showSnackBar(const SnackBar(content: Text('Part request submitted')));
       _reload();
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not submit part request')),
         );
+      }
     }
   }
 
@@ -124,18 +126,21 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
       body: FutureBuilder<List<EngineerPartRequest>>(
         future: _requests,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError)
+          }
+          if (snapshot.hasError) {
             return Center(
               child: FilledButton(
                 onPressed: _reload,
                 child: const Text('Retry'),
               ),
             );
+          }
           final requests = snapshot.data ?? const <EngineerPartRequest>[];
-          if (requests.isEmpty)
+          if (requests.isEmpty) {
             return const Center(child: Text('No part requests yet'));
+          }
           return RefreshIndicator(
             onRefresh: () async {
               _reload();

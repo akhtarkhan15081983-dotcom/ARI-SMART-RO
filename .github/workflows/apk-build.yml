@@ -1,5 +1,12 @@
 name: ARI SMART RO APK
 
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
@@ -10,6 +17,7 @@ on:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: ari_smart_ro_app
@@ -24,16 +32,30 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: Build latest installable APK
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
+          test -n "$KEY_ALIAS"
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=../upload-keystore.jks\n' \
+            "$STORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > android/key.properties
+      - name: Build signed installable APK
         run: >-
           flutter build apk --release
           --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
       - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.2.apk
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/ARI-SMART-RO-release.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-v1.0.2-APK
-          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.2.apk
+          name: ARI-SMART-RO-release-${{ github.sha }}
+          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-release.apk
           if-no-files-found: error
           retention-days: 30

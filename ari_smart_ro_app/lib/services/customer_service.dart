@@ -28,13 +28,8 @@ class CustomerService {
       },
     );
 
-    print("CUSTOMER STATUS : ${response.statusCode}");
-    print("CUSTOMER BODY : ${response.body}");
-
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
-
-      print("TOTAL CUSTOMERS : ${data.length}");
 
       return data.map((e) => CustomerModel.fromJson(e)).toList();
     }
@@ -63,13 +58,8 @@ class CustomerService {
       },
     );
 
-    print("MY CUSTOMERS STATUS : ${response.statusCode}");
-    print("MY CUSTOMERS BODY : ${response.body}");
-
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
-
-      print("MY CUSTOMERS TOTAL : ${data.length}");
 
       return data.map((e) => CustomerModel.fromJson(e)).toList();
     }
@@ -97,9 +87,6 @@ class CustomerService {
       headers: await ApiService.authHeaders(),
       body: jsonEncode({"employee_id": employeeId}),
     );
-
-    print("ASSIGN STATUS : ${response.statusCode}");
-    print("ASSIGN BODY : ${response.body}");
 
     return response.statusCode == 200;
   }
@@ -183,9 +170,6 @@ class CustomerService {
         "monthly_rent": monthlyRent,
       }),
     );
-
-    print("WALK-IN STATUS : ${response.statusCode}");
-    print("WALK-IN BODY : ${response.body}");
 
     return jsonDecode(response.body);
   }
