@@ -176,6 +176,11 @@ class DashboardItems {
       icon: Icons.route,
       route: "work_route",
     ),
+    const DashboardItem(
+      title: "Complaint",
+      icon: Icons.report_problem,
+      route: "complaint",
+    ),
     const DashboardItem(title: "Profile", icon: Icons.person, route: "profile"),
   ];
 }
