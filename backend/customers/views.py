@@ -638,7 +638,7 @@ class MyCustomersAPIView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user.role != "ENGINEER":
+        if self.request.user.role not in {"ENGINEER", "OFFICE"}:
             return Customer.objects.none()
 
         return Customer.objects.filter(
