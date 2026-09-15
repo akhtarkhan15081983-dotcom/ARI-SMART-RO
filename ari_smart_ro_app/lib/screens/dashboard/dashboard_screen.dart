@@ -87,15 +87,20 @@ class _DashboardScreenState extends State<DashboardScreen>
     _loadDashboard();
     _startLiveLocationIfRequired();
     _dashboardRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (mounted) _loadDashboard();
+      if (mounted) _refreshSessionAndDashboard();
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
-      _loadDashboard();
+      _refreshSessionAndDashboard();
     }
+  }
+
+  Future<void> _refreshSessionAndDashboard() async {
+    await ApiService.ensureValidSession();
+    if (mounted) await _loadDashboard();
   }
 
   Future<void> _startLiveLocationIfRequired() async {

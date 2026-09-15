@@ -1,15 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/customer_model.dart';
 import 'api_service.dart';
 
 class CustomerService {
-  final storage = const FlutterSecureStorage();
-
   // ============================================================
   // GET ALL CUSTOMERS
   // ============================================================
@@ -18,7 +15,7 @@ class CustomerService {
   // /api/customers/
   // ============================================================
   Future<List<CustomerModel>> getCustomers() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/customers/"),
@@ -48,7 +45,7 @@ class CustomerService {
   // assigned to the logged-in engineer.
   // ============================================================
   Future<List<CustomerModel>> getMyCustomers() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/customers/my-customers/"),
@@ -99,7 +96,7 @@ class CustomerService {
     required Uint8List bytes,
     bool previewOnly = false,
   }) async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
     final request = http.MultipartRequest(
       "POST",
       Uri.parse("${ApiService.baseUrl}/customers/bulk-import/"),
