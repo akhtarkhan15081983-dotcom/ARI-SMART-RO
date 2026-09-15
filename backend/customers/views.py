@@ -1011,8 +1011,39 @@ class WalkInCustomerAPIView(APIView):
 
     def post(self, request):
 
+        # Customer pays one upfront amount. Installation is always ₹600;
+        # the remaining amount is saved as refundable/security deposit.
+        payload = request.data.copy()
+        try:
+            total_received = Decimal(
+                str(
+                    request.data.get(
+                        "total_amount_received",
+                        request.data.get("installation_charge", 0),
+                    )
+                )
+            )
+        except Exception:
+            return Response(
+                {"success": False, "message": "Enter a valid amount received."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        fixed_installation_charge = Decimal("600.00")
+        if total_received < fixed_installation_charge:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Amount received cannot be less than ₹600 installation charge.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload["installation_charge"] = str(fixed_installation_charge)
+        payload["security_deposit"] = str(total_received - fixed_installation_charge)
+
         serializer = WalkInCustomerSerializer(
-            data=request.data
+            data=payload
         )
 
         if serializer.is_valid():
