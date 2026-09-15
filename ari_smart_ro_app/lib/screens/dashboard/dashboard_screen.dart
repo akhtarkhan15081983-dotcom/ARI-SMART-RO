@@ -699,6 +699,8 @@ class _CommandGrid extends StatelessWidget {
                         children: [
                           Text(
                             group.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                           const SizedBox(height: 3),
