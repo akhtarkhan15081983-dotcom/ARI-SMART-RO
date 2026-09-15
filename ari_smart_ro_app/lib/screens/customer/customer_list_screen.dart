@@ -222,7 +222,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
 
   Future<void> showEngineerDialog(CustomerModel customer) async {
     try {
-      final engineers = await engineerService.getEngineers();
+      final engineers = await engineerService.getAssignmentEmployees();
 
       if (!mounted) {
         return;
@@ -729,6 +729,10 @@ class _EngineerPickerDialog extends StatefulWidget {
 class _EngineerPickerDialogState extends State<_EngineerPickerDialog> {
   final TextEditingController _controller = TextEditingController();
   String _query = "";
+  String _designation = "ALL";
+
+  String _normalize(String value) =>
+      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
   @override
   void dispose() {
@@ -738,12 +742,30 @@ class _EngineerPickerDialogState extends State<_EngineerPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final query = _query.trim().toLowerCase();
+    final terms = _query
+        .trim()
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty)
+        .toList();
     final filtered = widget.engineers.where((engineer) {
-      return query.isEmpty ||
-          engineer.name.toLowerCase().contains(query) ||
-          engineer.phone.toLowerCase().contains(query) ||
-          engineer.employeeId.toLowerCase().contains(query);
+      final matchesDesignation = _designation == "ALL" ||
+          engineer.designation.toUpperCase() == _designation;
+      final searchable = [
+        engineer.name,
+        engineer.phone,
+        engineer.employeeId,
+        engineer.role,
+        engineer.designation,
+      ];
+      final matchesSearch = terms.every((term) {
+        final normalizedTerm = _normalize(term);
+        return searchable.any((value) {
+          return value.toLowerCase().contains(term) ||
+              _normalize(value).contains(normalizedTerm);
+        });
+      });
+      return matchesDesignation && matchesSearch;
     }).toList();
 
     return AlertDialog(
@@ -774,6 +796,22 @@ class _EngineerPickerDialogState extends State<_EngineerPickerDialog> {
               ),
             ),
             const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: const ["ALL", "ENGINEER", "OFFICE"].map((value) {
+                final label = switch (value) {
+                  "ENGINEER" => "Engineers",
+                  "OFFICE" => "Office Staff",
+                  _ => "All Employees",
+                };
+                return ChoiceChip(
+                  label: Text(label),
+                  selected: _designation == value,
+                  onSelected: (_) => setState(() => _designation = value),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 8),
             Expanded(
               child: filtered.isEmpty
                   ? const Center(child: Text("No matching employee found"))
@@ -785,7 +823,11 @@ class _EngineerPickerDialogState extends State<_EngineerPickerDialog> {
                           leading: const Icon(Icons.engineering),
                           title: Text(engineer.name),
                           subtitle: Text(
-                            [engineer.employeeId, engineer.phone]
+                            [
+                              engineer.employeeId,
+                              engineer.phone,
+                              engineer.designation,
+                            ]
                                 .where((value) => value.trim().isNotEmpty)
                                 .join(" • "),
                           ),
