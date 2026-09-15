@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../models/customer_model.dart';
 import '../../services/customer_service.dart';
@@ -7,6 +8,8 @@ import '../../services/api_service.dart';
 import '../../models/engineer_model.dart';
 
 import 'customer_details_screen.dart';
+import 'customer_bulk_import_screen.dart';
+import '../walkin/walkin_customer_screen.dart';
 
 class CustomerListScreen extends StatefulWidget {
   const CustomerListScreen({super.key});
@@ -164,6 +167,46 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
         builder: (_) => CustomerDetailsScreen(customer: customer),
       ),
     );
+  }
+
+
+  void _showCustomerQr(CustomerModel customer) {
+    final payload = "ARI-SMART-RO:CUSTOMER:${customer.customerId}";
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(customer.customerName),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(data: payload, size: 220),
+            const SizedBox(height: 12),
+            Text(customer.customerId, style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            const Text('Scan this QR to identify the customer.'),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openBulkImport() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const CustomerBulkImportScreen()),
+    );
+    if (changed == true) await _loadCustomers();
+  }
+
+  Future<void> _openSingleCustomer() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const WalkInCustomerScreen()),
+    );
+    if (changed == true) await _loadCustomers();
   }
 
   // ============================================================
@@ -514,25 +557,29 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
               // ASSIGN / REASSIGN
               // ENGINEER MUST NOT SEE THIS
               // ==================================================
-              if (_role != "ENGINEER") ...[
-                const SizedBox(height: 15),
-
-                Align(
-                  alignment: Alignment.centerRight,
-
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      showEngineerDialog(customer);
-                    },
-
-                    icon: const Icon(Icons.person_add),
-
-                    label: Text(
-                      customer.assignedEngineer == null ? "Assign" : "Reassign",
-                    ),
+              const SizedBox(height: 15),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _showCustomerQr(customer),
+                    icon: const Icon(Icons.qr_code_2),
+                    label: const Text("QR"),
                   ),
-                ),
-              ],
+                  if (_role != "ENGINEER")
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        showEngineerDialog(customer);
+                      },
+                      icon: const Icon(Icons.person_add),
+                      label: Text(
+                        customer.assignedEngineer == null ? "Assign" : "Reassign",
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -555,11 +602,37 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
         centerTitle: true,
 
         actions: [
+          if (_role == "ADMIN" || _role == "MANAGER")
+            PopupMenuButton<String>(
+              tooltip: "Add customers",
+              onSelected: (value) {
+                if (value == "single") {
+                  _openSingleCustomer();
+                } else if (value == "bulk") {
+                  _openBulkImport();
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: "single",
+                  child: ListTile(
+                    leading: Icon(Icons.person_add_alt_1),
+                    title: Text("Add Single Customer"),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: "bulk",
+                  child: ListTile(
+                    leading: Icon(Icons.upload_file),
+                    title: Text("Bulk Import Excel/CSV"),
+                  ),
+                ),
+              ],
+              icon: const Icon(Icons.person_add),
+            ),
           IconButton(
             tooltip: "Refresh",
-
             onPressed: _loadCustomers,
-
             icon: const Icon(Icons.refresh),
           ),
         ],
