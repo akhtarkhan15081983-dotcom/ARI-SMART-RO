@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APITestCase
+from rest_framework import status
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .models import ProductCategory, ROModel
 
@@ -77,3 +79,77 @@ class CustomerShopCatalogTests(APITestCase):
         self.assertTrue(products[rent_only.id]['available_for_rent'])
         self.assertTrue(products[both.id]['available_for_sale'])
         self.assertTrue(products[both.id]['available_for_rent'])
+
+
+class ProductManagementTests(APITestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            phone='9888888888', password='test-pass-123', role='ADMIN'
+        )
+        self.office = User.objects.create_user(
+            phone='9777777777', password='test-pass-123', role='OFFICE'
+        )
+        self.customer = User.objects.create_user(
+            phone='9666666666', password='test-pass-123', role='CUSTOMER'
+        )
+        self.category = ProductCategory.objects.create(name='Commercial RO')
+
+    def _payload(self):
+        return {
+            'category': self.category.id,
+            'model_name': 'Aqua Business 25',
+            'capacity': '25 LPH',
+            'business_type': 'SALE',
+            'available_for_sale': True,
+            'available_for_rent': True,
+            'selling_price': '18500.00',
+            'mrp': '21000.00',
+            'monthly_rent': '850.00',
+            'security_deposit': '2000.00',
+            'installation_charge': '500.00',
+            'stock_quantity': 7,
+            'warranty_months': 12,
+            'description': 'Commercial purifier',
+            'features': 'Copper filter\nAuto flush',
+            'is_active': True,
+        }
+
+    def test_admin_and_office_can_create_and_update_products(self):
+        for user in (self.admin, self.office):
+            self.client.force_authenticate(user)
+            payload = self._payload()
+            payload['model_name'] = f"{payload['model_name']} {user.role}"
+            create = self.client.post(reverse('ro-models'), payload, format='json')
+            self.assertEqual(create.status_code, status.HTTP_201_CREATED)
+            update = self.client.patch(
+                reverse('ro-model-detail', args=[create.data['id']]),
+                {'stock_quantity': 11},
+                format='json',
+            )
+            self.assertEqual(update.status_code, status.HTTP_200_OK)
+            self.assertEqual(update.data['stock_quantity'], 11)
+
+    def test_customer_cannot_manage_products(self):
+        self.client.force_authenticate(self.customer)
+        response = self.client.post(reverse('ro-models'), self._payload(), format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_staff_can_upload_product_image(self):
+        self.client.force_authenticate(self.admin)
+        product = ROModel.objects.create(
+            category=self.category,
+            model_name='Image Product',
+            capacity='12 LPH',
+            business_type='SALE',
+        )
+        image = SimpleUploadedFile(
+            'product.jpg', b'\xff\xd8\xff\xe0' + b'0' * 128, content_type='image/jpeg'
+        )
+        response = self.client.post(
+            reverse('ro-model-image', args=[product.id]),
+            {'image': image},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(product.images.count(), 1)

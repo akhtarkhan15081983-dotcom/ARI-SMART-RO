@@ -6,6 +6,8 @@ from .views import (
     ROModelPartAPIView,
     ProductSearchAPIView,
     CustomerShopCatalogAPIView,
+    ROModelDetailAPIView,
+    ROModelImageAPIView,
 )
 
 
@@ -21,6 +23,18 @@ urlpatterns = [
         "models/",
         ROModelAPIView.as_view(),
         name="ro-models",
+    ),
+
+    path(
+        "models/<int:model_id>/",
+        ROModelDetailAPIView.as_view(),
+        name="ro-model-detail",
+    ),
+
+    path(
+        "models/<int:model_id>/image/",
+        ROModelImageAPIView.as_view(),
+        name="ro-model-image",
     ),
 
     path(
