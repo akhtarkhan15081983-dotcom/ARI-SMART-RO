@@ -13,6 +13,11 @@ class SelfieQualityResult {
   factory SelfieQualityResult.valid() =>
       const SelfieQualityResult._(true, 'Live selfie quality verified.');
 
+  factory SelfieQualityResult.cameraFallback() => const SelfieQualityResult._(
+    true,
+    'Live selfie captured. It will be available for attendance review.',
+  );
+
   factory SelfieQualityResult.invalid(String message) =>
       SelfieQualityResult._(false, message);
 }
@@ -89,7 +94,13 @@ class SelfieQualityService {
     } catch (error, stackTrace) {
       debugPrint('SELFIE QUALITY VERIFICATION ERROR: $error');
       debugPrintStack(stackTrace: stackTrace);
-
+      if (await isPlausibleCameraImage(file)) {
+        // Some vendor Android builds cannot start ML Kit even though the
+        // front-camera capture is a valid image. Keep GPS and enrolled-device
+        // checks mandatory, upload the selfie, and leave identity review to
+        // the existing admin attendance-review workflow.
+        return SelfieQualityResult.cameraFallback();
+      }
       return SelfieQualityResult.invalid(
         'Unable to process this selfie. Please retake it and keep the phone upright.',
       );
@@ -102,6 +113,34 @@ class SelfieQualityService {
           // Temporary validation images are safe to leave for OS cleanup.
         }
       }
+    }
+  }
+
+  @visibleForTesting
+  static Future<bool> isPlausibleCameraImage(File file) async {
+    try {
+      if (await file.length() < 20 * 1024) return false;
+
+      final bytes = await file
+          .openRead(0, 16)
+          .fold<List<int>>(<int>[], (buffer, chunk) => buffer..addAll(chunk));
+      final isJpeg = bytes.length >= 2 && bytes[0] == 0xff && bytes[1] == 0xd8;
+      final isPng =
+          bytes.length >= 8 &&
+          bytes[0] == 0x89 &&
+          bytes[1] == 0x50 &&
+          bytes[2] == 0x4e &&
+          bytes[3] == 0x47;
+      final isWebp =
+          bytes.length >= 12 &&
+          String.fromCharCodes(bytes.sublist(0, 4)) == 'RIFF' &&
+          String.fromCharCodes(bytes.sublist(8, 12)) == 'WEBP';
+      final isHeif =
+          bytes.length >= 12 &&
+          String.fromCharCodes(bytes.sublist(4, 8)) == 'ftyp';
+      return isJpeg || isPng || isWebp || isHeif;
+    } catch (_) {
+      return false;
     }
   }
 
