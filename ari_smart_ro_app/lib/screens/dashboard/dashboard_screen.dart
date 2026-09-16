@@ -33,6 +33,7 @@ import '../complaint/complaint_list_screen.dart';
 import '../profile/profile_screen.dart';
 import '../login/login_screen.dart';
 import '../shop/shop_screen.dart';
+import '../shop/product_management_screen.dart';
 import '../work_planner/work_calendar_screen.dart';
 import '../work_planner/work_route_screen.dart';
 import '../hrms/hrms_screen.dart';
@@ -407,6 +408,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       case 'shop':
         _push(const ShopScreen());
         return;
+      case 'product_management':
+        if ({'ADMIN', 'MANAGER', 'OFFICE'}.contains(_role)) {
+          _push(const ProductManagementScreen());
+        } else {
+          _showComingSoon('Product management is restricted to staff.');
+        }
+        return;
       case 'referral':
         _push(const ReferralScreen());
         return;
@@ -469,6 +477,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         'asset_selection',
         'installation',
         'shop',
+        'product_management',
       },
     };
     final definitions = [

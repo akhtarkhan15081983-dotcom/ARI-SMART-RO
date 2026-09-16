@@ -113,6 +113,11 @@ class DashboardItems {
       route: "inventory_workflow",
     ),
     const DashboardItem(
+      title: "Product Management",
+      icon: Icons.storefront,
+      route: "product_management",
+    ),
+    const DashboardItem(
       title: "Customers",
       icon: Icons.people,
       route: "customers",
@@ -164,6 +169,11 @@ class DashboardItems {
       title: "Inventory Control",
       icon: Icons.qr_code_2_rounded,
       route: "inventory_workflow",
+    ),
+    const DashboardItem(
+      title: "Product Management",
+      icon: Icons.storefront,
+      route: "product_management",
     ),
     const DashboardItem(
       title: "Attendance",
