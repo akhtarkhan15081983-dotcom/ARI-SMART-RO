@@ -2022,6 +2022,44 @@ class CustomerRentAPITests(TestCase):
         response = self.client.get("/api/customers/rent-management/")
         self.assertEqual(response.status_code, 403)
 
+    def test_engineer_rent_management_only_lists_assigned_customers(self):
+        engineer_user = User.objects.create_user(
+            phone="9100000005",
+            password="Test@123",
+            role="ENGINEER",
+            is_verified=True,
+        )
+        engineer = EmployeeProfile.objects.create(
+            user=engineer_user,
+            gender="MALE",
+            joining_date=date(2026, 1, 1),
+            designation="ENGINEER",
+            salary=Decimal("20000.00"),
+        )
+        self.customer.assigned_engineer = engineer
+        self.customer.save(update_fields=["assigned_engineer"])
+        Customer.objects.create(
+            name="Other Customer",
+            phone="9100000006",
+            address="Delhi",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+            ro_model="Other RO",
+            monthly_rent=Decimal("500.00"),
+            is_active=True,
+        )
+        self.client.force_authenticate(user=engineer_user)
+
+        response = self.client.get("/api/customers/rent-management/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(
+            response.data["customers"][0]["customer"]["id"],
+            self.customer.id,
+        )
+
     def test_customer_cannot_view_rent_management(self):
 
         self.client.force_authenticate(
