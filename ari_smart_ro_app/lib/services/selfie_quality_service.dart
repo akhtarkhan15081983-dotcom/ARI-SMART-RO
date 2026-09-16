@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as img;
 
 class SelfieQualityResult {
   const SelfieQualityResult._(this.isValid, this.message);
@@ -24,16 +26,23 @@ class SelfieQualityService {
       );
     }
 
+    File? normalizedFile;
+
     final detector = FaceDetector(
       options: FaceDetectorOptions(
         enableClassification: true,
-        enableLandmarks: true,
+        enableLandmarks: false,
         performanceMode: FaceDetectorMode.accurate,
       ),
     );
 
     try {
-      final input = InputImage.fromFilePath(imagePath);
+      // Camera apps do not encode orientation consistently. ML Kit can reject
+      // otherwise valid selfies on some Android devices when EXIF rotation or
+      // the source image format is unusual. Decode, bake the orientation and
+      // provide a standard JPEG for reliable on-device face detection.
+      normalizedFile = await _normalizeForDetection(file);
+      final input = InputImage.fromFilePath(normalizedFile.path);
       final faces = await detector.processImage(input);
 
       if (faces.isEmpty) {
@@ -77,12 +86,46 @@ class SelfieQualityService {
       }
 
       return SelfieQualityResult.valid();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('SELFIE QUALITY VERIFICATION ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
       return SelfieQualityResult.invalid(
-        'Unable to verify selfie quality. Please retake the photo in good light.',
+        'Unable to process this selfie. Please retake it and keep the phone upright.',
       );
     } finally {
       await detector.close();
+      if (normalizedFile != null && normalizedFile.path != file.path) {
+        try {
+          await normalizedFile.delete();
+        } catch (_) {
+          // Temporary validation images are safe to leave for OS cleanup.
+        }
+      }
     }
+  }
+
+  static Future<File> _normalizeForDetection(File source) async {
+    final decoded = img.decodeImage(await source.readAsBytes());
+    if (decoded == null) {
+      throw const FormatException('Unsupported camera image format.');
+    }
+
+    var normalized = img.bakeOrientation(decoded);
+    if (normalized.width > 1600 || normalized.height > 1600) {
+      normalized = img.copyResize(
+        normalized,
+        width: normalized.width >= normalized.height ? 1600 : null,
+        height: normalized.height > normalized.width ? 1600 : null,
+        interpolation: img.Interpolation.linear,
+      );
+    }
+
+    final separator = Platform.pathSeparator;
+    final parent = source.parent.path;
+    final normalizedPath =
+        '$parent${separator}attendance_${DateTime.now().microsecondsSinceEpoch}.jpg';
+    return File(
+      normalizedPath,
+    ).writeAsBytes(img.encodeJpg(normalized, quality: 92), flush: true);
   }
 }
