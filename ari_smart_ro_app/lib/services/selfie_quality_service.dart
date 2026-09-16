@@ -89,6 +89,7 @@ class SelfieQualityService {
     } catch (error, stackTrace) {
       debugPrint('SELFIE QUALITY VERIFICATION ERROR: $error');
       debugPrintStack(stackTrace: stackTrace);
+
       return SelfieQualityResult.invalid(
         'Unable to process this selfie. Please retake it and keep the phone upright.',
       );
