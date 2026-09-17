@@ -28,22 +28,43 @@ class SelfieQualityService {
 
     File? normalizedFile;
 
-    final detector = FaceDetector(
-      options: FaceDetectorOptions(
-        enableClassification: true,
-        enableLandmarks: false,
-        performanceMode: FaceDetectorMode.accurate,
-      ),
-    );
-
     try {
       // Camera apps do not encode orientation consistently. ML Kit can reject
       // otherwise valid selfies on some Android devices when EXIF rotation or
       // the source image format is unusual. Decode, bake the orientation and
       // provide a standard JPEG for reliable on-device face detection.
-      normalizedFile = await _normalizeForDetection(file);
-      final input = InputImage.fromFilePath(normalizedFile.path);
-      final faces = await detector.processImage(input);
+      try {
+        normalizedFile = await _normalizeForDetection(file);
+      } catch (error, stackTrace) {
+        debugPrint('SELFIE NORMALIZATION ERROR: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+
+      List<Face>? faces;
+      Object? lastError;
+      StackTrace? lastStackTrace;
+      final candidates = <File>[
+        if (normalizedFile != null) normalizedFile,
+        file,
+      ];
+
+      for (final candidate in candidates) {
+        try {
+          faces = await _detectFaces(candidate);
+          break;
+        } catch (error, stackTrace) {
+          lastError = error;
+          lastStackTrace = stackTrace;
+          debugPrint('SELFIE DETECTION ERROR (${candidate.path}): $error');
+        }
+      }
+
+      if (faces == null) {
+        if (lastStackTrace != null) {
+          debugPrintStack(stackTrace: lastStackTrace);
+        }
+        throw StateError('Face detection failed: $lastError');
+      }
 
       if (faces.isEmpty) {
         return SelfieQualityResult.invalid(
@@ -93,7 +114,6 @@ class SelfieQualityService {
         'Unable to process this selfie. Please retake it and keep the phone upright.',
       );
     } finally {
-      await detector.close();
       if (normalizedFile != null && normalizedFile.path != file.path) {
         try {
           await normalizedFile.delete();
@@ -101,6 +121,24 @@ class SelfieQualityService {
           // Temporary validation images are safe to leave for OS cleanup.
         }
       }
+    }
+  }
+
+  static Future<List<Face>> _detectFaces(File image) async {
+    // Fast mode uses the lighter on-device detector and is more reliable on
+    // vendor Android builds. Classification stays enabled so the existing
+    // eyes-open quality check remains active when ML Kit reports it.
+    final detector = FaceDetector(
+      options: FaceDetectorOptions(
+        enableClassification: true,
+        enableLandmarks: false,
+        performanceMode: FaceDetectorMode.fast,
+      ),
+    );
+    try {
+      return await detector.processImage(InputImage.fromFilePath(image.path));
+    } finally {
+      await detector.close();
     }
   }
 
