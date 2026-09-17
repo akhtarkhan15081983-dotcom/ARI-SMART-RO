@@ -29,11 +29,11 @@ jobs:
           flutter build apk --release
           --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
       - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.6.apk
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.7.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-v1.0.6-APK
-          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.6.apk
+          name: ARI-SMART-RO-v1.0.7-APK
+          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.7.apk
           if-no-files-found: error
           retention-days: 30
