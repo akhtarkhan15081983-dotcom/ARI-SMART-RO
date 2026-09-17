@@ -96,3 +96,36 @@ class Attendance(models.Model):
 
     def __str__(self):
         return f"{self.employee} - {self.date}"
+
+
+class AttendanceDeviceOverride(models.Model):
+    """Admin-approved emergency use of a non-enrolled phone for one date."""
+
+    employee = models.ForeignKey(
+        EmployeeProfile,
+        on_delete=models.CASCADE,
+        related_name="attendance_device_overrides",
+    )
+    date = models.DateField()
+    is_active = models.BooleanField(default=True)
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="granted_attendance_device_overrides",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date", "employee__employee_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "date"],
+                name="unique_employee_attendance_device_override_date",
+            )
+        ]
+
+    def __str__(self):
+        state = "active" if self.is_active else "revoked"
+        return f"{self.employee.employee_id} - {self.date} - {state}"

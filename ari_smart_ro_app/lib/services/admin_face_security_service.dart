@@ -19,6 +19,20 @@ class AdminFaceSecurityService {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
+  Future<List<Map<String, dynamic>>> getAttendanceDeviceOverrides() async {
+    final response = await http.get(
+      Uri.parse('${ApiService.baseUrl}/attendance/admin/device-overrides/'),
+      headers: await ApiService.authHeaders(),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load attendance device permissions');
+    }
+
+    final data = jsonDecode(response.body) as List;
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
   Future<String> setReEnrollment({
     required int employeeId,
     required bool allow,
@@ -40,6 +54,32 @@ class AdminFaceSecurityService {
     if (response.statusCode != 200) {
       throw Exception(
         data['message']?.toString() ?? 'Unable to update enrollment permission',
+      );
+    }
+
+    return data['message']?.toString() ?? 'Updated';
+  }
+
+  Future<String> setEmergencyAttendanceDevicePermission({
+    required int employeeId,
+    required bool allow,
+  }) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/attendance/admin/device-overrides/$employeeId/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({'action': allow ? 'allow_today' : 'revoke_today'}),
+    );
+
+    final data = response.body.isNotEmpty
+        ? Map<String, dynamic>.from(jsonDecode(response.body) as Map)
+        : <String, dynamic>{};
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        data['message']?.toString() ??
+            'Unable to update emergency attendance permission',
       );
     }
 
