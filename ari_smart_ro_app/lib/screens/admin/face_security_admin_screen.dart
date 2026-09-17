@@ -284,7 +284,7 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
                                           employee,
                                           true,
                                         ),
-                                icon: const Icon(Icons.phonelink_lock_outlined),
+                                icon: const Icon(Icons.phonelink_lock),
                                 label: Text(
                                   busy
                                       ? 'Please wait...'
