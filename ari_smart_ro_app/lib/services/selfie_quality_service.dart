@@ -10,19 +10,22 @@ class SelfieQualityResult {
   final bool isValid;
   final String message;
 
-  factory SelfieQualityResult.valid() =>
-      const SelfieQualityResult._(true, 'Live selfie quality verified.');
-
-  factory SelfieQualityResult.detectorFallback() => const SelfieQualityResult._(
-    true,
-    'Selfie captured successfully. Device face scan was unavailable, so the selfie will be reviewed after check-in.',
-  );
+  factory SelfieQualityResult.accepted(String message) =>
+      SelfieQualityResult._(true, message);
 
   factory SelfieQualityResult.invalid(String message) =>
       SelfieQualityResult._(false, message);
 }
 
 class SelfieQualityService {
+  /// Validates that the front-camera capture is a real, readable image.
+  ///
+  /// Face detection is intentionally advisory only. Some Android vendor builds
+  /// return no face or throw a platform error for otherwise valid camera JPEGs.
+  /// Attendance security is still enforced by live camera capture, server-side
+  /// office GPS, enrolled-device/admin override rules, and stored-selfie admin
+  /// review. This keeps attendance usable across supported Android phones
+  /// without trusting a device-specific ML Kit result as a hard gate.
   static Future<SelfieQualityResult> validate(String imagePath) async {
     final file = File(imagePath);
     if (!await file.exists()) {
@@ -31,23 +34,20 @@ class SelfieQualityService {
       );
     }
 
-    File? normalizedFile;
+    final basicCheck = await _validateCameraImage(file);
+    if (basicCheck != null) return basicCheck;
 
+    File? normalizedFile;
     try {
-      // Camera apps do not encode orientation consistently. ML Kit can reject
-      // otherwise valid selfies on some Android devices when EXIF rotation or
-      // the source image format is unusual. Decode, bake the orientation and
-      // provide a standard JPEG for reliable on-device face detection.
       try {
         normalizedFile = await _normalizeForDetection(file);
       } catch (error, stackTrace) {
-        debugPrint('SELFIE NORMALIZATION ERROR: $error');
+        debugPrint('SELFIE NORMALIZATION ADVISORY: $error');
         debugPrintStack(stackTrace: stackTrace);
       }
 
       List<Face>? faces;
       Object? lastError;
-      StackTrace? lastStackTrace;
       final candidates = <File>[
         if (normalizedFile != null) normalizedFile,
         file,
@@ -55,80 +55,74 @@ class SelfieQualityService {
 
       for (final candidate in candidates) {
         try {
-          faces = await _detectFaces(candidate);
+          faces = await _detectFaces(candidate).timeout(
+            const Duration(seconds: 8),
+          );
           break;
         } catch (error, stackTrace) {
           lastError = error;
-          lastStackTrace = stackTrace;
-          debugPrint('SELFIE DETECTION ERROR (${candidate.path}): $error');
+          debugPrint('SELFIE DETECTION ADVISORY (${candidate.path}): $error');
+          debugPrintStack(stackTrace: stackTrace);
         }
       }
 
       if (faces == null) {
-        if (lastStackTrace != null) {
-          debugPrintStack(stackTrace: lastStackTrace);
-        }
-
-        // Some Android vendor builds can throw from the ML Kit platform
-        // channel even for a valid camera JPEG. Do not block attendance only
-        // because the optional on-device quality detector failed. We still
-        // require a decodable, reasonably sized live camera image here; the
-        // server continues to enforce enrolled-device + office GPS checks and
-        // stores the selfie for the existing admin identity review workflow.
-        final fallback = await _validateDetectorFallback(
-          normalizedFile ?? file,
+        debugPrint(
+          'SELFIE DETECTOR ADVISORY: detector unavailable ($lastError); '
+          'valid camera image accepted for server review.',
         );
-        if (fallback != null) return fallback;
-
-        throw StateError('Face detection failed: $lastError');
+        return SelfieQualityResult.accepted(
+          'Selfie captured. Face scan was unavailable on this phone, so it will be reviewed after check-in.',
+        );
       }
 
       if (faces.isEmpty) {
-        return SelfieQualityResult.invalid(
-          'No face detected. Keep your full face clearly visible and retake the selfie.',
+        return SelfieQualityResult.accepted(
+          'Selfie captured. Face scan could not confirm a face on this phone; attendance can continue and the selfie will be reviewed.',
         );
       }
 
       if (faces.length != 1) {
-        return SelfieQualityResult.invalid(
-          'Only one person may appear in the attendance selfie.',
+        return SelfieQualityResult.accepted(
+          'Selfie captured. The phone detected more than one face-like area; attendance can continue and the selfie will be reviewed.',
         );
       }
 
       final face = faces.single;
       final box = face.boundingBox;
-
-      // Reject tiny/distant detections. This is intentionally a capture-quality
-      // check only; it does not identify or compare the employee.
-      if (box.width < 140 || box.height < 140) {
-        return SelfieQualityResult.invalid(
-          'Your face is too far from the camera. Move closer and retake the selfie.',
-        );
-      }
-
       final yaw = face.headEulerAngleY?.abs();
       final roll = face.headEulerAngleZ?.abs();
-      if ((yaw != null && yaw > 22) || (roll != null && roll > 18)) {
-        return SelfieQualityResult.invalid(
-          'Look straight at the camera and keep your head upright.',
-        );
-      }
-
       final leftEye = face.leftEyeOpenProbability;
       final rightEye = face.rightEyeOpenProbability;
+
+      final advisory = <String>[];
+      if (box.width < 140 || box.height < 140) {
+        advisory.add('face appears small');
+      }
+      if ((yaw != null && yaw > 22) || (roll != null && roll > 18)) {
+        advisory.add('head angle is not straight');
+      }
       if ((leftEye != null && leftEye < 0.35) ||
           (rightEye != null && rightEye < 0.35)) {
-        return SelfieQualityResult.invalid(
-          'Keep both eyes open and look at the camera.',
+        advisory.add('eyes may not be fully open');
+      }
+
+      if (advisory.isNotEmpty) {
+        return SelfieQualityResult.accepted(
+          'Selfie captured (${advisory.join(', ')}). Attendance can continue; admin review remains available.',
         );
       }
 
-      return SelfieQualityResult.valid();
+      return SelfieQualityResult.accepted(
+        'Live selfie captured successfully.',
+      );
     } catch (error, stackTrace) {
-      debugPrint('SELFIE QUALITY VERIFICATION ERROR: $error');
+      // The basic image check already proved this is a usable camera capture.
+      // Any later detector/platform failure must not lock an employee out.
+      debugPrint('SELFIE QUALITY ADVISORY ERROR: $error');
       debugPrintStack(stackTrace: stackTrace);
-      return SelfieQualityResult.invalid(
-        'Unable to process this selfie. Please retake it and keep the phone upright.',
+      return SelfieQualityResult.accepted(
+        'Selfie captured successfully. Device face analysis was skipped and the selfie will be reviewed after check-in.',
       );
     } finally {
       if (normalizedFile != null && normalizedFile.path != file.path) {
@@ -141,10 +135,49 @@ class SelfieQualityService {
     }
   }
 
+  /// Returns an invalid result only for problems that are independent of ML Kit
+  /// and therefore consistent across Android vendors.
+  static Future<SelfieQualityResult?> _validateCameraImage(File image) async {
+    try {
+      final bytes = await image.readAsBytes();
+      if (bytes.length < 12 * 1024) {
+        return SelfieQualityResult.invalid(
+          'Selfie image quality is too low. Please retake it in good light.',
+        );
+      }
+
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) {
+        return SelfieQualityResult.invalid(
+          'Selfie image could not be decoded. Please retake it.',
+        );
+      }
+
+      final normalized = img.bakeOrientation(decoded);
+      final shortSide = normalized.width < normalized.height
+          ? normalized.width
+          : normalized.height;
+      final longSide = normalized.width > normalized.height
+          ? normalized.width
+          : normalized.height;
+
+      if (shortSide < 240 || longSide < 320) {
+        return SelfieQualityResult.invalid(
+          'Selfie image is too small. Please retake it with the front camera.',
+        );
+      }
+
+      return null;
+    } catch (error, stackTrace) {
+      debugPrint('SELFIE IMAGE CHECK ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return SelfieQualityResult.invalid(
+        'Selfie image could not be read. Please retake it.',
+      );
+    }
+  }
+
   static Future<List<Face>> _detectFaces(File image) async {
-    // Fast mode uses the lighter on-device detector and is more reliable on
-    // vendor Android builds. Classification stays enabled so the existing
-    // eyes-open quality check remains active when ML Kit reports it.
     final detector = FaceDetector(
       options: FaceDetectorOptions(
         enableClassification: true,
@@ -156,43 +189,6 @@ class SelfieQualityService {
       return await detector.processImage(InputImage.fromFilePath(image.path));
     } finally {
       await detector.close();
-    }
-  }
-
-  static Future<SelfieQualityResult?> _validateDetectorFallback(
-    File image,
-  ) async {
-    try {
-      final bytes = await image.readAsBytes();
-      if (bytes.length < 20 * 1024) {
-        return SelfieQualityResult.invalid(
-          'Selfie image quality is too low. Please retake it in good light.',
-        );
-      }
-
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null) return null;
-      final normalized = img.bakeOrientation(decoded);
-      final shortSide = normalized.width < normalized.height
-          ? normalized.width
-          : normalized.height;
-      final longSide = normalized.width > normalized.height
-          ? normalized.width
-          : normalized.height;
-      if (shortSide < 360 || longSide < 480) {
-        return SelfieQualityResult.invalid(
-          'Selfie image is too small. Please retake it with the front camera.',
-        );
-      }
-
-      debugPrint(
-        'SELFIE DETECTOR FALLBACK: valid camera image accepted for server review.',
-      );
-      return SelfieQualityResult.detectorFallback();
-    } catch (error, stackTrace) {
-      debugPrint('SELFIE FALLBACK ERROR: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      return null;
     }
   }
 
