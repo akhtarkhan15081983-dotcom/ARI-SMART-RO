@@ -22,8 +22,12 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
   String _role = '';
   String? _error;
   bool _loading = true, _busy = false;
-  final _searchController = TextEditingController();
-  String _query = '';
+  final _supplierSearchController = TextEditingController();
+  final _requestSearchController = TextEditingController();
+  final _receivingSearchController = TextEditingController();
+  String _supplierQuery = '';
+  String _requestQuery = '';
+  String _receivingQuery = '';
   String _requestStatus = 'ALL';
   bool get _canReview => {'ADMIN', 'MANAGER'}.contains(_role);
 
@@ -35,47 +39,54 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _supplierSearchController.dispose();
+    _requestSearchController.dispose();
+    _receivingSearchController.dispose();
     super.dispose();
   }
 
-  bool _matchesRow(Map<String, dynamic> row) => matchesAllSearchTerms(
-    _query,
-    row.entries.map((e) => '${e.key} ${e.value}'),
-  );
+  bool _matchesRow(Map<String, dynamic> row, String query) =>
+      matchesAllSearchTerms(
+        query,
+        row.entries.map((e) => '${e.key} ${e.value}'),
+      );
 
   List<Map<String, dynamic>> get _filteredSuppliers =>
-      _suppliers.where(_matchesRow).toList();
+      _suppliers.where((row) => _matchesRow(row, _supplierQuery)).toList();
 
   List<Map<String, dynamic>> get _filteredRequests => _requests.where((row) {
     if (_requestStatus != 'ALL' &&
         (row['status'] ?? '').toString().toUpperCase() != _requestStatus) {
       return false;
     }
-    return _matchesRow(row);
+    return _matchesRow(row, _requestQuery);
   }).toList();
 
   List<Map<String, dynamic>> get _filteredReceiving =>
-      _receiving.where(_matchesRow).toList();
+      _receiving.where((row) => _matchesRow(row, _receivingQuery)).toList();
 
-  Widget _searchBox(String hint) => TextField(
-    controller: _searchController,
-    textInputAction: TextInputAction.search,
-    onChanged: (value) => setState(() => _query = value),
-    decoration: InputDecoration(
-      hintText: hint,
-      prefixIcon: const Icon(Icons.search),
-      suffixIcon: _query.isEmpty
-          ? null
-          : IconButton(
-              onPressed: () {
-                _searchController.clear();
-                setState(() => _query = '');
-              },
-              icon: const Icon(Icons.clear),
-            ),
-    ),
-  );
+  Widget _searchBox({
+    required TextEditingController controller,
+    required String query,
+    required String hint,
+    required ValueChanged<String> onChanged,
+    required VoidCallback onClear,
+  }) =>
+      TextField(
+        controller: controller,
+        textInputAction: TextInputAction.search,
+        onChanged: onChanged,
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: query.isEmpty
+              ? null
+              : IconButton(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.clear),
+                ),
+        ),
+      );
 
   Future<void> _load() async {
     setState(() {
@@ -707,7 +718,16 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
         'Procurement desk',
         'Register suppliers and convert every invoice into traceable unit-level inventory.',
       ),
-      _searchBox('Search supplier, phone, GST or inventory data...'),
+      _searchBox(
+        controller: _supplierSearchController,
+        query: _supplierQuery,
+        hint: 'Search supplier, phone, GST or inventory data...',
+        onChanged: (value) => setState(() => _supplierQuery = value),
+        onClear: () {
+          _supplierSearchController.clear();
+          setState(() => _supplierQuery = '');
+        },
+      ),
       const SizedBox(height: 12),
       Row(
         children: [
@@ -772,7 +792,16 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
           'Approval & issue workflow',
           'Review demand and scan approved physical units into the engineer bag.',
         ),
-        _searchBox('Search part, employee, ID, status or remarks...'),
+        _searchBox(
+          controller: _requestSearchController,
+          query: _requestQuery,
+          hint: 'Search part, employee, ID, status or remarks...',
+          onChanged: (value) => setState(() => _requestQuery = value),
+          onClear: () {
+            _requestSearchController.clear();
+            setState(() => _requestQuery = '');
+          },
+        ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           initialValue: _requestStatus,
@@ -866,7 +895,16 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
           'Goods receiving',
           'Generate labels, print them, attach each label and scan the physical unit into live stock.',
         ),
-        _searchBox('Search part, supplier, invoice or status...'),
+        _searchBox(
+          controller: _receivingSearchController,
+          query: _receivingQuery,
+          hint: 'Search part, supplier, invoice or status...',
+          onChanged: (value) => setState(() => _receivingQuery = value),
+          onClear: () {
+            _receivingSearchController.clear();
+            setState(() => _receivingQuery = '');
+          },
+        ),
         const SizedBox(height: 8),
         Align(alignment: Alignment.centerLeft, child: Text('${_filteredReceiving.length} of ${_receiving.length} receiving lines')),
         if (_filteredReceiving.isEmpty) _empty('No matching pending inventory receipts.'),
