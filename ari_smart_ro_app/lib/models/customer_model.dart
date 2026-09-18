@@ -36,8 +36,6 @@ class CustomerModel {
   });
 
   factory CustomerModel.fromJson(Map<String, dynamic> json) {
-    print(json);
-
     return CustomerModel(
       id: json["id"],
 

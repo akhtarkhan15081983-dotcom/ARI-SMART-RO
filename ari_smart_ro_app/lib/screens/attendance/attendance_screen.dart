@@ -78,19 +78,23 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _distanceFromOffice = null;
     });
     try {
-      if (!await Geolocator.isLocationServiceEnabled())
+      if (!await Geolocator.isLocationServiceEnabled()) {
         throw const _AttendanceException(
           'Location services are turned off. Enable GPS and try again.',
         );
+      }
       var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied)
+      if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied)
+      }
+      if (permission == LocationPermission.denied) {
         throw const _AttendanceException('Location permission was denied.');
-      if (permission == LocationPermission.deniedForever)
+      }
+      if (permission == LocationPermission.deniedForever) {
         throw const _AttendanceException(
           'Location permission is permanently denied. Enable it in Settings.',
         );
+      }
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,

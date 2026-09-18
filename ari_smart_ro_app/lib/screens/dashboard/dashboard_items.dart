@@ -22,6 +22,11 @@ class DashboardItems {
     icon: Icons.analytics_outlined,
     route: "reports",
   );
+  static const DashboardItem referral = DashboardItem(
+    title: "Refer & Wallet",
+    icon: Icons.card_giftcard,
+    route: "referral",
+  );
 
   static List<DashboardItem> engineer = [
     andy,
@@ -84,13 +89,14 @@ class DashboardItems {
     const DashboardItem(
       title: "Rent Collection",
       icon: Icons.payments,
-      route: "rent",
+      route: "rent_management",
     ),
     const DashboardItem(
       title: "Complaint",
       icon: Icons.report_problem,
       route: "complaint",
     ),
+    referral,
     const DashboardItem(title: "Profile", icon: Icons.person, route: "profile"),
   ];
 
@@ -138,7 +144,10 @@ class DashboardItems {
       route: "attendance_security_test",
     ),
     ...engineer.where(
-      (item) => item.route != "andy" && item.route != "customers",
+      (item) =>
+          item.route != "andy" &&
+          item.route != "customers" &&
+          item.route != "rent_management",
     ),
     const DashboardItem(title: "Live Map", icon: Icons.map, route: "map"),
     const DashboardItem(
@@ -181,6 +190,7 @@ class DashboardItems {
       icon: Icons.report_problem,
       route: "complaint",
     ),
+    referral,
     const DashboardItem(title: "Profile", icon: Icons.person, route: "profile"),
   ];
 }

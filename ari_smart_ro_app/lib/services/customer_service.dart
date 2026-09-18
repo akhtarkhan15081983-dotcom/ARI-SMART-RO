@@ -1,15 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/customer_model.dart';
 import 'api_service.dart';
 
 class CustomerService {
-  final storage = const FlutterSecureStorage();
-
   // ============================================================
   // GET ALL CUSTOMERS
   // ============================================================
@@ -18,7 +15,7 @@ class CustomerService {
   // /api/customers/
   // ============================================================
   Future<List<CustomerModel>> getCustomers() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/customers/"),
@@ -28,13 +25,8 @@ class CustomerService {
       },
     );
 
-    print("CUSTOMER STATUS : ${response.statusCode}");
-    print("CUSTOMER BODY : ${response.body}");
-
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
-
-      print("TOTAL CUSTOMERS : ${data.length}");
 
       return data.map((e) => CustomerModel.fromJson(e)).toList();
     }
@@ -53,7 +45,7 @@ class CustomerService {
   // assigned to the logged-in engineer.
   // ============================================================
   Future<List<CustomerModel>> getMyCustomers() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/customers/my-customers/"),
@@ -63,13 +55,8 @@ class CustomerService {
       },
     );
 
-    print("MY CUSTOMERS STATUS : ${response.statusCode}");
-    print("MY CUSTOMERS BODY : ${response.body}");
-
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
-
-      print("MY CUSTOMERS TOTAL : ${data.length}");
 
       return data.map((e) => CustomerModel.fromJson(e)).toList();
     }
@@ -98,9 +85,6 @@ class CustomerService {
       body: jsonEncode({"employee_id": employeeId}),
     );
 
-    print("ASSIGN STATUS : ${response.statusCode}");
-    print("ASSIGN BODY : ${response.body}");
-
     return response.statusCode == 200;
   }
 
@@ -112,7 +96,7 @@ class CustomerService {
     required Uint8List bytes,
     bool previewOnly = false,
   }) async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
     final request = http.MultipartRequest(
       "POST",
       Uri.parse("${ApiService.baseUrl}/customers/bulk-import/"),
@@ -183,9 +167,6 @@ class CustomerService {
         "monthly_rent": monthlyRent,
       }),
     );
-
-    print("WALK-IN STATUS : ${response.statusCode}");
-    print("WALK-IN BODY : ${response.body}");
 
     return jsonDecode(response.body);
   }

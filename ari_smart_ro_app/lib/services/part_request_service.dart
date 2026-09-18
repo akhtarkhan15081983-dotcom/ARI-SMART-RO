@@ -69,8 +69,9 @@ class PartRequestService {
       Uri.parse('${ApiService.baseUrl}/inventory/part-requests/'),
       headers: await ApiService.authHeaders(),
     );
-    if (response.statusCode != 200)
+    if (response.statusCode != 200) {
       throw Exception('Unable to load part requests');
+    }
     return (jsonDecode(response.body) as List)
         .map((e) => EngineerPartRequest.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -94,7 +95,8 @@ class PartRequestService {
         'remarks': remarks,
       }),
     );
-    if (response.statusCode != 201)
+    if (response.statusCode != 201) {
       throw Exception('Unable to create part request');
+    }
   }
 }
