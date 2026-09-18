@@ -28,6 +28,34 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filteredEmployees => _employees.where((employee) {
+    final designation = (employee['designation'] ?? '').toString().toUpperCase();
+    final active = employee['is_active'] == true;
+    if (_designationFilter != 'ALL' && designation != _designationFilter) return false;
+    if (_accountFilter == 'ACTIVE' && !active) return false;
+    if (_accountFilter == 'INACTIVE' && active) return false;
+    return matchesAllSearchTerms(_query, [
+      (employee['name'] ?? '').toString(),
+      (employee['employee_id'] ?? '').toString(),
+      (employee['phone'] ?? '').toString(),
+      (employee['email'] ?? '').toString(),
+      designation,
+    ]);
+  }).toList();
+
+  List<String> get _designations => <String>{
+    'ALL',
+    ..._employees
+        .map((e) => (e['designation'] ?? '').toString().toUpperCase())
+        .where((v) => v.isNotEmpty),
+  }.toList();
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -51,12 +79,6 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   Future<void> _add() async {
@@ -269,8 +291,6 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                   label: Text(saving ? 'CREATING...' : 'CREATE EMPLOYEE'),
                 ),
               ],
-            );
-              },
             ),
           ),
         ) ??
@@ -322,38 +342,11 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
           )
         : RefreshIndicator(
             onRefresh: _load,
-            child: Builder(
-              builder: (context) {
-                final designations = <String>{
-                  'ALL',
-                  ..._employees
-                      .map((e) => (e['designation'] ?? '').toString().toUpperCase())
-                      .where((v) => v.isNotEmpty),
-                }.toList();
-                final filtered = _employees.where((employee) {
-                  final designation =
-                      (employee['designation'] ?? '').toString().toUpperCase();
-                  final active = employee['is_active'] == true;
-                  if (_designationFilter != 'ALL' &&
-                      designation != _designationFilter) {
-                    return false;
-                  }
-                  if (_accountFilter == 'ACTIVE' && !active) return false;
-                  if (_accountFilter == 'INACTIVE' && active) return false;
-                  return matchesAllSearchTerms(_query, [
-                    (employee['name'] ?? '').toString(),
-                    (employee['employee_id'] ?? '').toString(),
-                    (employee['phone'] ?? '').toString(),
-                    (employee['email'] ?? '').toString(),
-                    designation,
-                  ]);
-                }).toList();
-
-                return ListView(
+            child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               children: [
                 Text(_company, style: Theme.of(context).textTheme.titleLarge),
-                Text('${filtered.length} of ${_employees.length} employees in this workspace'),
+                Text('${_filteredEmployees.length} of ${_employees.length} employees in this workspace'),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _searchController,
@@ -380,16 +373,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                       child: DropdownButtonFormField<String>(
                         initialValue: _designationFilter,
                         decoration: const InputDecoration(labelText: 'Designation'),
-                        items: designations
-                            .map(
-                              (v) => DropdownMenuItem(
-                                value: v,
-                                child: Text(v == 'ALL' ? 'All designations' : v),
-                              ),
-                            )
+                        items: _designations
+                            .map((v) => DropdownMenuItem(value: v, child: Text(v == 'ALL' ? 'All designations' : v)))
                             .toList(),
-                        onChanged: (v) =>
-                            setState(() => _designationFilter = v ?? 'ALL'),
+                        onChanged: (v) => setState(() => _designationFilter = v ?? 'ALL'),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -402,8 +389,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                           DropdownMenuItem(value: 'ACTIVE', child: Text('Active')),
                           DropdownMenuItem(value: 'INACTIVE', child: Text('Inactive')),
                         ],
-                        onChanged: (v) =>
-                            setState(() => _accountFilter = v ?? 'ALL'),
+                        onChanged: (v) => setState(() => _accountFilter = v ?? 'ALL'),
                       ),
                     ),
                   ],
@@ -420,7 +406,14 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                       ),
                     ),
                   ),
-                ...filtered.map(
+                if (_employees.isNotEmpty && _filteredEmployees.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(22),
+                      child: Center(child: Text('No matching employees found.')),
+                    ),
+                  ),
+                ..._filteredEmployees.map(
                   (employee) => Card(
                     child: ListTile(
                       leading: CircleAvatar(
