@@ -1,7 +1,9 @@
-import base64
 import gzip
 import json
 import os
+from pathlib import Path
+
+from cryptography.fernet import Fernet
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -10,7 +12,7 @@ from django.db import migrations
 
 BATCH = "EXCEL-2026-09-18-1059"
 EXPECTED = 1059
-ENV_PREFIX = "ARI_EXCEL_IMPORT_20260918_"
+KEY_ENV = "ARI_EXCEL_IMPORT_20260918_KEY"
 
 
 def _clean(value):
@@ -56,11 +58,26 @@ def _excel_date(value):
 
 
 def _load_payload():
-    encoded = "".join(os.environ.get(f"{ENV_PREFIX}{i}", "") for i in range(1, 9))
-    if not encoded:
-        raise RuntimeError("Exact Excel import payload is missing from Render environment.")
-    raw = gzip.decompress(base64.b64decode(encoded.encode("ascii")))
-    payload = json.loads(raw.decode("utf-8"))
+    key = os.environ.get(KEY_ENV, "").strip()
+    if not key:
+        raise RuntimeError("Exact Excel import decryption key is missing from Render environment.")
+
+    encrypted_path = (
+        Path(__file__).resolve().parent.parent
+        / "data"
+        / "customer_import_20260918.enc"
+    )
+    if not encrypted_path.exists():
+        raise RuntimeError("Encrypted Excel import payload file is missing.")
+
+    encrypted = encrypted_path.read_bytes().strip()
+    try:
+        compressed = Fernet(key.encode("ascii")).decrypt(encrypted)
+        raw = gzip.decompress(compressed)
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("Unable to decrypt/read exact Excel import payload.") from exc
+
     if payload.get("batch") != BATCH or int(payload.get("expected_records") or 0) != EXPECTED:
         raise RuntimeError("Exact Excel import payload metadata does not match the expected batch.")
     return payload
