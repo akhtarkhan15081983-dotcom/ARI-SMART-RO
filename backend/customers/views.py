@@ -1531,6 +1531,7 @@ class RentManagementAPIView(APIView):
     ALLOWED_ROLES = [
         "ADMIN",
         "MANAGER",
+        "OFFICE",
         "ENGINEER",
     ]
 
@@ -1918,6 +1919,7 @@ class RentPaymentCreateAPIView(APIView):
     ALLOWED_ROLES = [
         "ADMIN",
         "MANAGER",
+        "OFFICE",
         "ENGINEER",
     ]
 
@@ -2796,6 +2798,7 @@ class RentPaymentHistoryAPIView(APIView):
     ALLOWED_ROLES = [
         "ADMIN",
         "MANAGER",
+        "OFFICE",
     ]
 
     def get(self, request):
@@ -2989,3 +2992,147 @@ class RentPaymentHistoryAPIView(APIView):
 # ============================================================
 # CUSTOMER APP PROFILE
 # ============================================================
+
+
+# ============================================================
+# CALLING DESK
+# ============================================================
+
+class CallingDeskAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _allowed(self, user):
+        return getattr(user, "role", "") in {"ADMIN", "MANAGER", "OFFICE", "CALLING"}
+
+    def _serialize(self, row):
+        caller = row.assigned_caller
+        return {
+            "id": row.id,
+            "request_number": row.request_number,
+            "request_type": row.request_type,
+            "customer_name": row.customer_name,
+            "phone": row.phone,
+            "alternate_phone": row.alternate_phone,
+            "city": row.city,
+            "state": row.state,
+            "plan_name": row.plan_name,
+            "status": row.status,
+            "notes": row.notes,
+            "last_call_outcome": row.last_call_outcome,
+            "call_notes": row.call_notes,
+            "call_count": row.call_count,
+            "last_called_at": row.last_called_at,
+            "next_follow_up_at": row.next_follow_up_at,
+            "assigned_caller_id": row.assigned_caller_id,
+            "assigned_caller_name": (
+                caller.user.get_full_name() or caller.user.phone
+                if caller else ""
+            ),
+            "created_at": row.created_at,
+        }
+
+    def get(self, request):
+        if not self._allowed(request.user):
+            return Response(
+                {"detail": "Calling desk access is restricted to authorised staff."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        rows = PublicCustomerRequest.objects.select_related(
+            "assigned_caller__user"
+        ).order_by("-created_at")
+
+        if getattr(request.user, "role", "") == "CALLING":
+            employee = getattr(request.user, "employee_profile", None)
+            if employee is None:
+                return Response({"detail": "Employee profile not found."}, status=404)
+            rows = rows.filter(Q(assigned_caller=employee) | Q(assigned_caller__isnull=True))
+
+        q = (request.query_params.get("q") or "").strip()
+        if q:
+            rows = rows.filter(
+                Q(request_number__icontains=q)
+                | Q(customer_name__icontains=q)
+                | Q(phone__icontains=q)
+                | Q(alternate_phone__icontains=q)
+                | Q(city__icontains=q)
+                | Q(plan_name__icontains=q)
+                | Q(last_call_outcome__icontains=q)
+            )
+
+        outcome = (request.query_params.get("outcome") or "").strip().upper()
+        if outcome and outcome != "ALL":
+            rows = rows.filter(last_call_outcome=outcome)
+
+        now = timezone.now()
+        limited_rows = list(rows[:300])
+        data = [self._serialize(row) for row in limited_rows]
+        return Response({
+            "count": len(data),
+            "due_follow_ups": sum(
+                1 for row in limited_rows
+                if row.next_follow_up_at and row.next_follow_up_at <= now
+                and row.last_call_outcome not in {"CONVERTED", "NOT_INTERESTED", "WRONG_NUMBER"}
+            ),
+            "leads": data,
+        })
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        if not self._allowed(request.user):
+            return Response(
+                {"detail": "Calling desk access is restricted to authorised staff."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            row = PublicCustomerRequest.objects.select_related(
+                "assigned_caller__user"
+            ).get(pk=pk)
+        except PublicCustomerRequest.DoesNotExist:
+            return Response({"detail": "Lead not found."}, status=404)
+
+        employee = getattr(request.user, "employee_profile", None)
+        if getattr(request.user, "role", "") == "CALLING":
+            if employee is None:
+                return Response({"detail": "Employee profile not found."}, status=404)
+            if row.assigned_caller_id not in (None, employee.id):
+                return Response({"detail": "This lead is assigned to another caller."}, status=403)
+            if row.assigned_caller_id is None:
+                row.assigned_caller = employee
+
+        outcome = (request.data.get("outcome") or "").strip().upper()
+        valid_outcomes = {choice[0] for choice in PublicCustomerRequest.CALL_OUTCOME_CHOICES}
+        if outcome not in valid_outcomes:
+            return Response({"detail": "Select a valid call outcome."}, status=400)
+
+        from django.utils.dateparse import parse_datetime
+        follow_up_raw = (request.data.get("next_follow_up_at") or "").strip()
+        follow_up = parse_datetime(follow_up_raw) if follow_up_raw else None
+        if follow_up_raw and follow_up is None:
+            return Response({"detail": "Invalid follow-up date/time."}, status=400)
+
+        note = (request.data.get("note") or "").strip()
+        row.last_call_outcome = outcome
+        row.call_notes = note[:2000]
+        row.next_follow_up_at = follow_up
+        row.last_called_at = timezone.now()
+        row.call_count = row.call_count + 1
+
+        if outcome == "CONVERTED":
+            row.status = "CONFIRMED"
+        elif outcome in {"NOT_INTERESTED", "WRONG_NUMBER"}:
+            row.status = "CANCELLED"
+        elif row.status == "NEW":
+            row.status = "CONTACTED"
+
+        row.save(update_fields=[
+            "assigned_caller",
+            "last_call_outcome",
+            "call_notes",
+            "next_follow_up_at",
+            "last_called_at",
+            "call_count",
+            "status",
+            "updated_at",
+        ])
+        return Response({"success": True, "lead": self._serialize(row)})

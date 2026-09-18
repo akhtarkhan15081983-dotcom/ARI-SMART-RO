@@ -22,6 +22,7 @@ class EmployeeProfile(models.Model):
         ("ENGINEER", "Engineer"),
         ("MANAGER", "Manager"),
         ("OFFICE", "Office Staff"),
+        ("CALLING", "Calling Staff"),
     ]
 
     user = models.OneToOneField(
