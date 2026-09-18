@@ -153,6 +153,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                               child: Text('Office staff'),
                             ),
                             DropdownMenuItem(
+                              value: 'CALLING',
+                              child: Text('Calling staff'),
+                            ),
+                            DropdownMenuItem(
                               value: 'MANAGER',
                               child: Text('Manager'),
                             ),

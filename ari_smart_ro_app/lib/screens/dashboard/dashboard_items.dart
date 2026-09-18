@@ -161,19 +161,49 @@ class DashboardItems {
 
   static List<DashboardItem> office = [
     const DashboardItem(
-      title: "Inventory Control",
-      icon: Icons.qr_code_2_rounded,
-      route: "inventory_workflow",
-    ),
-    const DashboardItem(
       title: "Attendance",
       icon: Icons.fingerprint,
       route: "attendance",
     ),
     const DashboardItem(
-      title: "Assign Employee",
-      icon: Icons.assignment_ind,
+      title: "Employee HRMS",
+      icon: Icons.badge_outlined,
+      route: "hrms",
+    ),
+    const DashboardItem(
+      title: "Customers",
+      icon: Icons.people,
       route: "customers",
+    ),
+    const DashboardItem(
+      title: "Walk-In Installation",
+      icon: Icons.person_add_alt_1,
+      route: "walkin",
+    ),
+    const DashboardItem(
+      title: "Service",
+      icon: Icons.miscellaneous_services,
+      route: "service",
+    ),
+    const DashboardItem(
+      title: "Rent Management",
+      icon: Icons.account_balance_wallet,
+      route: "rent_management",
+    ),
+    const DashboardItem(
+      title: "Payment History",
+      icon: Icons.receipt_long,
+      route: "payment_history",
+    ),
+    const DashboardItem(
+      title: "Business Reports",
+      icon: Icons.analytics_outlined,
+      route: "reports",
+    ),
+    const DashboardItem(
+      title: "Inventory Control",
+      icon: Icons.qr_code_2_rounded,
+      route: "inventory_workflow",
     ),
     const DashboardItem(
       title: "Work Calendar",
@@ -191,6 +221,25 @@ class DashboardItems {
       route: "complaint",
     ),
     referral,
+    const DashboardItem(title: "Profile", icon: Icons.person, route: "profile"),
+  ];
+
+  static List<DashboardItem> calling = [
+    const DashboardItem(
+      title: "Attendance",
+      icon: Icons.fingerprint,
+      route: "attendance",
+    ),
+    const DashboardItem(
+      title: "Employee HRMS",
+      icon: Icons.badge_outlined,
+      route: "hrms",
+    ),
+    const DashboardItem(
+      title: "Calling Desk",
+      icon: Icons.headset_mic_rounded,
+      route: "calling_desk",
+    ),
     const DashboardItem(title: "Profile", icon: Icons.person, route: "profile"),
   ];
 }

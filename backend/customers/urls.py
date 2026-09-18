@@ -19,6 +19,7 @@ from .views import (
     MyROAPIView,
     CustomerLocationCaptureAPIView,
     PublicCustomerRequestAPIView,
+    CallingDeskAPIView,
 )
 
 urlpatterns = [
@@ -26,6 +27,16 @@ urlpatterns = [
         "public-requests/",
         PublicCustomerRequestAPIView.as_view(),
         name="public-customer-request",
+    ),
+    path(
+        "calling-desk/",
+        CallingDeskAPIView.as_view(),
+        name="calling-desk",
+    ),
+    path(
+        "calling-desk/<int:pk>/",
+        CallingDeskAPIView.as_view(),
+        name="calling-desk-detail",
     ),
     path(
         "<int:pk>/capture-location/",
