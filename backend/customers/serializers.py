@@ -142,6 +142,15 @@ class CustomerSerializer(serializers.ModelSerializer):
 
             "security_deposit",
 
+            "ownership_type",
+            "rent_to_purchase_date",
+            "rent_to_purchase_amount",
+            "rent_at_conversion",
+            "security_adjusted_at_conversion",
+            "rent_to_purchase_notes",
+            "deactivated_at",
+            "deactivation_reason",
+
             "installation_date",
 
             "assigned_engineer",

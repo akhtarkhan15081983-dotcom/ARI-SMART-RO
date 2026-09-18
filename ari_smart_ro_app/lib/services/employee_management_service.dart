@@ -27,6 +27,23 @@ class EmployeeManagementService {
     if (response.statusCode != 201) throw Exception(_message(response));
   }
 
+  Future<void> lifecycle({
+    required int employeeId,
+    required String action,
+    String confirm = "",
+  }) async {
+    final response = await http
+        .post(
+          Uri.parse(
+            '${ApiService.baseUrl}/employees/manage/$employeeId/lifecycle/',
+          ),
+          headers: await ApiService.authHeaders(),
+          body: jsonEncode({"action": action, "confirm": confirm}),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) throw Exception(_message(response));
+  }
+
   String _message(http.Response response) {
     try {
       final data = jsonDecode(response.body) as Map<String, dynamic>;

@@ -119,6 +119,41 @@ class CustomerService {
     return data;
   }
 
+  Future<Map<String, dynamic>> customerLifecycle({
+    required int customerId,
+    required String action,
+    double purchaseAmount = 0,
+    double securityAdjusted = 0,
+    DateTime? conversionDate,
+    String notes = "",
+    String reason = "",
+    String confirm = "",
+  }) async {
+    final response = await http.post(
+      Uri.parse("${ApiService.baseUrl}/customers/$customerId/lifecycle/"),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({
+        "action": action,
+        "purchase_amount": purchaseAmount,
+        "security_adjusted": securityAdjusted,
+        "conversion_date": conversionDate == null
+            ? ""
+            : "${conversionDate.year.toString().padLeft(4, '0')}-${conversionDate.month.toString().padLeft(2, '0')}-${conversionDate.day.toString().padLeft(2, '0')}",
+        "notes": notes,
+        "reason": reason,
+        "confirm": confirm,
+      }),
+    );
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(
+        (data["detail"] ?? data["message"] ?? "Customer action failed.").toString(),
+      );
+    }
+    return data;
+  }
+
   // ============================================================
   // CREATE WALK-IN CUSTOMER
   // ============================================================
