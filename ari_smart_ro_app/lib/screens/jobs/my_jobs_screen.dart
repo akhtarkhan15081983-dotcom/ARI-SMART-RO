@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/job_model.dart';
 import '../../services/job_service.dart';
+import '../../utils/search_utils.dart';
 import 'job_details_screen.dart';
 
 class MyJobsScreen extends StatefulWidget {
@@ -16,6 +17,10 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
   final JobService jobService = JobService();
 
   late Future<List<JobModel>> jobsFuture;
+  final _searchController = TextEditingController();
+  String _query = '';
+  String _statusFilter = 'ALL';
+  String _priorityFilter = 'ALL';
 
   @override
   void initState() {
@@ -31,6 +36,12 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
     setState(() {
       loadJobs();
     });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> callCustomer(String phone) async {
@@ -99,7 +110,27 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
               return Center(child: Text(snapshot.error.toString()));
             }
 
-            final jobs = snapshot.data ?? [];
+            final jobs = snapshot.data ?? <JobModel>[];
+            final statuses = <String>{'ALL', ...jobs.map((j) => j.status.toUpperCase())}.toList();
+            final priorities = <String>{'ALL', ...jobs.map((j) => j.priority.toUpperCase())}.toList();
+            final filtered = jobs.where((job) {
+              if (_statusFilter != 'ALL' && job.status.toUpperCase() != _statusFilter) return false;
+              if (_priorityFilter != 'ALL' && job.priority.toUpperCase() != _priorityFilter) return false;
+              return matchesAllSearchTerms(_query, [
+                job.jobId,
+                job.customerName,
+                job.customerPhone,
+                job.customerAddress,
+                job.area,
+                job.city,
+                job.assetId,
+                job.engineerName,
+                job.jobType,
+                job.priority,
+                job.status,
+                job.remarks,
+              ]);
+            }).toList();
 
             if (jobs.isEmpty) {
               return const Center(
@@ -110,11 +141,54 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
               );
             }
 
-            return ListView.builder(
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(15, 12, 15, 6),
+                  child: TextField(
+                    controller: _searchController,
+                    textInputAction: TextInputAction.search,
+                    onChanged: (value) => setState(() => _query = value),
+                    decoration: InputDecoration(
+                      hintText: 'Search job ID, customer, phone, area, type...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _query.isEmpty ? null : IconButton(
+                        onPressed: () { _searchController.clear(); setState(() => _query = ''); },
+                        icon: const Icon(Icons.clear),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 15),
+                  child: Row(
+                    children: [
+                      Expanded(child: DropdownButtonFormField<String>(
+                        initialValue: _statusFilter,
+                        decoration: const InputDecoration(labelText: 'Status'),
+                        items: statuses.map((v) => DropdownMenuItem(value: v, child: Text(v == 'ALL' ? 'All statuses' : v.replaceAll('_', ' ')))).toList(),
+                        onChanged: (v) => setState(() => _statusFilter = v ?? 'ALL'),
+                      )),
+                      const SizedBox(width: 10),
+                      Expanded(child: DropdownButtonFormField<String>(
+                        initialValue: _priorityFilter,
+                        decoration: const InputDecoration(labelText: 'Priority'),
+                        items: priorities.map((v) => DropdownMenuItem(value: v, child: Text(v == 'ALL' ? 'All priorities' : v))).toList(),
+                        onChanged: (v) => setState(() => _priorityFilter = v ?? 'ALL'),
+                      )),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(15, 8, 15, 0),
+                  child: Align(alignment: Alignment.centerLeft, child: Text('${filtered.length} of ${jobs.length} jobs')),
+                ),
+                Expanded(
+                  child: filtered.isEmpty ? const Center(child: Text('No matching jobs found')) : ListView.builder(
               padding: const EdgeInsets.all(15),
-              itemCount: jobs.length,
+              itemCount: filtered.length,
               itemBuilder: (context, index) {
-                final job = jobs[index];
+                final job = filtered[index];
                 return Card(
                   margin: const EdgeInsets.only(bottom: 15),
                   elevation: 5,
@@ -311,6 +385,9 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                   ),
                 );
               },
+            ),
+                ),
+              ],
             );
           },
         ),
