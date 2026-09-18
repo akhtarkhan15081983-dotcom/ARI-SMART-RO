@@ -74,6 +74,7 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
                 const SizedBox(height: 10),
                 DropdownButtonFormField<PartOption>(
                   initialValue: selected,
+                  isExpanded: true,
                   items: parts
                       .where((p) =>
                           p.id == selected.id ||
@@ -81,7 +82,11 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
                       .map(
                         (p) => DropdownMenuItem(
                           value: p,
-                          child: Text('${p.code} - ${p.name}'),
+                          child: Text(
+                            '${p.code} - ${p.name}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       )
                       .toList(),
