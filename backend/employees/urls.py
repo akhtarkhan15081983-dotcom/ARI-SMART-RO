@@ -9,11 +9,17 @@ from .views import (
     FaceEnrollmentAPIView,
     AdminFaceEnrollmentControlAPIView,
     EmployeeManagementAPIView,
+    EmployeeLifecycleAPIView,
 )
 from .hrms import EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView
 
 urlpatterns = [
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
+    path(
+        "employees/manage/<int:employee_id>/lifecycle/",
+        EmployeeLifecycleAPIView.as_view(),
+        name="employee-lifecycle",
+    ),
     path("employees/hrms/dashboard/", EmployeeHrmsDashboardAPIView.as_view(), name="hrms-dashboard"),
     path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
     path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
