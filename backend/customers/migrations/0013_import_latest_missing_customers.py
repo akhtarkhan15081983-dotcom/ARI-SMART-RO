@@ -56,11 +56,25 @@ DATA = """6395032126|PRASOOL SHRIWASTAB|A 531|SHAGANJ|NOOR ALAM KE GHAR KE SAMNE
 
 def import_latest_missing_customers(apps, schema_editor):
     Customer = apps.get_model("customers", "Customer")
+
+    existing_numbers = []
+    for customer_id in Customer.objects.exclude(customer_id="").values_list("customer_id", flat=True):
+        try:
+            existing_numbers.append(int(str(customer_id).split("-")[-1]))
+        except (TypeError, ValueError):
+            continue
+    next_number = (max(existing_numbers) if existing_numbers else 0) + 1
+
     for line in DATA.splitlines():
         phone, name, old_card, area, address, installed, charge, rent = line.split("|")
         if Customer.objects.filter(phone=phone).exists():
             continue
+        while Customer.objects.filter(customer_id=f"CUS-2026-{next_number:06d}").exists():
+            next_number += 1
+
         Customer.objects.create(
+            customer_id=f"CUS-2026-{next_number:06d}",
+            card_number=f"ARI-2026-{next_number:06d}",
             name=name,
             phone=phone,
             alternate_phone="",
@@ -79,6 +93,7 @@ def import_latest_missing_customers(apps, schema_editor):
             old_card_number=old_card,
             is_active=True,
         )
+        next_number += 1
 
 
 class Migration(migrations.Migration):
