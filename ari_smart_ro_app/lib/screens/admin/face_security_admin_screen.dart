@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/admin_face_security_service.dart';
+import '../../utils/search_utils.dart';
 
 class FaceSecurityAdminScreen extends StatefulWidget {
   const FaceSecurityAdminScreen({super.key});
@@ -18,11 +19,21 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
   String? _error;
   int? _busyId;
   String? _busyAction;
+  final _searchController = TextEditingController();
+  String _query = '';
+  String _attendanceFilter = 'ALL';
+  String _reenrollFilter = 'ALL';
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -200,6 +211,19 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
   }
 
   Widget _buildAttendanceAccessTab() {
+    final filtered = _attendanceEmployees.where((employee) {
+      final allowed = employee['emergency_device_allowed_today'] == true;
+      final bound = employee['attendance_device_bound'] == true;
+      if (_attendanceFilter == 'ALLOWED' && !allowed) return false;
+      if (_attendanceFilter == 'BOUND' && !bound) return false;
+      if (_attendanceFilter == 'UNBOUND' && bound) return false;
+      return matchesAllSearchTerms(_query, [
+        (employee['name'] ?? '').toString(),
+        (employee['employee_id'] ?? '').toString(),
+        (employee['designation'] ?? '').toString(),
+        (employee['phone'] ?? '').toString(),
+      ]);
+    }).toList();
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -225,7 +249,35 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          ..._attendanceEmployees.map((employee) {
+          TextField(
+            controller: _searchController,
+            textInputAction: TextInputAction.search,
+            onChanged: (value) => setState(() => _query = value),
+            decoration: InputDecoration(
+              hintText: 'Search employee, ID, phone or designation...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _query.isEmpty ? null : IconButton(
+                onPressed: () { _searchController.clear(); setState(() => _query = ''); },
+                icon: const Icon(Icons.clear),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            initialValue: _attendanceFilter,
+            decoration: const InputDecoration(labelText: 'Attendance-device filter'),
+            items: const [
+              DropdownMenuItem(value: 'ALL', child: Text('All employees')),
+              DropdownMenuItem(value: 'ALLOWED', child: Text('Other phone allowed today')),
+              DropdownMenuItem(value: 'BOUND', child: Text('Registered device bound')),
+              DropdownMenuItem(value: 'UNBOUND', child: Text('Device not bound')),
+            ],
+            onChanged: (v) => setState(() => _attendanceFilter = v ?? 'ALL'),
+          ),
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: Text('${filtered.length} of ${_attendanceEmployees.length} employees')),
+          const SizedBox(height: 12),
+          ...filtered.map((employee) {
             final id = employee['id'] as int;
             final allowed = employee['emergency_device_allowed_today'] == true;
             final deviceBound = employee['attendance_device_bound'] == true;
@@ -314,14 +366,52 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
   }
 
   Widget _buildReEnrollmentTab() {
+    final filtered = _engineers.where((e) {
+      final allowed = e['face_enrollment_allowed'] == true;
+      final enrolled = e['face_enrolled'] == true;
+      if (_reenrollFilter == 'ALLOWED' && !allowed) return false;
+      if (_reenrollFilter == 'NOT_ENROLLED' && enrolled) return false;
+      return matchesAllSearchTerms(_query, [
+        (e['name'] ?? '').toString(),
+        (e['employee_id'] ?? '').toString(),
+        (e['phone'] ?? '').toString(),
+      ]);
+    }).toList();
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: _engineers.length,
+        itemCount: filtered.length + 2,
         separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
-          final e = _engineers[index];
+          if (index == 0) {
+            return TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) => setState(() => _query = value),
+              decoration: InputDecoration(
+                hintText: 'Search engineer, ID or phone...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _query.isEmpty ? null : IconButton(
+                  onPressed: () { _searchController.clear(); setState(() => _query = ''); },
+                  icon: const Icon(Icons.clear),
+                ),
+              ),
+            );
+          }
+          if (index == 1) {
+            return DropdownButtonFormField<String>(
+              initialValue: _reenrollFilter,
+              decoration: const InputDecoration(labelText: 'Face enrollment filter'),
+              items: const [
+                DropdownMenuItem(value: 'ALL', child: Text('All engineers')),
+                DropdownMenuItem(value: 'ALLOWED', child: Text('Re-enrollment allowed')),
+                DropdownMenuItem(value: 'NOT_ENROLLED', child: Text('Not enrolled')),
+              ],
+              onChanged: (v) => setState(() => _reenrollFilter = v ?? 'ALL'),
+            );
+          }
+          final e = filtered[index - 2];
           final enrolled = e['face_enrolled'] == true;
           final verified = e['face_enrollment_verified'] == true;
           final allowed = e['face_enrollment_allowed'] == true;
