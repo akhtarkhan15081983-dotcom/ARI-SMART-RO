@@ -10,6 +10,11 @@ class CustomerModel {
   final String roModel;
   final String monthlyRent;
   final String installationCharge;
+  final bool isActive;
+  final String ownershipType;
+  final String rentToPurchaseDate;
+  final String rentToPurchaseAmount;
+  final String rentToPurchaseNotes;
 
   final int? assignedEngineer;
   final String engineerName;
@@ -29,6 +34,11 @@ class CustomerModel {
     required this.roModel,
     required this.monthlyRent,
     required this.installationCharge,
+    required this.isActive,
+    required this.ownershipType,
+    required this.rentToPurchaseDate,
+    required this.rentToPurchaseAmount,
+    required this.rentToPurchaseNotes,
     required this.assignedEngineer,
     required this.engineerName,
     required this.latitude,
@@ -58,6 +68,11 @@ class CustomerModel {
       monthlyRent: json["monthly_rent"]?.toString() ?? "",
 
       installationCharge: json["installation_charge"]?.toString() ?? "",
+      isActive: json["is_active"] == true,
+      ownershipType: json["ownership_type"]?.toString() ?? "RENTAL",
+      rentToPurchaseDate: json["rent_to_purchase_date"]?.toString() ?? "",
+      rentToPurchaseAmount: json["rent_to_purchase_amount"]?.toString() ?? "0",
+      rentToPurchaseNotes: json["rent_to_purchase_notes"]?.toString() ?? "",
 
       assignedEngineer: json["assigned_engineer"],
 
