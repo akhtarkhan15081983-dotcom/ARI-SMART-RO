@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/job_model.dart';
 import '../../services/job_service.dart';
 import '../../utils/search_utils.dart';
+import '../../utils/search_utils.dart';
 import 'job_details_screen.dart';
 
 class MyJobsScreen extends StatefulWidget {
@@ -17,6 +18,9 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
   final JobService jobService = JobService();
 
   late Future<List<JobModel>> jobsFuture;
+  final _searchController = TextEditingController();
+  String _query = '';
+  String _statusFilter = 'ALL';
   final _searchController = TextEditingController();
   String _query = '';
   String _statusFilter = 'ALL';
@@ -36,6 +40,12 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
     setState(() {
       loadJobs();
     });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
