@@ -490,13 +490,33 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                         '${employee['employee_id']} • ${employee['phone']}\n${employee['designation']} • ₹${employee['salary']}',
                       ),
                       isThreeLine: true,
-                      trailing: Icon(
-                        employee['is_active'] == true
-                            ? Icons.verified_rounded
-                            : Icons.block_rounded,
-                        color: employee['is_active'] == true
-                            ? Colors.green
-                            : Colors.red,
+                      trailing: PopupMenuButton<String>(
+                        tooltip: 'Employee actions',
+                        onSelected: (value) {
+                          if (value == 'deactivate') {
+                            _setEmployeeActive(employee, false);
+                          } else if (value == 'reactivate') {
+                            _setEmployeeActive(employee, true);
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          if (employee['is_active'] == true)
+                            const PopupMenuItem(
+                              value: 'deactivate',
+                              child: ListTile(
+                                leading: Icon(Icons.block_outlined),
+                                title: Text('Deactivate'),
+                              ),
+                            )
+                          else
+                            const PopupMenuItem(
+                              value: 'reactivate',
+                              child: ListTile(
+                                leading: Icon(Icons.restore),
+                                title: Text('Reactivate'),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
