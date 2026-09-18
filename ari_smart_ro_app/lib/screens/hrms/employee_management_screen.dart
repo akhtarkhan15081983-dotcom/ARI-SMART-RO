@@ -372,9 +372,19 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         initialValue: _designationFilter,
+                        isExpanded: true,
                         decoration: const InputDecoration(labelText: 'Designation'),
                         items: _designations
-                            .map((v) => DropdownMenuItem(value: v, child: Text(v == 'ALL' ? 'All designations' : v)))
+                            .map(
+                              (v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(
+                                  v == 'ALL' ? 'All designations' : v,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
                             .toList(),
                         onChanged: (v) => setState(() => _designationFilter = v ?? 'ALL'),
                       ),
@@ -383,6 +393,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         initialValue: _accountFilter,
+                        isExpanded: true,
                         decoration: const InputDecoration(labelText: 'Account'),
                         items: const [
                           DropdownMenuItem(value: 'ALL', child: Text('All')),
