@@ -109,6 +109,11 @@ class Customer(models.Model):
         ("OTHER", "Other"),
     ]
 
+    OWNERSHIP_CHOICES = [
+        ("RENTAL", "Rental"),
+        ("PURCHASE", "Purchased"),
+    ]
+
     customer_id = models.CharField(
         max_length=20,
         unique=True,
@@ -210,6 +215,30 @@ class Customer(models.Model):
         default=0
     )
 
+    ownership_type = models.CharField(
+        max_length=10,
+        choices=OWNERSHIP_CHOICES,
+        default="RENTAL",
+    )
+
+    rent_to_purchase_date = models.DateField(null=True, blank=True)
+    rent_to_purchase_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+    rent_at_conversion = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+    )
+    security_adjusted_at_conversion = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+    )
+    rent_to_purchase_notes = models.TextField(blank=True, default="")
+
     installation_date = models.DateField(
         null=True,
         blank=True
@@ -224,6 +253,8 @@ class Customer(models.Model):
     )
 
     is_active = models.BooleanField(default=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    deactivation_reason = models.CharField(max_length=300, blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
 
