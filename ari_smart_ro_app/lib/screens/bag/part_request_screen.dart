@@ -75,7 +75,9 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
                 DropdownButtonFormField<PartOption>(
                   initialValue: selected,
                   items: parts
-                      .where((p) => matchesAllSearchTerms(partQuery, [p.code, p.name, p.unit]))
+                      .where((p) =>
+                          p.id == selected.id ||
+                          matchesAllSearchTerms(partQuery, [p.code, p.name, p.unit]))
                       .map(
                         (p) => DropdownMenuItem(
                           value: p,
