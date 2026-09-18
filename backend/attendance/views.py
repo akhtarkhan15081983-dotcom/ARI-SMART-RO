@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import ListAPIView
 
-from .models import Attendance
+from .models import Attendance, AttendanceDeviceOverride
 from .serializers import AttendanceSerializer
 from .security import (
     OFFICE_LATITUDE,
@@ -44,16 +44,31 @@ class CheckInAPIView(APIView):
         longitude_raw = request.data.get("longitude")
         selfie = request.FILES.get("selfie")
         device_id = (request.data.get("device_id") or "").strip()
+        today = timezone.localdate()
+        emergency_override = AttendanceDeviceOverride.objects.filter(
+            employee=employee,
+            date=today,
+            is_active=True,
+        ).first()
 
         if employee.face_enrolled_at is None or not employee.attendance_device_id:
             return Response(
                 {"success": False, "message": "Complete real face/device enrollment before attendance."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if not device_id or device_id != employee.attendance_device_id:
+        device_matches = bool(device_id and device_id == employee.attendance_device_id)
+        if not device_matches and emergency_override is None:
             return Response(
-                {"success": False, "message": "Attendance is allowed only from the enrolled device."},
+                {
+                    "success": False,
+                    "message": "Attendance is allowed only from the enrolled device. Ask admin for today's emergency device permission if your phone is unavailable.",
+                },
                 status=status.HTTP_403_FORBIDDEN,
+            )
+        if not device_id:
+            return Response(
+                {"success": False, "message": "Valid attendance device ID is required."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         if latitude_raw in (None, "") or longitude_raw in (None, ""):
             return Response({"success": False, "message": "GPS location is required for attendance."}, status=400)
@@ -79,10 +94,11 @@ class CheckInAPIView(APIView):
                 },
             }, status=status.HTTP_403_FORBIDDEN)
 
-        today = timezone.localdate()
         if Attendance.objects.filter(employee=employee, date=today).exists():
             return Response({"success": False, "message": "Already Checked In"}, status=400)
 
+        used_override = not device_matches and emergency_override is not None
+        remarks = "Admin-approved emergency attendance device override used." if used_override else ""
         attendance = Attendance.objects.create(
             employee=employee,
             date=today,
@@ -91,11 +107,16 @@ class CheckInAPIView(APIView):
             longitude=longitude,
             selfie=selfie,
             identity_review_status="PENDING",
+            remarks=remarks,
         )
+        if used_override:
+            emergency_override.is_active = False
+            emergency_override.save(update_fields=["is_active"])
         return Response({
             "success": True,
             "message": "Check In Successful",
             "distance_from_office_meters": round(distance_meters, 1),
+            "device_override_used": used_override,
             "attendance": AttendanceSerializer(attendance).data,
         }, status=status.HTTP_201_CREATED)
 
@@ -138,6 +159,78 @@ class AttendanceHistoryAPIView(ListAPIView):
         return Attendance.objects.filter(employee=employee).order_by("-date")
 
 
+class AdminAttendanceDeviceOverrideAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _is_admin(request.user):
+            return Response(
+                {"success": False, "message": "Only admin can manage emergency attendance device permission."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        today = timezone.localdate()
+        overrides = {
+            item.employee_id: item
+            for item in AttendanceDeviceOverride.objects.filter(date=today)
+        }
+        employees = EmployeeProfile.objects.filter(is_active=True).select_related("user").order_by(
+            "designation", "user__first_name", "user__last_name"
+        )
+        return Response([
+            {
+                "id": employee.id,
+                "employee_id": employee.employee_id,
+                "name": employee.user.get_full_name() or employee.user.phone,
+                "phone": employee.user.phone,
+                "designation": employee.designation,
+                "attendance_device_bound": bool(employee.attendance_device_id),
+                "emergency_device_allowed_today": bool(
+                    overrides.get(employee.id) and overrides[employee.id].is_active
+                ),
+            }
+            for employee in employees
+        ])
+
+    def post(self, request, employee_id=None):
+        if not _is_admin(request.user):
+            return Response(
+                {"success": False, "message": "Only admin can manage emergency attendance device permission."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if employee_id is None:
+            return Response({"success": False, "message": "Employee is required."}, status=400)
+        try:
+            employee = EmployeeProfile.objects.select_related("user").get(id=employee_id, is_active=True)
+        except EmployeeProfile.DoesNotExist:
+            return Response({"success": False, "message": "Employee not found."}, status=404)
+
+        action = (request.data.get("action") or "").strip().lower()
+        if action not in {"allow_today", "revoke_today"}:
+            return Response({"success": False, "message": "Invalid action."}, status=400)
+
+        override, _ = AttendanceDeviceOverride.objects.get_or_create(
+            employee=employee,
+            date=timezone.localdate(),
+            defaults={"granted_by": request.user, "is_active": True},
+        )
+        override.is_active = action == "allow_today"
+        override.granted_by = request.user
+        override.save(update_fields=["is_active", "granted_by"])
+
+        allowed = override.is_active
+        return Response({
+            "success": True,
+            "message": (
+                "Emergency attendance from another phone is allowed for today only."
+                if allowed
+                else "Today's emergency attendance device permission has been revoked."
+            ),
+            "employee_id": employee.id,
+            "emergency_device_allowed_today": allowed,
+            "date": override.date,
+        })
+
+
 class AdminAttendanceReviewListAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -176,6 +269,7 @@ class AdminAttendanceReviewListAPIView(APIView):
                     attendance.identity_reviewed_by.get_full_name() or attendance.identity_reviewed_by.phone
                     if attendance.identity_reviewed_by else None
                 ),
+                "remarks": attendance.remarks,
             })
         return Response(data)
 
