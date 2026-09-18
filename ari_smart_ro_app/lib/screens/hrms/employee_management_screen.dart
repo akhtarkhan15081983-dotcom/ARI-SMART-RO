@@ -366,6 +366,70 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     }
   }
 
+  Future<void> _removeTestEmployee(Map<String, dynamic> employee) async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove test employee'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'This works only when the employee has no linked attendance, jobs, payroll, customers or other work history. Otherwise deactivate the account.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(labelText: 'Type DELETE'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('REMOVE'),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirmed) {
+      controller.dispose();
+      return;
+    }
+
+    try {
+      await _service.lifecycle(
+        employeeId: (employee['id'] as num).toInt(),
+        action: 'permanent_delete',
+        confirm: controller.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Test employee removed.')),
+        );
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error.toString().replaceFirst('Exception: ', ''),
+            ),
+          ),
+        );
+      }
+    } finally {
+      controller.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Employees')),
@@ -497,6 +561,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                             _setEmployeeActive(employee, false);
                           } else if (value == 'reactivate') {
                             _setEmployeeActive(employee, true);
+                          } else if (value == 'remove_test') {
+                            _removeTestEmployee(employee);
                           }
                         },
                         itemBuilder: (_) => [
@@ -516,6 +582,14 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                                 title: Text('Reactivate'),
                               ),
                             ),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'remove_test',
+                            child: ListTile(
+                              leading: Icon(Icons.delete_outline),
+                              title: Text('Remove test employee'),
+                            ),
+                          ),
                         ],
                       ),
                     ),
