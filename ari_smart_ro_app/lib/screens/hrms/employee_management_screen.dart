@@ -320,6 +320,52 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     }
   }
 
+  Future<void> _setEmployeeActive(
+    Map<String, dynamic> employee,
+    bool active,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(active ? 'Reactivate employee?' : 'Deactivate employee?'),
+        content: Text(
+          active
+              ? '${employee['name']} will be able to login again.'
+              : '${employee['name']} login will be disabled while old work history stays available.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(active ? 'REACTIVATE' : 'DEACTIVATE'),
+          ),
+        ],
+      ),
+    ) ?? false;
+    if (!confirmed) return;
+
+    try {
+      await _service.lifecycle(
+        employeeId: (employee['id'] as num).toInt(),
+        action: active ? 'reactivate' : 'deactivate',
+      );
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error.toString().replaceFirst('Exception: ', ''),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Employees')),
