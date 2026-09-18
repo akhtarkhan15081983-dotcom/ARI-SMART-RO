@@ -29,6 +29,15 @@ class PublicCustomerRequest(models.Model):
         ("COD", "Cash/UPI on Delivery"),
         ("OFFICE", "Confirm with ARI Team"),
     ]
+    CALL_OUTCOME_CHOICES = [
+        ("PENDING", "Pending"),
+        ("NO_ANSWER", "No Answer"),
+        ("CALLBACK", "Call Back"),
+        ("INTERESTED", "Interested"),
+        ("NOT_INTERESTED", "Not Interested"),
+        ("WRONG_NUMBER", "Wrong Number"),
+        ("CONVERTED", "Converted"),
+    ]
 
     request_number = models.CharField(
         max_length=25,
@@ -66,6 +75,22 @@ class PublicCustomerRequest(models.Model):
     notes = models.TextField(blank=True)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default="NEW")
     source = models.CharField(max_length=30, default="MOBILE_GUEST")
+    assigned_caller = models.ForeignKey(
+        "employees.EmployeeProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="calling_requests",
+    )
+    last_call_outcome = models.CharField(
+        max_length=20,
+        choices=CALL_OUTCOME_CHOICES,
+        default="PENDING",
+    )
+    next_follow_up_at = models.DateTimeField(null=True, blank=True)
+    last_called_at = models.DateTimeField(null=True, blank=True)
+    call_count = models.PositiveIntegerField(default=0)
+    call_notes = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
