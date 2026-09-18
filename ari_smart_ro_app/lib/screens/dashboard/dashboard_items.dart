@@ -206,11 +206,6 @@ class DashboardItems {
       route: "inventory_workflow",
     ),
     const DashboardItem(
-      title: "Assign Employee",
-      icon: Icons.assignment_ind,
-      route: "customers",
-    ),
-    const DashboardItem(
       title: "Work Calendar",
       icon: Icons.calendar_month,
       route: "work_calendar",
