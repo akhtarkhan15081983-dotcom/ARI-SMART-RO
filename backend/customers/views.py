@@ -153,7 +153,16 @@ def _customer_queryset_for(user):
     if role == "CUSTOMER":
         if not user.is_verified or not user.is_active:
             return queryset.none()
-        return queryset.filter(phone=user.phone)
+        linked = queryset.filter(user=user)
+        if linked.exists():
+            return linked
+        first_match = (
+            queryset
+            .filter(phone=user.phone, user__isnull=True)
+            .order_by("id")
+            .first()
+        )
+        return queryset.filter(pk=first_match.pk) if first_match else queryset.none()
     return queryset.none()
 
 
@@ -220,6 +229,7 @@ class CustomerProfileAPIView(APIView):
                     phone=request.user.phone,
                     user__isnull=True,
                 )
+                .order_by("id")
                 .first()
             )
 
@@ -638,7 +648,7 @@ class MyCustomersAPIView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user.role != "ENGINEER":
+        if self.request.user.role not in {"ENGINEER", "OFFICE"}:
             return Customer.objects.none()
 
         return Customer.objects.filter(
@@ -1011,8 +1021,39 @@ class WalkInCustomerAPIView(APIView):
 
     def post(self, request):
 
+        # Customer pays one upfront amount. Installation is always ₹600;
+        # the remaining amount is saved as refundable/security deposit.
+        payload = request.data.copy()
+        try:
+            if request.data.get("total_amount_received") not in (None, ""):
+                total_received = Decimal(str(request.data.get("total_amount_received")))
+            else:
+                # Backward compatibility with older app builds that send
+                # installation/security as separate fields.
+                legacy_installation = Decimal(str(request.data.get("installation_charge", 0) or 0))
+                legacy_security = Decimal(str(request.data.get("security_deposit", 0) or 0))
+                total_received = legacy_installation + legacy_security
+        except Exception:
+            return Response(
+                {"success": False, "message": "Enter a valid amount received."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        fixed_installation_charge = Decimal("600.00")
+        if total_received < fixed_installation_charge:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Amount received cannot be less than ₹600 installation charge.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload["installation_charge"] = str(fixed_installation_charge)
+        payload["security_deposit"] = str(total_received - fixed_installation_charge)
+
         serializer = WalkInCustomerSerializer(
-            data=request.data
+            data=payload
         )
 
         if serializer.is_valid():
@@ -1153,43 +1194,39 @@ class AssignCustomerAPIView(APIView):
 
         # ---------------------------------------------------------
         # ENGINEER
-        #
-        # Existing engineer workflow यहाँ चलता रहेगा।
         # ---------------------------------------------------------
-        job, created = Job.objects.get_or_create(
-
-            customer=customer,
-
-            defaults={
-                "engineer": employee,
-
-                "job_type": "INSTALLATION",
-
-                "priority": "MEDIUM",
-
-                "scheduled_date": timezone.now(),
-
-                "status": "ASSIGNED",
-
-                "customer_otp": str(
-                    random.randint(100000, 999999)
-                ),
-            }
+        # Assignment must not fail just because this customer has no
+        # installation/job record yet. Previously get_or_create(customer=...)
+        # could try to create a Job without a required RO asset, causing a 500
+        # after the customer assignment had already been saved.
+        #
+        # If a job already exists, reassign the latest active job. Otherwise
+        # save only the customer assignment and return success.
+        # ---------------------------------------------------------
+        job = (
+            Job.objects
+            .filter(customer=customer)
+            .exclude(status="COMPLETED")
+            .order_by("-created_at", "-id")
+            .first()
         )
 
-        if not created:
-
+        otp = None
+        if job is not None:
             job.engineer = employee
-
             job.status = "ASSIGNED"
-
-            job.customer_otp = str(
-                random.randint(100000, 999999)
-            )
-
+            job.customer_otp = str(random.randint(100000, 999999))
             job.otp_verified = False
-
-            job.save()
+            job.save(
+                update_fields=[
+                    "engineer",
+                    "status",
+                    "customer_otp",
+                    "otp_verified",
+                    "updated_at",
+                ]
+            )
+            otp = job.customer_otp
 
         return Response(
             {
@@ -1199,8 +1236,8 @@ class AssignCustomerAPIView(APIView):
                 "employee_id": employee.id,
                 "employee_name": employee.user.get_full_name(),
                 "role": employee.user.role,
-                "job_id": job.id,
-                "otp": job.customer_otp,
+                "job_id": job.id if job is not None else None,
+                "otp": otp,
             },
             status=status.HTTP_200_OK,
         )
@@ -3065,12 +3102,11 @@ class CallingDeskAPIView(APIView):
             rows = rows.filter(last_call_outcome=outcome)
 
         now = timezone.now()
-        limited_rows = list(rows[:300])
-        data = [self._serialize(row) for row in limited_rows]
+        data = [self._serialize(row) for row in rows[:300]]
         return Response({
             "count": len(data),
             "due_follow_ups": sum(
-                1 for row in limited_rows
+                1 for row in rows[:300]
                 if row.next_follow_up_at and row.next_follow_up_at <= now
                 and row.last_call_outcome not in {"CONVERTED", "NOT_INTERESTED", "WRONG_NUMBER"}
             ),
