@@ -3136,3 +3136,115 @@ class CallingDeskAPIView(APIView):
             "updated_at",
         ])
         return Response({"success": True, "lead": self._serialize(row)})
+
+
+# ============================================================
+# CUSTOMER LIFECYCLE / RENT-TO-PURCHASE / SAFE REMOVAL
+# ============================================================
+
+class CustomerLifecycleAPIView(APIView):
+    permission_classes = [IsAdminOrManager]
+
+    def _has_operational_history(self, customer):
+        if customer.user_id:
+            return True
+        for relation in customer._meta.related_objects:
+            accessor = relation.get_accessor_name()
+            if not accessor:
+                continue
+            try:
+                related = getattr(customer, accessor)
+            except Exception:
+                continue
+            try:
+                if relation.one_to_one:
+                    if related is not None:
+                        return True
+                elif related.exists():
+                    return True
+            except Exception:
+                continue
+        return False
+
+    @transaction.atomic
+    def post(self, request, pk):
+        try:
+            customer = Customer.objects.select_for_update().get(pk=pk)
+        except Customer.DoesNotExist:
+            return Response({"detail": "Customer not found."}, status=404)
+
+        action = str(request.data.get("action") or "").strip().lower()
+
+        if action == "convert_to_purchase":
+            from django.utils.dateparse import parse_date
+            try:
+                amount = Decimal(str(request.data.get("purchase_amount") or "0"))
+                security_adjusted = Decimal(str(request.data.get("security_adjusted") or "0"))
+            except Exception:
+                return Response({"detail": "Enter valid purchase/security amounts."}, status=400)
+
+            conversion_date_raw = str(request.data.get("conversion_date") or "").strip()
+            conversion_date = parse_date(conversion_date_raw) if conversion_date_raw else timezone.localdate()
+            if conversion_date is None:
+                return Response({"detail": "Enter a valid conversion date."}, status=400)
+            if amount < 0 or security_adjusted < 0:
+                return Response({"detail": "Amounts cannot be negative."}, status=400)
+
+            customer.rent_at_conversion = customer.monthly_rent
+            customer.monthly_rent = Decimal("0")
+            customer.ownership_type = "PURCHASE"
+            customer.rent_to_purchase_date = conversion_date
+            customer.rent_to_purchase_amount = amount
+            customer.security_adjusted_at_conversion = security_adjusted
+            customer.rent_to_purchase_notes = str(request.data.get("notes") or "").strip()[:2000]
+            customer.is_active = True
+            customer.deactivated_at = None
+            customer.deactivation_reason = ""
+            customer.save(update_fields=[
+                "rent_at_conversion",
+                "monthly_rent",
+                "ownership_type",
+                "rent_to_purchase_date",
+                "rent_to_purchase_amount",
+                "security_adjusted_at_conversion",
+                "rent_to_purchase_notes",
+                "is_active",
+                "deactivated_at",
+                "deactivation_reason",
+            ])
+            return Response({
+                "success": True,
+                "message": "Customer converted from rent to purchase. Previous rent history is preserved.",
+                "customer": CustomerSerializer(customer, context={"request": request}).data,
+            })
+
+        if action == "deactivate":
+            reason = str(request.data.get("reason") or "").strip()
+            customer.is_active = False
+            customer.deactivated_at = timezone.now()
+            customer.deactivation_reason = reason[:300]
+            customer.save(update_fields=["is_active", "deactivated_at", "deactivation_reason"])
+            return Response({"success": True, "message": "Customer archived/deactivated successfully."})
+
+        if action == "reactivate":
+            customer.is_active = True
+            customer.deactivated_at = None
+            customer.deactivation_reason = ""
+            customer.save(update_fields=["is_active", "deactivated_at", "deactivation_reason"])
+            return Response({"success": True, "message": "Customer reactivated successfully."})
+
+        if action == "permanent_delete":
+            if str(request.data.get("confirm") or "").strip().upper() != "DELETE":
+                return Response({"detail": "Type DELETE to confirm permanent deletion."}, status=400)
+            if self._has_operational_history(customer):
+                return Response({
+                    "detail": (
+                        "This customer has linked history/account data and cannot be permanently deleted. "
+                        "Deactivate/archive the customer instead."
+                    )
+                }, status=409)
+            name = customer.name
+            customer.delete()
+            return Response({"success": True, "message": f"{name} permanently deleted."})
+
+        return Response({"detail": "Invalid lifecycle action."}, status=400)
