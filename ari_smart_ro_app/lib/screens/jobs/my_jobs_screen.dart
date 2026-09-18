@@ -4,7 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/job_model.dart';
 import '../../services/job_service.dart';
 import '../../utils/search_utils.dart';
-import '../../utils/search_utils.dart';
 import 'job_details_screen.dart';
 
 class MyJobsScreen extends StatefulWidget {
@@ -18,9 +17,6 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
   final JobService jobService = JobService();
 
   late Future<List<JobModel>> jobsFuture;
-  final _searchController = TextEditingController();
-  String _query = '';
-  String _statusFilter = 'ALL';
   final _searchController = TextEditingController();
   String _query = '';
   String _statusFilter = 'ALL';
@@ -40,12 +36,6 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
     setState(() {
       loadJobs();
     });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   @override
@@ -162,10 +152,15 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                     decoration: InputDecoration(
                       hintText: 'Search job ID, customer, phone, area, type...',
                       prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _query.isEmpty ? null : IconButton(
-                        onPressed: () { _searchController.clear(); setState(() => _query = ''); },
-                        icon: const Icon(Icons.clear),
-                      ),
+                      suffixIcon: _query.isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _query = '');
+                              },
+                              icon: const Icon(Icons.clear),
+                            ),
                     ),
                   ),
                 ),
@@ -173,28 +168,41 @@ class _MyJobsScreenState extends State<MyJobsScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 15),
                   child: Row(
                     children: [
-                      Expanded(child: DropdownButtonFormField<String>(
-                        initialValue: _statusFilter,
-                        decoration: const InputDecoration(labelText: 'Status'),
-                        items: statuses.map((v) => DropdownMenuItem(value: v, child: Text(v == 'ALL' ? 'All statuses' : v.replaceAll('_', ' ')))).toList(),
-                        onChanged: (v) => setState(() => _statusFilter = v ?? 'ALL'),
-                      )),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _statusFilter,
+                          decoration: const InputDecoration(labelText: 'Status'),
+                          items: statuses
+                              .map((v) => DropdownMenuItem(value: v, child: Text(v == 'ALL' ? 'All statuses' : v.replaceAll('_', ' '))))
+                              .toList(),
+                          onChanged: (v) => setState(() => _statusFilter = v ?? 'ALL'),
+                        ),
+                      ),
                       const SizedBox(width: 10),
-                      Expanded(child: DropdownButtonFormField<String>(
-                        initialValue: _priorityFilter,
-                        decoration: const InputDecoration(labelText: 'Priority'),
-                        items: priorities.map((v) => DropdownMenuItem(value: v, child: Text(v == 'ALL' ? 'All priorities' : v))).toList(),
-                        onChanged: (v) => setState(() => _priorityFilter = v ?? 'ALL'),
-                      )),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _priorityFilter,
+                          decoration: const InputDecoration(labelText: 'Priority'),
+                          items: priorities
+                              .map((v) => DropdownMenuItem(value: v, child: Text(v == 'ALL' ? 'All priorities' : v)))
+                              .toList(),
+                          onChanged: (v) => setState(() => _priorityFilter = v ?? 'ALL'),
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(15, 8, 15, 0),
-                  child: Align(alignment: Alignment.centerLeft, child: Text('${filtered.length} of ${jobs.length} jobs')),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('${filtered.length} of ${jobs.length} jobs'),
+                  ),
                 ),
                 Expanded(
-                  child: filtered.isEmpty ? const Center(child: Text('No matching jobs found')) : ListView.builder(
+                  child: filtered.isEmpty
+                      ? const Center(child: Text('No matching jobs found'))
+                      : ListView.builder(
               padding: const EdgeInsets.all(15),
               itemCount: filtered.length,
               itemBuilder: (context, index) {
