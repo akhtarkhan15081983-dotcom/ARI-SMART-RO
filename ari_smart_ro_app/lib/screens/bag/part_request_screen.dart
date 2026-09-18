@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/part_request_service.dart';
+import '../../utils/search_utils.dart';
 
 class PartRequestScreen extends StatefulWidget {
   const PartRequestScreen({
@@ -14,6 +15,9 @@ class PartRequestScreen extends StatefulWidget {
 
 class _PartRequestScreenState extends State<PartRequestScreen> {
   late Future<List<EngineerPartRequest>> _requests;
+  final _searchController = TextEditingController();
+  String _query = '';
+  String _statusFilter = 'ALL';
 
   @override
   void initState() {
@@ -22,6 +26,12 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
   }
 
   void _reload() => setState(() => _requests = widget.service.fetchRequests());
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Future<void> _newRequest() async {
     final parts = await widget.service.fetchParts();
@@ -33,6 +43,8 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
       return;
     }
     PartOption selected = parts.first;
+    String partQuery = '';
+    final partSearch = TextEditingController();
     final qty = TextEditingController(text: '1');
     final remarks = TextEditingController();
     final submit = await showDialog<bool>(
@@ -44,9 +56,26 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                TextField(
+                  controller: partSearch,
+                  textInputAction: TextInputAction.search,
+                  onChanged: (value) {
+                    setDialogState(() {
+                      partQuery = value;
+                      final matches = parts.where((p) => matchesAllSearchTerms(partQuery, [p.code, p.name, p.unit])).toList();
+                      if (matches.isNotEmpty && !matches.contains(selected)) selected = matches.first;
+                    });
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Search part',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 DropdownButtonFormField<PartOption>(
                   initialValue: selected,
                   items: parts
+                      .where((p) => matchesAllSearchTerms(partQuery, [p.code, p.name, p.unit]))
                       .map(
                         (p) => DropdownMenuItem(
                           value: p,
@@ -84,6 +113,7 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
         ),
       ),
     );
+    partSearch.dispose();
     if (submit != true) return;
     final quantity = int.tryParse(qty.text) ?? 0;
     if (quantity < 1) {
@@ -138,20 +168,56 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
             );
           }
           final requests = snapshot.data ?? const <EngineerPartRequest>[];
+          final statuses = <String>{'ALL', ...requests.map((r) => r.status.toUpperCase())}.toList();
+          final filtered = requests.where((r) {
+            if (_statusFilter != 'ALL' && r.status.toUpperCase() != _statusFilter) return false;
+            return matchesAllSearchTerms(_query, [r.partCode, r.partName, r.status, r.remarks, r.quantity.toString(), r.id.toString()]);
+          }).toList();
           if (requests.isEmpty) {
             return const Center(child: Text('No part requests yet'));
           }
-          return RefreshIndicator(
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                child: TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  onChanged: (value) => setState(() => _query = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search part code, name, status or remarks...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isEmpty ? null : IconButton(
+                      onPressed: () { _searchController.clear(); setState(() => _query = ''); },
+                      icon: const Icon(Icons.clear),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: DropdownButtonFormField<String>(
+                  initialValue: _statusFilter,
+                  decoration: const InputDecoration(labelText: 'Status filter'),
+                  items: statuses.map((v) => DropdownMenuItem(value: v, child: Text(v == 'ALL' ? 'All statuses' : v))).toList(),
+                  onChanged: (v) => setState(() => _statusFilter = v ?? 'ALL'),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Align(alignment: Alignment.centerLeft, child: Text('${filtered.length} of ${requests.length} requests')),
+              ),
+              Expanded(child: RefreshIndicator(
             onRefresh: () async {
               _reload();
               await _requests;
             },
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
-              itemCount: requests.length,
+              itemCount: filtered.length,
               separatorBuilder: (_, _) => const SizedBox(height: 8),
               itemBuilder: (_, i) {
-                final r = requests[i];
+                final r = filtered[i];
                 return Card(
                   child: ListTile(
                     leading: const Icon(Icons.build_circle_outlined),
@@ -164,6 +230,8 @@ class _PartRequestScreenState extends State<PartRequestScreen> {
                 );
               },
             ),
+              )),
+            ],
           );
         },
       ),
