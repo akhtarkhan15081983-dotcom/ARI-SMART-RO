@@ -89,6 +89,11 @@ class CustomerSerializer(serializers.ModelSerializer):
         default="",
     )
 
+    qr_payload = serializers.SerializerMethodField()
+
+    def get_qr_payload(self, obj):
+        return f"ARI-SMART-RO:CUSTOMER:{obj.customer_id}"
+
     class Meta:
 
         model = Customer
@@ -137,11 +142,22 @@ class CustomerSerializer(serializers.ModelSerializer):
 
             "security_deposit",
 
+            "ownership_type",
+            "rent_to_purchase_date",
+            "rent_to_purchase_amount",
+            "rent_at_conversion",
+            "security_adjusted_at_conversion",
+            "rent_to_purchase_notes",
+            "deactivated_at",
+            "deactivation_reason",
+
             "installation_date",
 
             "assigned_engineer",
 
             "engineer_name",
+
+            "qr_payload",
 
             "is_active",
         ]
