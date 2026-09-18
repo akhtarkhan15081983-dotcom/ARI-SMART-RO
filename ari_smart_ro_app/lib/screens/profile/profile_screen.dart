@@ -69,8 +69,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading)
+    if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     if (_profile == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('My Profile')),
