@@ -423,3 +423,86 @@ class AssignmentEmployeeListAPIView(APIView):
             "designation", "user__first_name", "user__last_name",
         )
         return Response(AssignmentEmployeeSerializer(employees, many=True).data)
+
+
+# ============================================================
+# EMPLOYEE LIFECYCLE / SAFE TEST ACCOUNT REMOVAL
+# ============================================================
+
+class EmployeeLifecycleAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def _profile_has_operational_history(self, employee):
+        for relation in employee._meta.related_objects:
+            accessor = relation.get_accessor_name()
+            if not accessor:
+                continue
+            try:
+                related = getattr(employee, accessor)
+            except Exception:
+                continue
+            try:
+                if relation.one_to_one:
+                    if related is not None:
+                        return True
+                elif related.exists():
+                    return True
+            except Exception:
+                continue
+        return False
+
+    @transaction.atomic
+    def post(self, request, employee_id):
+        company = _request_company(request)
+        if company is None:
+            return Response({"success": False, "message": "Active company workspace not found."}, status=403)
+
+        try:
+            employee = EmployeeProfile.objects.select_related("user").select_for_update().get(
+                pk=employee_id,
+                company=company,
+            )
+        except EmployeeProfile.DoesNotExist:
+            return Response({"detail": "Employee not found."}, status=404)
+
+        if employee.user_id == request.user.id:
+            return Response({"detail": "You cannot deactivate or delete your own admin account."}, status=400)
+
+        action = str(request.data.get("action") or "").strip().lower()
+
+        if action == "deactivate":
+            employee.is_active = False
+            employee.is_online = False
+            employee.save(update_fields=["is_active", "is_online"])
+            employee.user.is_active = False
+            employee.user.save(update_fields=["is_active"])
+            CompanyMembership.objects.filter(company=company, user=employee.user).update(is_active=False)
+            return Response({"success": True, "message": "Employee deactivated. Login access is disabled."})
+
+        if action == "reactivate":
+            employee.is_active = True
+            employee.save(update_fields=["is_active"])
+            employee.user.is_active = True
+            employee.user.save(update_fields=["is_active"])
+            CompanyMembership.objects.filter(company=company, user=employee.user).update(is_active=True)
+            return Response({"success": True, "message": "Employee reactivated successfully."})
+
+        if action == "permanent_delete":
+            if str(request.data.get("confirm") or "").strip().upper() != "DELETE":
+                return Response({"detail": "Type DELETE to confirm permanent deletion."}, status=400)
+            if self._profile_has_operational_history(employee):
+                return Response({
+                    "detail": (
+                        "This employee has linked attendance/jobs/payroll/customer history and cannot be "
+                        "permanently deleted. Deactivate the employee instead."
+                    )
+                }, status=409)
+
+            user = employee.user
+            name = user.get_full_name() or user.phone
+            CompanyMembership.objects.filter(company=company, user=user).delete()
+            employee.delete()
+            user.delete()
+            return Response({"success": True, "message": f"{name} permanently deleted."})
+
+        return Response({"detail": "Invalid employee lifecycle action."}, status=400)
