@@ -12,6 +12,7 @@ class User(AbstractUser):
         ("MANAGER", "Manager"),
         ("ENGINEER", "Engineer"),
         ("OFFICE", "Office Staff"),
+        ("CALLING", "Calling Staff"),
         ("CUSTOMER", "Customer"),
     ]
 
