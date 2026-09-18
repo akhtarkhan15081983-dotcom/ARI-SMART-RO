@@ -32,26 +32,59 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: Configure release signing
+
+      - name: Analyze Flutter code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Detect release signing
+        id: signing
+        shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          test -n "$KEYSTORE_BASE64"
-          test -n "$STORE_PASSWORD"
-          test -n "$KEY_PASSWORD"
-          test -n "$KEY_ALIAS"
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure release signing
+        if: steps.signing.outputs.available == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
           printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=../upload-keystore.jks\n' \
             "$STORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > android/key.properties
-      - name: Build signed installable APK
+
+      - name: Build signed release APK
+        if: steps.signing.outputs.available == 'true'
         run: >-
           flutter build apk --release
           --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+
+      - name: Build installable fallback APK
+        if: steps.signing.outputs.available != 'true'
+        run: >-
+          flutter build apk --debug
+          --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+
       - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.9.apk
+        shell: bash
+        run: |
+          if [ "${{ steps.signing.outputs.available }}" = "true" ]; then
+            SOURCE="build/app/outputs/flutter-apk/app-release.apk"
+          else
+            SOURCE="build/app/outputs/flutter-apk/app-debug.apk"
+          fi
+          cp "$SOURCE" build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.9.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
