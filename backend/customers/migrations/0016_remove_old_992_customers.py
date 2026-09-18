@@ -152,7 +152,15 @@ def remove_old_customers(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("customers", "0015_import_exact_excel_20260918")]
+    dependencies = [
+        ("customers", "0015_import_exact_excel_20260918"),
+        ("jobs", "0012_workscheduleoverride"),
+        ("complaints", "0001_initial"),
+        ("installation", "0004_installation_input_tds_installation_latitude_and_more"),
+        ("service", "0001_initial"),
+        ("assets", "0002_alter_roasset_status"),
+        ("referrals", "0003_walletreward_app_referral_points"),
+    ]
 
     operations = [
         migrations.RunPython(remove_old_customers, migrations.RunPython.noop),
