@@ -39,6 +39,7 @@ import '../work_planner/work_route_screen.dart';
 import '../hrms/hrms_screen.dart';
 import '../hrms/employee_management_screen.dart';
 import '../inventory/inventory_workflow_screen.dart';
+import '../calling/calling_desk_screen.dart';
 import 'dashboard_card.dart';
 import 'dashboard_items.dart';
 
@@ -169,7 +170,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   String _normaliseRole(String? role) {
     final v = role?.trim().toUpperCase().replaceAll('ROLE_', '');
-    return {'ADMIN', 'MANAGER', 'OFFICE', 'ENGINEER', 'CUSTOMER'}.contains(v)
+    return {'ADMIN', 'MANAGER', 'OFFICE', 'CALLING', 'ENGINEER', 'CUSTOMER'}.contains(v)
         ? v!
         : 'CUSTOMER';
   }
@@ -190,6 +191,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         return DashboardItems.manager;
       case 'OFFICE':
         return DashboardItems.office;
+      case 'CALLING':
+        return DashboardItems.calling;
       case 'ENGINEER':
         return DashboardItems.engineer;
       default:
@@ -335,6 +338,13 @@ class _DashboardScreenState extends State<DashboardScreen>
             .push(MaterialPageRoute(builder: (_) => const AttendanceScreen()))
             .then((_) => _loadAttendance());
         return;
+      case 'calling_desk':
+        if ({'ADMIN', 'MANAGER', 'OFFICE', 'CALLING'}.contains(_role)) {
+          _push(const CallingDeskScreen());
+        } else {
+          _showComingSoon('Calling desk access is restricted to authorised staff.');
+        }
+        return;
       case 'jobs':
         _push(const MyJobsScreen());
         return;
@@ -449,6 +459,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         'complaint',
         'map',
         'engineer_map',
+        'calling_desk',
       },
       'Finance': {
         'rent',
