@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/attendance_service.dart';
 import '../../services/live_location_service.dart';
 import '../../services/saas_admin_service.dart';
+import '../../utils/search_utils.dart';
 import '../admin/face_security_admin_screen.dart';
 import '../admin/attendance_security_test_screen.dart';
 import '../admin/attendance_review_admin_screen.dart';
@@ -79,6 +80,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _isExitDialogShowing = false;
 
   Timer? _dashboardRefreshTimer;
+  final _toolSearchController = TextEditingController();
+  String _toolQuery = '';
 
   @override
   void initState() {
@@ -574,6 +577,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void dispose() {
     _dashboardRefreshTimer?.cancel();
+    _toolSearchController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _liveLocationService.stopTracking();
     super.dispose();
@@ -584,7 +588,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (_isLoadingRole) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final items = _dashboardItems, isCustomer = _role == 'CUSTOMER';
+    final allItems = _dashboardItems, isCustomer = _role == 'CUSTOMER';
+    final items = allItems
+        .where((item) => matchesAllSearchTerms(_toolQuery, [item.title, item.route]))
+        .toList();
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -631,6 +638,33 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 const SizedBox(height: 16),
               ],
+              TextField(
+                controller: _toolSearchController,
+                textInputAction: TextInputAction.search,
+                onChanged: (value) => setState(() => _toolQuery = value),
+                decoration: InputDecoration(
+                  hintText: 'Search tools, reports, rent, parts, employees...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _toolQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _toolSearchController.clear();
+                            setState(() => _toolQuery = '');
+                          },
+                          icon: const Icon(Icons.clear),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (items.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(22),
+                    child: Center(child: Text('No matching dashboard tool found')),
+                  ),
+                )
+              else
               _CommandGrid(
                 role: _role,
                 groups: _dashboardGroups(items),
