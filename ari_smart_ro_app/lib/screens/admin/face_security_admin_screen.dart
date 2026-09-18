@@ -19,8 +19,10 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
   String? _error;
   int? _busyId;
   String? _busyAction;
-  final _searchController = TextEditingController();
-  String _query = '';
+  final _attendanceSearchController = TextEditingController();
+  final _reenrollSearchController = TextEditingController();
+  String _attendanceQuery = '';
+  String _reenrollQuery = '';
   String _attendanceFilter = 'ALL';
   String _reenrollFilter = 'ALL';
 
@@ -32,7 +34,8 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _attendanceSearchController.dispose();
+    _reenrollSearchController.dispose();
     super.dispose();
   }
 
@@ -217,7 +220,7 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
       if (_attendanceFilter == 'ALLOWED' && !allowed) return false;
       if (_attendanceFilter == 'BOUND' && !bound) return false;
       if (_attendanceFilter == 'UNBOUND' && bound) return false;
-      return matchesAllSearchTerms(_query, [
+      return matchesAllSearchTerms(_attendanceQuery, [
         (employee['name'] ?? '').toString(),
         (employee['employee_id'] ?? '').toString(),
         (employee['designation'] ?? '').toString(),
@@ -250,14 +253,14 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
           ),
           const SizedBox(height: 12),
           TextField(
-            controller: _searchController,
+            controller: _attendanceSearchController,
             textInputAction: TextInputAction.search,
-            onChanged: (value) => setState(() => _query = value),
+            onChanged: (value) => setState(() => _attendanceQuery = value),
             decoration: InputDecoration(
               hintText: 'Search employee, ID, phone or designation...',
               prefixIcon: const Icon(Icons.search),
-              suffixIcon: _query.isEmpty ? null : IconButton(
-                onPressed: () { _searchController.clear(); setState(() => _query = ''); },
+              suffixIcon: _attendanceQuery.isEmpty ? null : IconButton(
+                onPressed: () { _attendanceSearchController.clear(); setState(() => _attendanceQuery = ''); },
                 icon: const Icon(Icons.clear),
               ),
             ),
@@ -371,7 +374,7 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
       final enrolled = e['face_enrolled'] == true;
       if (_reenrollFilter == 'ALLOWED' && !allowed) return false;
       if (_reenrollFilter == 'NOT_ENROLLED' && enrolled) return false;
-      return matchesAllSearchTerms(_query, [
+      return matchesAllSearchTerms(_reenrollQuery, [
         (e['name'] ?? '').toString(),
         (e['employee_id'] ?? '').toString(),
         (e['phone'] ?? '').toString(),
@@ -386,14 +389,14 @@ class _FaceSecurityAdminScreenState extends State<FaceSecurityAdminScreen> {
         itemBuilder: (context, index) {
           if (index == 0) {
             return TextField(
-              controller: _searchController,
+              controller: _reenrollSearchController,
               textInputAction: TextInputAction.search,
-              onChanged: (value) => setState(() => _query = value),
+              onChanged: (value) => setState(() => _reenrollQuery = value),
               decoration: InputDecoration(
                 hintText: 'Search engineer, ID or phone...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: _query.isEmpty ? null : IconButton(
-                  onPressed: () { _searchController.clear(); setState(() => _query = ''); },
+                suffixIcon: _reenrollQuery.isEmpty ? null : IconButton(
+                  onPressed: () { _reenrollSearchController.clear(); setState(() => _reenrollQuery = ''); },
                   icon: const Icon(Icons.clear),
                 ),
               ),
