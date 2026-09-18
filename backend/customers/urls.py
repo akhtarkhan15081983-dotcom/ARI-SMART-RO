@@ -19,6 +19,7 @@ from .views import (
     CustomerLocationCaptureAPIView,
     PublicCustomerRequestAPIView,
     CallingDeskAPIView,
+    CustomerLifecycleAPIView,
 )
 
 urlpatterns = [
@@ -41,6 +42,11 @@ urlpatterns = [
         "<int:pk>/capture-location/",
         CustomerLocationCaptureAPIView.as_view(),
         name="customer-capture-location",
+    ),
+    path(
+        "<int:pk>/lifecycle/",
+        CustomerLifecycleAPIView.as_view(),
+        name="customer-lifecycle",
     ),
     path(
         "profile/",
