@@ -66,11 +66,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       icon: Icons.report_problem,
       route: 'complaint',
     ),
-    DashboardItem(
-      title: 'Referral',
-      icon: Icons.card_giftcard,
-      route: 'referral',
-    ),
+    DashboardItems.referral,
     DashboardItem(title: 'Shop', icon: Icons.shopping_cart, route: 'shop'),
     DashboardItem(title: 'History', icon: Icons.history, route: 'history'),
     DashboardItem(title: 'Profile', icon: Icons.person, route: 'profile'),
@@ -91,15 +87,20 @@ class _DashboardScreenState extends State<DashboardScreen>
     _loadDashboard();
     _startLiveLocationIfRequired();
     _dashboardRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (mounted) _loadDashboard();
+      if (mounted) _refreshSessionAndDashboard();
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
-      _loadDashboard();
+      _refreshSessionAndDashboard();
     }
+  }
+
+  Future<void> _refreshSessionAndDashboard() async {
+    await ApiService.ensureValidSession();
+    if (mounted) await _loadDashboard();
   }
 
   Future<void> _startLiveLocationIfRequired() async {
