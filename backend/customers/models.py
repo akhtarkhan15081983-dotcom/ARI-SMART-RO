@@ -143,8 +143,10 @@ class Customer(models.Model):
     name = models.CharField(max_length=150)
 
     phone = models.CharField(
-        max_length=10,
-        unique=True
+        max_length=30,
+        blank=True,
+        default="",
+        db_index=True,
     )
 
     alternate_phone = models.CharField(
@@ -255,6 +257,17 @@ class Customer(models.Model):
     is_active = models.BooleanField(default=True)
     deactivated_at = models.DateTimeField(null=True, blank=True)
     deactivation_reason = models.CharField(max_length=300, blank=True, default="")
+
+    import_batch = models.CharField(max_length=80, blank=True, default="", db_index=True)
+    legacy_source_sheet = models.CharField(max_length=30, blank=True, default="")
+    legacy_source_row = models.PositiveIntegerField(null=True, blank=True)
+    legacy_raw_phone = models.CharField(max_length=80, blank=True, default="")
+    legacy_employee = models.CharField(max_length=120, blank=True, default="")
+    legacy_reference = models.CharField(max_length=150, blank=True, default="")
+    legacy_installer = models.CharField(max_length=120, blank=True, default="")
+    legacy_remarks = models.TextField(blank=True, default="")
+    legacy_mh = models.CharField(max_length=20, blank=True, default="")
+    legacy_excel_payload = models.JSONField(blank=True, default=dict)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -281,7 +281,19 @@ class CustomerQRCodeAPIView(APIView):
         if role == "ENGINEER":
             allowed = customer.assigned_engineer_id == getattr(getattr(request.user, "employee_profile", None), "id", None)
         elif role == "CUSTOMER":
-            allowed = request.user.is_verified and customer.phone == request.user.phone
+            allowed = False
+            if request.user.is_verified:
+                if customer.user_id == request.user.id:
+                    allowed = True
+                elif customer.user_id is None and customer.phone == request.user.phone:
+                    first_match = (
+                        Customer.objects
+                        .filter(phone=request.user.phone, user__isnull=True)
+                        .order_by("id")
+                        .only("id")
+                        .first()
+                    )
+                    allowed = first_match is not None and first_match.id == customer.id
 
         if not allowed:
             return Response({"detail": "You do not have access to this customer QR."}, status=status.HTTP_403_FORBIDDEN)

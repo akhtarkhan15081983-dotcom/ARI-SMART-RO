@@ -153,7 +153,16 @@ def _customer_queryset_for(user):
     if role == "CUSTOMER":
         if not user.is_verified or not user.is_active:
             return queryset.none()
-        return queryset.filter(phone=user.phone)
+        linked = queryset.filter(user=user)
+        if linked.exists():
+            return linked
+        first_match = (
+            queryset
+            .filter(phone=user.phone, user__isnull=True)
+            .order_by("id")
+            .first()
+        )
+        return queryset.filter(pk=first_match.pk) if first_match else queryset.none()
     return queryset.none()
 
 
@@ -220,6 +229,7 @@ class CustomerProfileAPIView(APIView):
                     phone=request.user.phone,
                     user__isnull=True,
                 )
+                .order_by("id")
                 .first()
             )
 
