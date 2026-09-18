@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/admin_attendance_review_service.dart';
+import '../../utils/search_utils.dart';
 
 class AttendanceReviewAdminScreen extends StatefulWidget {
   const AttendanceReviewAdminScreen({super.key});
@@ -17,11 +18,19 @@ class _AttendanceReviewAdminScreenState
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _reviews = [];
+  final _searchController = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -138,6 +147,14 @@ class _AttendanceReviewAdminScreenState
 
   @override
   Widget build(BuildContext context) {
+    final filteredReviews = _reviews.where((item) => matchesAllSearchTerms(_query, [
+      (item['employee_name'] ?? '').toString(),
+      (item['employee_id'] ?? '').toString(),
+      (item['date'] ?? '').toString(),
+      (item['identity_review_status'] ?? '').toString(),
+      (item['identity_review_note'] ?? '').toString(),
+      (item['distance_note'] ?? '').toString(),
+    ])).toList();
     return Scaffold(
       appBar: AppBar(title: const Text('Attendance Selfie Review')),
       body: RefreshIndicator(
@@ -169,6 +186,22 @@ class _AttendanceReviewAdminScreenState
                 _load();
               },
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) => setState(() => _query = value),
+              decoration: InputDecoration(
+                hintText: 'Search employee, ID, date or note...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _query.isEmpty ? null : IconButton(
+                  onPressed: () { _searchController.clear(); setState(() => _query = ''); },
+                  icon: const Icon(Icons.clear),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerLeft, child: Text('${filteredReviews.length} of ${_reviews.length} reviews')),
             const SizedBox(height: 16),
             if (_loading)
               const Padding(
@@ -191,7 +224,7 @@ class _AttendanceReviewAdminScreenState
                   ),
                 ),
               )
-            else if (_reviews.isEmpty)
+            else if (filteredReviews.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(40),
                 child: Center(
@@ -199,7 +232,7 @@ class _AttendanceReviewAdminScreenState
                 ),
               )
             else
-              ..._reviews.map(
+              ...filteredReviews.map(
                 (item) => _ReviewCard(
                   item: item,
                   photoBuilder: _photo,
