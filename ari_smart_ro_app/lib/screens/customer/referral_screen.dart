@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/referral_service.dart';
+import '../../utils/search_utils.dart';
 
 class ReferralScreen extends StatefulWidget {
   const ReferralScreen({super.key});
@@ -15,6 +16,10 @@ class ReferralScreen extends StatefulWidget {
 class _ReferralScreenState extends State<ReferralScreen> {
   final ReferralService _service = ReferralService();
   final TextEditingController _codeController = TextEditingController();
+  final TextEditingController _historySearchController = TextEditingController();
+  String _historyQuery = '';
+  String _referralFilter = 'ALL';
+  String _transactionFilter = 'ALL';
 
   bool _loading = true;
   bool _submitting = false;
@@ -30,6 +35,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   @override
   void dispose() {
     _codeController.dispose();
+    _historySearchController.dispose();
     super.dispose();
   }
 
@@ -174,6 +180,20 @@ class _ReferralScreenState extends State<ReferralScreen> {
                   ],
                   const SizedBox(height: 16),
                   _rulesCard(),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _historySearchController,
+                    textInputAction: TextInputAction.search,
+                    onChanged: (value) => setState(() => _historyQuery = value),
+                    decoration: InputDecoration(
+                      hintText: 'Search referral, reward or wallet history...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _historyQuery.isEmpty ? null : IconButton(
+                        onPressed: () { _historySearchController.clear(); setState(() => _historyQuery = ''); },
+                        icon: const Icon(Icons.clear),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   _referralsCard(),
                   const SizedBox(height: 16),
@@ -401,7 +421,14 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Widget _referralsCard() {
-    final referrals = (_summary['referrals'] as List?) ?? const [];
+    final referrals = ((_summary['referrals'] as List?) ?? const [])
+        .whereType<Map>()
+        .where((raw) {
+          final status = (raw['status'] ?? 'PENDING').toString().toUpperCase();
+          if (_referralFilter != 'ALL' && status != _referralFilter) return false;
+          return matchesAllSearchTerms(_historyQuery, raw.entries.map((e) => '${e.key} ${e.value}'));
+        })
+        .toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -413,7 +440,20 @@ class _ReferralScreenState extends State<ReferralScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            if (referrals.isEmpty) const Text('No referrals yet.'),
+            DropdownButtonFormField<String>(
+              initialValue: _referralFilter,
+              decoration: const InputDecoration(labelText: 'Referral status'),
+              items: const [
+                DropdownMenuItem(value: 'ALL', child: Text('All referrals')),
+                DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
+                DropdownMenuItem(value: 'QUALIFIED', child: Text('Qualified')),
+                DropdownMenuItem(value: 'REVIEW', child: Text('Review')),
+                DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+              ],
+              onChanged: (v) => setState(() => _referralFilter = v ?? 'ALL'),
+            ),
+            const SizedBox(height: 8),
+            if (referrals.isEmpty) const Text('No matching referrals.'),
             for (final raw in referrals)
               if (raw is Map)
                 ListTile(
@@ -448,7 +488,10 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Widget _rewardsCard() {
-    final rewards = (_summary['rewards'] as List?) ?? const [];
+    final rewards = ((_summary['rewards'] as List?) ?? const [])
+        .whereType<Map>()
+        .where((raw) => matchesAllSearchTerms(_historyQuery, raw.entries.map((e) => '${e.key} ${e.value}')))
+        .toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -482,7 +525,14 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Widget _transactionsCard() {
-    final transactions = (_summary['transactions'] as List?) ?? const [];
+    final transactions = ((_summary['transactions'] as List?) ?? const [])
+        .whereType<Map>()
+        .where((raw) {
+          final type = (raw['entry_type'] ?? '').toString().toUpperCase();
+          if (_transactionFilter != 'ALL' && type != _transactionFilter) return false;
+          return matchesAllSearchTerms(_historyQuery, raw.entries.map((e) => '${e.key} ${e.value}'));
+        })
+        .toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -494,8 +544,19 @@ class _ReferralScreenState extends State<ReferralScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _transactionFilter,
+              decoration: const InputDecoration(labelText: 'Transaction type'),
+              items: const [
+                DropdownMenuItem(value: 'ALL', child: Text('All transactions')),
+                DropdownMenuItem(value: 'CREDIT', child: Text('Credits')),
+                DropdownMenuItem(value: 'DEBIT', child: Text('Debits')),
+              ],
+              onChanged: (v) => setState(() => _transactionFilter = v ?? 'ALL'),
+            ),
+            const SizedBox(height: 8),
             if (transactions.isEmpty)
-              const Text('Wallet activity will appear here.'),
+              const Text('No matching wallet activity.'),
             for (final raw in transactions)
               if (raw is Map)
                 ListTile(

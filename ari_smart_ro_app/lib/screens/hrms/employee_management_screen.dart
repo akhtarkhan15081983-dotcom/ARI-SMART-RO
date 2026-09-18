@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/employee_management_service.dart';
+import '../../utils/search_utils.dart';
 
 class EmployeeManagementScreen extends StatefulWidget {
   const EmployeeManagementScreen({super.key});
@@ -16,6 +17,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   String _company = 'Company';
   String? _error;
   bool _loading = true;
+  final _searchController = TextEditingController();
+  String _query = '';
+  String _designationFilter = 'ALL';
+  String _accountFilter = 'ALL';
 
   @override
   void initState() {
@@ -46,6 +51,12 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _add() async {
@@ -258,6 +269,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                   label: Text(saving ? 'CREATING...' : 'CREATE EMPLOYEE'),
                 ),
               ],
+            );
+              },
             ),
           ),
         ) ??
@@ -309,11 +322,92 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
           )
         : RefreshIndicator(
             onRefresh: _load,
-            child: ListView(
+            child: Builder(
+              builder: (context) {
+                final designations = <String>{
+                  'ALL',
+                  ..._employees
+                      .map((e) => (e['designation'] ?? '').toString().toUpperCase())
+                      .where((v) => v.isNotEmpty),
+                }.toList();
+                final filtered = _employees.where((employee) {
+                  final designation =
+                      (employee['designation'] ?? '').toString().toUpperCase();
+                  final active = employee['is_active'] == true;
+                  if (_designationFilter != 'ALL' &&
+                      designation != _designationFilter) {
+                    return false;
+                  }
+                  if (_accountFilter == 'ACTIVE' && !active) return false;
+                  if (_accountFilter == 'INACTIVE' && active) return false;
+                  return matchesAllSearchTerms(_query, [
+                    (employee['name'] ?? '').toString(),
+                    (employee['employee_id'] ?? '').toString(),
+                    (employee['phone'] ?? '').toString(),
+                    (employee['email'] ?? '').toString(),
+                    designation,
+                  ]);
+                }).toList();
+
+                return ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               children: [
                 Text(_company, style: Theme.of(context).textTheme.titleLarge),
-                Text('${_employees.length} employees in this workspace'),
+                Text('${filtered.length} of ${_employees.length} employees in this workspace'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  onChanged: (value) => setState(() => _query = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search name, employee ID, phone, email...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                            icon: const Icon(Icons.clear),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _designationFilter,
+                        decoration: const InputDecoration(labelText: 'Designation'),
+                        items: designations
+                            .map(
+                              (v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(v == 'ALL' ? 'All designations' : v),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _designationFilter = v ?? 'ALL'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _accountFilter,
+                        decoration: const InputDecoration(labelText: 'Account'),
+                        items: const [
+                          DropdownMenuItem(value: 'ALL', child: Text('All')),
+                          DropdownMenuItem(value: 'ACTIVE', child: Text('Active')),
+                          DropdownMenuItem(value: 'INACTIVE', child: Text('Inactive')),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _accountFilter = v ?? 'ALL'),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 16),
                 if (_employees.isEmpty)
                   const Card(
@@ -326,7 +420,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                       ),
                     ),
                   ),
-                ..._employees.map(
+                ...filtered.map(
                   (employee) => Card(
                     child: ListTile(
                       leading: CircleAvatar(

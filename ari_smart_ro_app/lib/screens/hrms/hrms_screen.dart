@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
 import '../../services/hrms_service.dart';
+import '../../utils/search_utils.dart';
 
 class HrmsScreen extends StatefulWidget {
   const HrmsScreen({super.key});
@@ -17,12 +18,40 @@ class _HrmsScreenState extends State<HrmsScreen> {
   bool _loading = true;
   String _role = '';
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month - 1);
+  final _searchController = TextEditingController();
+  String _query = '';
+  String _leaveStatus = 'ALL';
 
   @override
   void initState() {
     super.initState();
     _load();
   }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matchesRecord(Map<String, dynamic> row) => matchesAllSearchTerms(
+    _query,
+    row.entries.map((e) => '${e.key} ${e.value}'),
+  );
+
+  List<Map<String, dynamic>> get _filteredPayroll =>
+      _payroll.where(_matchesRecord).toList();
+
+  List<Map<String, dynamic>> get _filteredLeaves => _leaves.where((row) {
+    if (_leaveStatus != 'ALL' &&
+        (row['status'] ?? '').toString().toUpperCase() != _leaveStatus) {
+      return false;
+    }
+    return _matchesRecord(row);
+  }).toList();
+
+  List<Map<String, dynamic>> get _filteredPenalties =>
+      _penalties.where(_matchesRecord).toList();
 
   String get _monthValue =>
       '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
@@ -388,6 +417,20 @@ class _HrmsScreenState extends State<HrmsScreen> {
                 if (_role != 'ADMIN') _employeeOverview(),
                 if (_role == 'ADMIN') _adminReportOverview(),
                 const SizedBox(height: 14),
+                TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  onChanged: (value) => setState(() => _query = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search employee, ID, month, status, reason...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isEmpty ? null : IconButton(
+                      onPressed: () { _searchController.clear(); setState(() => _query = ''); },
+                      icon: const Icon(Icons.clear),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 _holidaySection(),
                 const SizedBox(height: 14),
                 _penaltySection(),
@@ -399,14 +442,14 @@ class _HrmsScreenState extends State<HrmsScreen> {
                   ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 8),
-                if (_payroll.isEmpty)
+                if (_filteredPayroll.isEmpty)
                   const Card(
                     child: Padding(
                       padding: EdgeInsets.all(20),
                       child: Text('No payroll record available.'),
                     ),
                   ),
-                ..._payroll.map(
+                ..._filteredPayroll.map(
                   (row) => Card(
                     child: ExpansionTile(
                       leading: const CircleAvatar(
@@ -479,7 +522,20 @@ class _HrmsScreenState extends State<HrmsScreen> {
                       ),
                   ],
                 ),
-                ..._leaves.map(
+                DropdownButtonFormField<String>(
+                  initialValue: _leaveStatus,
+                  decoration: const InputDecoration(labelText: 'Leave status'),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: Text('All leave requests')),
+                    DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
+                    DropdownMenuItem(value: 'APPROVED', child: Text('Approved')),
+                    DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+                  ],
+                  onChanged: (v) => setState(() => _leaveStatus = v ?? 'ALL'),
+                ),
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerLeft, child: Text('${_filteredLeaves.length} of ${_leaves.length} leave requests')),
+                ..._filteredLeaves.map(
                   (row) => Card(
                     child: Column(
                       children: [
@@ -552,14 +608,14 @@ class _HrmsScreenState extends State<HrmsScreen> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_penalties.isEmpty)
+        if (_filteredPenalties.isEmpty)
           const Text(
             'No manual penalties recorded.',
             style: TextStyle(color: Color(0xFF687386)),
           )
         else
-          ..._penalties
-              .take(20)
+          ..._filteredPenalties
+              .take(50)
               .map(
                 (row) => Card(
                   margin: const EdgeInsets.only(bottom: 8),
