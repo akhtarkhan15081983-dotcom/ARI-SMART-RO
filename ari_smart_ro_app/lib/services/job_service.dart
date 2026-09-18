@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../models/job_model.dart';
 import 'api_service.dart';
@@ -8,10 +7,8 @@ import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 
 class JobService {
-  final storage = const FlutterSecureStorage();
-
   Future<Map<String, String>> _headers() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     return {
       "Authorization": "Bearer $token",
@@ -120,7 +117,7 @@ class JobService {
     String imagePath,
     String description,
   ) async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     var request = http.MultipartRequest(
       "POST",
@@ -166,7 +163,7 @@ class JobService {
     Uint8List signatureBytes,
     String customerName,
   ) async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     final dir = await getTemporaryDirectory();
 
