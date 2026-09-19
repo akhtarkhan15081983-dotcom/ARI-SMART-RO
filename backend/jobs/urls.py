@@ -15,6 +15,8 @@ from .views import (
     JobSearchAPIView,
     GenerateOTPAPIView,
     VerifyOTPAPIView,
+    CustomerActiveOTPAPIView,
+    AdminJobOTPAPIView,
 )
 from .work_planner import WorkCalendarAPIView, WorkRescheduleAPIView, WorkRouteAPIView
 router = DefaultRouter()
@@ -83,5 +85,15 @@ urlpatterns = [
     path(
         "jobs/<int:pk>/verify-otp/",
         VerifyOTPAPIView.as_view(),
+    ),
+    path(
+        "jobs/customer-active-otp/",
+        CustomerActiveOTPAPIView.as_view(),
+        name="customer-active-job-otp",
+    ),
+    path(
+        "jobs/<int:pk>/admin-otp/",
+        AdminJobOTPAPIView.as_view(),
+        name="admin-job-otp",
     ),
 ]
