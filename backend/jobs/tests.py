@@ -2077,3 +2077,19 @@ class JobPartConcurrencyTests(
             self.bag_item.status,
             "INSTALLED",
         )
+
+
+
+class NonInstallationJobCompletionTests(JobPartSecurityFixtures, TestCase):
+
+    def test_service_job_can_complete_without_installation_artifacts(self):
+        self.assertEqual(self.job.job_type, "SERVICE")
+        change_job_status(self.job, "COMPLETED")
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, "COMPLETED")
+
+    def test_other_engineers_job_remains_private(self):
+        response = self.client.get(
+            reverse("job-detail", kwargs={"pk": self.other_job.pk})
+        )
+        self.assertEqual(response.status_code, 404)
