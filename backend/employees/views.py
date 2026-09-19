@@ -130,7 +130,7 @@ class FaceEnrollmentAPIView(APIView):
 
     def post(self, request):
         try:
-            employee = request.user.employee_profile
+            employee = EmployeeProfile.objects.get(user=request.user)
         except EmployeeProfile.DoesNotExist:
             return Response(
                 {"success": False, "message": "Employee profile not found."},
@@ -318,7 +318,7 @@ class EmployeeProfileAPIView(APIView):
 
     def get(self, request):
         try:
-            profile = request.user.employee_profile
+            profile = EmployeeProfile.objects.get(user=request.user)
         except EmployeeProfile.DoesNotExist:
             return Response({"error": "Employee profile not found."}, status=404)
         serializer = EmployeeProfileSerializer(profile, context={"request": request})
@@ -331,7 +331,7 @@ class EmployeeProfileAPIView(APIView):
 
     def put(self, request):
         try:
-            profile = request.user.employee_profile
+            profile = EmployeeProfile.objects.get(user=request.user)
         except EmployeeProfile.DoesNotExist:
             return Response({"error": "Employee profile not found."}, status=404)
         serializer = EmployeeProfileUpdateSerializer(profile, data=request.data, partial=True)
