@@ -212,13 +212,13 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
 
   Future<void> _generateOtp() async {
     await _runAction(() async {
-      final otp = await _jobService.generateOTP(widget.jobId);
-      if (otp == null) {
-        _showMessage('Unable to generate OTP.');
+      final sent = await _jobService.generateOTP(widget.jobId);
+      if (!sent) {
+        _showMessage('Unable to send OTP.');
         return;
       }
-      if (mounted) setState(() => _generatedOtp = otp.toString());
-      _showMessage('OTP generated. Share it with the customer.');
+      if (mounted) setState(() => _generatedOtp = 'SENT');
+      _showMessage('OTP sent to the customer.');
     });
   }
 
@@ -246,6 +246,10 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     if (signature == null || !mounted) return;
     setState(() => _signatureBytes = signature);
     _showMessage('Customer signature captured.');
+  }
+
+  Future<void> _completeOperationalJob() async {
+    await _changeStatus('COMPLETED', 'Job completed.');
   }
 
   Future<void> _completeJob() async {
@@ -411,7 +415,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                   signatureCaptured: _signatureBytes != null,
                 ),
                 const SizedBox(height: 16),
-                _buildActionArea(job.status),
+                _buildActionArea(job),
               ],
             ),
           );
@@ -420,8 +424,8 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     );
   }
 
-  Widget _buildActionArea(String status) {
-    final currentStatus = status.trim().toUpperCase();
+  Widget _buildActionArea(JobModel job) {
+    final currentStatus = job.status.trim().toUpperCase();
     if (currentStatus == 'ASSIGNED') {
       return _PrimaryAction(
         label: 'Accept Job',
@@ -472,15 +476,41 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
         ],
       );
     }
-    if (currentStatus == 'IN_PROGRESS') return _buildInProgressActions();
+    if (currentStatus == 'IN_PROGRESS') return _buildInProgressActions(job);
     if (currentStatus == 'COMPLETED') return const _CompletedCard();
     return _ErrorView(
       onRetry: _refresh,
-      message: 'Unknown job status: $status',
+      message: 'Unknown job status: ${job.status}',
     );
   }
 
-  Widget _buildInProgressActions() {
+  Widget _buildInProgressActions(JobModel job) {
+    if (job.jobType.trim().toUpperCase() != 'INSTALLATION') {
+      return _SectionCard(
+        title: 'Next step',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!_afterPhotoUploaded) ...[
+              _PrimaryAction(
+                label: 'Upload After Photo',
+                icon: Icons.camera_alt,
+                loading: _isSaving,
+                onPressed: () => _uploadPhoto(before: false),
+              ),
+              const SizedBox(height: 12),
+            ],
+            _PrimaryAction(
+              label: 'Complete Job',
+              icon: Icons.check_circle,
+              loading: _isSaving,
+              onPressed: _completeOperationalJob,
+            ),
+          ],
+        ),
+      );
+    }
+
     Widget action;
     if (!_partsScanned) {
       action = _PrimaryAction(
@@ -528,12 +558,9 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
         children: [
           Card(
             color: Theme.of(context).colorScheme.secondaryContainer,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                'OTP: $_generatedOtp',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+            child: const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('OTP sent to customer. Enter the 6-digit OTP received by the customer.'),
             ),
           ),
           const SizedBox(height: 12),
