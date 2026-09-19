@@ -7,12 +7,12 @@ import 'api_service.dart';
 class AdminFaceSecurityService {
   Future<List<Map<String, dynamic>>> getEngineers() async {
     final response = await http.get(
-      Uri.parse('${ApiService.baseUrl}/employees/engineers/'),
+      Uri.parse('${ApiService.baseUrl}/employees/admin/face-enrollments/'),
       headers: await ApiService.authHeaders(),
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Unable to load engineers');
+      throw Exception('Unable to load face enrollment employees');
     }
 
     final data = jsonDecode(response.body) as List;
