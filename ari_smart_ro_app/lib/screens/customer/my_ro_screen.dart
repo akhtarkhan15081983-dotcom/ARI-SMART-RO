@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/customer_model.dart';
 import '../../services/customer_service.dart';
+import '../../services/job_service.dart';
 
 class MyROScreen extends StatefulWidget {
   const MyROScreen({super.key});
@@ -12,14 +13,17 @@ class MyROScreen extends StatefulWidget {
 
 class _MyROScreenState extends State<MyROScreen> {
   final CustomerService _customerService = CustomerService();
+  final JobService _jobService = JobService();
 
   late Future<CustomerModel?> _customerFuture;
+  late Future<Map<String, dynamic>> _otpFuture;
 
   @override
   void initState() {
     super.initState();
 
     _customerFuture = _loadMyRO();
+    _otpFuture = _jobService.getCustomerActiveOTP();
   }
 
   // ============================================================
@@ -43,6 +47,7 @@ class _MyROScreenState extends State<MyROScreen> {
   Future<void> _refresh() async {
     setState(() {
       _customerFuture = _loadMyRO();
+      _otpFuture = _jobService.getCustomerActiveOTP();
     });
 
     await _customerFuture;
@@ -170,6 +175,47 @@ class _MyROScreenState extends State<MyROScreen> {
               padding: const EdgeInsets.all(16),
 
               children: [
+                FutureBuilder<Map<String, dynamic>>(
+                  future: _otpFuture,
+                  builder: (context, otpSnapshot) {
+                    final data = otpSnapshot.data;
+                    if (data == null || data['available'] != true) {
+                      return const SizedBox.shrink();
+                    }
+                    return Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 18),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'SERVICE OTP',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            data['otp']?.toString() ?? '',
+                            style: const TextStyle(
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 8,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            "Job ${data['job_number'] ?? ''} • Share this OTP only with your ARI engineer.",
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+
                 // ==================================================
                 // RO HEADER
                 // ==================================================
