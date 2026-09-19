@@ -1,5 +1,6 @@
 package com.arismartro.app
 
+import android.app.ActivityManager
 import android.content.ContentValues
 import android.content.Intent
 import android.os.Build
@@ -13,6 +14,7 @@ import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
     private val downloadsChannel = "com.arismartro.app/downloads"
+    private val deviceCapabilitiesChannel = "com.arismartro.app/device_capabilities"
     private val referralChannelName = "com.arismartro.app/referral"
     private var referralChannel: MethodChannel? = null
 
@@ -30,6 +32,19 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            deviceCapabilitiesChannel,
+        ).setMethodCallHandler { call, result ->
+            if (call.method == "isLowMemoryDevice") {
+                val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+                val lowMemory = activityManager.isLowRamDevice || activityManager.memoryClass <= 256
+                result.success(lowMemory)
+            } else {
+                result.notImplemented()
+            }
+        }
+
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             downloadsChannel,

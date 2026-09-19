@@ -260,21 +260,21 @@ class _QRScanScreenState extends State<QRScanScreen> {
     });
 
     try {
-      final otp = await jobService.generateOTP(widget.jobId);
+      final sent = await jobService.generateOTP(widget.jobId);
 
       if (!mounted) return;
 
-      if (otp == null) {
-        _showMessage('Unable to generate OTP. Please try again.', Colors.red);
+      if (!sent) {
+        _showMessage('Unable to send OTP. Please try again.', Colors.red);
         return;
       }
 
       setState(() {
-        _generatedOtp = otp.toString();
+        _generatedOtp = 'SENT';
       });
 
       _showMessage(
-        'OTP generated. Please share it with the customer.',
+        'OTP sent to the customer.',
         Colors.green,
       );
     } catch (_) {
