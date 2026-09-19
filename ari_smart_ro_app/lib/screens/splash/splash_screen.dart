@@ -173,13 +173,13 @@ class _SplashScreenState extends State<SplashScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (_videoReady && _videoController case final videoController?)
+          if (_videoReady && _videoController != null)
             FittedBox(
               fit: BoxFit.cover,
               child: SizedBox(
-                width: videoController.value.size.width,
-                height: videoController.value.size.height,
-                child: VideoPlayer(videoController),
+                width: _videoController!.value.size.width,
+                height: _videoController!.value.size.height,
+                child: VideoPlayer(_videoController!),
               ),
             )
           else
