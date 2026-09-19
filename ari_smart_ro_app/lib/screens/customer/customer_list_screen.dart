@@ -179,14 +179,12 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
   // ============================================================
 
   Future<void> _openCustomerDetails(CustomerModel customer) async {
-    final changed = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CustomerDetailsScreen(customer: customer),
       ),
     );
-    if (changed == true) {
-      await _loadCustomers();
-    }
+    if (mounted) await _loadCustomers();
   }
 
   void _showCustomerQr(CustomerModel customer) {
