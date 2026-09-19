@@ -56,43 +56,32 @@ class ComplaintWorkflowTests(APITestCase):
         self.assertEqual(complaint.longitude, self.customer.longitude)
         self.assertEqual(response.data["engineer_phone"], self.engineer_user.phone)
 
-    def test_office_sees_only_complaints_for_assigned_customers(self):
-        assigned = Complaint.objects.create(
+    def test_office_can_manage_all_complaints(self):
+        first = Complaint.objects.create(
             customer=self.customer,
             complaint_type="WATER_LEAKAGE",
-            description="Assigned office complaint",
-        )
-        other_office_user = User.objects.create_user(
-            phone="9222222203", password="test", role="OFFICE"
-        )
-        other_office = EmployeeProfile.objects.create(
-            user=other_office_user,
-            employee_id="EMP-OFFICE-2",
-            joining_date=date.today(),
-            designation="OFFICE",
-            gender="MALE",
+            description="First office complaint",
         )
         other_customer = Customer.objects.create(
-            name="Other Office Customer",
+            name="Other Customer",
             phone="8222222202",
             address="Other address",
             city="Agra",
             state="Uttar Pradesh",
             pincode="282001",
             ro_model="ARI RO",
-            assigned_engineer=other_office,
         )
-        Complaint.objects.create(
+        second = Complaint.objects.create(
             customer=other_customer,
             complaint_type="OTHER",
-            description="Other office complaint",
+            description="Second office complaint",
         )
 
         self.client.force_authenticate(self.office)
         response = self.client.get("/api/complaints/")
         self.assertEqual(response.status_code, 200)
         ids = {row["id"] for row in response.data}
-        self.assertEqual(ids, {assigned.id})
+        self.assertEqual(ids, {first.id, second.id})
 
     def test_engineer_sees_only_assigned_work(self):
         engineer_customer = Customer.objects.create(
@@ -120,3 +109,32 @@ class ComplaintWorkflowTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         ids = {row["id"] for row in response.data}
         self.assertEqual(ids, {visible.id})
+
+
+    def test_engineer_does_not_see_unassigned_complaint_for_owned_customer(self):
+        engineer_customer = Customer.objects.create(
+            name="Engineer Owned Customer",
+            phone="8222222299",
+            address="Engineer address",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI RO",
+            assigned_engineer=self.engineer,
+        )
+        assigned = Complaint.objects.create(
+            customer=engineer_customer,
+            engineer=self.engineer,
+            complaint_type="RO_NOT_WORKING",
+        )
+        Complaint.objects.create(
+            customer=engineer_customer,
+            engineer=None,
+            complaint_type="OTHER",
+        )
+
+        self.client.force_authenticate(self.engineer_user)
+        response = self.client.get("/api/complaints/")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data}
+        self.assertEqual(ids, {assigned.id})
