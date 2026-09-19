@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../services/api_service.dart';
 import '../../services/work_planner_service.dart';
+import '../../services/job_service.dart';
 import '../complaint/complaint_details_screen.dart';
 import '../jobs/job_details_screen.dart';
 import 'calendar_rent_collection_screen.dart';
@@ -18,6 +19,7 @@ class WorkCalendarScreen extends StatefulWidget {
 
 class _WorkCalendarScreenState extends State<WorkCalendarScreen> {
   final _service = WorkPlannerService();
+  final _jobService = JobService();
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime _selected = DateUtils.dateOnly(DateTime.now());
   List<Map<String, dynamic>> _events = [], _employees = [];
@@ -138,6 +140,55 @@ class _WorkCalendarScreenState extends State<WorkCalendarScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  Future<void> _revealEmergencyOtp(Map<String, dynamic> event) async {
+    final id = event['detail_id'] as int?;
+    if (_role != 'ADMIN' || event['type'] != 'JOB' || id == null) return;
+    try {
+      final data = await _jobService.getAdminJobOTP(id);
+      if (!mounted) return;
+      final available = data['available'] == true;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Emergency Customer OTP'),
+          content: available
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Same OTP shown in the customer app'),
+                    const SizedBox(height: 12),
+                    Text(
+                      data['otp']?.toString() ?? '',
+                      style: const TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 8,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text("Job ${data['job_number'] ?? ''}"),
+                  ],
+                )
+              : Text(
+                  "OTP is not available (${data['reason'] ?? 'UNKNOWN'}).",
+                ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
       }
     }
   }
@@ -358,6 +409,10 @@ class _WorkCalendarScreenState extends State<WorkCalendarScreen> {
                   onOpen: () => _openWork(event),
                   onLocation: () => _captureLocation(event),
                   onReschedule: () => _reschedule(event),
+                  onEmergencyOtp:
+                      _role == 'ADMIN' && event['type'] == 'JOB'
+                      ? () => _revealEmergencyOtp(event)
+                      : null,
                 ),
               ),
           ],
@@ -505,12 +560,14 @@ class _WorkCard extends StatelessWidget {
     required this.onOpen,
     required this.onLocation,
     required this.onReschedule,
+    this.onEmergencyOtp,
   });
   final Map<String, dynamic> event;
   final Color color;
   final VoidCallback onOpen;
   final VoidCallback onLocation;
   final VoidCallback onReschedule;
+  final VoidCallback? onEmergencyOtp;
   @override
   Widget build(BuildContext context) {
     final customer = Map<String, dynamic>.from(event['customer'] as Map),
@@ -607,6 +664,17 @@ class _WorkCard extends StatelessWidget {
                 ),
               ),
             ),
+            if (onEmergencyOtp != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onEmergencyOtp,
+                  icon: const Icon(Icons.password),
+                  label: const Text('Emergency OTP'),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
