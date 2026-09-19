@@ -109,6 +109,7 @@ class AuthSecurityEvent(models.Model):
         ("LOGIN_FAILED", "Login Failed"),
         ("ACCOUNT_LOCKED", "Account Locked"),
         ("OTP_VERIFIED", "OTP Verified"),
+        ("JOB_OTP_ADMIN_VIEWED", "Job OTP Admin Viewed"),
     ]
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="security_events")
     event_type = models.CharField(max_length=24, choices=EVENT_CHOICES)
