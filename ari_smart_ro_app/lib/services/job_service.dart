@@ -225,23 +225,16 @@ class JobService {
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
-  Future<String?> generateOTP(int jobId) async {
+  Future<bool> generateOTP(int jobId) async {
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/jobs/$jobId/generate-otp/"),
-
       headers: await _headers(),
     );
 
     print("GENERATE OTP STATUS : ${response.statusCode}");
     print(response.body);
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-
-      return data["otp"];
-    }
-
-    return null;
+    return response.statusCode == 200 || response.statusCode == 201;
   }
 
   Future<bool> verifyOTP(int jobId, String otp) async {
