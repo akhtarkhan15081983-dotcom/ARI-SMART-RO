@@ -38,6 +38,8 @@ import random
 
 from datetime import timedelta
 
+from accounts.services.sms import SMSDeliveryError, send_customer_verification_otp
+
 
 
 
@@ -901,6 +903,20 @@ class GenerateOTPAPIView(APIView):
 
         now = timezone.now()
 
+        try:
+            send_customer_verification_otp(
+                job.customer.phone,
+                otp,
+            )
+        except SMSDeliveryError:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Unable to deliver customer OTP. Please try again.",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
         job.customer_otp = otp
         job.otp_verified = False
         job.otp_created_at = now
@@ -923,7 +939,7 @@ class GenerateOTPAPIView(APIView):
             {
                 "success": True,
                 "message": (
-                    "Customer OTP generated successfully."
+                    "Customer OTP sent successfully."
                 ),
             },
             status=status.HTTP_200_OK,
