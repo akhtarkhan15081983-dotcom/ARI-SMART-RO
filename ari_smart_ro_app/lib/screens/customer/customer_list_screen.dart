@@ -178,12 +178,13 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
   // OPEN CUSTOMER DETAILS
   // ============================================================
 
-  void _openCustomerDetails(CustomerModel customer) {
-    Navigator.of(context).push(
+  Future<void> _openCustomerDetails(CustomerModel customer) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CustomerDetailsScreen(customer: customer),
       ),
     );
+    if (mounted) await _loadCustomers();
   }
 
   void _showCustomerQr(CustomerModel customer) {
@@ -774,24 +775,25 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
               const SizedBox(height: 5),
 
               // ==================================================
-              // CURRENT CARD
-              // ==================================================
-              Text(
-                "Card No : "
-                "${customer.cardNumber}",
-              ),
-
-              // ==================================================
-              // OLD CARD
+              // OLD / LEGACY CARD (PRIMARY SERIAL FOR IMPORTED DATA)
               // ==================================================
               if (customer.oldCardNumber.trim().isNotEmpty) ...[
-                const SizedBox(height: 5),
-
                 Text(
-                  "Old Card No : "
-                  "${customer.oldCardNumber}",
+                  "Old Card No : ${customer.oldCardNumber}",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
                 ),
+                const SizedBox(height: 5),
               ],
+
+              // ==================================================
+              // CURRENT ARI CARD
+              // ==================================================
+              Text(
+                "Current Card No : ${customer.cardNumber}",
+              ),
 
               const SizedBox(height: 5),
 
