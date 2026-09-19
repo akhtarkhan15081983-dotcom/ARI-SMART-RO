@@ -69,7 +69,7 @@ class CompleteServiceAPIView(generics.UpdateAPIView):
     def get_queryset(self):
         return _service_queryset_for(self.request.user, include_customer=False)
 
-    def update(self, request, *args, **kwargs):
+    def _complete(self):
         service = self.get_object()
         service.status = "COMPLETED"
         service.completed_date = timezone.now()
@@ -82,6 +82,12 @@ class CompleteServiceAPIView(generics.UpdateAPIView):
             },
             status=status.HTTP_200_OK,
         )
+
+    def post(self, request, *args, **kwargs):
+        return self._complete()
+
+    def update(self, request, *args, **kwargs):
+        return self._complete()
 
 
 class ServiceSearchAPIView(generics.ListAPIView):
