@@ -237,6 +237,28 @@ class JobService {
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
+  Future<Map<String, dynamic>> getCustomerActiveOTP() async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/jobs/customer-active-otp/"),
+      headers: await _headers(),
+    );
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception("Unable to load active OTP");
+  }
+
+  Future<Map<String, dynamic>> getAdminJobOTP(int jobId) async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/jobs/$jobId/admin-otp/"),
+      headers: await _headers(),
+    );
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception("Unable to reveal emergency OTP");
+  }
+
   Future<bool> verifyOTP(int jobId, String otp) async {
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/jobs/$jobId/verify-otp/"),

@@ -8,6 +8,7 @@ from unittest import skipIf
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from django.contrib.auth import get_user_model
+from accounts.models import AuthSecurityEvent
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -2093,3 +2094,125 @@ class NonInstallationJobCompletionTests(JobPartSecurityFixtures, TestCase):
             reverse("job-detail", kwargs={"pk": self.other_job.pk})
         )
         self.assertEqual(response.status_code, 404)
+
+
+
+class JobOTPVisibilityTests(JobPartSecurityFixtures, TestCase):
+
+    def setUp(self):
+        super().setUp()
+        User = get_user_model()
+
+        self.engineer_user.role = "ENGINEER"
+        self.engineer_user.save(update_fields=["role"])
+
+        self.customer_user = User.objects.create_user(
+            phone="7777700001",
+            password="TestPassword123!",
+            role="CUSTOMER",
+            is_verified=True,
+        )
+        self.customer.user = self.customer_user
+        self.customer.save(update_fields=["user"])
+
+        self.admin_user = User.objects.create_user(
+            phone="9999900001",
+            password="TestPassword123!",
+            role="ADMIN",
+            is_verified=True,
+        )
+        self.other_customer_user = User.objects.create_user(
+            phone="7777700099",
+            password="TestPassword123!",
+            role="CUSTOMER",
+            is_verified=True,
+        )
+        Customer.objects.create(
+            user=self.other_customer_user,
+            name="Other OTP Customer",
+            phone=self.other_customer_user.phone,
+            address="Other Address",
+            city="Test City",
+            state="Test State",
+            pincode="123456",
+            ro_model="Security Test RO",
+        )
+
+        self.job.customer_otp = "654321"
+        self.job.otp_created_at = timezone.now()
+        self.job.otp_verified = False
+        self.job.status = "IN_PROGRESS"
+        self.job.save(
+            update_fields=[
+                "customer_otp",
+                "otp_created_at",
+                "otp_verified",
+                "status",
+                "updated_at",
+            ]
+        )
+
+    def test_customer_can_read_only_own_active_job_otp(self):
+        client = APIClient()
+        client.force_authenticate(self.customer_user)
+
+        response = client.get(reverse("customer-active-job-otp"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["available"])
+        self.assertEqual(response.data["otp"], "654321")
+        self.assertEqual(response.data["job_id"], self.job.id)
+
+    def test_other_customer_cannot_read_this_job_otp(self):
+        client = APIClient()
+        client.force_authenticate(self.other_customer_user)
+
+        response = client.get(reverse("customer-active-job-otp"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["available"])
+
+    def test_admin_can_reveal_same_job_otp_and_event_is_audited(self):
+        client = APIClient()
+        client.force_authenticate(self.admin_user)
+
+        response = client.get(
+            reverse("admin-job-otp", kwargs={"pk": self.job.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["available"])
+        self.assertEqual(response.data["otp"], "654321")
+        self.assertTrue(
+            AuthSecurityEvent.objects.filter(
+                user=self.admin_user,
+                event_type="JOB_OTP_ADMIN_VIEWED",
+                details__job_id=self.job.id,
+            ).exists()
+        )
+
+    def test_engineer_cannot_use_admin_otp_endpoint(self):
+        response = self.client.get(
+            reverse("admin-job-otp", kwargs={"pk": self.job.pk})
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_verified_or_expired_otp_is_not_shown(self):
+        client = APIClient()
+        client.force_authenticate(self.customer_user)
+
+        self.job.otp_verified = True
+        self.job.save(update_fields=["otp_verified", "updated_at"])
+        verified = client.get(reverse("customer-active-job-otp"))
+        self.assertEqual(verified.status_code, 200)
+        self.assertFalse(verified.data["available"])
+
+        self.job.otp_verified = False
+        self.job.otp_created_at = timezone.now() - timedelta(minutes=6)
+        self.job.save(
+            update_fields=["otp_verified", "otp_created_at", "updated_at"]
+        )
+        expired = client.get(reverse("customer-active-job-otp"))
+        self.assertEqual(expired.status_code, 200)
+        self.assertFalse(expired.data["available"])
+        self.assertEqual(expired.data["reason"], "EXPIRED")
