@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../models/customer_model.dart';
 import '../../services/api_service.dart';
 import '../../services/customer_service.dart';
+import '../../services/customer_service.dart';
 
 class CustomerDetailsScreen extends StatefulWidget {
   final CustomerModel customer;
@@ -67,7 +68,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
       final response = await http.get(
         Uri.parse(
           "${ApiService.baseUrl}/customers/"
-          "${widget.customer.id}/service-history/",
+          "${_customer.id}/service-history/",
         ),
         headers: {
           "Authorization": "Bearer $token",
@@ -383,6 +384,279 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
     } finally {
       reason.dispose();
       if (mounted) setState(() => _savingCustomer = false);
+    }
+  }
+
+  Future<void> _editCustomer() async {
+    final name = TextEditingController(text: _customer.customerName);
+    final phone = TextEditingController(text: _customer.phone);
+    final alternatePhone = TextEditingController(text: _customer.alternatePhone);
+    final email = TextEditingController(text: _customer.email);
+    final oldCard = TextEditingController(text: _customer.oldCardNumber);
+    final address = TextEditingController(text: _customer.address);
+    final area = TextEditingController(text: _customer.area);
+    final city = TextEditingController(text: _customer.city);
+    final state = TextEditingController(text: _customer.state);
+    final pincode = TextEditingController(text: _customer.pincode);
+    final roModel = TextEditingController(text: _customer.roModel);
+    final monthlyRent = TextEditingController(text: _customer.monthlyRent);
+    final installationCharge = TextEditingController(
+      text: _customer.installationCharge,
+    );
+    final securityDeposit = TextEditingController(
+      text: _customer.securityDeposit,
+    );
+    final installationDate = TextEditingController(
+      text: _customer.installationDate,
+    );
+    var gender = _customer.gender.trim().toUpperCase();
+
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocalState) => AlertDialog(
+          title: const Text("Edit Customer Details"),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: name,
+                    decoration: const InputDecoration(labelText: "Customer Name"),
+                  ),
+                  TextField(
+                    controller: phone,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: "Phone"),
+                  ),
+                  TextField(
+                    controller: alternatePhone,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: "Alternate Phone"),
+                  ),
+                  TextField(
+                    controller: email,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: "Email"),
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: {"MALE", "FEMALE", "OTHER"}.contains(gender)
+                        ? gender
+                        : null,
+                    decoration: const InputDecoration(labelText: "Gender"),
+                    items: const [
+                      DropdownMenuItem(value: "MALE", child: Text("Male")),
+                      DropdownMenuItem(value: "FEMALE", child: Text("Female")),
+                      DropdownMenuItem(value: "OTHER", child: Text("Other")),
+                    ],
+                    onChanged: (value) =>
+                        setLocalState(() => gender = value ?? ""),
+                  ),
+                  TextField(
+                    controller: oldCard,
+                    decoration: const InputDecoration(labelText: "Old Card Number"),
+                  ),
+                  TextField(
+                    controller: area,
+                    decoration: const InputDecoration(labelText: "Area"),
+                  ),
+                  TextField(
+                    controller: address,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: "Address"),
+                  ),
+                  TextField(
+                    controller: city,
+                    decoration: const InputDecoration(labelText: "City"),
+                  ),
+                  TextField(
+                    controller: state,
+                    decoration: const InputDecoration(labelText: "State"),
+                  ),
+                  TextField(
+                    controller: pincode,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: "Pincode"),
+                  ),
+                  TextField(
+                    controller: roModel,
+                    decoration: const InputDecoration(labelText: "RO Model"),
+                  ),
+                  TextField(
+                    controller: monthlyRent,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: "Monthly Rent"),
+                  ),
+                  TextField(
+                    controller: installationCharge,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: "Installation Charge"),
+                  ),
+                  TextField(
+                    controller: securityDeposit,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: "Security Deposit"),
+                  ),
+                  TextField(
+                    controller: installationDate,
+                    decoration: const InputDecoration(
+                      labelText: "Installation Date",
+                      hintText: "YYYY-MM-DD",
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Customer ID and Current ARI Card Number are system-managed and cannot be edited here.",
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text("CANCEL"),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text("SAVE"),
+            ),
+          ],
+        ),
+      ),
+    ) ?? false;
+
+    if (!save) {
+      for (final controller in [
+        name, phone, alternatePhone, email, oldCard, address, area, city,
+        state, pincode, roModel, monthlyRent, installationCharge,
+        securityDeposit, installationDate,
+      ]) {
+        controller.dispose();
+      }
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final updated = await _customerService.updateCustomer(
+        customerId: _customer.id,
+        data: {
+          "name": name.text.trim(),
+          "phone": phone.text.trim(),
+          "alternate_phone": alternatePhone.text.trim(),
+          "email": email.text.trim(),
+          "gender": gender,
+          "old_card_number": oldCard.text.trim(),
+          "address": address.text.trim(),
+          "area": area.text.trim(),
+          "city": city.text.trim(),
+          "state": state.text.trim(),
+          "pincode": pincode.text.trim(),
+          "ro_model": roModel.text.trim(),
+          "monthly_rent": monthlyRent.text.trim().isEmpty ? "0" : monthlyRent.text.trim(),
+          "installation_charge": installationCharge.text.trim().isEmpty
+              ? "0"
+              : installationCharge.text.trim(),
+          "security_deposit": securityDeposit.text.trim().isEmpty
+              ? "0"
+              : securityDeposit.text.trim(),
+          "installation_date": installationDate.text.trim().isEmpty
+              ? null
+              : installationDate.text.trim(),
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _customer = updated;
+        _changed = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Customer details updated successfully.")),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst("Exception: ", ""))),
+        );
+      }
+    } finally {
+      for (final controller in [
+        name, phone, alternatePhone, email, oldCard, address, area, city,
+        state, pincode, roModel, monthlyRent, installationCharge,
+        securityDeposit, installationDate,
+      ]) {
+        controller.dispose();
+      }
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _setCustomerActive(bool active) async {
+    final reason = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(active ? "Reactivate Customer?" : "Deactivate Customer?"),
+        content: active
+            ? Text("${_customer.customerName} will become active again.")
+            : TextField(
+                controller: reason,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: "Reason (optional)",
+                  hintText: "Closed account, stopped service, etc.",
+                ),
+              ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("CANCEL"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(active ? "REACTIVATE" : "DEACTIVATE"),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirmed) {
+      reason.dispose();
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await _customerService.customerLifecycle(
+        customerId: _customer.id,
+        action: active ? "reactivate" : "deactivate",
+        reason: reason.text.trim(),
+      );
+      await _reloadCustomer();
+      if (!mounted) return;
+      setState(() => _changed = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            active
+                ? "Customer reactivated successfully."
+                : "Customer deactivated successfully.",
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst("Exception: ", ""))),
+        );
+      }
+    } finally {
+      reason.dispose();
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -1101,6 +1375,16 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Chip(
+                      label: Text(customer.isActive ? "ACTIVE" : "INACTIVE"),
+                      avatar: Icon(
+                        customer.isActive
+                            ? Icons.check_circle
+                            : Icons.pause_circle,
+                        size: 18,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1125,6 +1409,27 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
               value: customer.phone,
             ),
 
+            if (customer.alternatePhone.isNotEmpty)
+              _detailRow(
+                icon: Icons.phone_in_talk_outlined,
+                title: "Alternate Phone",
+                value: customer.alternatePhone,
+              ),
+
+            if (customer.email.isNotEmpty)
+              _detailRow(
+                icon: Icons.email_outlined,
+                title: "Email",
+                value: customer.email,
+              ),
+
+            if (customer.gender.isNotEmpty)
+              _detailRow(
+                icon: Icons.person_2_outlined,
+                title: "Gender",
+                value: customer.gender,
+              ),
+
             _detailRow(
               icon: Icons.location_on_outlined,
               title: "Area",
@@ -1136,6 +1441,27 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
               title: "Address",
               value: customer.address,
             ),
+
+            _detailRow(
+              icon: Icons.location_city_outlined,
+              title: "City / State",
+              value: [customer.city, customer.state]
+                  .where((value) => value.trim().isNotEmpty)
+                  .join(", "),
+            ),
+
+            _detailRow(
+              icon: Icons.pin_drop_outlined,
+              title: "Pincode",
+              value: customer.pincode,
+            ),
+
+            if (!customer.isActive && customer.deactivationReason.isNotEmpty)
+              _detailRow(
+                icon: Icons.info_outline,
+                title: "Deactivation Reason",
+                value: customer.deactivationReason,
+              ),
 
             // ====================================================
             // CARD INFORMATION
@@ -1182,6 +1508,21 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                   : "₹${customer.installationCharge}",
             ),
 
+            _detailRow(
+              icon: Icons.account_balance_wallet_outlined,
+              title: "Security Deposit",
+              value: customer.securityDeposit.isEmpty
+                  ? ""
+                  : "₹${customer.securityDeposit}",
+            ),
+
+            if (customer.installationDate.isNotEmpty)
+              _detailRow(
+                icon: Icons.event_available_outlined,
+                title: "Installation Date",
+                value: customer.installationDate,
+              ),
+
             // ====================================================
             // ASSIGNMENT
             // ====================================================
@@ -1221,6 +1562,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }
