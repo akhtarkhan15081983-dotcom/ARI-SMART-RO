@@ -23,6 +23,8 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
   String _role = "";
   bool _savingCustomer = false;
   bool _loadingHistory = true;
+
+  bool get _canManageCustomer => _role == "ADMIN" || _role == "MANAGER";
   String? _historyError;
 
   List<dynamic> _serviceHistory = [];
@@ -40,8 +42,6 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
     if (!mounted) return;
     setState(() => _role = role?.trim().toUpperCase() ?? "");
   }
-
-  bool get _canManageCustomer => _role == "ADMIN" || _role == "MANAGER";
 
   Future<void> _refreshCustomer() async {
     final customer = await _customerService.getCustomer(_customer.id);
@@ -123,17 +123,20 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
     final phone = TextEditingController(text: _customer.phone);
     final alternatePhone = TextEditingController(text: _customer.alternatePhone);
     final email = TextEditingController(text: _customer.email);
+    final oldCard = TextEditingController(text: _customer.oldCardNumber);
     final address = TextEditingController(text: _customer.address);
     final area = TextEditingController(text: _customer.area);
     final city = TextEditingController(text: _customer.city);
     final state = TextEditingController(text: _customer.state);
     final pincode = TextEditingController(text: _customer.pincode);
-    final oldCard = TextEditingController(text: _customer.oldCardNumber);
     final roModel = TextEditingController(text: _customer.roModel);
     final monthlyRent = TextEditingController(text: _customer.monthlyRent);
-    final installationCharge = TextEditingController(text: _customer.installationCharge);
-    final securityDeposit = TextEditingController(text: _customer.securityDeposit);
-    final installationDate = TextEditingController(text: _customer.installationDate);
+    final installationCharge =
+        TextEditingController(text: _customer.installationCharge);
+    final securityDeposit =
+        TextEditingController(text: _customer.securityDeposit);
+    final installationDate =
+        TextEditingController(text: _customer.installationDate);
     var gender = _customer.gender.trim().toUpperCase();
 
     final values = await showDialog<Map<String, dynamic>>(
@@ -167,7 +170,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                     decoration: const InputDecoration(labelText: "Email"),
                   ),
                   DropdownButtonFormField<String>(
-                    initialValue: {"MALE", "FEMALE", "OTHER"}.contains(gender)
+                    value: {"MALE", "FEMALE", "OTHER"}.contains(gender)
                         ? gender
                         : null,
                     decoration: const InputDecoration(labelText: "Gender"),
@@ -176,22 +179,21 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                       DropdownMenuItem(value: "FEMALE", child: Text("Female")),
                       DropdownMenuItem(value: "OTHER", child: Text("Other")),
                     ],
-                    onChanged: (value) {
-                      setLocalState(() => gender = value ?? "");
-                    },
+                    onChanged: (value) =>
+                        setLocalState(() => gender = value ?? ""),
                   ),
                   TextField(
                     controller: oldCard,
                     decoration: const InputDecoration(labelText: "Old Card Number"),
                   ),
                   TextField(
-                    controller: area,
-                    decoration: const InputDecoration(labelText: "Area"),
+                    controller: address,
+                    maxLines: 2,
+                    decoration: const InputDecoration(labelText: "Address"),
                   ),
                   TextField(
-                    controller: address,
-                    maxLines: 3,
-                    decoration: const InputDecoration(labelText: "Address"),
+                    controller: area,
+                    decoration: const InputDecoration(labelText: "Area"),
                   ),
                   TextField(
                     controller: city,
@@ -232,7 +234,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                       hintText: "YYYY-MM-DD",
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   const Text(
                     "Customer ID and Current ARI Card Number are system-managed and cannot be edited here.",
                     style: TextStyle(fontSize: 12),
@@ -248,6 +250,14 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
             ),
             FilledButton(
               onPressed: () {
+                if (name.text.trim().isEmpty || address.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text("Customer name and address are required."),
+                    ),
+                  );
+                  return;
+                }
                 Navigator.pop(dialogContext, {
                   "name": name.text.trim(),
                   "phone": phone.text.trim(),
@@ -287,12 +297,12 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
       phone,
       alternatePhone,
       email,
+      oldCard,
       address,
       area,
       city,
       state,
       pincode,
-      oldCard,
       roModel,
       monthlyRent,
       installationCharge,
@@ -316,10 +326,11 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         const SnackBar(content: Text("Customer details updated successfully.")),
       );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst("Exception: ", ""))),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst("Exception: ", ""))),
+        );
+      }
     } finally {
       if (mounted) setState(() => _savingCustomer = false);
     }
@@ -373,15 +384,18 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            active ? "Customer activated successfully." : "Customer deactivated successfully.",
+            active
+                ? "Customer activated successfully."
+                : "Customer deactivated successfully.",
           ),
         ),
       );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst("Exception: ", ""))),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst("Exception: ", ""))),
+        );
+      }
     } finally {
       reason.dispose();
       if (mounted) setState(() => _savingCustomer = false);
@@ -972,34 +986,23 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         centerTitle: true,
 
         actions: [
-          IconButton(
-            tooltip: "Refresh",
-            onPressed: () async {
-              await _refreshCustomer();
-              await _loadServiceHistory();
-            },
-            icon: const Icon(Icons.refresh),
-          ),
+          if (_canManageCustomer)
+            IconButton(
+              tooltip: "Edit Customer",
+              onPressed: _savingCustomer ? null : _editCustomer,
+              icon: const Icon(Icons.edit_outlined),
+            ),
           if (_canManageCustomer)
             PopupMenuButton<String>(
-              tooltip: "Customer actions",
+              tooltip: "Customer Status",
               onSelected: (value) {
-                if (value == "edit") {
-                  _editCustomer();
-                } else if (value == "activate") {
+                if (value == "activate") {
                   _changeCustomerStatus(true);
                 } else if (value == "deactivate") {
                   _changeCustomerStatus(false);
                 }
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: "edit",
-                  child: ListTile(
-                    leading: Icon(Icons.edit_outlined),
-                    title: Text("Edit Customer Details"),
-                  ),
-                ),
                 if (customer.isActive)
                   const PopupMenuItem(
                     value: "deactivate",
@@ -1012,12 +1015,20 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                   const PopupMenuItem(
                     value: "activate",
                     child: ListTile(
-                      leading: Icon(Icons.person_add_alt_1),
+                      leading: Icon(Icons.check_circle_outline),
                       title: Text("Activate Customer"),
                     ),
                   ),
               ],
             ),
+          IconButton(
+            tooltip: "Refresh",
+            onPressed: () async {
+              await _refreshCustomer();
+              await _loadServiceHistory();
+            },
+            icon: const Icon(Icons.refresh),
+          ),
         ],
       ),
 
@@ -1087,15 +1098,16 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                               color: Colors.grey.shade700,
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 8),
                           Chip(
-                            visualDensity: VisualDensity.compact,
-                            label: Text(customer.isActive ? "ACTIVE" : "INACTIVE"),
                             avatar: Icon(
                               customer.isActive
                                   ? Icons.check_circle
                                   : Icons.person_off,
                               size: 18,
+                            ),
+                            label: Text(
+                              customer.isActive ? "ACTIVE" : "DEACTIVATED",
                             ),
                           ),
                         ],
@@ -1146,6 +1158,27 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                 value: customer.gender,
               ),
 
+            if (customer.city.isNotEmpty)
+              _detailRow(
+                icon: Icons.location_city_outlined,
+                title: "City",
+                value: customer.city,
+              ),
+
+            if (customer.state.isNotEmpty)
+              _detailRow(
+                icon: Icons.map_outlined,
+                title: "State",
+                value: customer.state,
+              ),
+
+            if (customer.pincode.isNotEmpty)
+              _detailRow(
+                icon: Icons.pin_drop_outlined,
+                title: "Pincode",
+                value: customer.pincode,
+              ),
+
             _detailRow(
               icon: Icons.location_on_outlined,
               title: "Area",
@@ -1157,21 +1190,6 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
               title: "Address",
               value: customer.address,
             ),
-
-            _detailRow(
-              icon: Icons.location_city_outlined,
-              title: "City / State",
-              value: [customer.city, customer.state]
-                  .where((value) => value.trim().isNotEmpty)
-                  .join(", "),
-            ),
-
-            if (customer.pincode.isNotEmpty)
-              _detailRow(
-                icon: Icons.pin_drop_outlined,
-                title: "Pincode",
-                value: customer.pincode,
-              ),
 
             // ====================================================
             // CARD INFORMATION
