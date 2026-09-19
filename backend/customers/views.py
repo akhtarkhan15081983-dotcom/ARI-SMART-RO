@@ -627,12 +627,15 @@ class CustomerListAPIView(generics.ListAPIView):
         user = self.request.user
 
         if user.role in ["ADMIN", "MANAGER", "OFFICE"]:
-            return Customer.objects.all().order_by("-id")
+            # Exact Excel import created customers in source-data order.
+            # Keep that stable order so the Customer List serial (1, 2, 3...)
+            # follows the original customer data instead of newest-first IDs.
+            return Customer.objects.all().order_by("id")
 
         elif user.role == "ENGINEER":
             return Customer.objects.filter(
                 assigned_engineer__user=user
-            ).order_by("-id")
+            ).order_by("id")
 
         elif user.role == "CUSTOMER":
             return Customer.objects.filter(
@@ -655,7 +658,7 @@ class MyCustomersAPIView(generics.ListAPIView):
             assigned_engineer__user=self.request.user
         ).select_related(
             "assigned_engineer__user"
-        ).order_by("name", "id")
+        ).order_by("id")
 
 class CustomerCreateAPIView(generics.CreateAPIView):
 
