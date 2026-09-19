@@ -40,25 +40,24 @@ def restrict_complaints_for_user(queryset, user):
     """
     Apply complaint visibility at the database layer.
 
-    ADMIN / MANAGER:
-        Can see all complaints.
+    ADMIN / MANAGER / OFFICE:
+        Can see all complaints so they can manage assignment.
 
-    ENGINEER / OFFICE:
-        Can see complaints tied to their assigned customers/work.
+    ENGINEER:
+        Can see only complaints directly assigned to that engineer.
 
     CUSTOMER:
         Can see only their own complaints.
     """
     role = getattr(user, "role", None)
 
-    if role in {"ADMIN", "MANAGER"}:
+    if role in {"ADMIN", "MANAGER", "OFFICE"}:
         return queryset
 
-    if role in {"ENGINEER", "OFFICE"}:
+    if role == "ENGINEER":
         return queryset.filter(
-            Q(engineer__user=user)
-            | Q(customer__assigned_engineer__user=user)
-        ).distinct()
+            engineer__user=user
+        )
 
     if role == "CUSTOMER":
         customer = get_logged_in_customer(user)
@@ -161,7 +160,7 @@ class ComplaintCreateAPIView(generics.CreateAPIView):
         # ----------------------------------------------------
 
         role = getattr(self.request.user, "role", None)
-        if role in {"ENGINEER", "OFFICE"}:
+        if role == "ENGINEER":
             from rest_framework.exceptions import ValidationError
 
             customer = serializer.validated_data.get("customer")
@@ -184,10 +183,7 @@ class ComplaintCreateAPIView(generics.CreateAPIView):
             if serializer.validated_data.get("longitude") is None:
                 location["longitude"] = customer.longitude
 
-            if role == "ENGINEER":
-                serializer.save(engineer=employee, **location)
-            else:
-                serializer.save(**location)
+            serializer.save(engineer=employee, **location)
             return
 
         # ----------------------------------------------------
@@ -254,7 +250,7 @@ class ComplaintUpdateAPIView(
         queryset = Complaint.objects.all()
 
         role = getattr(self.request.user, "role", None)
-        if role == "CUSTOMER":
+        if role not in {"ADMIN", "MANAGER", "OFFICE"}:
             return Complaint.objects.none()
 
         return restrict_complaints_for_user(
