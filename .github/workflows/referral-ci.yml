@@ -37,6 +37,7 @@ jobs:
       DB_PASSWORD: ci-only-password
       DB_HOST: 127.0.0.1
       DB_PORT: "5432"
+      ARI_SKIP_EXACT_EXCEL_IMPORT_FOR_TESTS: "1"
     defaults:
       run:
         working-directory: backend
