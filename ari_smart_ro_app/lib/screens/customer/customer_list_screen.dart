@@ -38,6 +38,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
 
   _AssignmentFilter _assignmentFilter = _AssignmentFilter.all;
   _CustomerStatusFilter _statusFilter = _CustomerStatusFilter.active;
+  bool _serialAscending = true;
 
   // ============================================================
   // ROLE
@@ -58,7 +59,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
   // ============================================================
 
   List<CustomerModel> get _filteredCustomers {
-    return _customers.where((customer) {
+    final filtered = _customers.where((customer) {
       final matchesAssignment = switch (_assignmentFilter) {
         _AssignmentFilter.all => true,
         _AssignmentFilter.unassigned => customer.assignedEngineer == null,
@@ -88,6 +89,8 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
 
       return matchesAssignment && matchesStatus && matchesSearch;
     }).toList();
+
+    return _serialAscending ? filtered : filtered.reversed.toList();
   }
 
   // ============================================================
@@ -952,6 +955,33 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
               ],
               icon: const Icon(Icons.person_add),
             ),
+          PopupMenuButton<bool>(
+            tooltip: "Customer data order",
+            icon: Icon(
+              _serialAscending ? Icons.arrow_upward : Icons.arrow_downward,
+            ),
+            onSelected: (ascending) {
+              setState(() => _serialAscending = ascending);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: true,
+                child: ListTile(
+                  leading: Icon(Icons.arrow_upward),
+                  title: Text("Serial Ascending"),
+                  subtitle: Text("1, 2, 3 ..."),
+                ),
+              ),
+              PopupMenuItem(
+                value: false,
+                child: ListTile(
+                  leading: Icon(Icons.arrow_downward),
+                  title: Text("Serial Descending"),
+                  subtitle: Text("Highest serial first"),
+                ),
+              ),
+            ],
+          ),
           IconButton(
             tooltip: "Refresh",
             onPressed: _loadCustomers,
