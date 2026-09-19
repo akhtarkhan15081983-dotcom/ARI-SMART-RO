@@ -87,7 +87,7 @@ urlpatterns = [
         VerifyOTPAPIView.as_view(),
     ),
     path(
-        "jobs/customer-active-otp/",
+        "jobs/otp/customer-active/",
         CustomerActiveOTPAPIView.as_view(),
         name="customer-active-job-otp",
     ),
