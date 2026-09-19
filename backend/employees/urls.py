@@ -8,6 +8,7 @@ from .views import (
     AssignmentEmployeeListAPIView,
     FaceEnrollmentAPIView,
     AdminFaceEnrollmentControlAPIView,
+    AdminFaceEnrollmentListAPIView,
     EmployeeManagementAPIView,
     EmployeeLifecycleAPIView,
 )
@@ -49,6 +50,11 @@ urlpatterns = [
         "employees/face-enrollment/",
         FaceEnrollmentAPIView.as_view(),
         name="face-enrollment",
+    ),
+    path(
+        "employees/admin/face-enrollments/",
+        AdminFaceEnrollmentListAPIView.as_view(),
+        name="admin-face-enrollment-list",
     ),
     path(
         "employees/<int:employee_id>/face-enrollment-control/",

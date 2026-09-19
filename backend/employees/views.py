@@ -130,7 +130,7 @@ class FaceEnrollmentAPIView(APIView):
 
     def post(self, request):
         try:
-            employee = request.user.employee_profile
+            employee = EmployeeProfile.objects.get(user=request.user)
         except EmployeeProfile.DoesNotExist:
             return Response(
                 {"success": False, "message": "Employee profile not found."},
@@ -197,6 +197,36 @@ class FaceEnrollmentAPIView(APIView):
         })
 
 
+class AdminFaceEnrollmentListAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        employees = EmployeeProfile.objects.filter(
+            is_active=True,
+            user__is_active=True,
+        ).select_related("user").order_by(
+            "designation",
+            "user__first_name",
+            "user__last_name",
+            "employee_id",
+        )
+
+        return Response([
+            {
+                "id": employee.id,
+                "employee_id": employee.employee_id,
+                "name": employee.user.get_full_name() or employee.user.phone,
+                "phone": employee.user.phone,
+                "designation": employee.designation,
+                "face_enrolled": bool(employee.face_enrolled_at and employee.photo),
+                "face_enrollment_verified": employee.face_enrollment_verified,
+                "face_enrollment_allowed": employee.face_enrollment_allowed,
+                "attendance_device_bound": bool(employee.attendance_device_id),
+            }
+            for employee in employees
+        ])
+
+
 class AdminFaceEnrollmentControlAPIView(APIView):
     permission_classes = [IsAdmin]
 
@@ -222,7 +252,10 @@ class AdminFaceEnrollmentControlAPIView(APIView):
             return Response({
                 "success": True,
                 "message": "One face/device re-enrollment has been authorized by admin.",
+                "employee_id": employee.id,
                 "face_enrollment_allowed": True,
+                "face_enrolled": bool(employee.face_enrolled_at and employee.photo),
+                "attendance_device_bound": bool(employee.attendance_device_id),
             })
 
         if action == "cancel_reenrollment":
@@ -231,7 +264,10 @@ class AdminFaceEnrollmentControlAPIView(APIView):
             return Response({
                 "success": True,
                 "message": "Face/device re-enrollment authorization cancelled.",
+                "employee_id": employee.id,
                 "face_enrollment_allowed": False,
+                "face_enrolled": bool(employee.face_enrolled_at and employee.photo),
+                "attendance_device_bound": bool(employee.attendance_device_id),
             })
 
         return Response(
@@ -282,7 +318,7 @@ class EmployeeProfileAPIView(APIView):
 
     def get(self, request):
         try:
-            profile = request.user.employee_profile
+            profile = EmployeeProfile.objects.get(user=request.user)
         except EmployeeProfile.DoesNotExist:
             return Response({"error": "Employee profile not found."}, status=404)
         serializer = EmployeeProfileSerializer(profile, context={"request": request})
@@ -295,7 +331,7 @@ class EmployeeProfileAPIView(APIView):
 
     def put(self, request):
         try:
-            profile = request.user.employee_profile
+            profile = EmployeeProfile.objects.get(user=request.user)
         except EmployeeProfile.DoesNotExist:
             return Response({"error": "Employee profile not found."}, status=404)
         serializer = EmployeeProfileUpdateSerializer(profile, data=request.data, partial=True)

@@ -125,6 +125,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ],
                   ),
+                  if (profile.faceEnrolled && !profile.faceEnrollmentAllowed) ...[
+                    const SizedBox(height: 12),
+                    _ActionButton(
+                      icon: Icons.sync,
+                      label: 'Check Re-enrollment Permission',
+                      onPressed: _loadProfile,
+                    ),
+                  ],
                   if (canEnroll) ...[
                     const SizedBox(height: 12),
                     _ActionButton(
