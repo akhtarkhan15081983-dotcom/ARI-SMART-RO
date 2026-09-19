@@ -116,6 +116,38 @@ class CustomerService {
     );
   }
 
+  Future<CustomerModel> getCustomer(int customerId) async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/customers/$customerId/"),
+      headers: await ApiService.authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception("Unable to load customer details.");
+    }
+    return CustomerModel.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<CustomerModel> updateCustomer({
+    required int customerId,
+    required Map<String, dynamic> values,
+  }) async {
+    final response = await http.patch(
+      Uri.parse("${ApiService.baseUrl}/customers/$customerId/update/"),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode(values),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode != 200) {
+      final message = data is Map
+          ? (data["detail"] ?? data["message"] ?? data.toString())
+          : data.toString();
+      throw Exception(message.toString());
+    }
+    return CustomerModel.fromJson(data as Map<String, dynamic>);
+  }
+
   // ============================================================
   // ASSIGN CUSTOMER
   // ============================================================
