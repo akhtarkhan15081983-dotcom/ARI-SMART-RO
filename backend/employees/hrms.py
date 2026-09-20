@@ -330,15 +330,84 @@ class LeaveRequestAPIView(APIView):
             end = date.fromisoformat(request.data.get("end_date", ""))
         except (AttributeError, ValueError):
             return Response({"detail": "Valid employee and leave dates are required."}, status=400)
+
+        leave_type = request.data.get("leave_type", "FULL_DAY")
+        if leave_type not in {"FULL_DAY", "HALF_DAY"}:
+            return Response({"detail": "Leave type must be FULL_DAY or HALF_DAY."}, status=400)
+
         policy = HRPolicy.current()
         if start < timezone.localdate() + timedelta(days=policy.leave_notice_days):
             return Response({"detail": "Leave must be requested at least 1 day in advance."}, status=400)
         if end < start:
             return Response({"detail": "End date cannot be before start date."}, status=400)
-        if LeaveRequest.objects.filter(employee=employee, status__in=["PENDING", "APPROVED"], start_date__lte=end, end_date__gte=start).exists():
+
+        active_requests = LeaveRequest.objects.filter(
+            employee=employee,
+            status__in=["PENDING", "APPROVED"],
+        )
+        if active_requests.filter(start_date__lte=end, end_date__gte=start).exists():
             return Response({"detail": "A leave request already exists for these dates."}, status=400)
-        row = LeaveRequest.objects.create(employee=employee, leave_type=request.data.get("leave_type", "FULL_DAY"), start_date=start, end_date=end, reason=(request.data.get("reason") or "").strip())
-        return Response({"id": row.id, "status": row.status, "detail": "Leave request submitted for approval."}, status=201)
+
+        # Monthly policy: up to 2 full-day dates and 2 half-day dates
+        # (or the values configured in HRPolicy). Pending requests reserve
+        # their dates as well, so an employee cannot submit above the limit
+        # while earlier requests are awaiting approval.
+        month_cursor = start.replace(day=1)
+        final_month = end.replace(day=1)
+        monthly_limit = (
+            policy.monthly_paid_half_days
+            if leave_type == "HALF_DAY"
+            else policy.monthly_paid_leaves
+        )
+
+        while month_cursor <= final_month:
+            month_end = month_cursor.replace(
+                day=calendar.monthrange(month_cursor.year, month_cursor.month)[1]
+            )
+            requested_start = max(start, month_cursor)
+            requested_end = min(end, month_end)
+            requested_dates = (requested_end - requested_start).days + 1
+
+            existing_same_type = active_requests.filter(
+                leave_type=leave_type,
+                start_date__lte=month_end,
+                end_date__gte=month_cursor,
+            )
+            used_dates = 0
+            for existing in existing_same_type:
+                overlap_start = max(existing.start_date, month_cursor)
+                overlap_end = min(existing.end_date, month_end)
+                used_dates += (overlap_end - overlap_start).days + 1
+
+            if used_dates + requested_dates > monthly_limit:
+                label = "half-day" if leave_type == "HALF_DAY" else "full-day"
+                return Response(
+                    {
+                        "detail": (
+                            f"Only {monthly_limit} {label} leave date(s) are "
+                            "allowed per month. "
+                            f"{used_dates} already requested/approved."
+                        )
+                    },
+                    status=400,
+                )
+
+            if month_cursor.month == 12:
+                month_cursor = date(month_cursor.year + 1, 1, 1)
+            else:
+                month_cursor = date(month_cursor.year, month_cursor.month + 1, 1)
+
+        row = LeaveRequest.objects.create(
+            employee=employee,
+            leave_type=leave_type,
+            start_date=start,
+            end_date=end,
+            reason=(request.data.get("reason") or "").strip(),
+        )
+        return Response(
+            {"id": row.id, "status": row.status, "detail": "Leave request submitted for approval."},
+            status=201,
+        )
 
 
 class LeaveReviewAPIView(APIView):

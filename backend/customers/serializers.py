@@ -162,6 +162,24 @@ class CustomerSerializer(serializers.ModelSerializer):
             "is_active",
         ]
 
+        read_only_fields = [
+            "id",
+            "customer_id",
+            "card_number",
+            "assigned_engineer",
+            "engineer_name",
+            "qr_payload",
+            "is_active",
+            "deactivated_at",
+            "deactivation_reason",
+            "ownership_type",
+            "rent_to_purchase_date",
+            "rent_to_purchase_amount",
+            "rent_at_conversion",
+            "security_adjusted_at_conversion",
+            "rent_to_purchase_notes",
+        ]
+
 
 # ============================================================
 # WALK-IN CUSTOMER SERIALIZER

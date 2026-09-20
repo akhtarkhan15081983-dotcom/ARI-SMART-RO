@@ -38,6 +38,10 @@ import random
 
 from datetime import timedelta
 
+from accounts.services.sms import SMSDeliveryError, send_customer_verification_otp
+from accounts.models import AuthSecurityEvent
+from customers.models import Customer
+
 
 
 
@@ -873,6 +877,121 @@ class JobSearchAPIView(
 
 
 # ============================================================
+# OTP DISPLAY (CUSTOMER + ADMIN ONLY)
+# ============================================================
+
+JOB_OTP_VALIDITY_MINUTES = 5
+
+
+def _job_otp_payload(job):
+    if not job.customer_otp or job.otp_created_at is None:
+        return {
+            "available": False,
+            "reason": "NOT_GENERATED",
+        }
+
+    if job.otp_verified:
+        return {
+            "available": False,
+            "reason": "VERIFIED",
+            "job_id": job.id,
+            "job_number": job.job_id,
+        }
+
+    expires_at = job.otp_created_at + timedelta(minutes=JOB_OTP_VALIDITY_MINUTES)
+    remaining = int((expires_at - timezone.now()).total_seconds())
+    if remaining <= 0:
+        return {
+            "available": False,
+            "reason": "EXPIRED",
+            "job_id": job.id,
+            "job_number": job.job_id,
+        }
+
+    return {
+        "available": True,
+        "job_id": job.id,
+        "job_number": job.job_id,
+        "job_type": job.job_type,
+        "customer_name": job.customer.name,
+        "otp": job.customer_otp,
+        "created_at": job.otp_created_at.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "remaining_seconds": remaining,
+    }
+
+
+class CustomerActiveOTPAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != "CUSTOMER" or not request.user.is_verified:
+            return Response(
+                {"detail": "Verified customer access required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        customer = Customer.objects.filter(user=request.user).first()
+        if customer is None:
+            customer = Customer.objects.filter(
+                phone=request.user.phone,
+                user__isnull=True,
+            ).first()
+
+        if customer is None:
+            return Response({"available": False, "reason": "CUSTOMER_NOT_FOUND"})
+
+        job = (
+            Job.objects.select_related("customer")
+            .filter(
+                customer=customer,
+                otp_verified=False,
+                customer_otp__isnull=False,
+            )
+            .exclude(customer_otp="")
+            .exclude(status__in=["COMPLETED", "CANCELLED"])
+            .order_by("-otp_created_at", "-id")
+            .first()
+        )
+
+        if job is None:
+            return Response({"available": False, "reason": "NO_ACTIVE_OTP"})
+
+        return Response(_job_otp_payload(job))
+
+
+class AdminJobOTPAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        if request.user.role != "ADMIN":
+            return Response(
+                {"detail": "Admin access required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        job = get_object_or_404(
+            Job.objects.select_related("customer"),
+            pk=pk,
+        )
+
+        payload = _job_otp_payload(job)
+
+        AuthSecurityEvent.objects.create(
+            user=request.user,
+            event_type="JOB_OTP_ADMIN_VIEWED",
+            details={
+                "job_id": job.id,
+                "job_number": job.job_id,
+                "customer_id": job.customer_id,
+                "otp_available": bool(payload.get("available")),
+            },
+        )
+
+        return Response(payload)
+
+
+# ============================================================
 # GENERATE OTP
 # ============================================================
 
@@ -882,7 +1001,7 @@ class GenerateOTPAPIView(APIView):
         IsAuthenticated
     ]
 
-    OTP_VALIDITY_MINUTES = 5
+    OTP_VALIDITY_MINUTES = JOB_OTP_VALIDITY_MINUTES
 
     def post(self, request, pk):
 
@@ -916,14 +1035,27 @@ class GenerateOTPAPIView(APIView):
             ]
         )
 
-        # IMPORTANT:
-        # OTP must NEVER be returned through API.
+        sms_delivered = True
+        try:
+            send_customer_verification_otp(
+                job.customer.phone,
+                otp,
+            )
+        except SMSDeliveryError:
+            sms_delivered = False
 
+        # IMPORTANT:
+        # The engineer endpoint never returns the OTP value.
+        # The customer can read only their own active OTP and Admin can
+        # reveal it through a separate audited endpoint.
         return Response(
             {
                 "success": True,
+                "sms_delivered": sms_delivered,
                 "message": (
-                    "Customer OTP generated successfully."
+                    "Customer OTP sent successfully."
+                    if sms_delivered
+                    else "OTP generated and available in the customer app."
                 ),
             },
             status=status.HTTP_200_OK,
