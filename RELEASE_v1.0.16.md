@@ -21,3 +21,9 @@
 - Notifications & Offers dashboard.
 - Delivery/unread campaign metrics.
 - Existing RBAC and admin full-control rules remain preserved.
+
+
+## Validation hotfixes
+- Preserved legacy employee RBAC defaults when no company membership exists.
+- Public request throttling stays enabled in production and is disabled only by the CI/test flag.
+- Notification Center Flutter build fix applied.
