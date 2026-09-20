@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework.permissions import BasePermission
 
 from .models import CompanyMembership, RoleFeaturePermission
@@ -74,7 +75,18 @@ def request_company(request):
         .select_related("company")
         .first()
     )
-    return membership.company if membership else None
+    if membership:
+        return membership.company
+
+    # Backward-compatible fallback for operational employee accounts created
+    # before CompanyMembership became mandatory.
+    try:
+        company = request.user.employee_profile.company
+    except (AttributeError, ObjectDoesNotExist):
+        return None
+    if company and company.is_active and company.lifecycle_status == "ACTIVE":
+        return company
+    return None
 
 
 def effective_role_features(company, role):
