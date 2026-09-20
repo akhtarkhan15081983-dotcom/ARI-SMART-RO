@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import 'package:image/image.dart' as img;
 
 class SelfieQualityResult {
   const SelfieQualityResult._(this.isValid, this.message);
@@ -18,14 +17,12 @@ class SelfieQualityResult {
 }
 
 class SelfieQualityService {
-  /// Validates that the front-camera capture is a real, readable image.
+  /// Validates that a front-camera capture is readable while keeping peak
+  /// memory usage low enough for older/low-RAM Android phones.
   ///
-  /// Face detection is intentionally advisory only. Some Android vendor builds
-  /// return no face or throw a platform error for otherwise valid camera JPEGs.
-  /// Attendance security is still enforced by live camera capture, server-side
-  /// office GPS, enrolled-device/admin override rules, and stored-selfie admin
-  /// review. This keeps attendance usable across supported Android phones
-  /// without trusting a device-specific ML Kit result as a hard gate.
+  /// Face detection is advisory only. Attendance security is still enforced by
+  /// live camera capture, server-side office GPS, enrolled-device/admin
+  /// override rules, and stored-selfie admin review.
   static Future<SelfieQualityResult> validate(String imagePath) async {
     final file = File(imagePath);
     if (!await file.exists()) {
@@ -37,38 +34,24 @@ class SelfieQualityService {
     final basicCheck = await _validateCameraImage(file);
     if (basicCheck != null) return basicCheck;
 
-    File? normalizedFile;
     try {
-      try {
-        normalizedFile = await _normalizeForDetection(file);
-      } catch (error, stackTrace) {
-        debugPrint('SELFIE NORMALIZATION ADVISORY: $error');
-        debugPrintStack(stackTrace: stackTrace);
-      }
-
       List<Face>? faces;
-      Object? lastError;
-      final candidates = <File>[
-        if (normalizedFile != null) normalizedFile,
-        file,
-      ];
+      Object? detectorError;
 
-      for (final candidate in candidates) {
-        try {
-          faces = await _detectFaces(candidate).timeout(
-            const Duration(seconds: 8),
-          );
-          break;
-        } catch (error, stackTrace) {
-          lastError = error;
-          debugPrint('SELFIE DETECTION ADVISORY (${candidate.path}): $error');
-          debugPrintStack(stackTrace: stackTrace);
-        }
+      try {
+        // Process the camera file directly. Do not decode/copy the full image in
+        // Dart first: that creates a large temporary bitmap and can make
+        // low-memory phones restart the app after the camera closes.
+        faces = await _detectFaces(file).timeout(const Duration(seconds: 6));
+      } catch (error, stackTrace) {
+        detectorError = error;
+        debugPrint('SELFIE DETECTION ADVISORY: $error');
+        debugPrintStack(stackTrace: stackTrace);
       }
 
       if (faces == null) {
         debugPrint(
-          'SELFIE DETECTOR ADVISORY: detector unavailable ($lastError); '
+          'SELFIE DETECTOR ADVISORY: detector unavailable ($detectorError); '
           'valid camera image accepted for server review.',
         );
         return SelfieQualityResult.accepted(
@@ -117,56 +100,25 @@ class SelfieQualityService {
         'Live selfie captured successfully.',
       );
     } catch (error, stackTrace) {
-      // The basic image check already proved this is a usable camera capture.
-      // Any later detector/platform failure must not lock an employee out.
       debugPrint('SELFIE QUALITY ADVISORY ERROR: $error');
       debugPrintStack(stackTrace: stackTrace);
       return SelfieQualityResult.accepted(
         'Selfie captured successfully. Device face analysis was skipped and the selfie will be reviewed after check-in.',
       );
-    } finally {
-      if (normalizedFile != null && normalizedFile.path != file.path) {
-        try {
-          await normalizedFile.delete();
-        } catch (_) {
-          // Temporary validation images are safe to leave for OS cleanup.
-        }
-      }
     }
   }
 
-  /// Returns an invalid result only for problems that are independent of ML Kit
-  /// and therefore consistent across Android vendors.
+  /// Keep this check intentionally lightweight. Reading and decoding a complete
+  /// camera JPEG into a Dart bitmap can temporarily consume tens of megabytes
+  /// even when the compressed file itself is small.
   static Future<SelfieQualityResult?> _validateCameraImage(File image) async {
     try {
-      final bytes = await image.readAsBytes();
-      if (bytes.length < 12 * 1024) {
+      final length = await image.length();
+      if (length < 12 * 1024) {
         return SelfieQualityResult.invalid(
           'Selfie image quality is too low. Please retake it in good light.',
         );
       }
-
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null) {
-        return SelfieQualityResult.invalid(
-          'Selfie image could not be decoded. Please retake it.',
-        );
-      }
-
-      final normalized = img.bakeOrientation(decoded);
-      final shortSide = normalized.width < normalized.height
-          ? normalized.width
-          : normalized.height;
-      final longSide = normalized.width > normalized.height
-          ? normalized.width
-          : normalized.height;
-
-      if (shortSide < 240 || longSide < 320) {
-        return SelfieQualityResult.invalid(
-          'Selfie image is too small. Please retake it with the front camera.',
-        );
-      }
-
       return null;
     } catch (error, stackTrace) {
       debugPrint('SELFIE IMAGE CHECK ERROR: $error');
@@ -190,30 +142,5 @@ class SelfieQualityService {
     } finally {
       await detector.close();
     }
-  }
-
-  static Future<File> _normalizeForDetection(File source) async {
-    final decoded = img.decodeImage(await source.readAsBytes());
-    if (decoded == null) {
-      throw const FormatException('Unsupported camera image format.');
-    }
-
-    var normalized = img.bakeOrientation(decoded);
-    if (normalized.width > 1600 || normalized.height > 1600) {
-      normalized = img.copyResize(
-        normalized,
-        width: normalized.width >= normalized.height ? 1600 : null,
-        height: normalized.height > normalized.width ? 1600 : null,
-        interpolation: img.Interpolation.linear,
-      );
-    }
-
-    final separator = Platform.pathSeparator;
-    final parent = source.parent.path;
-    final normalizedPath =
-        '$parent${separator}attendance_${DateTime.now().microsecondsSinceEpoch}.jpg';
-    return File(
-      normalizedPath,
-    ).writeAsBytes(img.encodeJpg(normalized, quality: 92), flush: true);
   }
 }
