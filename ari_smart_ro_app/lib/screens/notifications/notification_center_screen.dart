@@ -117,9 +117,9 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _items.isEmpty
-                  ? const ListView(
-                      physics: AlwaysScrollableScrollPhysics(),
-                      children: [
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
                         SizedBox(height: 180),
                         Icon(Icons.notifications_none_rounded, size: 64),
                         SizedBox(height: 12),
