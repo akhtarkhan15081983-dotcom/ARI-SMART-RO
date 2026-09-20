@@ -10,6 +10,7 @@ from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tenancy.access import has_feature_access
 
 from attendance.models import Attendance
 from installation.models import Installation
@@ -385,8 +386,8 @@ class HolidayAPIView(APIView):
         } for row in rows[:500]]})
 
     def post(self, request):
-        if not _role(request.user, "ADMIN", "OFFICE"):
-            return Response({"detail": "Only admin or office can declare a holiday."}, status=403)
+        if not has_feature_access(request, "hrms_holiday_manage"):
+            return Response({"detail": "Holiday management permission is required."}, status=403)
         try:
             holiday_date = date.fromisoformat(request.data.get("date", ""))
         except ValueError:
@@ -410,8 +411,8 @@ class HolidayDetailAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, holiday_id):
-        if not _role(request.user, "ADMIN", "OFFICE"):
-            return Response({"detail": "Only admin or office can remove a holiday."}, status=403)
+        if not has_feature_access(request, "hrms_holiday_manage"):
+            return Response({"detail": "Holiday management permission is required."}, status=403)
         deleted, _ = Holiday.objects.filter(pk=holiday_id).delete()
         if not deleted:
             return Response({"detail": "Holiday not found."}, status=404)
@@ -518,8 +519,8 @@ class LeaveReviewAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, leave_id):
-        if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
-            return Response({"detail": "Not permitted."}, status=403)
+        if not has_feature_access(request, "hrms_leave_approve"):
+            return Response({"detail": "Leave approval permission is required."}, status=403)
         row = LeaveRequest.objects.filter(pk=leave_id, status="PENDING").first()
         if row is None:
             return Response({"detail": "Pending leave not found."}, status=404)
@@ -538,7 +539,7 @@ class PayrollAPIView(APIView):
 
     def get(self, request):
         rows = PayrollRecord.objects.select_related("employee__user")
-        if _role(request.user, "ADMIN"):
+        if has_feature_access(request, "hrms_payroll_manage"):
             if request.query_params.get("month"):
                 rows = rows.filter(payroll_month=_month(request.query_params["month"]))
         else:
@@ -547,8 +548,8 @@ class PayrollAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can generate payroll."}, status=403)
+        if not has_feature_access(request, "hrms_payroll_manage"):
+            return Response({"detail": "Payroll management permission is required."}, status=403)
         try:
             month = _month(request.data.get("month", ""))
         except ValueError:
@@ -575,8 +576,8 @@ class PayrollActionAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, payroll_id):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can approve payroll."}, status=403)
+        if not has_feature_access(request, "hrms_payroll_manage"):
+            return Response({"detail": "Payroll management permission is required."}, status=403)
         row = PayrollRecord.objects.filter(pk=payroll_id).first()
         if row is None:
             return Response({"detail": "Payroll record not found."}, status=404)
@@ -613,7 +614,7 @@ class EmployeePenaltyAPIView(APIView):
             "approved_at": row.approved_at,
         } for row in rows[:1000]]
         response = {"penalties": data}
-        if _role(request.user, "ADMIN"):
+        if has_feature_access(request, "hrms_penalty_manage"):
             response["employees"] = [{
                 "id": employee.id,
                 "employee_id": employee.employee_id,
@@ -622,8 +623,8 @@ class EmployeePenaltyAPIView(APIView):
         return Response(response)
 
     def post(self, request):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can create an employee penalty."}, status=403)
+        if not has_feature_access(request, "hrms_penalty_manage"):
+            return Response({"detail": "Penalty management permission is required."}, status=403)
         employee = EmployeeProfile.objects.filter(pk=request.data.get("employee_id"), is_active=True).first()
         if employee is None:
             return Response({"detail": "Active employee is required."}, status=400)
@@ -650,8 +651,8 @@ class EmployeePenaltyActionAPIView(APIView):
 
     @transaction.atomic
     def post(self, request, penalty_id):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can approve or cancel a penalty."}, status=403)
+        if not has_feature_access(request, "hrms_penalty_manage"):
+            return Response({"detail": "Penalty management permission is required."}, status=403)
         row = EmployeePenalty.objects.select_for_update().filter(pk=penalty_id, status="DRAFT").first()
         if row is None:
             return Response({"detail": "Draft penalty not found."}, status=404)
@@ -674,8 +675,8 @@ class PayrollExcelReportAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can export salary register."}, status=403)
+        if not has_feature_access(request, "hrms_payroll_manage"):
+            return Response({"detail": "Payroll management permission is required."}, status=403)
         try:
             month = _month(request.query_params.get("month", ""))
         except ValueError:
@@ -726,10 +727,11 @@ class PerformanceReviewAPIView(APIView):
         rows = PerformanceReview.objects.select_related(
             "employee__user", "reviewer"
         )
-        if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+        can_manage = has_feature_access(request, "hrms_performance_manage")
+        if not can_manage:
             rows = rows.filter(employee__user=request.user)
         employee_id = request.query_params.get("employee_id")
-        if employee_id and _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+        if employee_id and can_manage:
             rows = rows.filter(employee_id=employee_id)
 
         return Response({
@@ -756,8 +758,8 @@ class PerformanceReviewAPIView(APIView):
         })
 
     def post(self, request):
-        if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
-            return Response({"detail": "Not permitted."}, status=403)
+        if not has_feature_access(request, "hrms_performance_manage"):
+            return Response({"detail": "Performance management permission is required."}, status=403)
 
         try:
             employee = EmployeeProfile.objects.get(
@@ -825,8 +827,8 @@ class PerformanceReviewActionAPIView(APIView):
 
         action = str(request.data.get("action") or "").upper()
         if action == "FINALIZE":
-            if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
-                return Response({"detail": "Not permitted."}, status=403)
+            if not has_feature_access(request, "hrms_performance_manage"):
+                return Response({"detail": "Performance management permission is required."}, status=403)
             if row.status not in {"DRAFT", "SUBMITTED"}:
                 return Response({"detail": "Only draft/submitted review can be finalized."}, status=400)
             row.status = "FINAL"
@@ -852,10 +854,11 @@ class EmployeeDocumentComplianceAPIView(APIView):
 
     def get(self, request):
         rows = EmployeeDocument.objects.select_related("employee__user")
-        if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+        can_manage = has_feature_access(request, "hrms_documents_manage")
+        if not can_manage:
             rows = rows.filter(employee__user=request.user)
         employee_id = request.query_params.get("employee_id")
-        if employee_id and _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+        if employee_id and can_manage:
             rows = rows.filter(employee_id=employee_id)
 
         today = timezone.localdate()
@@ -884,8 +887,8 @@ class EmployeeDocumentComplianceAPIView(APIView):
         return Response({"documents": data})
 
     def post(self, request):
-        if not _role(request.user, "ADMIN", "OFFICE"):
-            return Response({"detail": "Only admin or office can add document records."}, status=403)
+        if not has_feature_access(request, "hrms_documents_manage"):
+            return Response({"detail": "Document management permission is required."}, status=403)
         employee = EmployeeProfile.objects.filter(pk=request.data.get("employee_id")).first()
         if employee is None:
             return Response({"detail": "Employee not found."}, status=404)
