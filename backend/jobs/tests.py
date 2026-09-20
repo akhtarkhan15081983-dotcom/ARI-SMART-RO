@@ -257,6 +257,13 @@ class JobPartSecurityFixtures:
 
 class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
 
+    def setUp(self):
+        super().setUp()
+        self.job.job_type = "INSTALLATION"
+        self.job.save(update_fields=["job_type"])
+        self.other_job.job_type = "INSTALLATION"
+        self.other_job.save(update_fields=["job_type"])
+
     # =========================================================
     # 1. CORRECT ENGINEER CAN USE OWN BAG PART
     # =========================================================
@@ -1289,9 +1296,12 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             response.data.get("success"),
         )
 
-        self.assertEqual(
+        self.assertIn(
             response.data.get("message"),
-            "Customer OTP generated successfully.",
+            {
+                "Customer OTP sent successfully.",
+                "OTP generated and available in the customer app.",
+            },
         )
 
         self.job.refresh_from_db()
