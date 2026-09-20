@@ -41,7 +41,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="employeeprofile",
             name="public_verification_code",
-            field=models.CharField(blank=True, default="", max_length=24, unique=True),
+            field=models.CharField(blank=True, max_length=24, null=True),
         ),
         migrations.AddField(
             model_name="employeeprofile",
@@ -69,4 +69,9 @@ class Migration(migrations.Migration):
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.RunPython(seed_employee_identity, migrations.RunPython.noop),
+        migrations.AlterField(
+            model_name="employeeprofile",
+            name="public_verification_code",
+            field=models.CharField(blank=True, default="", max_length=24, unique=True),
+        ),
     ]
