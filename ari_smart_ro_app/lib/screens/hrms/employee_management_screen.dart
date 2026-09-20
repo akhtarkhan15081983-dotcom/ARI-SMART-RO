@@ -21,6 +21,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   String _query = '';
   String _designationFilter = 'ALL';
   String _accountFilter = 'ALL';
+  String _locationFilter = 'ALL';
 
   @override
   void initState() {
@@ -37,15 +38,19 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   List<Map<String, dynamic>> get _filteredEmployees => _employees.where((employee) {
     final designation = (employee['designation'] ?? '').toString().toUpperCase();
     final active = employee['is_active'] == true;
+    final locationReceived = employee['location_received'] == true;
     if (_designationFilter != 'ALL' && designation != _designationFilter) return false;
     if (_accountFilter == 'ACTIVE' && !active) return false;
     if (_accountFilter == 'INACTIVE' && active) return false;
+    if (_locationFilter == 'RECEIVED' && !locationReceived) return false;
+    if (_locationFilter == 'MISSING' && locationReceived) return false;
     return matchesAllSearchTerms(_query, [
       (employee['name'] ?? '').toString(),
       (employee['employee_id'] ?? '').toString(),
       (employee['phone'] ?? '').toString(),
       (employee['email'] ?? '').toString(),
       designation,
+      locationReceived ? 'location received' : 'location missing',
     ]);
   }).toList();
 
@@ -519,6 +524,31 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _locationFilter,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Location status',
+                    prefixIcon: Icon(Icons.location_on_outlined),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'ALL',
+                      child: Text('All employees'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'RECEIVED',
+                      child: Text('Location received'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'MISSING',
+                      child: Text('Location missing'),
+                    ),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _locationFilter = v ?? 'ALL'),
+                ),
                 const SizedBox(height: 16),
                 if (_employees.isEmpty)
                   const Card(
@@ -551,7 +581,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                       ),
                       title: Text(employee['name'].toString()),
                       subtitle: Text(
-                        '${employee['employee_id']} • ${employee['phone']}\n${employee['designation']} • ₹${employee['salary']}',
+                        '${employee['employee_id']} • ${employee['phone']}\n'
+                        '${employee['designation']} • ₹${employee['salary']}\n'
+                        '${employee['location_received'] == true ? 'Location received' : 'Location missing'}'
+                        '${employee['last_location_updated'] == null ? '' : ' • last update ${employee['last_location_updated']}'}',
                       ),
                       isThreeLine: true,
                       trailing: PopupMenuButton<String>(
