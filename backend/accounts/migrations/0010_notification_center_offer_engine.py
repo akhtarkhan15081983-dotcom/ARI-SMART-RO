@@ -46,7 +46,7 @@ class Migration(migrations.Migration):
                     ("SERVICE", "Book Service"), ("REFERRAL", "Open Referral"),
                     ("NOTIFICATIONS", "Open Notification Center"),
                 ],
-                default="NONE", max_length=12,
+                default="NONE", max_length=16,
             ),
         ),
         migrations.CreateModel(
