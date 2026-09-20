@@ -12,7 +12,7 @@ from .views import (
     EmployeeManagementAPIView,
     EmployeeLifecycleAPIView,
 )
-from .hrms import EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView
+from .hrms import AdminHrmsCommandCenterAPIView, EmployeeDocumentActionAPIView, EmployeeDocumentAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView
 
 urlpatterns = [
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
@@ -22,6 +22,9 @@ urlpatterns = [
         name="employee-lifecycle",
     ),
     path("employees/hrms/dashboard/", EmployeeHrmsDashboardAPIView.as_view(), name="hrms-dashboard"),
+    path("employees/hrms/command-center/", AdminHrmsCommandCenterAPIView.as_view(), name="hrms-command-center"),
+    path("employees/hrms/documents/", EmployeeDocumentAPIView.as_view(), name="hrms-documents"),
+    path("employees/hrms/documents/<int:document_id>/action/", EmployeeDocumentActionAPIView.as_view(), name="hrms-document-action"),
     path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
     path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
     path("employees/hrms/leaves/", LeaveRequestAPIView.as_view(), name="hrms-leaves"),
