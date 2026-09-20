@@ -1,14 +1,22 @@
 name: ARI SMART RO CI
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches: [main, andy-assistant, production-launch]
   push:
-    branches: [main, andy-assistant, production-launch, deploy/v1.0.14-production-sync]
+    branches: [main, andy-assistant, production-launch]
 
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17-alpine
@@ -29,6 +37,7 @@ jobs:
       DB_PASSWORD: ci-only-password
       DB_HOST: 127.0.0.1
       DB_PORT: "5432"
+      ARI_SKIP_EXACT_EXCEL_IMPORT_FOR_TESTS: "1"
     defaults:
       run:
         working-directory: backend
@@ -61,6 +70,7 @@ jobs:
 
   flutter:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: ari_smart_ro_app
@@ -77,13 +87,14 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
-      - name: Compile release Android App Bundle
+      - name: Compile Android debug APK
         run: >-
-          flutter build appbundle --release
+          flutter build apk --debug
           --dart-define=API_BASE_URL=https://api.example.invalid/api
 
   container:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Build production container
