@@ -63,6 +63,16 @@ class EmployeeProfile(models.Model):
         max_length=20,
         choices=DESIGNATION_CHOICES,
     )
+    job_title = models.CharField(max_length=120, blank=True, default="")
+    department = models.CharField(max_length=100, blank=True, default="")
+    grade = models.CharField(max_length=50, blank=True, default="")
+    reporting_manager = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="direct_reports",
+    )
 
     salary = models.DecimalField(
         max_digits=10,
@@ -106,6 +116,82 @@ class EmployeeProfile(models.Model):
 
     def __str__(self):
         return f"{self.employee_id} - {self.user.get_full_name()}"
+
+
+class EmployeeCareerMovement(models.Model):
+    TYPE_CHOICES = [
+        ("PROMOTION", "Promotion"),
+        ("DESIGNATION_CHANGE", "Designation Change"),
+        ("SALARY_REVISION", "Salary Revision"),
+        ("TRANSFER", "Department Transfer"),
+        ("MANAGER_CHANGE", "Reporting Manager Change"),
+        ("DEMOTION", "Demotion"),
+        ("OTHER", "Other"),
+    ]
+    STATUS_CHOICES = [
+        ("DRAFT", "Draft"),
+        ("APPROVED", "Approved"),
+        ("CANCELLED", "Cancelled"),
+    ]
+
+    employee = models.ForeignKey(
+        EmployeeProfile,
+        on_delete=models.PROTECT,
+        related_name="career_movements",
+    )
+    movement_type = models.CharField(max_length=24, choices=TYPE_CHOICES)
+    effective_date = models.DateField(default=timezone.localdate)
+    old_designation = models.CharField(max_length=20, blank=True, default="")
+    new_designation = models.CharField(max_length=20, blank=True, default="")
+    old_job_title = models.CharField(max_length=120, blank=True, default="")
+    new_job_title = models.CharField(max_length=120, blank=True, default="")
+    old_department = models.CharField(max_length=100, blank=True, default="")
+    new_department = models.CharField(max_length=100, blank=True, default="")
+    old_grade = models.CharField(max_length=50, blank=True, default="")
+    new_grade = models.CharField(max_length=50, blank=True, default="")
+    old_salary = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    new_salary = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    old_reporting_manager = models.ForeignKey(
+        EmployeeProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="career_movements_as_old_manager",
+    )
+    new_reporting_manager = models.ForeignKey(
+        EmployeeProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="career_movements_as_new_manager",
+    )
+    reason = models.CharField(max_length=500)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="DRAFT")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_career_movements",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="approved_career_movements",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-effective_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["employee", "effective_date"], name="emp_career_emp_date_idx"),
+            models.Index(fields=["status", "effective_date"], name="emp_career_status_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.employee.employee_id} - {self.movement_type} - {self.effective_date}"
 
 
 class HRPolicy(models.Model):
