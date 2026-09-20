@@ -150,11 +150,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final response = await _imagePicker.retrieveLostData();
       if (response.isEmpty || !mounted) return;
 
-      XFile? recovered = response.file;
       final files = response.files;
-      if (recovered == null && files != null && files.isNotEmpty) {
-        recovered = files.first;
-      }
+      final XFile? recovered =
+          files != null && files.isNotEmpty ? files.first : null;
 
       if (recovered == null) {
         if (response.exception != null) {
