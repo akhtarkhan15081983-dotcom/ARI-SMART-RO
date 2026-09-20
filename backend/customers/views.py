@@ -85,6 +85,17 @@ class PublicCustomerRequestAPIView(APIView):
                 "success": True,
                 "request_number": public_request.request_number,
                 "status": public_request.status,
+                "base_amount": str(public_request.base_amount),
+                "discount_amount": str(public_request.discount_amount),
+                "total_amount": str(public_request.total_amount),
+                "offer": (
+                    {
+                        "id": public_request.applied_offer_id,
+                        "title": public_request.applied_offer.title,
+                        "promo_code": public_request.applied_offer.promo_code,
+                    }
+                    if public_request.applied_offer_id else None
+                ),
                 "message": "Request received. The ARI team will call to confirm the details.",
             },
             status=status.HTTP_201_CREATED,
