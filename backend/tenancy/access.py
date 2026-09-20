@@ -1,3 +1,5 @@
+from rest_framework.permissions import BasePermission
+
 from .models import CompanyMembership, RoleFeaturePermission
 
 
@@ -100,3 +102,12 @@ def has_feature_access(request, feature_key):
     if company is None:
         return False
     return feature_key in effective_role_features(company, role)
+
+
+
+class HasRequiredFeature(BasePermission):
+    def has_permission(self, request, view):
+        feature_key = getattr(view, "required_feature", "")
+        if not feature_key:
+            return False
+        return has_feature_access(request, feature_key)
