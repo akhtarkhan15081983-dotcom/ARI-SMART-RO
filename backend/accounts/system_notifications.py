@@ -42,6 +42,9 @@ def _sync_employee(user):
     if profile is None:
         return
 
+    from employees.training import sync_training_assignments
+    sync_training_assignments(profile)
+
     from employees.models import LeaveRequest, PayrollRecord
     from jobs.models import Job
 
