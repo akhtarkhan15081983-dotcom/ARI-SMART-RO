@@ -2,12 +2,13 @@ from datetime import timedelta
 import secrets
 
 from django.db import migrations, models
+from django.utils import timezone
 
 
 def seed_employee_identity(apps, schema_editor):
     EmployeeProfile = apps.get_model("employees", "EmployeeProfile")
-    now = __import__("django.utils.timezone", fromlist=["timezone"]).timezone.now()
-    localdate = __import__("django.utils.timezone", fromlist=["timezone"]).timezone.localdate()
+    now = timezone.now()
+    localdate = timezone.localdate()
 
     for employee in EmployeeProfile.objects.all().iterator():
         changed = []
