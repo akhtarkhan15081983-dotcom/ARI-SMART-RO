@@ -32,6 +32,8 @@ def _photo_url(request, employee):
 
 
 def _refresh_onboarding(employee):
+    from .training import sync_training_assignments
+    sync_training_assignments(employee)
     profile_complete = bool(
         employee.user.first_name
         and employee.joining_date
@@ -181,6 +183,17 @@ class EmployeeManagementAPIView(APIView):
         if User.objects.filter(phone=phone).exists():
             return Response({"success": False, "message": "This phone already belongs to an existing account."}, status=409)
 
+        reporting_manager = None
+        reporting_manager_id = request.data.get("reporting_manager_id")
+        if reporting_manager_id:
+            reporting_manager = EmployeeProfile.objects.filter(
+                pk=reporting_manager_id,
+                company=company,
+                is_active=True,
+            ).first()
+            if reporting_manager is None:
+                return Response({"success": False, "message": "Select a valid reporting manager."}, status=400)
+
         role = "MANAGER" if designation == "MANAGER" else designation
         user = User.objects.create_user(
             phone=phone, password=initial_password, first_name=first_name,
@@ -189,6 +202,10 @@ class EmployeeManagementAPIView(APIView):
         employee = EmployeeProfile.objects.create(
             company=company, user=user, designation=designation, gender=gender,
             joining_date=joining_date, salary=request.data.get("salary") or 0,
+            job_title=str(request.data.get("job_title", "")).strip(),
+            department=str(request.data.get("department", "")).strip(),
+            grade=str(request.data.get("grade", "")).strip(),
+            reporting_manager=reporting_manager,
             onboarding_status="SECURITY_PENDING",
             id_card_issued_at=timezone.now(),
             id_card_valid_until=timezone.localdate() + timedelta(days=365 * 3),
