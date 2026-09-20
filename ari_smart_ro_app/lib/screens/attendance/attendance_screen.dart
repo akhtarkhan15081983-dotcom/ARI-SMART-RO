@@ -40,6 +40,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   void initState() {
     super.initState();
     _loadTodayAttendance();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _recoverLostSelfie();
+    });
   }
 
   Future<void> _loadTodayAttendance() async {
@@ -141,6 +144,63 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
+  Future<void> _recoverLostSelfie() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final response = await _imagePicker.retrieveLostData();
+      if (response.isEmpty || !mounted) return;
+
+      XFile? recovered = response.file;
+      final files = response.files;
+      if (recovered == null && files != null && files.isNotEmpty) {
+        recovered = files.first;
+      }
+
+      if (recovered == null) {
+        if (response.exception != null) {
+          _showSnackBar(
+            'The camera was interrupted. Please take the selfie again.',
+          );
+        }
+        return;
+      }
+
+      await _acceptSelfie(recovered, recoveredAfterRestart: true);
+    } catch (error, stackTrace) {
+      debugPrint('SELFIE LOST-DATA RECOVERY ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _acceptSelfie(
+    XFile image, {
+    bool recoveredAfterRestart = false,
+  }) async {
+    final result = await SelfieQualityService.validate(image.path);
+    if (!mounted) return;
+
+    if (!result.isValid) {
+      setState(() {
+        _selfie = null;
+        _isSelfieVerified = false;
+        _selfieMessage = result.message;
+      });
+      _showSnackBar(result.message);
+      return;
+    }
+
+    final message = recoveredAfterRestart
+        ? 'Selfie recovered after the camera restart. Verify GPS again, then check in.'
+        : result.message;
+
+    setState(() {
+      _selfie = image;
+      _isSelfieVerified = true;
+      _selfieMessage = message;
+    });
+    _showSnackBar(message, isSuccess: true);
+  }
+
   Future<void> _captureSelfie() async {
     if (_isCapturingSelfie || _isSubmitting) return;
     setState(() {
@@ -153,28 +213,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final image = await _imagePicker.pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.front,
-        imageQuality: 85,
-        maxWidth: 1440,
+        imageQuality: 72,
+        maxWidth: 960,
+        maxHeight: 1280,
       );
       if (image == null || !mounted) return;
-      final result = await SelfieQualityService.validate(image.path);
-      if (!mounted) return;
-      if (!result.isValid) {
-        setState(() {
-          _selfie = null;
-          _isSelfieVerified = false;
-          _selfieMessage = result.message;
-        });
-        _showSnackBar(result.message);
-        return;
-      }
-      setState(() {
-        _selfie = image;
-        _isSelfieVerified = true;
-        _selfieMessage = result.message;
-      });
-      _showSnackBar(result.message, isSuccess: true);
-    } catch (_) {
+      await _acceptSelfie(image);
+    } catch (error, stackTrace) {
+      debugPrint('SELFIE CAPTURE ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
       _showSnackBar(
         'Unable to verify the selfie. Check camera permission and try again in good light.',
       );
@@ -305,7 +352,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ? 'Outside office radius · ${_distanceFromOffice!.toStringAsFixed(0)}m away'
         : 'Must be within 50m of the office';
     final selfieDetail = _isSelfieVerified
-        ? 'One clear face detected · quality check passed'
+        ? _selfieMessage ?? 'Selfie captured and ready for check-in'
         : _selfieMessage ??
               'Take a clear front-camera photo with only one face visible';
 
@@ -360,6 +407,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         width: 64,
                         height: 64,
                         fit: BoxFit.cover,
+                        cacheWidth: 160,
+                        cacheHeight: 160,
+                        filterQuality: FilterQuality.low,
                         errorBuilder: (_, _, _) => const SizedBox(
                           width: 64,
                           height: 64,
