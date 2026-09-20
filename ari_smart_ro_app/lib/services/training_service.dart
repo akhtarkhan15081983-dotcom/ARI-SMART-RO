@@ -25,12 +25,17 @@ class TrainingService {
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
-  Future<void> completeLesson(int assignmentId, int lessonId) async {
+  Future<void> completeLesson(
+    int assignmentId,
+    int lessonId, {
+    required bool videoWatched,
+  }) async {
     final response = await http.post(
       Uri.parse(
         '${ApiService.baseUrl}/employees/hrms/training/$assignmentId/lessons/$lessonId/complete/',
       ),
       headers: await ApiService.authHeaders(),
+      body: jsonEncode({'video_watched': videoWatched}),
     );
     if (response.statusCode != 200) throw Exception(_message(response));
   }

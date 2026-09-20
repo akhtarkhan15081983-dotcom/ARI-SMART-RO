@@ -2,7 +2,7 @@ name: ari_smart_ro_app
 description: "ARI SMART RO Management System"
 publish_to: 'none'
 
-version: 1.0.18+18
+version: 1.0.20+20
 
 environment:
   sdk: ^3.12.2
@@ -36,6 +36,8 @@ dependencies:
   google_mlkit_text_recognition: ^0.17.0
   record: ^6.1.2
   just_audio: ^0.10.5
+  flutter_local_notifications: ^19.4.2
+  timezone: ^0.10.1
 
 dev_dependencies:
   flutter_test:
@@ -52,6 +54,7 @@ flutter:
     - assets/images/ari_launcher_icon.png
     - assets/images/premium_store_hero_v2.png
     - assets/videos/ari_water_fill.mp4
+    - assets/training/
 
 flutter_launcher_icons:
   android: true

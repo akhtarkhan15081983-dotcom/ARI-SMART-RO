@@ -84,6 +84,18 @@ class PublicCustomerRequest(models.Model):
     notes = models.TextField(blank=True)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default="NEW")
     source = models.CharField(max_length=30, default="MOBILE_GUEST")
+    existing_customer = models.ForeignKey(
+        "Customer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="calling_leads",
+    )
+    priority = models.CharField(
+        max_length=10,
+        choices=[("LOW", "Low"), ("NORMAL", "Normal"), ("HIGH", "High"), ("URGENT", "Urgent")],
+        default="NORMAL",
+    )
     assigned_caller = models.ForeignKey(
         "employees.EmployeeProfile",
         on_delete=models.SET_NULL,
@@ -108,6 +120,39 @@ class PublicCustomerRequest(models.Model):
 
     def __str__(self):
         return f"{self.request_number} - {self.customer_name}"
+
+
+class CallingActivity(models.Model):
+    lead = models.ForeignKey(
+        PublicCustomerRequest,
+        on_delete=models.CASCADE,
+        related_name="call_activities",
+    )
+    customer = models.ForeignKey(
+        "Customer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="calling_activities",
+    )
+    caller = models.ForeignKey(
+        "employees.EmployeeProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="calling_activities",
+    )
+    outcome = models.CharField(max_length=20, choices=PublicCustomerRequest.CALL_OUTCOME_CHOICES)
+    note = models.TextField(blank=True, default="")
+    next_follow_up_at = models.DateTimeField(null=True, blank=True)
+    duration_seconds = models.PositiveIntegerField(default=0)
+    called_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-called_at", "-id"]
+
+    def __str__(self):
+        return f"{self.lead.request_number} - {self.outcome}"
 
 
 class Customer(models.Model):
@@ -482,4 +527,3 @@ class CustomerLocationLog(models.Model):
 
     def __str__(self):
         return f"{self.customer.customer_id} - {self.captured_at}"
-

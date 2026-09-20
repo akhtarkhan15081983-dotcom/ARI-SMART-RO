@@ -192,6 +192,7 @@ def _assignment_payload(row, include_content=False):
                 "title": lesson.title,
                 "content": lesson.content,
                 "key_takeaway": lesson.key_takeaway,
+                "video_asset": lesson.video_asset,
                 "completed": lesson.id in completed_ids,
             }
             for lesson in lessons
@@ -301,6 +302,11 @@ class TrainingLessonCompleteAPIView(APIView):
         lesson = row.course.lessons.filter(pk=lesson_id).first()
         if lesson is None:
             return Response({"detail": "Lesson not found in this course."}, status=404)
+        if lesson.video_asset and request.data.get("video_watched") is not True:
+            return Response(
+                {"detail": "Please watch the complete Hindi training video before marking this lesson complete."},
+                status=400,
+            )
 
         completed = {int(v) for v in (row.lessons_completed or [])}
         completed.add(lesson.id)

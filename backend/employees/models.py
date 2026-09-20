@@ -450,6 +450,7 @@ class TrainingLesson(models.Model):
     title = models.CharField(max_length=180)
     content = models.TextField()
     key_takeaway = models.CharField(max_length=300, blank=True, default="")
+    video_asset = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         ordering = ["course", "order", "id"]

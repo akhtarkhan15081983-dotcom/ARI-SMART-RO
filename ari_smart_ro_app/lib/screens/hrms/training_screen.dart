@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../services/training_service.dart';
 
@@ -181,6 +182,7 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
   bool _loading = true;
   Map<String, dynamic> _course = {};
   final Map<int, String> _answers = {};
+  final Set<int> _watchedVideos = {};
 
   @override
   void initState() {
@@ -204,9 +206,13 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
     }
   }
 
-  Future<void> _completeLesson(int lessonId) async {
+  Future<void> _completeLesson(int lessonId, {required bool hasVideo}) async {
     try {
-      await _service.completeLesson(widget.assignmentId, lessonId);
+      await _service.completeLesson(
+        widget.assignmentId,
+        lessonId,
+        videoWatched: !hasVideo || _watchedVideos.contains(lessonId),
+      );
       await _load();
     } catch (e) {
       if (mounted) {
@@ -300,7 +306,11 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                 ),
                 const SizedBox(height: 16),
                 ...lessons.map(
-                  (lesson) => Card(
+                  (lesson) {
+                    final lessonId = (lesson['id'] as num).toInt();
+                    final videoAsset = (lesson['video_asset'] ?? '').toString();
+                    final hasVideo = videoAsset.isNotEmpty;
+                    return Card(
                     child: ExpansionTile(
                       leading: Icon(
                         lesson['completed'] == true
@@ -316,6 +326,16 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                         (lesson['key_takeaway'] ?? '').toString(),
                       ),
                       children: [
+                        if (hasVideo)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                            child: _TrainingVideo(
+                              assetPath: videoAsset,
+                              onCompleted: () => setState(
+                                () => _watchedVideos.add(lessonId),
+                              ),
+                            ),
+                          ),
                         Padding(
                           padding: const EdgeInsets.all(16),
                           child: Text((lesson['content'] ?? '').toString()),
@@ -324,16 +344,25 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             child: FilledButton.icon(
-                              onPressed: () => _completeLesson(
-                                (lesson['id'] as num).toInt(),
-                              ),
+                              onPressed: hasVideo &&
+                                      !_watchedVideos.contains(lessonId)
+                                  ? null
+                                  : () => _completeLesson(
+                                        lessonId,
+                                        hasVideo: hasVideo,
+                                      ),
                               icon: const Icon(Icons.check),
-                              label: const Text('MARK LESSON COMPLETE'),
+                              label: Text(
+                                hasVideo && !_watchedVideos.contains(lessonId)
+                                    ? 'वीडियो पूरा देखें / WATCH VIDEO'
+                                    : 'पूरा हुआ / MARK COMPLETE',
+                              ),
                             ),
                           ),
                       ],
                     ),
-                  ),
+                  );
+                  },
                 ),
                 const SizedBox(height: 16),
                 if (completed)
@@ -410,6 +439,85 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                   ),
               ],
             ),
+    );
+  }
+}
+
+class _TrainingVideo extends StatefulWidget {
+  const _TrainingVideo({required this.assetPath, required this.onCompleted});
+  final String assetPath;
+  final VoidCallback onCompleted;
+
+  @override
+  State<_TrainingVideo> createState() => _TrainingVideoState();
+}
+
+class _TrainingVideoState extends State<_TrainingVideo> {
+  late final VideoPlayerController _controller;
+  bool _completed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset(widget.assetPath)
+      ..initialize().then((_) {
+        if (mounted) setState(() {});
+      });
+    _controller.addListener(_listen);
+  }
+
+  void _listen() {
+    if (_completed || !_controller.value.isInitialized) return;
+    final duration = _controller.value.duration;
+    final position = _controller.value.position;
+    if (duration > Duration.zero && position >= duration - const Duration(milliseconds: 400)) {
+      _completed = true;
+      widget.onCompleted();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_listen);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_controller.value.isInitialized) {
+      return const AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: AspectRatio(
+            aspectRatio: _controller.value.aspectRatio,
+            child: VideoPlayer(_controller),
+          ),
+        ),
+        VideoProgressIndicator(_controller, allowScrubbing: false),
+        FilledButton.tonalIcon(
+          onPressed: () => setState(() {
+            _controller.value.isPlaying
+                ? _controller.pause()
+                : _controller.play();
+          }),
+          icon: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
+          label: Text(
+            _controller.value.isPlaying
+                ? 'रोकें / PAUSE'
+                : _completed
+                    ? 'दोबारा देखें / REPLAY'
+                    : 'वीडियो देखें / PLAY',
+          ),
+        ),
+      ],
     );
   }
 }

@@ -12,6 +12,8 @@ class AttendanceModel {
   final String? remarks;
   final String identityReviewStatus;
   final String? identityReviewNote;
+  final String? serverTime;
+  final String? checkoutReminderAt;
 
   AttendanceModel({
     required this.id,
@@ -27,6 +29,8 @@ class AttendanceModel {
     this.remarks,
     this.identityReviewStatus = 'PENDING',
     this.identityReviewNote,
+    this.serverTime,
+    this.checkoutReminderAt,
   });
 
   bool get isReviewRejected => identityReviewStatus.toUpperCase() == 'REJECTED';
@@ -54,6 +58,8 @@ class AttendanceModel {
           .toString()
           .toUpperCase(),
       identityReviewNote: json['identity_review_note']?.toString(),
+      serverTime: json['server_time']?.toString(),
+      checkoutReminderAt: json['checkout_reminder_at']?.toString(),
     );
   }
 }

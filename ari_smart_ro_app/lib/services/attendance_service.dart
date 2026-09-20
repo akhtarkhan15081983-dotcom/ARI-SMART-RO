@@ -85,16 +85,25 @@ class AttendanceService {
   // CHECK OUT
   // ===========================
 
-  Future<bool> checkOut() async {
+  Future<AttendanceActionResult> checkOut() async {
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/attendance/check-out/"),
       headers: await _headers(),
     );
 
-    print("CHECK OUT STATUS : ${response.statusCode}");
-    print(response.body);
-
-    return response.statusCode == 200 || response.statusCode == 201;
+    final success = response.statusCode == 200 || response.statusCode == 201;
+    var message = success ? 'Checked out successfully.' : 'Check-out failed.';
+    try {
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        message = (data['message'] ?? data['detail'] ?? message).toString();
+      }
+    } catch (_) {}
+    return AttendanceActionResult(
+      success: success,
+      message: message,
+      statusCode: response.statusCode,
+    );
   }
 
   // ===========================

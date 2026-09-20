@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/attendance_service.dart';
+import '../../services/attendance_reminder_service.dart';
 import '../../services/selfie_quality_service.dart';
 
 class AttendanceScreen extends StatefulWidget {
@@ -35,6 +36,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool _isCheckedOut = false;
   DateTime? _checkInTime;
   DateTime? _checkOutTime;
+  DateTime? _checkoutReminderAt;
 
   @override
   void initState() {
@@ -53,12 +55,20 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _isCheckedIn = attendance.checkIn != null;
         _checkInTime = attendance.checkIn == null
             ? null
-            : DateTime.parse(attendance.checkIn!);
+            : DateTime.parse(attendance.checkIn!).toLocal();
         _isCheckedOut = attendance.checkOut != null;
         _checkOutTime = attendance.checkOut == null
             ? null
-            : DateTime.parse(attendance.checkOut!);
+            : DateTime.parse(attendance.checkOut!).toLocal();
+        _checkoutReminderAt = attendance.checkoutReminderAt == null
+            ? null
+            : DateTime.parse(attendance.checkoutReminderAt!).toLocal();
       });
+      if (_isCheckedIn && !_isCheckedOut && _checkoutReminderAt != null) {
+        await AttendanceReminderService.scheduleCheckout(_checkoutReminderAt!);
+      } else {
+        await AttendanceReminderService.cancelCheckout();
+      }
     } catch (e) {
       debugPrint('LOAD ATTENDANCE ERROR: $e');
     }
@@ -278,13 +288,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (!confirm || _isSubmitting || !_isCheckedIn || _isCheckedOut) return;
     setState(() => _isSubmitting = true);
     try {
-      await _attendanceService.checkOut();
+      final result = await _attendanceService.checkOut();
+      if (!result.success) {
+        _showSnackBar(result.message);
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _isCheckedOut = true;
         _checkOutTime = DateTime.now();
       });
       _showSnackBar('Checked out successfully.', isSuccess: true);
+      await AttendanceReminderService.cancelCheckout();
       await _loadTodayAttendance();
     } catch (_) {
       _showSnackBar('Check-out failed. Please try again.');
@@ -375,6 +390,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               checkInTime: _checkInTime,
               checkOutTime: _checkOutTime,
             ),
+            if (_isCheckedIn && !_isCheckedOut) ...[
+              const SizedBox(height: 12),
+              Card(
+                color: Colors.orange.withValues(alpha: 0.10),
+                child: ListTile(
+                  leading: const Icon(Icons.notifications_active_outlined),
+                  title: const Text(
+                    'Check-out बाकी है / Checkout pending',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: Text(
+                    _checkoutReminderAt == null
+                        ? 'Duty पूरी होने पर check-out करना न भूलें।'
+                        : 'Reminder ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(_checkoutReminderAt!))} पर आएगा।',
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             _VerificationCard(
               icon: Icons.location_on_outlined,

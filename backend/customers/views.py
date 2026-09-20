@@ -13,7 +13,7 @@ from accounts.permissions import (
     user_role,
 )
 from employees.models import EmployeeProfile
-from .models import Customer, PublicCustomerRequest
+from .models import CallingActivity, Customer, PublicCustomerRequest
 from .serializers import PublicCustomerRequestSerializer
 
 from django.conf import settings
@@ -3088,6 +3088,8 @@ class CallingDeskAPIView(APIView):
             "id": row.id,
             "request_number": row.request_number,
             "request_type": row.request_type,
+            "record_type": "CUSTOMER" if row.existing_customer_id else "LEAD",
+            "existing_customer_id": row.existing_customer_id,
             "customer_name": row.customer_name,
             "phone": row.phone,
             "alternate_phone": row.alternate_phone,
@@ -3095,6 +3097,8 @@ class CallingDeskAPIView(APIView):
             "state": row.state,
             "plan_name": row.plan_name,
             "status": row.status,
+            "priority": row.priority,
+            "source": row.source,
             "notes": row.notes,
             "last_call_outcome": row.last_call_outcome,
             "call_notes": row.call_notes,
@@ -3107,6 +3111,31 @@ class CallingDeskAPIView(APIView):
                 if caller else ""
             ),
             "created_at": row.created_at,
+        }
+
+    def _caller(self, request):
+        return getattr(request.user, "employee_profile", None)
+
+    def _customer_data(self, customer):
+        latest_lead = customer.calling_leads.order_by("-updated_at").first()
+        return {
+            "id": customer.id,
+            "customer_id": customer.customer_id,
+            "card_number": customer.card_number,
+            "name": customer.name,
+            "phone": customer.phone,
+            "alternate_phone": customer.alternate_phone,
+            "city": customer.city,
+            "area": customer.area,
+            "address": customer.address,
+            "ro_model": customer.ro_model,
+            "ownership_type": customer.ownership_type,
+            "monthly_rent": customer.monthly_rent,
+            "is_active": customer.is_active,
+            "calling_lead_id": latest_lead.id if latest_lead else None,
+            "last_call_outcome": latest_lead.last_call_outcome if latest_lead else "PENDING",
+            "next_follow_up_at": latest_lead.next_follow_up_at if latest_lead else None,
+            "call_count": latest_lead.call_count if latest_lead else 0,
         }
 
     def get(self, request):
@@ -3144,6 +3173,35 @@ class CallingDeskAPIView(APIView):
 
         now = timezone.now()
         data = [self._serialize(row) for row in rows[:300]]
+        customers = Customer.objects.filter(is_active=True).order_by("name", "id")
+        if q:
+            customers = customers.filter(
+                Q(name__icontains=q) | Q(phone__icontains=q)
+                | Q(alternate_phone__icontains=q) | Q(customer_id__icontains=q)
+                | Q(card_number__icontains=q) | Q(old_card_number__icontains=q)
+                | Q(city__icontains=q) | Q(area__icontains=q)
+            )
+        customer_data = [self._customer_data(row) for row in customers[:300]]
+        caller = self._caller(request)
+        activities = CallingActivity.objects.select_related(
+            "lead", "customer", "caller__user"
+        )
+        if getattr(request.user, "role", "") == "CALLING" and caller:
+            activities = activities.filter(caller=caller)
+        activity_data = [{
+            "id": item.id,
+            "lead_id": item.lead_id,
+            "customer_id": item.customer_id,
+            "name": item.lead.customer_name,
+            "phone": item.lead.phone,
+            "outcome": item.outcome,
+            "note": item.note,
+            "next_follow_up_at": item.next_follow_up_at,
+            "duration_seconds": item.duration_seconds,
+            "called_at": item.called_at,
+            "caller_name": item.caller.user.get_full_name() if item.caller else "",
+        } for item in activities[:100]]
+        open_rows = [row for row in rows[:300] if row.last_call_outcome not in {"CONVERTED", "NOT_INTERESTED", "WRONG_NUMBER"}]
         return Response({
             "count": len(data),
             "due_follow_ups": sum(
@@ -3151,8 +3209,77 @@ class CallingDeskAPIView(APIView):
                 if row.next_follow_up_at and row.next_follow_up_at <= now
                 and row.last_call_outcome not in {"CONVERTED", "NOT_INTERESTED", "WRONG_NUMBER"}
             ),
+            "summary": {
+                "open": len(open_rows),
+                "due": sum(1 for row in open_rows if row.next_follow_up_at and row.next_follow_up_at <= now),
+                "interested": sum(1 for row in rows[:300] if row.last_call_outcome == "INTERESTED"),
+                "converted": sum(1 for row in rows[:300] if row.last_call_outcome == "CONVERTED"),
+                "calls_today": activities.filter(called_at__date=timezone.localdate()).count(),
+                "customers": Customer.objects.filter(is_active=True).count(),
+            },
             "leads": data,
+            "customers": customer_data,
+            "activities": activity_data,
         })
+
+    @transaction.atomic
+    def post(self, request):
+        if not self._allowed(request.user):
+            return Response({"detail": "Calling desk access is restricted to authorised staff."}, status=403)
+        caller = self._caller(request)
+        if getattr(request.user, "role", "") == "CALLING" and caller is None:
+            return Response({"detail": "Employee profile not found."}, status=404)
+
+        customer = None
+        customer_id = request.data.get("customer_id")
+        if customer_id not in (None, ""):
+            customer = Customer.objects.filter(pk=customer_id, is_active=True).first()
+            if customer is None:
+                return Response({"detail": "Active customer not found."}, status=404)
+            existing = PublicCustomerRequest.objects.filter(
+                existing_customer=customer,
+            ).exclude(last_call_outcome__in={"CONVERTED", "NOT_INTERESTED", "WRONG_NUMBER"}).order_by("-updated_at").first()
+            if existing:
+                if existing.assigned_caller_id is None and caller:
+                    existing.assigned_caller = caller
+                    existing.save(update_fields=["assigned_caller", "updated_at"])
+                return Response({"success": True, "lead": self._serialize(existing), "reused": True})
+
+        name = (request.data.get("customer_name") or (customer.name if customer else "")).strip()
+        phone_raw = request.data.get("phone") or (customer.phone if customer else "")
+        phone = "".join(ch for ch in str(phone_raw) if ch.isdigit())
+        if len(phone) == 12 and phone.startswith("91"):
+            phone = phone[2:]
+        if not name:
+            return Response({"detail": "Customer/lead name is required."}, status=400)
+        if len(phone) != 10 or phone[0] not in "6789":
+            return Response({"detail": "Enter a valid 10-digit Indian mobile number."}, status=400)
+
+        request_type = (request.data.get("request_type") or "SERVICE").strip().upper()
+        valid_types = {choice[0] for choice in PublicCustomerRequest.REQUEST_TYPES}
+        if request_type not in valid_types:
+            return Response({"detail": "Select a valid lead type."}, status=400)
+        priority = (request.data.get("priority") or "NORMAL").strip().upper()
+        if priority not in {"LOW", "NORMAL", "HIGH", "URGENT"}:
+            return Response({"detail": "Select a valid priority."}, status=400)
+
+        row = PublicCustomerRequest.objects.create(
+            request_type=request_type,
+            customer_name=name[:150],
+            phone=phone,
+            alternate_phone=(request.data.get("alternate_phone") or (customer.alternate_phone if customer else ""))[:10],
+            address=(request.data.get("address") or (customer.address if customer else "")),
+            city=(request.data.get("city") or (customer.city if customer else ""))[:100],
+            state=(request.data.get("state") or (customer.state if customer else ""))[:100],
+            pincode=(request.data.get("pincode") or (customer.pincode if customer else ""))[:6],
+            plan_name=(request.data.get("plan_name") or "")[:150],
+            notes=(request.data.get("notes") or "")[:2000],
+            source="EXISTING_CUSTOMER" if customer else "CALLING_DESK",
+            existing_customer=customer,
+            assigned_caller=caller,
+            priority=priority,
+        )
+        return Response({"success": True, "lead": self._serialize(row), "reused": False}, status=201)
 
     @transaction.atomic
     def patch(self, request, pk):
@@ -3212,6 +3339,20 @@ class CallingDeskAPIView(APIView):
             "status",
             "updated_at",
         ])
+        duration = request.data.get("duration_seconds") or 0
+        try:
+            duration = max(0, min(int(duration), 86400))
+        except (TypeError, ValueError):
+            duration = 0
+        CallingActivity.objects.create(
+            lead=row,
+            customer=row.existing_customer,
+            caller=employee,
+            outcome=outcome,
+            note=row.call_notes,
+            next_follow_up_at=follow_up,
+            duration_seconds=duration,
+        )
         return Response({"success": True, "lead": self._serialize(row)})
 
 
