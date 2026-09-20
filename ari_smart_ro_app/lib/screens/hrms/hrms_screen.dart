@@ -63,7 +63,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
       final values = await Future.wait<dynamic>([
         _service.leaves(),
         _service.payroll(month: _role == 'ADMIN' ? _monthValue : null),
-        if (_role != 'ADMIN') _service.dashboard(),
+        _service.dashboard(),
         _service.holidays(year: DateTime.now().year),
         _service.penalties(),
       ]);
@@ -71,15 +71,9 @@ class _HrmsScreenState extends State<HrmsScreen> {
         setState(() {
           _leaves = values[0];
           _payroll = values[1];
-          _dashboard = _role == 'ADMIN'
-              ? <String, dynamic>{}
-              : Map<String, dynamic>.from(values[2] as Map);
-          _holidays = List<Map<String, dynamic>>.from(
-            values[_role == 'ADMIN' ? 2 : 3] as List,
-          );
-          final penaltyData = Map<String, dynamic>.from(
-            values[_role == 'ADMIN' ? 3 : 4] as Map,
-          );
+          _dashboard = Map<String, dynamic>.from(values[2] as Map);
+          _holidays = List<Map<String, dynamic>>.from(values[3] as List);
+          final penaltyData = Map<String, dynamic>.from(values[4] as Map);
           _penalties = List<Map<String, dynamic>>.from(
             penaltyData['penalties'] as List? ?? const [],
           );
@@ -307,6 +301,25 @@ class _HrmsScreenState extends State<HrmsScreen> {
     }
   }
 
+  Future<void> _payrollAction(
+    Map<String, dynamic> row,
+    String action,
+  ) async {
+    final id = (row['id'] as num?)?.toInt();
+    if (id == null) return;
+    try {
+      await _service.payrollAction(id, action);
+      _show(
+        action == 'APPROVE'
+            ? 'Payroll approved successfully.'
+            : 'Payroll marked as paid.',
+      );
+      await _load();
+    } catch (e) {
+      _show(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   Future<void> _generate() async {
     try {
       final count = await _service.generatePayroll(_monthValue);
@@ -500,6 +513,30 @@ class _HrmsScreenState extends State<HrmsScreen> {
                           _money(row['net_salary']),
                           bold: true,
                         ),
+                        if (_role == 'ADMIN' &&
+                            row['status'] == 'DRAFT') ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () => _payrollAction(row, 'APPROVE'),
+                              icon: const Icon(Icons.verified_outlined),
+                              label: const Text('APPROVE PAYROLL'),
+                            ),
+                          ),
+                        ],
+                        if (_role == 'ADMIN' &&
+                            row['status'] == 'APPROVED') ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () => _payrollAction(row, 'MARK_PAID'),
+                              icon: const Icon(Icons.payments_outlined),
+                              label: const Text('MARK AS PAID'),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -670,27 +707,79 @@ class _HrmsScreenState extends State<HrmsScreen> {
     ),
   );
   Widget _adminReportOverview() {
-    final pendingLeaves = _leaves
-        .where((row) => row['status'] == 'PENDING')
-        .length;
-    final approvedLeaves = _leaves
-        .where((row) => row['status'] == 'APPROVED')
-        .length;
-    final grossPayroll = _payroll.fold<double>(
-      0,
-      (sum, row) => sum + (double.tryParse('${row['net_salary']}') ?? 0),
+    final workforce = _map('workforce');
+    final approvals = _map('approvals');
+    final payroll = _map('payroll');
+    final attendance = _map('attendance');
+    final designationMix = Map<String, dynamic>.from(
+      workforce['designation_mix'] as Map? ?? const {},
     );
-    final pendingPayroll = _payroll
-        .where((row) => row['status'] != 'PAID')
-        .length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0B2447), Color(0xFF19376D)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'CORPORATE HRMS',
+                style: TextStyle(
+                  color: Color(0xFFB7D7FF),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'People Operations Command Center',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Live workforce, approvals, payroll and policy overview • $_monthValue',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: _heroMetric(
+                      'Active workforce',
+                      '${workforce['active_employees'] ?? 0}',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _heroMetric(
+                      'Present today',
+                      '${workforce['present_today'] ?? 0}',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
         Text(
-          'Admin HR reports',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+          'Executive snapshot',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
         ),
         const SizedBox(height: 10),
         GridView.count(
@@ -702,35 +791,109 @@ class _HrmsScreenState extends State<HrmsScreen> {
           crossAxisSpacing: 10,
           children: [
             _metricCard(
-              Icons.pending_actions,
-              'Pending leaves',
-              '$pendingLeaves',
+              Icons.pending_actions_rounded,
+              'Pending leave approvals',
+              '${approvals['pending_leaves'] ?? 0}',
               const Color(0xFFE17819),
             ),
             _metricCard(
-              Icons.event_available,
-              'Approved leaves',
-              '$approvedLeaves',
-              const Color(0xFF0A8F70),
+              Icons.payments_outlined,
+              'Payroll drafts',
+              '${approvals['draft_payroll'] ?? 0}',
+              const Color(0xFF7B4BC4),
             ),
             _metricCard(
               Icons.account_balance_wallet_outlined,
-              'Net salary register',
-              _money(grossPayroll),
+              'Net salary',
+              _money(payroll['net_salary']),
               const Color(0xFF0878D8),
             ),
             _metricCard(
-              Icons.receipt_long_outlined,
-              'Payroll pending',
-              '$pendingPayroll',
-              const Color(0xFF7B4BC4),
+              Icons.more_time_rounded,
+              'Overtime payout',
+              _money(payroll['overtime_amount']),
+              const Color(0xFF0A8F70),
             ),
           ],
         ),
-        const SizedBox(height: 10),
-        const Text(
-          'Employee-wise attendance, penalties, overtime, incentives, leave records and payroll details are shown below and included in the salary Excel report.',
-          style: TextStyle(color: Color(0xFF687386)),
+        const SizedBox(height: 12),
+        _sectionCard(
+          icon: Icons.groups_2_outlined,
+          title: 'Workforce structure',
+          child: designationMix.isEmpty
+              ? const Text('No active workforce data available.')
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: designationMix.entries
+                      .map(
+                        (entry) => Chip(
+                          avatar: const Icon(Icons.badge_outlined, size: 18),
+                          label: Text('${entry.key}: ${entry.value}'),
+                        ),
+                      )
+                      .toList(),
+                ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          icon: Icons.assignment_turned_in_outlined,
+          title: 'Approval queue',
+          child: Column(
+            children: [
+              _line(
+                'Leave requests awaiting review',
+                '${approvals['pending_leaves'] ?? 0}',
+                bold: true,
+              ),
+              _line(
+                'Payroll awaiting approval',
+                '${approvals['draft_payroll'] ?? 0}',
+              ),
+              _line(
+                'Approved payroll awaiting payment',
+                '${approvals['approved_payroll'] ?? 0}',
+              ),
+              _line(
+                'Penalty drafts awaiting approval',
+                '${approvals['draft_penalties'] ?? 0}',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          icon: Icons.insights_outlined,
+          title: 'Attendance & cost controls',
+          child: Column(
+            children: [
+              _line(
+                'Not checked-in / absent today',
+                '${workforce['absent_or_not_checked_in'] ?? 0}',
+              ),
+              _line(
+                'Half-days this month',
+                '${attendance['half_days'] ?? 0}',
+              ),
+              _line(
+                'Absences this month',
+                '${attendance['absences'] ?? 0}',
+              ),
+              _line(
+                'Pending selfie reviews',
+                '${attendance['pending_selfie_reviews'] ?? 0}',
+              ),
+              _line(
+                'Performance incentives',
+                _money(payroll['incentives']),
+              ),
+              _line(
+                'Approved penalties',
+                _money(payroll['approved_penalties']),
+                bold: true,
+              ),
+            ],
+          ),
         ),
       ],
     );
