@@ -168,3 +168,24 @@ class EmployeePenaltyWorkflowTests(HRMSPolicyTests):
         self.assertEqual(result["other_deductions"], Decimal("100.00"))
         self.assertEqual(result["net_salary"], Decimal("1100.00"))
         self.assertEqual(result["snapshot"]["manual_penalty_ids"], [penalty.id])
+
+class CorporateHrmsDashboardTests(HRMSPolicyTests):
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            phone="9111111177",
+            password="Strong@Test1",
+            role="ADMIN",
+            first_name="HR Admin",
+        )
+
+    def test_admin_dashboard_returns_corporate_workforce_and_approval_metrics(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get("/api/employees/hrms/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["scope"], "CORPORATE")
+        self.assertIn("workforce", response.data)
+        self.assertIn("approvals", response.data)
+        self.assertIn("payroll", response.data)
+        self.assertIn("attendance", response.data)
+        self.assertGreaterEqual(response.data["workforce"]["active_employees"], 1)
