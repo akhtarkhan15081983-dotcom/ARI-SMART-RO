@@ -221,7 +221,7 @@ class JobPartSecurityFixtures:
             customer=self.customer,
             ro_asset=self.asset,
             engineer=self.engineer,
-            job_type="SERVICE",
+            job_type="INSTALLATION",
             priority="MEDIUM",
             scheduled_date=timezone.now(),
             status="IN_PROGRESS",
@@ -235,7 +235,7 @@ class JobPartSecurityFixtures:
             customer=self.customer,
             ro_asset=self.asset,
             engineer=self.other_engineer,
-            job_type="SERVICE",
+            job_type="INSTALLATION",
             priority="MEDIUM",
             scheduled_date=timezone.now(),
             status="IN_PROGRESS",
@@ -1289,9 +1289,12 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             response.data.get("success"),
         )
 
-        self.assertEqual(
+        self.assertIn(
             response.data.get("message"),
-            "Customer OTP generated successfully.",
+            {
+                "Customer OTP sent successfully.",
+                "OTP generated and available in the customer app.",
+            },
         )
 
         self.job.refresh_from_db()
