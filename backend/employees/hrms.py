@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from tenancy.access import has_feature_access
+from tenancy.access import HasRequiredFeature, has_feature_access
 
 from attendance.models import Attendance
 from installation.models import Installation
@@ -159,7 +159,8 @@ def calculate_payroll(employee, payroll_month):
 
 
 class EmployeeHrmsDashboardAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         today = timezone.localdate()
@@ -366,7 +367,8 @@ class EmployeeHrmsDashboardAPIView(APIView):
 
 
 class HolidayAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         year = request.query_params.get("year")
@@ -408,7 +410,8 @@ class HolidayAPIView(APIView):
 
 
 class HolidayDetailAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def delete(self, request, holiday_id):
         if not has_feature_access(request, "hrms_holiday_manage"):
@@ -420,7 +423,8 @@ class HolidayDetailAPIView(APIView):
 
 
 class LeaveRequestAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         rows = LeaveRequest.objects.select_related("employee__user")
@@ -516,7 +520,8 @@ class LeaveRequestAPIView(APIView):
 
 
 class LeaveReviewAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def post(self, request, leave_id):
         if not has_feature_access(request, "hrms_leave_approve"):
@@ -535,7 +540,8 @@ class LeaveReviewAPIView(APIView):
 
 
 class PayrollAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         rows = PayrollRecord.objects.select_related("employee__user")
@@ -573,7 +579,8 @@ class PayrollAPIView(APIView):
 
 
 class PayrollActionAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def post(self, request, payroll_id):
         if not has_feature_access(request, "hrms_payroll_manage"):
@@ -594,7 +601,8 @@ class PayrollActionAPIView(APIView):
 
 
 class EmployeePenaltyAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         rows = EmployeePenalty.objects.select_related("employee__user", "created_by", "approved_by")
@@ -647,7 +655,8 @@ class EmployeePenaltyAPIView(APIView):
 
 
 class EmployeePenaltyActionAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     @transaction.atomic
     def post(self, request, penalty_id):
@@ -672,7 +681,8 @@ class EmployeePenaltyActionAPIView(APIView):
 
 
 class PayrollExcelReportAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         if not has_feature_access(request, "hrms_payroll_manage"):
@@ -721,7 +731,8 @@ class PayrollExcelReportAPIView(APIView):
 
 
 class PerformanceReviewAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         rows = PerformanceReview.objects.select_related(
@@ -818,7 +829,8 @@ class PerformanceReviewAPIView(APIView):
 
 
 class PerformanceReviewActionAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def post(self, request, review_id):
         row = PerformanceReview.objects.select_related("employee__user").filter(pk=review_id).first()
@@ -850,7 +862,8 @@ class PerformanceReviewActionAPIView(APIView):
 
 
 class EmployeeDocumentComplianceAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         rows = EmployeeDocument.objects.select_related("employee__user")
