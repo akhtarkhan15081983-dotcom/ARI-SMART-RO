@@ -58,7 +58,11 @@ def best_offer(user, scope, base_amount):
         if discount > best_discount:
             best = offer
             best_discount = discount
-    return best, best_discount, _money(base - best_discount)
+    final_amount = _money(base - best_discount)
+    if scope == "RENT" and base >= Decimal("100.00") and final_amount < Decimal("100.00"):
+        final_amount = Decimal("100.00")
+        best_discount = _money(base - final_amount)
+    return best, best_discount, final_amount
 
 
 def customer_offer_user(customer):
@@ -94,4 +98,8 @@ def best_public_offer(scope, base_amount, promo_code=""):
         if discount > best_discount:
             best = offer
             best_discount = discount
-    return best, best_discount, _money(base - best_discount)
+    final_amount = _money(base - best_discount)
+    if scope == "RENT" and base >= Decimal("100.00") and final_amount < Decimal("100.00"):
+        final_amount = Decimal("100.00")
+        best_discount = _money(base - final_amount)
+    return best, best_discount, final_amount
