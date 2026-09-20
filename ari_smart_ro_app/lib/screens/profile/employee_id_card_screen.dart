@@ -127,7 +127,7 @@ class _EmployeeIdCardScreenState extends State<EmployeeIdCardScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    'ID: ${card['employee_id']}',
+                    "ID: ${card['employee_id']}",
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 17,
@@ -149,7 +149,7 @@ class _EmployeeIdCardScreenState extends State<EmployeeIdCardScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Verification: ${card['verification_code']}',
+                  "Verification: ${card['verification_code']}",
                   style: const TextStyle(
                     color: Colors.white70,
                     fontWeight: FontWeight.w700,
@@ -183,7 +183,7 @@ class _EmployeeIdCardScreenState extends State<EmployeeIdCardScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Valid until: ${card['valid_until'] ?? 'Not set'}',
+                  "Valid until: ${card['valid_until'] ?? 'Not set'}",
                   style: const TextStyle(color: Colors.white70),
                 ),
               ],
@@ -209,7 +209,7 @@ class _EmployeeIdCardScreenState extends State<EmployeeIdCardScreen> {
                       onboarding['training_complete'] == true),
                   const Divider(),
                   Text(
-                    'Status: ${onboarding['status'] ?? '-'}',
+                    "Status: ${onboarding['status'] ?? '-'}",
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ],
