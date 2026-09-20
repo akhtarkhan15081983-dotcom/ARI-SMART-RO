@@ -11,6 +11,7 @@ from .models import (
     UserNotification,
 )
 from .permissions import IsAdmin
+from .system_notifications import sync_system_notifications
 
 
 def _active_notifications(user):
@@ -42,6 +43,7 @@ def materialize_campaign(campaign):
         UserNotification(
             campaign=campaign,
             user=user,
+            event_key=f"campaign:{campaign.id}",
             title=campaign.title,
             message=campaign.message,
             category=campaign.category,
@@ -62,6 +64,7 @@ class NotificationCenterAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        sync_system_notifications(request.user)
         rows = _active_notifications(request.user)
         payload = [{
             "id": row.id,
