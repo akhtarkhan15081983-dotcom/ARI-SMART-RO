@@ -135,6 +135,17 @@ class HrmsService {
     if (response.statusCode != 200) throw Exception(_message(response));
   }
 
+  Future<void> payrollAction(int payrollId, String action) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/payroll/$payrollId/action/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({'action': action}),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+  }
+
   Future<int> generatePayroll(String month) async {
     final response = await http.post(
       Uri.parse('${ApiService.baseUrl}/employees/hrms/payroll/'),
