@@ -14,6 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator
 from accounts.models import User
 from tenancy.models import CompanyMembership
+from tenancy.access import has_feature_access
 
 from .models import EmployeeCareerMovement, EmployeeProfile
 from .serializers import (
@@ -414,6 +415,8 @@ class EmployeeLifecycleAPIView(APIView):
 
     @transaction.atomic
     def post(self, request, employee_id):
+        if not has_feature_access(request, "employee_career_manage"):
+            return Response({"detail": "Career management permission is required."}, status=403)
         company = _request_company(request)
         if company is None:
             return Response({"success": False, "message": "Active company workspace not found."}, status=403)
@@ -474,9 +477,11 @@ class EmployeeLifecycleAPIView(APIView):
 # ============================================================
 
 class EmployeeCareerMovementAPIView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, employee_id):
+        if not has_feature_access(request, "employee_career_manage"):
+            return Response({"detail": "Career management permission is required."}, status=403)
         company = _request_company(request)
         if company is None:
             return Response({"detail": "Active company workspace not found."}, status=403)
@@ -610,10 +615,12 @@ class EmployeeCareerMovementAPIView(APIView):
 
 
 class EmployeeCareerMovementActionAPIView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request, employee_id, movement_id):
+        if not has_feature_access(request, "employee_career_manage"):
+            return Response({"detail": "Career management permission is required."}, status=403)
         company = _request_company(request)
         if company is None:
             return Response({"detail": "Active company workspace not found."}, status=403)
