@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+import secrets
 
 
 class EmployeeProfile(models.Model):
@@ -98,8 +99,33 @@ class EmployeeProfile(models.Model):
     last_location_updated = models.DateTimeField(null=True, blank=True)
     is_online = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    public_verification_code = models.CharField(
+        max_length=24,
+        unique=True,
+        blank=True,
+        default="",
+    )
+    onboarding_status = models.CharField(
+        max_length=20,
+        choices=[
+            ("CREATED", "Created"),
+            ("PROFILE_PENDING", "Profile Pending"),
+            ("SECURITY_PENDING", "Security Pending"),
+            ("TRAINING_PENDING", "Training Pending"),
+            ("READY", "Ready"),
+        ],
+        default="CREATED",
+    )
+    id_card_valid_until = models.DateField(null=True, blank=True)
+    id_card_issued_at = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
+        if not self.public_verification_code:
+            while True:
+                candidate = secrets.token_hex(6).upper()
+                if not EmployeeProfile.objects.filter(public_verification_code=candidate).exists():
+                    self.public_verification_code = candidate
+                    break
         if not self.employee_id:
             year = timezone.now().year
             last_employee = EmployeeProfile.objects.order_by("-id").first()
