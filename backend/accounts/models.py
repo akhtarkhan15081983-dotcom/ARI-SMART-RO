@@ -248,7 +248,7 @@ class CustomerEngagement(models.Model):
     valid_from = models.DateTimeField(default=timezone.now)
     valid_until = models.DateTimeField(null=True, blank=True)
     priority = models.PositiveSmallIntegerField(default=50)
-    action = models.CharField(max_length=12, choices=ACTION_CHOICES, default="NONE")
+    action = models.CharField(max_length=16, choices=ACTION_CHOICES, default="NONE")
     action_label = models.CharField(max_length=40, blank=True, default="")
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
