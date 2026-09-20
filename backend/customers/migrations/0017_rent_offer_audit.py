@@ -25,4 +25,19 @@ class Migration(migrations.Migration):
             name="applied_offer",
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="rent_history_applications", to="accounts.customerengagement"),
         ),
+        migrations.AddField(
+            model_name="publiccustomerrequest",
+            name="base_amount",
+            field=models.DecimalField(decimal_places=2, default=0, max_digits=12),
+        ),
+        migrations.AddField(
+            model_name="publiccustomerrequest",
+            name="discount_amount",
+            field=models.DecimalField(decimal_places=2, default=0, max_digits=12),
+        ),
+        migrations.AddField(
+            model_name="publiccustomerrequest",
+            name="applied_offer",
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="public_request_applications", to="accounts.customerengagement"),
+        ),
     ]
