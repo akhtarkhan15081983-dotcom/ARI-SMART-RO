@@ -18,3 +18,5 @@
 - Training penalties are never auto-approved.
 - Existing HRMS penalty approval/cancel workflow remains the final control.
 - Historical overdue/compliance strike is preserved even after late completion.
+
+- Training card appears once per applicable role dashboard.
