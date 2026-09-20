@@ -28,6 +28,7 @@ ROLE_FEATURE_CATALOG = {
     "performance_admin": "Performance Management",
     "documents_admin": "Document Compliance",
     "hrms_leave_approve": "HRMS • Leave Approval",
+    "hrms_holiday_manage": "HRMS • Holiday Management",
     "hrms_payroll_manage": "HRMS • Payroll Approve/Pay",
     "hrms_penalty_manage": "HRMS • Penalty Management",
     "hrms_performance_manage": "HRMS • Performance Finalize",
@@ -42,13 +43,14 @@ DEFAULT_ROLE_FEATURES = {
         "request", "qr", "rent_management", "payment_history", "complaint",
         "referral", "profile", "reports", "inventory_workflow", "calling_desk",
         "map", "engineer_map", "performance_admin", "documents_admin",
-        "hrms_leave_approve", "hrms_performance_manage",
+        "hrms_leave_approve", "hrms_performance_manage", "hrms_holiday_manage",
     },
     "OFFICE": {
         "attendance", "hrms", "customers", "walkin", "service",
         "rent_management", "payment_history", "reports", "inventory_workflow",
         "work_calendar", "work_route", "complaint", "referral", "profile",
         "calling_desk", "documents_admin", "hrms_documents_manage",
+        "hrms_holiday_manage",
     },
     "CALLING": {"attendance", "hrms", "calling_desk", "profile"},
     "ENGINEER": {
