@@ -123,7 +123,7 @@ class EmployeeIdentityTests(APITestCase):
 
     def test_customer_sees_only_assigned_engineer_official_identity(self):
         self.client.force_authenticate(self.customer_user)
-        response = self.client.get("/api/jobs/customer-assigned-engineer/")
+        response = self.client.get("/api/jobs/customer/assigned-engineer/")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["available"])
         engineer = response.data["engineer"]
@@ -154,7 +154,7 @@ class EmployeeIdentityTests(APITestCase):
             ro_model="Identity RO",
         )
         self.client.force_authenticate(other_customer_user)
-        response = self.client.get("/api/jobs/customer-assigned-engineer/")
+        response = self.client.get("/api/jobs/customer/assigned-engineer/")
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.data["available"])
         self.assertEqual(response.data["reason"], "NO_ACTIVE_JOB")
