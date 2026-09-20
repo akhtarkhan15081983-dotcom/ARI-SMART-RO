@@ -110,6 +110,10 @@ class AuthSecurityEvent(models.Model):
         ("ACCOUNT_LOCKED", "Account Locked"),
         ("OTP_VERIFIED", "OTP Verified"),
         ("JOB_OTP_ADMIN_VIEWED", "Job OTP Admin Viewed"),
+        ("PASSWORD_RESET_REQUESTED", "Password Reset Requested"),
+        ("PASSWORD_RESET_APPROVED", "Password Reset Approved"),
+        ("PASSWORD_RESET_REJECTED", "Password Reset Rejected"),
+        ("PASSWORD_RESET_COMPLETED", "Password Reset Completed"),
     ]
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="security_events")
     event_type = models.CharField(max_length=24, choices=EVENT_CHOICES)
@@ -120,6 +124,48 @@ class AuthSecurityEvent(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class PasswordResetRequest(models.Model):
+    STATUS_CHOICES = [
+        ("PENDING", "Pending"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+        ("USED", "Used"),
+        ("EXPIRED", "Expired"),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="password_reset_requests",
+    )
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="PENDING")
+    requested_ip = models.GenericIPAddressField(null=True, blank=True)
+    requested_device_id = models.CharField(max_length=64, blank=True, default="")
+    code_hash = models.CharField(max_length=128, blank=True, default="")
+    attempts = models.PositiveSmallIntegerField(default=0)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_password_reset_requests",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="acct_pwdreset_status_idx"),
+            models.Index(fields=["user", "created_at"], name="acct_pwdreset_user_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.user.phone} - {self.status} - {self.created_at}"
 
 
 class SmsGatewayDevice(models.Model):
