@@ -53,7 +53,6 @@ class Migration(migrations.Migration):
             name="NotificationCampaign",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("event_key", models.CharField(blank=True, default="", max_length=160)),
                 ("title", models.CharField(max_length=140)),
                 ("message", models.TextField(max_length=1000)),
                 ("category", models.CharField(
@@ -103,6 +102,7 @@ class Migration(migrations.Migration):
             name="UserNotification",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("event_key", models.CharField(blank=True, default="", max_length=160)),
                 ("title", models.CharField(max_length=140)),
                 ("message", models.TextField(max_length=1000)),
                 ("category", models.CharField(
