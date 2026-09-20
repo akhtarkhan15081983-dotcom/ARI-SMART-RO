@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator
 from accounts.models import User
 from tenancy.models import CompanyMembership
-from tenancy.access import has_feature_access
+from tenancy.access import HasRequiredFeature, has_feature_access
 
 from .models import EmployeeCareerMovement, EmployeeProfile
 from .serializers import (
@@ -38,7 +38,8 @@ def _request_company(request):
 
 
 class EmployeeManagementAPIView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "employee_management"
 
     def get(self, request):
         company = _request_company(request)
@@ -392,7 +393,8 @@ class AssignmentEmployeeListAPIView(APIView):
 # ============================================================
 
 class EmployeeLifecycleAPIView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "employee_management"
 
     def _profile_has_operational_history(self, employee):
         for relation in employee._meta.related_objects:
