@@ -383,10 +383,10 @@ class _DashboardScreenState extends State<DashboardScreen>
             .then((_) => _loadAttendance());
         return;
       case 'calling_desk':
-        if ({'ADMIN', 'MANAGER', 'OFFICE', 'CALLING'}.contains(_role)) {
+        if (_role == 'ADMIN' || _allowedFeatures.contains('calling_desk')) {
           _push(const CallingDeskScreen());
         } else {
-          _showComingSoon('Calling desk access is restricted to authorised staff.');
+          _showComingSoon('Calling desk permission is required.');
         }
         return;
       case 'jobs':
@@ -405,19 +405,17 @@ class _DashboardScreenState extends State<DashboardScreen>
         _push(const HrmsScreen());
         return;
       case 'employee_management':
-        if (_role == 'ADMIN') {
+        if (_role == 'ADMIN' || _allowedFeatures.contains('employee_management')) {
           _push(const EmployeeManagementScreen());
         } else {
-          _showComingSoon('Only company administrators can manage employees.');
+          _showComingSoon('Employee management permission is required.');
         }
         return;
       case 'inventory_workflow':
-        if ({'ADMIN', 'MANAGER', 'OFFICE'}.contains(_role)) {
+        if (_role == 'ADMIN' || _allowedFeatures.contains('inventory_workflow')) {
           _push(const InventoryWorkflowScreen());
         } else {
-          _showComingSoon(
-            'Inventory control is restricted to authorised staff.',
-          );
+          _showComingSoon('Inventory control permission is required.');
         }
         return;
       case 'bag':
