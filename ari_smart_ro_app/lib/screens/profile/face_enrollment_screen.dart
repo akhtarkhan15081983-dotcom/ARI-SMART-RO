@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../services/device_identity_service.dart';
 import '../../services/profile_service.dart';
+import '../../services/selfie_quality_service.dart';
 
 class FaceEnrollmentScreen extends StatefulWidget {
   const FaceEnrollmentScreen({super.key});
@@ -26,7 +27,16 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
       imageQuality: 88,
       maxWidth: 1600,
     );
-    if (photo != null && mounted) setState(() => _photo = photo);
+    if (photo == null || !mounted) return;
+    final result = await SelfieQualityService.validate(photo.path);
+    if (!mounted) return;
+    if (!result.isValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message)),
+      );
+      return;
+    }
+    setState(() => _photo = photo);
   }
 
   Future<void> _enroll() async {

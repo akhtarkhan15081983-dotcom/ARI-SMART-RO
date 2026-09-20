@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/attendance_model.dart';
@@ -8,10 +7,8 @@ import 'api_service.dart';
 import 'device_identity_service.dart';
 
 class AttendanceService {
-  final storage = const FlutterSecureStorage();
-
   Future<Map<String, String>> _headers() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     return {
       "Authorization": "Bearer $token",
@@ -28,7 +25,7 @@ class AttendanceService {
     required double longitude,
     required String selfiePath,
   }) async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
     final deviceId = await DeviceIdentityService.getOrCreate();
 
     final request = http.MultipartRequest(

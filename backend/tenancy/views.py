@@ -12,7 +12,8 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 
-from .models import Branch, Company, CompanyLifecycleEvent, CompanyMembership, CompanySubscription, SubscriptionPlan
+from .models import Branch, Company, CompanyLifecycleEvent, CompanyMembership, CompanySubscription, RoleFeaturePermission, SubscriptionPlan
+from .access import ROLE_FEATURE_CATALOG, effective_role_features, request_company
 from .serializers import (
     CompanyLifecycleEventSerializer, CompanySerializer, MembershipSerializer,
     PublicCompanyBrandSerializer, SubscriptionPlanSerializer,
@@ -21,6 +22,60 @@ from .serializers import (
 
 def _platform_super_admin(user):
     return bool(user and user.is_authenticated and user.is_active and user.is_superuser)
+
+
+class RoleFeaturePermissionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+        role = str(request.query_params.get("role") or request.user.role or "").upper()
+        if role not in {"ADMIN", "MANAGER", "OFFICE", "CALLING", "ENGINEER"}:
+            return Response({"detail": "Invalid role."}, status=400)
+        allowed = effective_role_features(company, role)
+        return Response({
+            "role": role,
+            "admin_full_control": role == "ADMIN",
+            "allowed_features": sorted(allowed),
+            "catalog": [
+                {"key": key, "label": label, "allowed": key in allowed}
+                for key, label in ROLE_FEATURE_CATALOG.items()
+            ],
+        })
+
+    def post(self, request):
+        if str(getattr(request.user, "role", "") or "").upper() != "ADMIN":
+            return Response({"detail": "Only admin can change role permissions."}, status=403)
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        role = str(request.data.get("role") or "").upper()
+        if role not in {"MANAGER", "OFFICE", "CALLING", "ENGINEER"}:
+            return Response({"detail": "Select Manager, Office, Calling or Engineer."}, status=400)
+
+        feature_key = str(request.data.get("feature_key") or "").strip()
+        if feature_key not in ROLE_FEATURE_CATALOG:
+            return Response({"detail": "Invalid feature key."}, status=400)
+
+        is_allowed = bool(request.data.get("is_allowed", False))
+        row, _ = RoleFeaturePermission.objects.update_or_create(
+            company=company,
+            role=role,
+            feature_key=feature_key,
+            defaults={
+                "is_allowed": is_allowed,
+                "updated_by": request.user,
+            },
+        )
+        return Response({
+            "role": role,
+            "feature_key": feature_key,
+            "is_allowed": row.is_allowed,
+            "detail": "Role permission updated.",
+        })
 
 
 class PlatformSuperAdminMixin:

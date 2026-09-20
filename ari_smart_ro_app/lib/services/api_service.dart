@@ -4,7 +4,10 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../utils/jwt_utils.dart';
+
 class ApiService {
+  static Future<bool>? _refreshInFlight;
   static const String _configuredBaseUrl = String.fromEnvironment(
     "API_BASE_URL",
     defaultValue: "https://ari-smart-ro-api.onrender.com/api",
@@ -23,8 +26,13 @@ class ApiService {
 
   static const FlutterSecureStorage storage = FlutterSecureStorage();
 
-  static Future<String?> getAccessToken() {
+  static Future<String?> _readAccessToken() {
     return storage.read(key: "access");
+  }
+
+  static Future<String?> getAccessToken() async {
+    await ensureValidSession();
+    return _readAccessToken();
   }
 
   static Future<String?> getRefreshToken() {
@@ -131,32 +139,28 @@ class ApiService {
     }
   }
 
-  static bool _isJwtValid(String? token) {
-    if (token == null || token.isEmpty) return false;
-    try {
-      final segments = token.split('.');
-      if (segments.length != 3) return false;
-      final payload =
-          jsonDecode(
-                utf8.decode(base64Url.decode(base64Url.normalize(segments[1]))),
-              )
-              as Map<String, dynamic>;
-      final expiry = payload["exp"] as int?;
-      if (expiry == null) return false;
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      return expiry > now + 30;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static Future<bool> restoreSession() async {
-    final access = await getAccessToken();
-    if (_isJwtValid(access)) return true;
+  static Future<bool> ensureValidSession() async {
+    final access = await _readAccessToken();
+    if (isJwtUsable(access)) return true;
 
     final refresh = await getRefreshToken();
     if (refresh == null || refresh.isEmpty) return false;
 
+    final existingRefresh = _refreshInFlight;
+    if (existingRefresh != null) return existingRefresh;
+
+    final refreshOperation = _refreshAccessToken(refresh);
+    _refreshInFlight = refreshOperation;
+    try {
+      return await refreshOperation;
+    } finally {
+      if (identical(_refreshInFlight, refreshOperation)) {
+        _refreshInFlight = null;
+      }
+    }
+  }
+
+  static Future<bool> _refreshAccessToken(String refresh) async {
     try {
       final response = await http
           .post(
@@ -167,13 +171,15 @@ class ApiService {
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
-        await logout();
+        if (response.statusCode == 400 || response.statusCode == 401) {
+          await logout();
+        }
         return false;
       }
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final newAccess = data["access"] as String?;
-      if (!_isJwtValid(newAccess)) {
+      if (!isJwtUsable(newAccess, refreshBefore: Duration.zero)) {
         await logout();
         return false;
       }
@@ -185,9 +191,13 @@ class ApiService {
       }
       return true;
     } catch (_) {
+      // Keep the refresh token on temporary network/server failures so the
+      // session can recover automatically on the next request.
       return false;
     }
   }
+
+  static Future<bool> restoreSession() => ensureValidSession();
 
   static Future<void> logout() async {
     // Preserve device identity and optional Keystore-backed remembered login.

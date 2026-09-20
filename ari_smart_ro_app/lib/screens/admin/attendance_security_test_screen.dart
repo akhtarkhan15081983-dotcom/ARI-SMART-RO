@@ -38,14 +38,17 @@ class _AttendanceSecurityTestScreenState
       _gpsMessage = 'Checking current GPS…';
     });
     try {
-      if (!await Geolocator.isLocationServiceEnabled())
+      if (!await Geolocator.isLocationServiceEnabled()) {
         throw Exception('Turn on GPS first.');
+      }
       var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied)
+      if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
+      }
       if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever)
+          permission == LocationPermission.deniedForever) {
         throw Exception('Location permission is required.');
+      }
       final p = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -67,12 +70,13 @@ class _AttendanceSecurityTestScreenState
             : 'FAIL — ${distance.toStringAsFixed(0)}m from office (limit 50m)';
       });
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _gpsPassed = false;
           _gpsMessage =
               'FAIL — ${e.toString().replaceFirst('Exception: ', '')}';
         });
+      }
     } finally {
       if (mounted) setState(() => _gpsBusy = false);
     }
@@ -106,11 +110,12 @@ class _AttendanceSecurityTestScreenState
             '${result.isValid ? 'PASS' : 'FAIL'} — ${result.message}';
       });
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _selfiePassed = false;
           _selfieMessage = 'FAIL — Unable to test selfie.';
         });
+      }
     } finally {
       if (mounted) setState(() => _selfieBusy = false);
     }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/complaint_model.dart';
@@ -13,7 +15,8 @@ class ComplaintListScreen extends StatefulWidget {
   State<ComplaintListScreen> createState() => _ComplaintListScreenState();
 }
 
-class _ComplaintListScreenState extends State<ComplaintListScreen> {
+class _ComplaintListScreenState extends State<ComplaintListScreen>
+    with WidgetsBindingObserver {
   // ============================================================
   // SERVICE
   // ============================================================
@@ -42,6 +45,8 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
 
   String? _role;
 
+  Timer? _refreshTimer;
+
   // ============================================================
   // INIT
   // ============================================================
@@ -50,9 +55,24 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
   void initState() {
     super.initState();
 
+    WidgetsBinding.instance.addObserver(this);
+
     _loadRole();
 
     _loadComplaints();
+
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        _loadComplaints(silent: true);
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _loadComplaints(silent: true);
+    }
   }
 
   // ============================================================
@@ -75,6 +95,8 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
 
     super.dispose();
@@ -84,8 +106,8 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
   // LOAD COMPLAINTS
   // ============================================================
 
-  Future<void> _loadComplaints() async {
-    if (mounted) {
+  Future<void> _loadComplaints({bool silent = false}) async {
+    if (mounted && !silent) {
       setState(() {
         _isLoading = true;
         _errorMessage = null;
@@ -100,15 +122,17 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
       setState(() {
         _complaints = complaints;
         _isLoading = false;
+        _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        _isLoading = false;
-
-        _errorMessage = e.toString().replaceFirst("Exception: ", "");
-      });
+      if (!silent) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString().replaceFirst("Exception: ", "");
+        });
+      }
     }
   }
 

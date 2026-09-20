@@ -84,6 +84,9 @@ def _load_payload():
 
 
 def import_exact_excel(apps, schema_editor):
+    if os.environ.get("ARI_SKIP_EXACT_EXCEL_IMPORT_FOR_TESTS", "").strip() == "1":
+        return
+
     Customer = apps.get_model("customers", "Customer")
     CustomerRentHistory = apps.get_model("customers", "CustomerRentHistory")
     EmployeeProfile = apps.get_model("employees", "EmployeeProfile")

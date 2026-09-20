@@ -25,10 +25,18 @@ class DashboardCard extends StatelessWidget {
           children: [
             Icon(icon, size: 50, color: Colors.blue),
             const SizedBox(height: 15),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                title.replaceAll("\n", " "),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
             ),
           ],
         ),

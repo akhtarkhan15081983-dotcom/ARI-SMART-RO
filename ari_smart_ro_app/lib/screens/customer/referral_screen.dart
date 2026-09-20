@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/referral_service.dart';
+import '../../utils/search_utils.dart';
 
 class ReferralScreen extends StatefulWidget {
   const ReferralScreen({super.key});
@@ -14,6 +16,10 @@ class ReferralScreen extends StatefulWidget {
 class _ReferralScreenState extends State<ReferralScreen> {
   final ReferralService _service = ReferralService();
   final TextEditingController _codeController = TextEditingController();
+  final TextEditingController _historySearchController = TextEditingController();
+  String _historyQuery = '';
+  String _referralFilter = 'ALL';
+  String _transactionFilter = 'ALL';
 
   bool _loading = true;
   bool _submitting = false;
@@ -29,6 +35,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   @override
   void dispose() {
     _codeController.dispose();
+    _historySearchController.dispose();
     super.dispose();
   }
 
@@ -84,6 +91,25 @@ class _ReferralScreenState extends State<ReferralScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  bool _capability(String key) {
+    final capabilities = _summary['capabilities'];
+    return capabilities is Map && capabilities[key] == true;
+  }
+
+  String _money(dynamic value) {
+    final amount = double.tryParse(value?.toString() ?? '') ?? 0;
+    return NumberFormat.currency(
+      locale: 'en_IN',
+      symbol: '₹',
+      decimalDigits: amount == amount.roundToDouble() ? 0 : 2,
+    ).format(amount);
+  }
+
+  String _date(dynamic value) {
+    final parsed = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+    return parsed == null ? '' : DateFormat('dd MMM yyyy, hh:mm a').format(parsed);
+  }
+
   String _inviteMessage(String code) =>
       'ARI Smart RO app join karein aur referral code $code apply karein. '
       'RO shopping, service aur smart customer support ek hi app mein. '
@@ -114,7 +140,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Referral & Rewards'),
+        title: const Text('Refer & Earn Wallet'),
         actions: [
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
@@ -145,15 +171,35 @@ class _ReferralScreenState extends State<ReferralScreen> {
                 children: [
                   _walletCard(),
                   const SizedBox(height: 16),
-                  _referralCodeCard(),
+                  _statsCard(),
                   const SizedBox(height: 16),
-                  _claimCard(),
+                  _referralCodeCard(),
+                  if (_capability('can_apply_referral_code')) ...[
+                    const SizedBox(height: 16),
+                    _claimCard(),
+                  ],
                   const SizedBox(height: 16),
                   _rulesCard(),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _historySearchController,
+                    textInputAction: TextInputAction.search,
+                    onChanged: (value) => setState(() => _historyQuery = value),
+                    decoration: InputDecoration(
+                      hintText: 'Search referral, reward or wallet history...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _historyQuery.isEmpty ? null : IconButton(
+                        onPressed: () { _historySearchController.clear(); setState(() => _historyQuery = ''); },
+                        icon: const Icon(Icons.clear),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   _referralsCard(),
                   const SizedBox(height: 16),
                   _rewardsCard(),
+                  const SizedBox(height: 16),
+                  _transactionsCard(),
                 ],
               ),
             ),
@@ -161,8 +207,9 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Widget _walletCard() {
-    final balance = _summary['wallet_balance']?.toString() ?? '0.00';
+    final balance = _summary['wallet_balance'];
     final points = _summary['points_balance']?.toString() ?? '0';
+    final lifetime = _summary['lifetime_earnings'];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -172,20 +219,69 @@ class _ReferralScreenState extends State<ReferralScreen> {
             const Text('ARI Reward Wallet', style: TextStyle(fontSize: 16)),
             const SizedBox(height: 8),
             Text(
-              '₹$balance',
+              _money(balance),
               style: Theme.of(
                 context,
               ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             Text('$points referral points available'),
+            const SizedBox(height: 4),
+            Text('Lifetime rewards: ${_money(lifetime)}'),
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _submitting ? null : _claimWelcome,
-              icon: const Icon(Icons.redeem),
-              label: const Text('Claim ₹50 Welcome Reward'),
+            if (_capability('can_claim_welcome_reward'))
+              FilledButton.icon(
+                onPressed: _submitting ? null : _claimWelcome,
+                icon: const Icon(Icons.redeem),
+                label: const Text('Claim ₹50 Welcome Reward'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statsCard() {
+    final stats = _summary['referral_stats'];
+    final values = stats is Map ? stats : const {};
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Referral Performance',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                _stat('Total', values['total'], Colors.blue),
+                _stat('Pending', values['pending'], Colors.orange),
+                _stat('Successful', values['qualified'], Colors.green),
+                _stat('Review', values['under_review'], Colors.purple),
+              ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _stat(String label, dynamic value, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value?.toString() ?? '0',
+            style: TextStyle(
+              color: color,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          Text(label, style: const TextStyle(fontSize: 11)),
+        ],
       ),
     );
   }
@@ -210,7 +306,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Friend code apply karega to aapko turant 100 points milenge.',
+              'Apna unique code share karein. Eligible friend code apply karega to reward wallet mein automatically credit hoga.',
             ),
             const SizedBox(height: 14),
             SelectableText(
@@ -325,7 +421,14 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Widget _referralsCard() {
-    final referrals = (_summary['referrals'] as List?) ?? const [];
+    final referrals = ((_summary['referrals'] as List?) ?? const [])
+        .whereType<Map>()
+        .where((raw) {
+          final status = (raw['status'] ?? 'PENDING').toString().toUpperCase();
+          if (_referralFilter != 'ALL' && status != _referralFilter) return false;
+          return matchesAllSearchTerms(_historyQuery, raw.entries.map((e) => '${e.key} ${e.value}'));
+        })
+        .toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -337,7 +440,20 @@ class _ReferralScreenState extends State<ReferralScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            if (referrals.isEmpty) const Text('No referrals yet.'),
+            DropdownButtonFormField<String>(
+              initialValue: _referralFilter,
+              decoration: const InputDecoration(labelText: 'Referral status'),
+              items: const [
+                DropdownMenuItem(value: 'ALL', child: Text('All referrals')),
+                DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
+                DropdownMenuItem(value: 'QUALIFIED', child: Text('Qualified')),
+                DropdownMenuItem(value: 'REVIEW', child: Text('Review')),
+                DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+              ],
+              onChanged: (v) => setState(() => _referralFilter = v ?? 'ALL'),
+            ),
+            const SizedBox(height: 8),
+            if (referrals.isEmpty) const Text('No matching referrals.'),
             for (final raw in referrals)
               if (raw is Map)
                 ListTile(
@@ -348,7 +464,10 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         ? raw['referred_name'].toString()
                         : 'Referred customer',
                   ),
-                  subtitle: Text(_referralStatus(raw)),
+                  subtitle: Text(
+                    '${_referralStatus(raw)}${_date(raw['created_at']).isEmpty ? '' : '\n${_date(raw['created_at'])}'}',
+                  ),
+                  isThreeLine: true,
                 ),
           ],
         ),
@@ -369,7 +488,10 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Widget _rewardsCard() {
-    final rewards = (_summary['rewards'] as List?) ?? const [];
+    final rewards = ((_summary['rewards'] as List?) ?? const [])
+        .whereType<Map>()
+        .where((raw) => matchesAllSearchTerms(_historyQuery, raw.entries.map((e) => '${e.key} ${e.value}')))
+        .toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -393,7 +515,79 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         'Reward',
                   ),
                   subtitle: Text(
-                    '${raw['status'] ?? ''} • Remaining ₹${raw['remaining_amount'] ?? '0.00'}',
+                    '${raw['status'] ?? ''} • Remaining ${_money(raw['remaining_amount'])}',
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _transactionsCard() {
+    final transactions = ((_summary['transactions'] as List?) ?? const [])
+        .whereType<Map>()
+        .where((raw) {
+          final type = (raw['entry_type'] ?? '').toString().toUpperCase();
+          if (_transactionFilter != 'ALL' && type != _transactionFilter) return false;
+          return matchesAllSearchTerms(_historyQuery, raw.entries.map((e) => '${e.key} ${e.value}'));
+        })
+        .toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Wallet Transactions (${transactions.length})',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _transactionFilter,
+              decoration: const InputDecoration(labelText: 'Transaction type'),
+              items: const [
+                DropdownMenuItem(value: 'ALL', child: Text('All transactions')),
+                DropdownMenuItem(value: 'CREDIT', child: Text('Credits')),
+                DropdownMenuItem(value: 'DEBIT', child: Text('Debits')),
+              ],
+              onChanged: (v) => setState(() => _transactionFilter = v ?? 'ALL'),
+            ),
+            const SizedBox(height: 8),
+            if (transactions.isEmpty)
+              const Text('No matching wallet activity.'),
+            for (final raw in transactions)
+              if (raw is Map)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: raw['entry_type'] == 'CREDIT'
+                        ? Colors.green.shade50
+                        : Colors.red.shade50,
+                    child: Icon(
+                      raw['entry_type'] == 'CREDIT'
+                          ? Icons.arrow_downward
+                          : Icons.arrow_upward,
+                      color: raw['entry_type'] == 'CREDIT'
+                          ? Colors.green
+                          : Colors.red,
+                    ),
+                  ),
+                  title: Text(raw['description']?.toString() ?? 'Wallet entry'),
+                  subtitle: Text(
+                    [raw['reward_label'], _date(raw['created_at'])]
+                        .where((value) => value?.toString().trim().isNotEmpty == true)
+                        .join(' • '),
+                  ),
+                  trailing: Text(
+                    '${raw['entry_type'] == 'CREDIT' ? '+' : '-'}${_money(raw['amount'])}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: raw['entry_type'] == 'CREDIT'
+                          ? Colors.green
+                          : Colors.red,
+                    ),
                   ),
                 ),
           ],

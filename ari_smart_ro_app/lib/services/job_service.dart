@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../models/job_model.dart';
 import 'api_service.dart';
@@ -8,10 +7,8 @@ import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 
 class JobService {
-  final storage = const FlutterSecureStorage();
-
   Future<Map<String, String>> _headers() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     return {
       "Authorization": "Bearer $token",
@@ -120,7 +117,7 @@ class JobService {
     String imagePath,
     String description,
   ) async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     var request = http.MultipartRequest(
       "POST",
@@ -166,7 +163,7 @@ class JobService {
     Uint8List signatureBytes,
     String customerName,
   ) async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     final dir = await getTemporaryDirectory();
 
@@ -228,23 +225,38 @@ class JobService {
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
-  Future<String?> generateOTP(int jobId) async {
+  Future<bool> generateOTP(int jobId) async {
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/jobs/$jobId/generate-otp/"),
-
       headers: await _headers(),
     );
 
     print("GENERATE OTP STATUS : ${response.statusCode}");
     print(response.body);
 
+    return response.statusCode == 200 || response.statusCode == 201;
+  }
+
+  Future<Map<String, dynamic>> getCustomerActiveOTP() async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/jobs/customer-active-otp/"),
+      headers: await _headers(),
+    );
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-
-      return data["otp"];
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
     }
+    throw Exception("Unable to load active OTP");
+  }
 
-    return null;
+  Future<Map<String, dynamic>> getAdminJobOTP(int jobId) async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/jobs/$jobId/admin-otp/"),
+      headers: await _headers(),
+    );
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception("Unable to reveal emergency OTP");
   }
 
   Future<bool> verifyOTP(int jobId, String otp) async {

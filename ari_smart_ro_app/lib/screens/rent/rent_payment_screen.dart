@@ -240,7 +240,23 @@ class _CurrentRentCard extends StatelessWidget {
 
             const Divider(height: 24),
 
-            _MoneyRow(label: "Monthly Rent", amount: rent.expectedRent),
+            if (rent.discountAmount > 0) ...[
+              _MoneyRow(label: "Original Rent", amount: rent.baseRent),
+              _MoneyRow(label: "Offer Discount", amount: -rent.discountAmount),
+              if (rent.offerTitle.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Offer: ${rent.offerTitle}${rent.promoCode.isNotEmpty ? ' • ${rent.promoCode}' : ''}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.green,
+                    ),
+                  ),
+                ),
+              _MoneyRow(label: "Final Monthly Rent", amount: rent.expectedRent, bold: true),
+            ] else
+              _MoneyRow(label: "Monthly Rent", amount: rent.expectedRent),
 
             _MoneyRow(label: "Paid Amount", amount: rent.paidAmount),
 

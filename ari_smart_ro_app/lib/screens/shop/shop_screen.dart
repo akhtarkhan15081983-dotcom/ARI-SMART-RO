@@ -204,6 +204,9 @@ class _ShopScreenState extends State<ShopScreen> {
                           child: Image.network(
                             product.imageUrls[index],
                             fit: BoxFit.contain,
+                            cacheWidth: 800,
+                            cacheHeight: 800,
+                            filterQuality: FilterQuality.medium,
                             errorBuilder: (_, _, _) =>
                                 const _ProductVisual(size: 120),
                           ),
@@ -773,7 +776,10 @@ class _HeroBanner extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 220),
       decoration: BoxDecoration(
         image: const DecorationImage(
-          image: AssetImage('assets/images/premium_store_hero_v2.png'),
+          image: ResizeImage(
+            AssetImage('assets/images/premium_store_hero_v2.png'),
+            width: 1280,
+          ),
           fit: BoxFit.cover,
           alignment: Alignment.centerRight,
         ),
@@ -1124,6 +1130,9 @@ class _ProductCard extends StatelessWidget {
                             child: Image.network(
                               product.imageUrls.first,
                               fit: BoxFit.contain,
+                              cacheWidth: 420,
+                              cacheHeight: 420,
+                              filterQuality: FilterQuality.medium,
                               errorBuilder: (_, _, _) =>
                                   const _ProductVisual(size: 70),
                             ),

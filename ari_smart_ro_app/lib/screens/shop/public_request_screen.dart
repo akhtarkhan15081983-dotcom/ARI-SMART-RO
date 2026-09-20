@@ -34,6 +34,7 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
   final _pincode = TextEditingController();
   final _notes = TextEditingController();
   final _referralCode = TextEditingController();
+  final _offerCode = TextEditingController();
   final _service = const PublicRequestService();
 
   int _quantity = 1;
@@ -56,6 +57,7 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
       _pincode,
       _notes,
       _referralCode,
+      _offerCode,
     ]) {
       controller.dispose();
     }
@@ -94,6 +96,7 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
         'quantity': _quantity,
         'payment_method': _paymentMethod,
         'referral_code': _referralCode.text.trim().toUpperCase(),
+        if (_isProduct) 'offer_code': _offerCode.text.trim().toUpperCase(),
         'notes': _notes.text.trim(),
       });
       if (!mounted) return;
@@ -359,6 +362,17 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
               ),
             ],
             const SizedBox(height: 12),
+            if (_isProduct) ...[
+              TextFormField(
+                controller: _offerCode,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Promo / offer code (optional)',
+                  prefixIcon: Icon(Icons.local_offer_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             TextFormField(
               controller: _referralCode,
               textCapitalization: TextCapitalization.characters,

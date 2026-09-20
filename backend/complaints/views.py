@@ -36,6 +36,38 @@ def get_logged_in_customer(user):
         return None
 
 
+def restrict_complaints_for_user(queryset, user):
+    """
+    Apply complaint visibility at the database layer.
+
+    ADMIN / MANAGER / OFFICE:
+        Can see all complaints so they can manage assignment.
+
+    ENGINEER:
+        Can see only complaints directly assigned to that engineer.
+
+    CUSTOMER:
+        Can see only their own complaints.
+    """
+    role = getattr(user, "role", None)
+
+    if role in {"ADMIN", "MANAGER", "OFFICE"}:
+        return queryset
+
+    if role == "ENGINEER":
+        return queryset.filter(
+            engineer__user=user
+        )
+
+    if role == "CUSTOMER":
+        customer = get_logged_in_customer(user)
+        if customer is None:
+            return queryset.none()
+        return queryset.filter(customer=customer)
+
+    return queryset.none()
+
+
 # ============================================================
 # COMPLAINT LIST
 # ============================================================
@@ -60,30 +92,10 @@ class ComplaintListAPIView(generics.ListAPIView):
             .order_by("-id")
         )
 
-        # ----------------------------------------------------
-        # CUSTOMER
-        # ----------------------------------------------------
-        # Customer ko sirf apni complaints dikhengi.
-        # ----------------------------------------------------
-
-        if getattr(self.request.user, "role", None) == "CUSTOMER":
-
-            customer = get_logged_in_customer(
-                self.request.user
-            )
-
-            if customer is None:
-                return Complaint.objects.none()
-
-            return queryset.filter(
-                customer=customer
-            )
-
-        # ----------------------------------------------------
-        # STAFF / ENGINEER / ADMIN / MANAGER / OFFICE
-        # ----------------------------------------------------
-
-        return queryset
+        return restrict_complaints_for_user(
+            queryset,
+            self.request.user,
+        )
 
 
 # ============================================================
@@ -140,10 +152,42 @@ class ComplaintCreateAPIView(generics.CreateAPIView):
             return
 
         # ----------------------------------------------------
-        # STAFF CREATION
+        # ENGINEER CREATION
         # ----------------------------------------------------
-        # Existing staff complaint flow same rahega.
-        # Staff customer / engineer select kar sakta hai.
+        # An engineer may create a complaint only for a customer assigned
+        # to that engineer. The complaint is automatically assigned back
+        # to the logged-in engineer.
+        # ----------------------------------------------------
+
+        role = getattr(self.request.user, "role", None)
+        if role == "ENGINEER":
+            from rest_framework.exceptions import ValidationError
+
+            customer = serializer.validated_data.get("customer")
+            employee = getattr(self.request.user, "employee_profile", None)
+
+            if (
+                customer is None
+                or employee is None
+                or customer.assigned_engineer_id != employee.id
+            ):
+                raise ValidationError({
+                    "customer": [
+                        "You can create complaints only for customers assigned to you."
+                    ]
+                })
+
+            location = {}
+            if serializer.validated_data.get("latitude") is None:
+                location["latitude"] = customer.latitude
+            if serializer.validated_data.get("longitude") is None:
+                location["longitude"] = customer.longitude
+
+            serializer.save(engineer=employee, **location)
+            return
+
+        # ----------------------------------------------------
+        # ADMIN / MANAGER CREATION
         # ----------------------------------------------------
 
         customer = serializer.validated_data.get("customer")
@@ -181,26 +225,10 @@ class ComplaintDetailAPIView(
             )
         )
 
-        # Customer sirf apni complaint dekh sakta hai.
-
-        if getattr(
+        return restrict_complaints_for_user(
+            queryset,
             self.request.user,
-            "role",
-            None,
-        ) == "CUSTOMER":
-
-            customer = get_logged_in_customer(
-                self.request.user
-            )
-
-            if customer is None:
-                return Complaint.objects.none()
-
-            return queryset.filter(
-                customer=customer
-            )
-
-        return queryset
+        )
 
 
 # ============================================================
@@ -221,23 +249,14 @@ class ComplaintUpdateAPIView(
 
         queryset = Complaint.objects.all()
 
-        # ----------------------------------------------------
-        # CUSTOMER
-        # ----------------------------------------------------
-        # Customer existing complaint ko direct update nahi
-        # kar sakta. Isse customer engineer/status/priority
-        # manipulate nahi kar payega.
-        # ----------------------------------------------------
-
-        if getattr(
-            self.request.user,
-            "role",
-            None,
-        ) == "CUSTOMER":
-
+        role = getattr(self.request.user, "role", None)
+        if role not in {"ADMIN", "MANAGER", "OFFICE"}:
             return Complaint.objects.none()
 
-        return queryset
+        return restrict_complaints_for_user(
+            queryset,
+            self.request.user,
+        )
 
 
 # ============================================================
@@ -258,21 +277,12 @@ class ComplaintAssignEngineerAPIView(
         pk,
     ):
 
-        # ----------------------------------------------------
-        # CUSTOMER NOT ALLOWED
-        # ----------------------------------------------------
-
-        if getattr(
-            request.user,
-            "role",
-            None,
-        ) == "CUSTOMER":
-
+        # Only operational staff may assign / reassign engineers.
+        if getattr(request.user, "role", None) not in {"ADMIN", "MANAGER", "OFFICE"}:
             return Response(
                 {
                     "success": False,
-                    "message":
-                        "Customers cannot assign engineers.",
+                    "message": "Only Admin, Manager or Office staff can assign engineers.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -280,10 +290,12 @@ class ComplaintAssignEngineerAPIView(
         try:
 
             complaint = (
-                Complaint.objects
-                .select_related(
-                    "customer",
-                    "engineer__user",
+                restrict_complaints_for_user(
+                    Complaint.objects.select_related(
+                        "customer",
+                        "engineer__user",
+                    ),
+                    request.user,
                 )
                 .get(pk=pk)
             )
@@ -427,9 +439,10 @@ class ComplaintStartAPIView(
 
         try:
 
-            complaint = Complaint.objects.get(
-                pk=pk
-            )
+            complaint = restrict_complaints_for_user(
+                Complaint.objects.all(),
+                request.user,
+            ).get(pk=pk)
 
         except Complaint.DoesNotExist:
 
@@ -549,9 +562,10 @@ class ComplaintResolveAPIView(
 
         try:
 
-            complaint = Complaint.objects.get(
-                pk=pk
-            )
+            complaint = restrict_complaints_for_user(
+                Complaint.objects.all(),
+                request.user,
+            ).get(pk=pk)
 
         except Complaint.DoesNotExist:
 
@@ -660,9 +674,10 @@ class ComplaintCloseAPIView(
 
         try:
 
-            complaint = Complaint.objects.get(
-                pk=pk
-            )
+            complaint = restrict_complaints_for_user(
+                Complaint.objects.all(),
+                request.user,
+            ).get(pk=pk)
 
         except Complaint.DoesNotExist:
 
@@ -744,66 +759,13 @@ class ComplaintSearchAPIView(
             )
         )
 
-        # ----------------------------------------------------
-        # CUSTOMER
-        # ----------------------------------------------------
-        # Customer search bhi sirf apni complaints ke andar.
-        # ----------------------------------------------------
-
-        if getattr(
+        queryset = restrict_complaints_for_user(
+            queryset,
             self.request.user,
-            "role",
-            None,
-        ) == "CUSTOMER":
-
-            customer = get_logged_in_customer(
-                self.request.user
-            )
-
-            if customer is None:
-                return Complaint.objects.none()
-
-            queryset = queryset.filter(
-                customer=customer
-            )
-
-            # Customer ke liye apni complaint search.
-            if not keyword:
-                return queryset.order_by("-id")
-
-            queryset = queryset.filter(
-                Q(
-                    complaint_id__icontains=keyword
-                )
-                |
-                Q(
-                    complaint_type__icontains=keyword
-                )
-                |
-                Q(
-                    priority__icontains=keyword
-                )
-                |
-                Q(
-                    status__icontains=keyword
-                )
-                |
-                Q(
-                    description__icontains=keyword
-                )
-            )
-
-            return queryset.order_by("-id")
-
-        # ----------------------------------------------------
-        # STAFF SEARCH
-        # ----------------------------------------------------
+        )
 
         if not keyword:
-
-            return queryset.order_by(
-                "-id"
-            )
+            return queryset.order_by("-id")
 
         queryset = queryset.filter(
             Q(

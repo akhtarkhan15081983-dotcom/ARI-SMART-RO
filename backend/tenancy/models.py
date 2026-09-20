@@ -152,6 +152,45 @@ class CompanyMembership(models.Model):
         return f"{self.user} @ {self.company} ({self.role})"
 
 
+class RoleFeaturePermission(models.Model):
+    ROLE_CHOICES = [
+        ("MANAGER", "Manager"),
+        ("OFFICE", "Office"),
+        ("CALLING", "Calling"),
+        ("ENGINEER", "Engineer"),
+    ]
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="role_feature_permissions",
+    )
+    role = models.CharField(max_length=12, choices=ROLE_CHOICES)
+    feature_key = models.SlugField(max_length=80)
+    is_allowed = models.BooleanField(default=False)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="role_permission_changes",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "role", "feature_key"],
+                name="unique_company_role_feature_permission",
+            )
+        ]
+        ordering = ["role", "feature_key"]
+
+    def __str__(self):
+        state = "ALLOW" if self.is_allowed else "DENY"
+        return f"{self.company.slug}:{self.role}:{self.feature_key}:{state}"
+
+
 class CompanySubscription(models.Model):
     STATUS_CHOICES = [
         ("TRIAL", "Trial"),

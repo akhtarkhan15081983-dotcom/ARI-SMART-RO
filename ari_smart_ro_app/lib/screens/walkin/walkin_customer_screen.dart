@@ -33,11 +33,11 @@ class _WalkInCustomerScreenState extends State<WalkInCustomerScreen> {
 
   final pincodeController = TextEditingController();
 
-  final installationChargeController = TextEditingController(text: "3000");
+  final totalAmountController = TextEditingController(text: "3000");
 
   final monthlyRentController = TextEditingController(text: "300");
 
-  final securityDepositController = TextEditingController(text: "0");
+  static const double fixedInstallationCharge = 600;
 
   Position? currentPosition;
 
@@ -70,11 +70,9 @@ class _WalkInCustomerScreenState extends State<WalkInCustomerScreen> {
 
     pincodeController.dispose();
 
-    installationChargeController.dispose();
+    totalAmountController.dispose();
 
     monthlyRentController.dispose();
-
-    securityDepositController.dispose();
 
     super.dispose();
   }
@@ -163,10 +161,9 @@ class _WalkInCustomerScreenState extends State<WalkInCustomerScreen> {
         latitude: currentPosition?.latitude,
         longitude: currentPosition?.longitude,
 
-        installationCharge:
-            double.tryParse(installationChargeController.text) ?? 0,
+        totalAmountReceived:
+            double.tryParse(totalAmountController.text) ?? fixedInstallationCharge,
         monthlyRent: double.tryParse(monthlyRentController.text) ?? 0,
-        securityDeposit: double.tryParse(securityDepositController.text) ?? 0,
       );
 
       if (!mounted) return;
@@ -239,20 +236,54 @@ class _WalkInCustomerScreenState extends State<WalkInCustomerScreen> {
               keyboard: TextInputType.number,
             ),
             _textField(
-              controller: installationChargeController,
-              label: "Installation Charge",
+              controller: totalAmountController,
+              label: "Total Amount Received",
               keyboard: TextInputType.number,
             ),
+
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: totalAmountController,
+              builder: (context, value, _) {
+                final total = double.tryParse(value.text) ?? 0;
+                final security = total > fixedInstallationCharge
+                    ? total - fixedInstallationCharge
+                    : 0;
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(child: Text("Installation Charge")),
+                            Text(
+                              "₹${fixedInstallationCharge.toStringAsFixed(0)}",
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        Row(
+                          children: [
+                            const Expanded(child: Text("Security Deposit")),
+                            Text(
+                              "₹${security.toStringAsFixed(0)}",
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 10),
 
             _textField(
               controller: monthlyRentController,
               label: "Monthly Rent",
-              keyboard: TextInputType.number,
-            ),
-
-            _textField(
-              controller: securityDepositController,
-              label: "Security Deposit",
               keyboard: TextInputType.number,
             ),
             const SizedBox(height: 20),
@@ -341,6 +372,13 @@ class _WalkInCustomerScreenState extends State<WalkInCustomerScreen> {
 
           if (value == null || value.trim().isEmpty) {
             return "Required";
+          }
+
+          if (controller == totalAmountController) {
+            final amount = double.tryParse(value.trim());
+            if (amount == null || amount < fixedInstallationCharge) {
+              return "Minimum ₹600 required";
+            }
           }
 
           return null;

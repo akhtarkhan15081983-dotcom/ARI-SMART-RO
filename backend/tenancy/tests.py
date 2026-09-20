@@ -7,7 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import User
 
-from .models import Company, CompanyMembership, CompanySubscription, SubscriptionPlan
+from .models import Company, CompanyMembership, CompanySubscription, RoleFeaturePermission, SubscriptionPlan
 
 
 class SaaSFoundationTests(TestCase):
@@ -204,3 +204,89 @@ class SaaSFoundationTests(TestCase):
         )
         safe = self.client.get("/api/saas/companies/")
         self.assertEqual(safe.status_code, 200)
+
+
+
+class RoleFeaturePermissionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.company = Company.objects.create(
+            name="RBAC Test Company",
+            slug="rbac-test-company",
+            phone="9000099000",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        self.admin = User.objects.create_user(
+            phone="9000099001",
+            password="StrongPass123!",
+            role="ADMIN",
+            is_verified=True,
+        )
+        self.engineer = User.objects.create_user(
+            phone="9000099002",
+            password="StrongPass123!",
+            role="ENGINEER",
+            is_verified=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.admin,
+            role="OWNER",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.engineer,
+            role="STAFF",
+            is_active=True,
+        )
+
+    def test_admin_can_disable_role_feature_and_direct_hrms_api_is_blocked(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/saas/role-permissions/",
+            {
+                "role": "ENGINEER",
+                "feature_key": "hrms",
+                "is_allowed": False,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            RoleFeaturePermission.objects.get(
+                company=self.company,
+                role="ENGINEER",
+                feature_key="hrms",
+            ).is_allowed
+        )
+
+        self.client.force_authenticate(self.engineer)
+        matrix = self.client.get("/api/saas/role-permissions/?role=ENGINEER")
+        self.assertEqual(matrix.status_code, 200)
+        self.assertNotIn("hrms", matrix.data["allowed_features"])
+
+        direct = self.client.get("/api/employees/hrms/dashboard/")
+        self.assertEqual(direct.status_code, 403)
+
+    def test_non_admin_cannot_change_role_permissions(self):
+        self.client.force_authenticate(self.engineer)
+        response = self.client.post(
+            "/api/saas/role-permissions/",
+            {
+                "role": "ENGINEER",
+                "feature_key": "reports",
+                "is_allowed": True,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_always_keeps_full_control(self):
+        self.client.force_authenticate(self.admin)
+        matrix = self.client.get("/api/saas/role-permissions/?role=ADMIN")
+        self.assertEqual(matrix.status_code, 200)
+        self.assertTrue(matrix.data["admin_full_control"])
+        self.assertIn("hrms_payroll_manage", matrix.data["allowed_features"])
+        self.assertIn("employee_career_manage", matrix.data["allowed_features"])

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -5,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/customer_model.dart';
 import '../../services/customer_service.dart';
 import '../../services/work_planner_service.dart';
+import '../../utils/search_utils.dart';
 import '../installation/installation_screen.dart';
 
 class AssignedCustomersScreen extends StatefulWidget {
@@ -15,16 +18,120 @@ class AssignedCustomersScreen extends StatefulWidget {
       _AssignedCustomersScreenState();
 }
 
-class _AssignedCustomersScreenState extends State<AssignedCustomersScreen> {
+class _AssignedCustomersScreenState extends State<AssignedCustomersScreen>
+    with WidgetsBindingObserver {
   final CustomerService customerService = CustomerService();
   final WorkPlannerService _workPlannerService = WorkPlannerService();
 
   late Future<List<CustomerModel>> _customersFuture;
+  Timer? _refreshTimer;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  _AssignedCustomerFilter _filter = _AssignedCustomerFilter.all;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadCustomers();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _refreshCustomers();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _refreshCustomers();
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _searchController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  List<CustomerModel> _filteredCustomers(List<CustomerModel> customers) {
+    return customers.where((customer) {
+      final monthlyRent = double.tryParse(customer.monthlyRent) ?? 0;
+      final matchesFilter = switch (_filter) {
+        _AssignedCustomerFilter.all => true,
+        _AssignedCustomerFilter.rent => monthlyRent > 0,
+        _AssignedCustomerFilter.locationMissing =>
+          customer.latitude == 0 || customer.longitude == 0,
+      };
+      return matchesFilter &&
+          matchesAllSearchTerms(_searchQuery, [
+            customer.customerName,
+            customer.customerId,
+            customer.phone,
+            customer.cardNumber,
+            customer.oldCardNumber,
+            customer.area,
+            customer.address,
+            customer.roModel,
+          ]);
+    }).toList();
+  }
+
+  Widget _searchAndFilters(int resultCount) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _searchQuery = value),
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search name, ID, phone, card, area or RO model...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                      icon: const Icon(Icons.clear),
+                    ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _AssignedCustomerFilter.values.map((filter) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(filter.label),
+                    selected: _filter == filter,
+                    onSelected: (_) => setState(() => _filter = filter),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$resultCount assigned customer${resultCount == 1 ? '' : 's'} found',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ============================================================
@@ -48,7 +155,7 @@ class _AssignedCustomersScreenState extends State<AssignedCustomersScreen> {
   // ============================================================
 
   Future<void> _makePhoneCall(String phone) async {
-    final cleanPhone = phone.trim();
+    final cleanPhone = phone.trim().replaceAll(RegExp(r'[^0-9+]'), '');
 
     if (cleanPhone.isEmpty) {
       _showMessage('Customer phone number is not available.', Colors.red);
@@ -58,9 +165,8 @@ class _AssignedCustomersScreenState extends State<AssignedCustomersScreen> {
     final Uri uri = Uri(scheme: 'tel', path: cleanPhone);
 
     try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) {
         _showMessage('Unable to open phone dialer.', Colors.red);
       }
     } catch (_) {
@@ -468,21 +574,36 @@ class _AssignedCustomersScreenState extends State<AssignedCustomersScreen> {
           // CUSTOMER LIST
           // ----------------------------------------------------
 
+          final filtered = _filteredCustomers(customers);
+
           return RefreshIndicator(
             onRefresh: _refreshCustomers,
-            child: ListView.builder(
+            child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(15),
-              itemCount: customers.length,
-              itemBuilder: (context, index) {
-                final customer = customers[index];
-
-                return _customerCard(customer);
-              },
+              children: [
+                _searchAndFilters(filtered.length),
+                if (filtered.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 70),
+                    child: Center(child: Text('No matching customer found.')),
+                  )
+                else
+                  ...filtered.map(_customerCard),
+              ],
             ),
           );
         },
       ),
     );
   }
+}
+
+enum _AssignedCustomerFilter {
+  all('All'),
+  rent('Rent Customers'),
+  locationMissing('Location Missing');
+
+  const _AssignedCustomerFilter(this.label);
+  final String label;
 }
