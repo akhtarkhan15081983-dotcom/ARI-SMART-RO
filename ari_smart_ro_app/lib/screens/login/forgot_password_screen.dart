@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/password_reset_service.dart';
+import '../../services/api_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -75,6 +76,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         code: code,
         newPassword: _password.text,
       );
+      await ApiService.clearRememberedCredentials();
       if (!mounted) return;
       await showDialog<void>(
         context: context,
