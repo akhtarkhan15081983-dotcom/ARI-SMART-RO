@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/employee_management_service.dart';
 import '../../utils/search_utils.dart';
@@ -323,6 +324,74 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         );
       }
     }
+  }
+
+  Future<void> _showIdCard(Map<String, dynamic> employee) async {
+    final idCard = Map<String, dynamic>.from(
+      employee['id_card'] as Map? ?? const {},
+    );
+    final onboarding = Map<String, dynamic>.from(
+      employee['onboarding'] as Map? ?? const {},
+    );
+    final photo = (employee['photo'] ?? '').toString();
+    final code = (idCard['verification_code'] ?? '').toString();
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Official Employee ID'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 46,
+                  backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+                  child: photo.isEmpty ? const Icon(Icons.person, size: 42) : null,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  employee['name'].toString(),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  employee['job_title']?.toString().isNotEmpty == true
+                      ? employee['job_title'].toString()
+                      : employee['designation'].toString(),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Employee ID: ${employee['employee_id']}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 14),
+                if (code.isNotEmpty)
+                  QrImageView(data: 'ARI-EMP:$code', size: 150),
+                const SizedBox(height: 8),
+                Text('Verification: $code'),
+                Text('Valid until: ${idCard['valid_until'] ?? '-'}'),
+                const Divider(height: 26),
+                Text(
+                  'Onboarding: ${onboarding['status'] ?? '-'}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  onboarding['ready'] == true
+                      ? 'Ready for duty'
+                      : 'Pending joining requirements',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _career(Map<String, dynamic> employee) async {
@@ -1020,7 +1089,9 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                       trailing: PopupMenuButton<String>(
                         tooltip: 'Employee actions',
                         onSelected: (value) {
-                          if (value == 'career') {
+                          if (value == 'id_card') {
+                            _showIdCard(employee);
+                          } else if (value == 'career') {
                             _career(employee);
                           } else if (value == 'deactivate') {
                             _setEmployeeActive(employee, false);
@@ -1031,6 +1102,13 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                           }
                         },
                         itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'id_card',
+                            child: ListTile(
+                              leading: Icon(Icons.badge_rounded),
+                              title: Text('View Digital ID'),
+                            ),
+                          ),
                           const PopupMenuItem(
                             value: 'career',
                             child: ListTile(
