@@ -68,3 +68,30 @@ def customer_offer_user(customer):
         return None
     from .models import User
     return User.objects.filter(phone=customer.phone, role="CUSTOMER", is_active=True).first()
+
+
+
+def best_public_offer(scope, base_amount, promo_code=""):
+    base = _money(base_amount)
+    code = str(promo_code or "").strip().upper()
+    candidates = CustomerEngagement.objects.filter(
+        is_active=True,
+        kind="OFFER",
+        audience="ALL",
+        target_user__isnull=True,
+        offer_scope=scope,
+        valid_from__lte=timezone.now(),
+    ).filter(Q(valid_until__isnull=True) | Q(valid_until__gte=timezone.now()))
+    if code:
+        candidates = candidates.filter(promo_code__iexact=code)
+    else:
+        candidates = candidates.filter(auto_apply=True)
+
+    best = None
+    best_discount = ZERO
+    for offer in candidates.order_by("-priority", "-created_at"):
+        discount = discount_for_offer(offer, base)
+        if discount > best_discount:
+            best = offer
+            best_discount = discount
+    return best, best_discount, _money(base - best_discount)
