@@ -7,6 +7,7 @@ import '../login/login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'change_password_screen.dart';
 import 'face_enrollment_screen.dart';
+import 'employee_id_card_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -207,6 +208,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
+                  _ActionButton(
+                    icon: Icons.badge_rounded,
+                    label: 'My Digital Employee ID',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const EmployeeIdCardScreen(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   _ActionButton(
                     icon: Icons.edit_outlined,
                     label: 'Edit Profile',
