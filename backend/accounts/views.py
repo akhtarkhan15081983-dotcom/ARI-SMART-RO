@@ -5,17 +5,20 @@ from rest_framework.throttling import ScopedRateThrottle
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
+import secrets
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from django.contrib.auth import authenticate
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth.hashers import check_password
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import AuthSecurityEvent, User
+from .models import AuthSecurityEvent, PasswordResetRequest, User
 from customers.models import Customer
+from tenancy.models import CompanyMembership
+from .permissions import IsAdmin
 
 from .serializers import (
     UserSerializer,
@@ -517,5 +520,312 @@ class ChangePasswordAPIView(APIView):
                 "refresh": str(
                     refresh
                 ),
+            }
+        )
+
+
+# ============================================================
+# ADMIN-APPROVED FORGOT PASSWORD
+# ============================================================
+
+def _client_ip(request):
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+    return forwarded or request.META.get("REMOTE_ADDR") or None
+
+
+def _admin_company(request):
+    membership = (
+        CompanyMembership.objects.filter(
+            user=request.user,
+            is_active=True,
+            company__is_active=True,
+            company__lifecycle_status="ACTIVE",
+        )
+        .select_related("company")
+        .first()
+    )
+    return membership.company if membership else None
+
+
+class ForgotPasswordRequestAPIView(APIView):
+    permission_classes = []
+    throttle_classes = [ProductionScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        phone = str(request.data.get("phone") or "").strip()
+
+        # Return the same response for unknown numbers to avoid account discovery.
+        generic = {
+            "success": True,
+            "message": (
+                "If this mobile number belongs to an eligible staff account, "
+                "a password reset request has been sent to the administrator."
+            ),
+        }
+
+        if len(phone) != 10 or not phone.isdigit():
+            return Response(generic, status=status.HTTP_200_OK)
+
+        user = User.objects.filter(phone=phone, is_active=True).first()
+        if user is None or user.role == "CUSTOMER":
+            return Response(generic, status=status.HTTP_200_OK)
+
+        existing = PasswordResetRequest.objects.filter(
+            user=user,
+            status__in=["PENDING", "APPROVED"],
+        ).first()
+        if existing is None:
+            reset_request = PasswordResetRequest.objects.create(
+                user=user,
+                requested_ip=_client_ip(request),
+                requested_device_id=request.headers.get("X-ARI-Device-ID", "")[:64],
+            )
+            _security_event(
+                request,
+                "PASSWORD_RESET_REQUESTED",
+                user=user,
+                reset_request_id=reset_request.id,
+            )
+
+        return Response(generic, status=status.HTTP_200_OK)
+
+
+class AdminPasswordResetRequestListAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        company = _admin_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        user_ids = CompanyMembership.objects.filter(
+            company=company,
+            is_active=True,
+        ).values_list("user_id", flat=True)
+
+        rows = (
+            PasswordResetRequest.objects.filter(
+                user_id__in=user_ids,
+                status__in=["PENDING", "APPROVED"],
+            )
+            .select_related("user", "reviewed_by")
+            .order_by("-created_at")
+        )
+        return Response(
+            {
+                "success": True,
+                "requests": [
+                    {
+                        "id": row.id,
+                        "user_id": row.user_id,
+                        "name": row.user.get_full_name() or row.user.phone,
+                        "phone": row.user.phone,
+                        "role": row.user.role,
+                        "status": row.status,
+                        "created_at": row.created_at,
+                        "reviewed_at": row.reviewed_at,
+                        "expires_at": row.expires_at,
+                    }
+                    for row in rows
+                ],
+            }
+        )
+
+
+class AdminPasswordResetReviewAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, reset_request_id):
+        company = _admin_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            row = PasswordResetRequest.objects.select_related("user").get(
+                pk=reset_request_id,
+                status="PENDING",
+            )
+        except PasswordResetRequest.DoesNotExist:
+            return Response(
+                {"success": False, "message": "Pending reset request not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not CompanyMembership.objects.filter(
+            company=company,
+            user=row.user,
+            is_active=True,
+        ).exists():
+            return Response(
+                {"success": False, "message": "This request does not belong to your company."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if row.user_id == request.user.id:
+            return Response(
+                {"success": False, "message": "An administrator cannot approve their own reset request."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        action = str(request.data.get("action") or "").strip().lower()
+        if action == "reject":
+            row.status = "REJECTED"
+            row.reviewed_by = request.user
+            row.reviewed_at = timezone.now()
+            row.code_hash = ""
+            row.expires_at = None
+            row.save(
+                update_fields=[
+                    "status", "reviewed_by", "reviewed_at", "code_hash", "expires_at"
+                ]
+            )
+            _security_event(
+                request,
+                "PASSWORD_RESET_REJECTED",
+                user=row.user,
+                reset_request_id=row.id,
+                reviewed_by=request.user.id,
+            )
+            return Response(
+                {"success": True, "message": "Password reset request rejected."}
+            )
+
+        if action != "approve":
+            return Response(
+                {"success": False, "message": "Action must be approve or reject."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        code = f"{secrets.randbelow(1000000):06d}"
+        row.status = "APPROVED"
+        row.code_hash = make_password(code)
+        row.attempts = 0
+        row.expires_at = timezone.now() + timedelta(minutes=15)
+        row.reviewed_by = request.user
+        row.reviewed_at = timezone.now()
+        row.save(
+            update_fields=[
+                "status",
+                "code_hash",
+                "attempts",
+                "expires_at",
+                "reviewed_by",
+                "reviewed_at",
+            ]
+        )
+        _security_event(
+            request,
+            "PASSWORD_RESET_APPROVED",
+            user=row.user,
+            reset_request_id=row.id,
+            reviewed_by=request.user.id,
+        )
+        return Response(
+            {
+                "success": True,
+                "message": "Reset approved. Share this one-time code with the user.",
+                "reset_code": code,
+                "expires_at": row.expires_at,
+            }
+        )
+
+
+class CompleteAdminApprovedPasswordResetAPIView(APIView):
+    permission_classes = []
+    throttle_classes = [ProductionScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        phone = str(request.data.get("phone") or "").strip()
+        code = str(request.data.get("code") or "").strip()
+        new_password = str(request.data.get("new_password") or "")
+
+        if len(phone) != 10 or not phone.isdigit() or len(code) != 6 or not code.isdigit():
+            return Response(
+                {"success": False, "message": "Valid phone number and 6-digit reset code are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not new_password:
+            return Response(
+                {"success": False, "message": "New password is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.filter(phone=phone, is_active=True).first()
+        if user is None:
+            return Response(
+                {"success": False, "message": "Reset request is invalid or expired."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        row = (
+            PasswordResetRequest.objects.filter(user=user, status="APPROVED")
+            .order_by("-reviewed_at")
+            .first()
+        )
+        if row is None or row.expires_at is None or row.expires_at <= timezone.now():
+            if row is not None and row.status == "APPROVED":
+                row.status = "EXPIRED"
+                row.save(update_fields=["status"])
+            return Response(
+                {"success": False, "message": "Reset request is invalid or expired."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if row.attempts >= 5:
+            row.status = "EXPIRED"
+            row.save(update_fields=["status"])
+            return Response(
+                {"success": False, "message": "Reset code is no longer valid. Request a new reset."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not check_password(code, row.code_hash):
+            row.attempts += 1
+            if row.attempts >= 5:
+                row.status = "EXPIRED"
+                row.save(update_fields=["attempts", "status"])
+            else:
+                row.save(update_fields=["attempts"])
+            return Response(
+                {"success": False, "message": "Reset code is incorrect."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as exc:
+            return Response(
+                {"success": False, "message": " ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        user.save(update_fields=["password", "failed_login_attempts", "locked_until"])
+
+        row.status = "USED"
+        row.used_at = timezone.now()
+        row.code_hash = ""
+        row.save(update_fields=["status", "used_at", "code_hash"])
+        _security_event(
+            request,
+            "PASSWORD_RESET_COMPLETED",
+            user=user,
+            reset_request_id=row.id,
+        )
+
+        return Response(
+            {
+                "success": True,
+                "message": "Password changed successfully. You can now sign in with the new password.",
             }
         )
