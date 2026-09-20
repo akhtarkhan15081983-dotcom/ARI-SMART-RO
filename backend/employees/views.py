@@ -43,7 +43,7 @@ class EmployeeManagementAPIView(APIView):
         company = _request_company(request)
         if company is None:
             return Response({"success": False, "message": "Active company workspace not found."}, status=403)
-        employees = EmployeeProfile.objects.filter(company=company).select_related("user").order_by(
+        employees = EmployeeProfile.objects.filter(company=company).select_related("user", "reporting_manager__user").order_by(
             "user__first_name", "user__last_name"
         )
         return Response({
@@ -57,6 +57,13 @@ class EmployeeManagementAPIView(APIView):
                     "phone": employee.user.phone,
                     "email": employee.user.email,
                     "designation": employee.designation,
+                    "job_title": employee.job_title,
+                    "department": employee.department,
+                    "grade": employee.grade,
+                    "reporting_manager": None if employee.reporting_manager is None else {
+                        "id": employee.reporting_manager_id,
+                        "name": employee.reporting_manager.user.get_full_name() or employee.reporting_manager.user.phone,
+                    },
                     "joining_date": employee.joining_date,
                     "salary": employee.salary,
                     "is_active": employee.is_active and employee.user.is_active,
