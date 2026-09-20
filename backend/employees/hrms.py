@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 from attendance.models import Attendance
 from installation.models import Installation
 from jobs.models import Job
-from .models import EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
+from .models import EmployeeDocument, EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord, PerformanceReview
 
 
 MONEY = Decimal("0.01")
@@ -195,6 +195,24 @@ class EmployeeHrmsDashboardAPIView(APIView):
             approved_penalties = penalties.filter(status="APPROVED").aggregate(
                 total=Sum("amount")
             )["total"] or Decimal("0")
+            document_rows = EmployeeDocument.objects.filter(employee__in=employees)
+            expiring_documents = document_rows.filter(
+                expiry_date__isnull=False,
+                expiry_date__gte=today,
+                expiry_date__lte=today + timedelta(days=30),
+            ).count()
+            expired_documents = document_rows.filter(
+                expiry_date__isnull=False,
+                expiry_date__lt=today,
+            ).count()
+            unverified_documents = document_rows.filter(verified=False).count()
+            performance_rows = PerformanceReview.objects.filter(
+                employee__in=employees,
+                period_end__gte=month_start,
+            )
+            pending_performance_reviews = performance_rows.exclude(
+                status__in=["FINAL", "ACKNOWLEDGED"]
+            ).count()
 
             designation_counts = {}
             for row in employees:
@@ -231,6 +249,15 @@ class EmployeeHrmsDashboardAPIView(APIView):
                     "pending_selfie_reviews": attendance.filter(
                         identity_review_status="PENDING"
                     ).count(),
+                },
+                "compliance": {
+                    "documents_expiring_30_days": expiring_documents,
+                    "documents_expired": expired_documents,
+                    "documents_unverified": unverified_documents,
+                },
+                "performance": {
+                    "pending_reviews": pending_performance_reviews,
+                    "reviews_this_period": performance_rows.count(),
                 },
                 "policy": {
                     "office_start_time": policy.office_start_time.strftime("%I:%M %p"),
@@ -690,3 +717,194 @@ class PayrollExcelReportAPIView(APIView):
         response = HttpResponse(stream.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f'attachment; filename="ARI_Salary_Register_{month:%Y_%m}.xlsx"'
         return response
+
+
+class PerformanceReviewAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        rows = PerformanceReview.objects.select_related(
+            "employee__user", "reviewer"
+        )
+        if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+            rows = rows.filter(employee__user=request.user)
+        employee_id = request.query_params.get("employee_id")
+        if employee_id and _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+            rows = rows.filter(employee_id=employee_id)
+
+        return Response({
+            "reviews": [{
+                "id": row.id,
+                "employee_id": row.employee_id,
+                "employee_name": row.employee.user.get_full_name() or row.employee.user.phone,
+                "period_start": row.period_start,
+                "period_end": row.period_end,
+                "reviewer": row.reviewer.get_full_name() or row.reviewer.phone,
+                "goals_score": row.goals_score,
+                "attendance_score": row.attendance_score,
+                "service_quality_score": row.service_quality_score,
+                "customer_score": row.customer_score,
+                "sales_score": row.sales_score,
+                "overall_score": row.overall_score,
+                "strengths": row.strengths,
+                "improvement_plan": row.improvement_plan,
+                "comments": row.comments,
+                "status": row.status,
+                "finalized_at": row.finalized_at,
+                "acknowledged_at": row.acknowledged_at,
+            } for row in rows[:500]]
+        })
+
+    def post(self, request):
+        if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+            return Response({"detail": "Not permitted."}, status=403)
+
+        try:
+            employee = EmployeeProfile.objects.get(
+                pk=request.data.get("employee_id"),
+                is_active=True,
+            )
+            period_start = date.fromisoformat(str(request.data.get("period_start") or ""))
+            period_end = date.fromisoformat(str(request.data.get("period_end") or ""))
+        except (EmployeeProfile.DoesNotExist, ValueError, TypeError):
+            return Response({"detail": "Valid employee and review period are required."}, status=400)
+
+        if period_end < period_start:
+            return Response({"detail": "Review period end cannot be before start."}, status=400)
+
+        score_fields = [
+            "goals_score",
+            "attendance_score",
+            "service_quality_score",
+            "customer_score",
+            "sales_score",
+        ]
+        scores = {}
+        try:
+            for field in score_fields:
+                value = Decimal(str(request.data.get(field, 0)))
+                if value < 0 or value > 100:
+                    return Response({"detail": f"{field} must be between 0 and 100."}, status=400)
+                scores[field] = value
+        except Exception:
+            return Response({"detail": "Performance scores must be numeric."}, status=400)
+
+        row, created = PerformanceReview.objects.get_or_create(
+            employee=employee,
+            period_start=period_start,
+            period_end=period_end,
+            defaults={"reviewer": request.user},
+        )
+        if not created and row.status in {"FINAL", "ACKNOWLEDGED"}:
+            return Response({"detail": "Finalized review cannot be edited."}, status=409)
+
+        row.reviewer = request.user
+        for field, value in scores.items():
+            setattr(row, field, value)
+        row.strengths = str(request.data.get("strengths") or "").strip()
+        row.improvement_plan = str(request.data.get("improvement_plan") or "").strip()
+        row.comments = str(request.data.get("comments") or "").strip()
+        row.recalculate()
+        row.status = "SUBMITTED"
+        row.save()
+        return Response({
+            "id": row.id,
+            "status": row.status,
+            "overall_score": row.overall_score,
+            "detail": "Performance review saved.",
+        }, status=201 if created else 200)
+
+
+class PerformanceReviewActionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, review_id):
+        row = PerformanceReview.objects.select_related("employee__user").filter(pk=review_id).first()
+        if row is None:
+            return Response({"detail": "Performance review not found."}, status=404)
+
+        action = str(request.data.get("action") or "").upper()
+        if action == "FINALIZE":
+            if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+                return Response({"detail": "Not permitted."}, status=403)
+            if row.status not in {"DRAFT", "SUBMITTED"}:
+                return Response({"detail": "Only draft/submitted review can be finalized."}, status=400)
+            row.status = "FINAL"
+            row.finalized_at = timezone.now()
+            row.save(update_fields=["status", "finalized_at", "updated_at"])
+            return Response({"detail": "Performance review finalized.", "status": row.status})
+
+        if action == "ACKNOWLEDGE":
+            if row.employee.user_id != request.user.id:
+                return Response({"detail": "Only the employee can acknowledge this review."}, status=403)
+            if row.status != "FINAL":
+                return Response({"detail": "Only a final review can be acknowledged."}, status=400)
+            row.status = "ACKNOWLEDGED"
+            row.acknowledged_at = timezone.now()
+            row.save(update_fields=["status", "acknowledged_at", "updated_at"])
+            return Response({"detail": "Performance review acknowledged.", "status": row.status})
+
+        return Response({"detail": "Action must be FINALIZE or ACKNOWLEDGE."}, status=400)
+
+
+class EmployeeDocumentComplianceAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        rows = EmployeeDocument.objects.select_related("employee__user")
+        if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+            rows = rows.filter(employee__user=request.user)
+        employee_id = request.query_params.get("employee_id")
+        if employee_id and _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+            rows = rows.filter(employee_id=employee_id)
+
+        today = timezone.localdate()
+        data = []
+        for row in rows[:500]:
+            if row.expiry_date is None:
+                expiry_state = "NO_EXPIRY"
+            elif row.expiry_date < today:
+                expiry_state = "EXPIRED"
+            elif row.expiry_date <= today + timedelta(days=30):
+                expiry_state = "EXPIRING_SOON"
+            else:
+                expiry_state = "VALID"
+            data.append({
+                "id": row.id,
+                "employee_id": row.employee_id,
+                "employee_name": row.employee.user.get_full_name() or row.employee.user.phone,
+                "document_type": row.document_type,
+                "document_number": row.document_number,
+                "expiry_date": row.expiry_date,
+                "verified": row.verified,
+                "expiry_state": expiry_state,
+                "uploaded_at": row.uploaded_at,
+            })
+
+        return Response({"documents": data})
+
+    def post(self, request):
+        if not _role(request.user, "ADMIN", "OFFICE"):
+            return Response({"detail": "Only admin or office can add document records."}, status=403)
+        employee = EmployeeProfile.objects.filter(pk=request.data.get("employee_id")).first()
+        if employee is None:
+            return Response({"detail": "Employee not found."}, status=404)
+        document_type = str(request.data.get("document_type") or "").strip()
+        if not document_type:
+            return Response({"detail": "Document type is required."}, status=400)
+        expiry_date = None
+        raw_expiry = request.data.get("expiry_date")
+        if raw_expiry:
+            try:
+                expiry_date = date.fromisoformat(str(raw_expiry))
+            except ValueError:
+                return Response({"detail": "Valid expiry date is required."}, status=400)
+
+        row = EmployeeDocument.objects.create(
+            employee=employee,
+            document_type=document_type[:50],
+            document_number=str(request.data.get("document_number") or "").strip()[:100],
+            expiry_date=expiry_date,
+            verified=bool(request.data.get("verified", False)),
+        )
+        return Response({"id": row.id, "detail": "Employee document record added."}, status=201)
