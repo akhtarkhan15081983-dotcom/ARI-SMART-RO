@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
 import '../../services/hrms_service.dart';
+import '../../services/role_permission_service.dart';
 import '../../utils/search_utils.dart';
 
 class HrmsScreen extends StatefulWidget {
@@ -12,12 +13,14 @@ class HrmsScreen extends StatefulWidget {
 
 class _HrmsScreenState extends State<HrmsScreen> {
   final _service = HrmsService();
+  final _rolePermissionService = const RolePermissionService();
   List<Map<String, dynamic>> _leaves = [], _payroll = [], _holidays = [];
   List<Map<String, dynamic>> _penalties = [], _penaltyEmployees = [];
   List<Map<String, dynamic>> _performanceReviews = [], _documents = [];
   Map<String, dynamic> _dashboard = {};
   bool _loading = true;
   String _role = '';
+  Set<String> _allowedFeatures = const {};
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month - 1);
   final _searchController = TextEditingController();
   String _query = '';
@@ -57,13 +60,27 @@ class _HrmsScreenState extends State<HrmsScreen> {
   String get _monthValue =>
       '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
 
+  bool _has(String key) => _role == 'ADMIN' || _allowedFeatures.contains(key);
+  bool get _canLeaveApprove => _has('hrms_leave_approve');
+  bool get _canPayrollManage => _has('hrms_payroll_manage');
+  bool get _canPenaltyManage => _has('hrms_penalty_manage');
+  bool get _canPerformanceManage => _has('hrms_performance_manage');
+  bool get _canDocumentsManage => _has('hrms_documents_manage');
+  bool get _canHolidayManage => _has('hrms_holiday_manage');
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
       _role = (await ApiService.getRole() ?? '').toUpperCase();
+      final permissionData =
+          await _rolePermissionService.getPermissions(role: _role);
+      _allowedFeatures =
+          (permissionData['allowed_features'] as List<dynamic>? ?? const [])
+              .map((e) => e.toString())
+              .toSet();
       final values = await Future.wait<dynamic>([
         _service.leaves(),
-        _service.payroll(month: _role == 'ADMIN' ? _monthValue : null),
+        _service.payroll(month: _canPayrollManage ? _monthValue : null),
         _service.dashboard(),
         _service.holidays(year: DateTime.now().year),
         _service.penalties(),
@@ -374,7 +391,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (_role == 'ADMIN')
+                if (_canPayrollManage)
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -434,8 +451,8 @@ class _HrmsScreenState extends State<HrmsScreen> {
                       ),
                     ),
                   ),
-                if (_role != 'ADMIN') _employeeOverview(),
                 if (_role == 'ADMIN') _adminReportOverview(),
+                if (_role != 'ADMIN') _employeeOverview(),
                 const SizedBox(height: 14),
                 TextField(
                   controller: _searchController,
@@ -480,7 +497,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                         child: Icon(Icons.receipt_long),
                       ),
                       title: Text(
-                        _role == 'ADMIN'
+                        _canPayrollManage
                             ? (row['employee_name']?.toString() ?? '')
                             : '${row['month']} Payslip',
                       ),
@@ -524,7 +541,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                           _money(row['net_salary']),
                           bold: true,
                         ),
-                        if (_role == 'ADMIN' &&
+                        if (_canPayrollManage &&
                             row['status'] == 'DRAFT') ...[
                           const SizedBox(height: 12),
                           SizedBox(
@@ -536,7 +553,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                             ),
                           ),
                         ],
-                        if (_role == 'ADMIN' &&
+                        if (_canPayrollManage &&
                             row['status'] == 'APPROVED') ...[
                           const SizedBox(height: 12),
                           SizedBox(
@@ -594,9 +611,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                                 : Icons.event,
                           ),
                           title: Text(
-                            _role == 'ADMIN' ||
-                                    _role == 'MANAGER' ||
-                                    _role == 'OFFICE'
+                            _canLeaveApprove
                                 ? '${row['employee_name']} • ${row['type']}'
                                 : row['type'].toString().replaceAll('_', ' '),
                           ),
@@ -608,9 +623,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                           trailing: Chip(label: Text(row['status'].toString())),
                         ),
                         if (row['status'] == 'PENDING' &&
-                            (_role == 'ADMIN' ||
-                                _role == 'MANAGER' ||
-                                _role == 'OFFICE')) ...[
+                            _canLeaveApprove) ...[
                           const Divider(height: 1),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -679,7 +692,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                         isThreeLine: true,
                         trailing: Chip(label: Text(row['status'].toString())),
                       ),
-                      if (_role == 'ADMIN' && row['status'] == 'DRAFT')
+                      if (_canPenaltyManage && row['status'] == 'DRAFT')
                         Padding(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                           child: Row(
@@ -706,7 +719,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                   ),
                 ),
               ),
-        if (_role == 'ADMIN') ...[
+        if (_canPenaltyManage) ...[
           const SizedBox(height: 8),
           FilledButton.icon(
             onPressed: _createPenalty,
@@ -942,7 +955,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                       : null,
                 ),
               ),
-        if (_role == 'ADMIN' || _role == 'OFFICE') ...[
+        if (_canHolidayManage) ...[
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _declareHoliday,
@@ -976,7 +989,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                       child: Icon(Icons.assessment_outlined),
                     ),
                     title: Text(
-                      _role == 'ADMIN' || _role == 'MANAGER' || _role == 'OFFICE'
+                      _canPerformanceManage
                           ? '${row['employee_name']} • Score ${row['overall_score']}'
                           : 'Overall score ${row['overall_score']}',
                     ),
@@ -990,9 +1003,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                     isThreeLine: true,
                     trailing: Chip(label: Text(row['status'].toString())),
                   ),
-                  if (_role != 'ADMIN' &&
-                      _role != 'MANAGER' &&
-                      _role != 'OFFICE' &&
+                  if (!_canPerformanceManage &&
                       row['status'] == 'FINAL')
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -1036,7 +1047,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                   warning ? Icons.warning_amber_rounded : Icons.verified_outlined,
                 ),
                 title: Text(
-                  _role == 'ADMIN' || _role == 'MANAGER' || _role == 'OFFICE'
+                  _canDocumentsManage
                       ? '${row['employee_name']} • ${row['document_type']}'
                       : row['document_type'].toString(),
                 ),
