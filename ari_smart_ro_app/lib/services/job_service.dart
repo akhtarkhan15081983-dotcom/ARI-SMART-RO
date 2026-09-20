@@ -250,7 +250,7 @@ class JobService {
 
   Future<Map<String, dynamic>> getCustomerActiveOTP() async {
     final response = await http.get(
-      Uri.parse("${ApiService.baseUrl}/jobs/customer-active-otp/"),
+      Uri.parse("${ApiService.baseUrl}/jobs/otp/customer-active/"),
       headers: await _headers(),
     );
     if (response.statusCode == 200) {
