@@ -3,6 +3,7 @@ import '../dashboard/dashboard_screen.dart';
 import '../../controllers/login_controller.dart';
 import '../../services/api_service.dart';
 import 'customer_onboarding_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -156,6 +157,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     : (value) => setState(() => _rememberMe = value ?? false),
                 title: const Text('Remember phone and password'),
                 subtitle: const Text('Stored securely on this device'),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: isLoading
+                      ? null
+                      : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ForgotPasswordScreen(),
+                            ),
+                          ),
+                  icon: const Icon(Icons.lock_reset_rounded),
+                  label: const Text('FORGOT PASSWORD?'),
+                ),
               ),
 
               const SizedBox(height: 12),
