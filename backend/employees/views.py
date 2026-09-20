@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from django.utils import timezone
 from django.db import transaction
@@ -23,6 +23,67 @@ from .serializers import (
     EmployeeProfileUpdateSerializer,
     AssignmentEmployeeSerializer,
 )
+
+
+def _photo_url(request, employee):
+    if not employee.photo:
+        return None
+    return request.build_absolute_uri(employee.photo.url)
+
+
+def _refresh_onboarding(employee):
+    profile_complete = bool(
+        employee.user.first_name
+        and employee.joining_date
+        and employee.designation
+    )
+    security_complete = bool(
+        employee.photo
+        and employee.face_enrollment_verified
+        and employee.attendance_device_id
+    )
+    mandatory = employee.training_assignments.filter(
+        course__is_active=True,
+        course__is_mandatory=True,
+    )
+    training_complete = not mandatory.exclude(status="COMPLETED").exists()
+    if not profile_complete:
+        status_value = "PROFILE_PENDING"
+    elif not security_complete:
+        status_value = "SECURITY_PENDING"
+    elif not training_complete:
+        status_value = "TRAINING_PENDING"
+    else:
+        status_value = "READY"
+    if employee.onboarding_status != status_value:
+        employee.onboarding_status = status_value
+        employee.save(update_fields=["onboarding_status"])
+    return {
+        "status": status_value,
+        "profile_complete": profile_complete,
+        "security_complete": security_complete,
+        "training_complete": training_complete,
+        "ready": status_value == "READY",
+    }
+
+
+def _employee_id_card_payload(request, employee):
+    return {
+        "employee_id": employee.employee_id,
+        "name": employee.user.get_full_name() or employee.user.phone,
+        "designation": employee.designation,
+        "job_title": employee.job_title,
+        "department": employee.department,
+        "photo": _photo_url(request, employee),
+        "company": getattr(employee.company, "name", "") if employee.company_id else "",
+        "verification_code": employee.public_verification_code,
+        "qr_payload": f"ARI-EMP:{employee.public_verification_code}",
+        "issued_at": employee.id_card_issued_at.isoformat() if employee.id_card_issued_at else None,
+        "valid_until": employee.id_card_valid_until.isoformat() if employee.id_card_valid_until else None,
+        "active": bool(employee.is_active and employee.user.is_active),
+        "identity_verified": bool(employee.face_enrollment_verified),
+        "onboarding": _refresh_onboarding(employee),
+    }
 
 
 def _request_company(request):
@@ -68,6 +129,13 @@ class EmployeeManagementAPIView(APIView):
                     },
                     "joining_date": employee.joining_date,
                     "salary": employee.salary,
+                    "photo": _photo_url(request, employee),
+                    "onboarding": _refresh_onboarding(employee),
+                    "id_card": {
+                        "verification_code": employee.public_verification_code,
+                        "valid_until": employee.id_card_valid_until,
+                        "active": bool(employee.is_active and employee.user.is_active),
+                    },
                     "is_active": employee.is_active and employee.user.is_active,
                     "location_received": (
                         employee.last_latitude is not None
@@ -121,6 +189,9 @@ class EmployeeManagementAPIView(APIView):
         employee = EmployeeProfile.objects.create(
             company=company, user=user, designation=designation, gender=gender,
             joining_date=joining_date, salary=request.data.get("salary") or 0,
+            onboarding_status="SECURITY_PENDING",
+            id_card_issued_at=timezone.now(),
+            id_card_valid_until=timezone.localdate() + timedelta(days=365 * 3),
             address=str(request.data.get("address", "")).strip(),
             city=str(request.data.get("city", "")).strip(),
             state=str(request.data.get("state", "")).strip(),
@@ -138,6 +209,32 @@ class EmployeeManagementAPIView(APIView):
             "success": True, "message": "Employee account created successfully.",
             "employee": {"id": employee.id, "employee_id": employee.employee_id, "name": user.get_full_name()},
         }, status=201)
+
+
+class EmployeeIdCardAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        employee = EmployeeProfile.objects.filter(user=request.user).select_related(
+            "user", "company"
+        ).first()
+        if employee is None:
+            return Response({"detail": "Employee profile not found."}, status=404)
+        return Response(_employee_id_card_payload(request, employee))
+
+
+class EmployeeIdVerifyAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, code):
+        employee = EmployeeProfile.objects.filter(
+            public_verification_code=str(code).strip().upper(),
+        ).select_related("user", "company").first()
+        if employee is None:
+            return Response({"verified": False, "detail": "Employee ID not found."}, status=404)
+        payload = _employee_id_card_payload(request, employee)
+        # Never expose private contact, salary, home address or HR records.
+        return Response({"verified": bool(payload["active"]), "employee": payload})
 
 
 class FaceEnrollmentAPIView(APIView):
