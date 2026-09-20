@@ -1,14 +1,12 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/customer_model.dart';
 import 'api_service.dart';
 
 class CustomerService {
-  final storage = const FlutterSecureStorage();
-
   // ============================================================
   // GET ALL CUSTOMERS
   // ============================================================
@@ -17,7 +15,7 @@ class CustomerService {
   // /api/customers/
   // ============================================================
   Future<List<CustomerModel>> getCustomers() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/customers/"),
@@ -27,13 +25,8 @@ class CustomerService {
       },
     );
 
-    print("CUSTOMER STATUS : ${response.statusCode}");
-    print("CUSTOMER BODY : ${response.body}");
-
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
-
-      print("TOTAL CUSTOMERS : ${data.length}");
 
       return data.map((e) => CustomerModel.fromJson(e)).toList();
     }
@@ -52,7 +45,7 @@ class CustomerService {
   // assigned to the logged-in engineer.
   // ============================================================
   Future<List<CustomerModel>> getMyCustomers() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/customers/my-customers/"),
@@ -62,13 +55,8 @@ class CustomerService {
       },
     );
 
-    print("MY CUSTOMERS STATUS : ${response.statusCode}");
-    print("MY CUSTOMERS BODY : ${response.body}");
-
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
-
-      print("MY CUSTOMERS TOTAL : ${data.length}");
 
       return data.map((e) => CustomerModel.fromJson(e)).toList();
     }
@@ -76,6 +64,44 @@ class CustomerService {
     throw Exception(
       "Failed to load assigned customers: ${response.statusCode}",
     );
+  }
+
+  Future<CustomerModel> getCustomer(int customerId) async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/customers/$customerId/"),
+      headers: await ApiService.authHeaders(),
+    );
+
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
+      return CustomerModel.fromJson(decoded);
+    }
+
+    throw Exception("Unable to load customer details.");
+  }
+
+  Future<CustomerModel> updateCustomer({
+    required int customerId,
+    required Map<String, dynamic> values,
+  }) async {
+    final response = await http.patch(
+      Uri.parse("${ApiService.baseUrl}/customers/$customerId/update/"),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode(values),
+    );
+
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
+      return CustomerModel.fromJson(decoded);
+    }
+
+    String message = "Unable to update customer.";
+    if (decoded is Map) {
+      message = decoded.values
+          .expand((value) => value is List ? value : [value])
+          .join(" ");
+    }
+    throw Exception(message);
   }
 
   // ============================================================
@@ -97,10 +123,73 @@ class CustomerService {
       body: jsonEncode({"employee_id": employeeId}),
     );
 
-    print("ASSIGN STATUS : ${response.statusCode}");
-    print("ASSIGN BODY : ${response.body}");
-
     return response.statusCode == 200;
+  }
+
+  // ============================================================
+  // BULK CUSTOMER IMPORT
+  // ============================================================
+  Future<Map<String, dynamic>> bulkImportCustomers({
+    required String filename,
+    required Uint8List bytes,
+    bool previewOnly = false,
+  }) async {
+    final token = await ApiService.getAccessToken();
+    final request = http.MultipartRequest(
+      "POST",
+      Uri.parse("${ApiService.baseUrl}/customers/bulk-import/"),
+    );
+
+    request.headers["Authorization"] = "Bearer $token";
+    request.fields["preview_only"] = previewOnly ? "true" : "false";
+    request.files.add(
+      http.MultipartFile.fromBytes("file", bytes, filename: filename),
+    );
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode != 200) {
+      throw Exception(data["detail"]?.toString() ?? "Customer import failed.");
+    }
+
+    return data;
+  }
+
+  Future<Map<String, dynamic>> customerLifecycle({
+    required int customerId,
+    required String action,
+    double purchaseAmount = 0,
+    double securityAdjusted = 0,
+    DateTime? conversionDate,
+    String notes = "",
+    String reason = "",
+    String confirm = "",
+  }) async {
+    final response = await http.post(
+      Uri.parse("${ApiService.baseUrl}/customers/$customerId/lifecycle/"),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({
+        "action": action,
+        "purchase_amount": purchaseAmount,
+        "security_adjusted": securityAdjusted,
+        "conversion_date": conversionDate == null
+            ? ""
+            : "${conversionDate.year.toString().padLeft(4, '0')}-${conversionDate.month.toString().padLeft(2, '0')}-${conversionDate.day.toString().padLeft(2, '0')}",
+        "notes": notes,
+        "reason": reason,
+        "confirm": confirm,
+      }),
+    );
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(
+        (data["detail"] ?? data["message"] ?? "Customer action failed.").toString(),
+      );
+    }
+    return data;
   }
 
   // ============================================================
@@ -124,9 +213,8 @@ class CustomerService {
     required int roModel,
     required int assetId,
 
-    double installationCharge = 0,
+    double totalAmountReceived = 600,
     double monthlyRent = 0,
-    double securityDeposit = 0,
   }) async {
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/customers/walk-in/"),
@@ -148,14 +236,10 @@ class CustomerService {
         "ro_model": roModel,
         "asset_id": assetId,
 
-        "installation_charge": installationCharge,
+        "total_amount_received": totalAmountReceived,
         "monthly_rent": monthlyRent,
-        "security_deposit": securityDeposit,
       }),
     );
-
-    print("WALK-IN STATUS : ${response.statusCode}");
-    print("WALK-IN BODY : ${response.body}");
 
     return jsonDecode(response.body);
   }

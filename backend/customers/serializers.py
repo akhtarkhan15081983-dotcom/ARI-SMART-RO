@@ -1,10 +1,12 @@
 from rest_framework import serializers
 
+from accounts.offers import best_public_offer
 from .models import Customer, PublicCustomerRequest
 
 
 class PublicCustomerRequestSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.model_name", read_only=True)
+    offer_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = PublicCustomerRequest
@@ -12,12 +14,13 @@ class PublicCustomerRequestSerializer(serializers.ModelSerializer):
             "id", "request_number", "request_type", "product", "product_name",
             "plan_name", "customer_name", "phone", "alternate_phone", "email",
             "address", "city", "state", "pincode", "quantity", "unit_price",
-            "total_amount", "payment_method", "preferred_date", "referral_code",
+            "base_amount", "discount_amount", "total_amount", "offer_code",
+            "payment_method", "preferred_date", "referral_code",
             "notes", "status", "created_at",
         ]
         read_only_fields = [
-            "id", "request_number", "product_name", "unit_price", "total_amount",
-            "status", "created_at",
+            "id", "request_number", "product_name", "unit_price", "base_amount",
+            "discount_amount", "total_amount", "status", "created_at",
         ]
 
     def validate_phone(self, value):
@@ -52,10 +55,26 @@ class PublicCustomerRequestSerializer(serializers.ModelSerializer):
         product = validated_data.get("product")
         quantity = validated_data.get("quantity", 1)
         request_type = validated_data["request_type"]
+        offer_code = validated_data.pop("offer_code", "")
         if product is not None:
             unit_price = product.monthly_rent if request_type == "RENTAL" else product.selling_price
+            base_amount = unit_price * quantity
             validated_data["unit_price"] = unit_price
-            validated_data["total_amount"] = unit_price * quantity
+            validated_data["base_amount"] = base_amount
+
+            scope = "PURCHASE" if request_type == "PURCHASE" else "RENT"
+            offer, discount, final_amount = best_public_offer(
+                scope,
+                base_amount,
+                promo_code=offer_code,
+            )
+            if offer_code and offer is None:
+                raise serializers.ValidationError({
+                    "offer_code": "This promo code is invalid, expired or not applicable."
+                })
+            validated_data["discount_amount"] = discount
+            validated_data["total_amount"] = final_amount
+            validated_data["applied_offer"] = offer
             validated_data.setdefault("plan_name", product.model_name)
         return super().create(validated_data)
 
@@ -160,6 +179,24 @@ class CustomerSerializer(serializers.ModelSerializer):
             "qr_payload",
 
             "is_active",
+        ]
+
+        read_only_fields = [
+            "id",
+            "customer_id",
+            "card_number",
+            "assigned_engineer",
+            "engineer_name",
+            "qr_payload",
+            "is_active",
+            "deactivated_at",
+            "deactivation_reason",
+            "ownership_type",
+            "rent_to_purchase_date",
+            "rent_to_purchase_amount",
+            "rent_at_conversion",
+            "security_adjusted_at_conversion",
+            "rent_to_purchase_notes",
         ]
 
 

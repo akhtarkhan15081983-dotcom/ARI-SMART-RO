@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/employee_management_service.dart';
+import '../../utils/search_utils.dart';
 
 class EmployeeManagementScreen extends StatefulWidget {
   const EmployeeManagementScreen({super.key});
@@ -16,12 +17,49 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   String _company = 'Company';
   String? _error;
   bool _loading = true;
+  final _searchController = TextEditingController();
+  String _query = '';
+  String _designationFilter = 'ALL';
+  String _accountFilter = 'ALL';
+  String _locationFilter = 'ALL';
 
   @override
   void initState() {
     super.initState();
     _load();
   }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filteredEmployees => _employees.where((employee) {
+    final designation = (employee['designation'] ?? '').toString().toUpperCase();
+    final active = employee['is_active'] == true;
+    final locationReceived = employee['location_received'] == true;
+    if (_designationFilter != 'ALL' && designation != _designationFilter) return false;
+    if (_accountFilter == 'ACTIVE' && !active) return false;
+    if (_accountFilter == 'INACTIVE' && active) return false;
+    if (_locationFilter == 'RECEIVED' && !locationReceived) return false;
+    if (_locationFilter == 'MISSING' && locationReceived) return false;
+    return matchesAllSearchTerms(_query, [
+      (employee['name'] ?? '').toString(),
+      (employee['employee_id'] ?? '').toString(),
+      (employee['phone'] ?? '').toString(),
+      (employee['email'] ?? '').toString(),
+      designation,
+      locationReceived ? 'location received' : 'location missing',
+    ]);
+  }).toList();
+
+  List<String> get _designations => <String>{
+    'ALL',
+    ..._employees
+        .map((e) => (e['designation'] ?? '').toString().toUpperCase())
+        .where((v) => v.isNotEmpty),
+  }.toList();
 
   Future<void> _load() async {
     setState(() {
@@ -118,6 +156,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                             DropdownMenuItem(
                               value: 'OFFICE',
                               child: Text('Office staff'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'CALLING',
+                              child: Text('Calling staff'),
                             ),
                             DropdownMenuItem(
                               value: 'MANAGER',
@@ -283,6 +325,544 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     }
   }
 
+  Future<void> _career(Map<String, dynamic> employee) async {
+    try {
+      var data = await _service.career((employee['id'] as num).toInt());
+      if (!mounted) return;
+
+      Future<void> refresh(StateSetter setLocal) async {
+        data = await _service.career((employee['id'] as num).toInt());
+        if (mounted) setLocal(() {});
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setLocal) {
+            final current = Map<String, dynamic>.from(
+              data['employee'] as Map? ?? const {},
+            );
+            final history = (data['history'] as List<dynamic>? ?? const [])
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+
+            return AlertDialog(
+              title: Text('Career • ${current['name'] ?? employee['name']}'),
+              content: SizedBox(
+                width: 620,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                current['job_title']?.toString().isNotEmpty == true
+                                    ? current['job_title'].toString()
+                                    : current['designation']?.toString() ?? '',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '${current['department'] ?? 'No department'} • '
+                                'Grade ${current['grade']?.toString().isEmpty == false ? current['grade'] : '-'}',
+                              ),
+                              Text('Salary ₹${current['salary'] ?? 0}'),
+                              Text(
+                                'Reports to: ${(current['reporting_manager'] as Map?)?['name'] ?? 'Not assigned'}',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () async {
+                          final created = await _createCareerMovement(
+                            dialogContext,
+                            current,
+                          );
+                          if (created && dialogContext.mounted) {
+                            await refresh(setLocal);
+                          }
+                        },
+                        icon: const Icon(Icons.trending_up_rounded),
+                        label: const Text('NEW PROMOTION / CAREER CHANGE'),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Career history',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (history.isEmpty)
+                        const Text('No career movement recorded yet.')
+                      else
+                        ...history.map(
+                          (row) => Card(
+                            child: Column(
+                              children: [
+                                ListTile(
+                                  leading: const CircleAvatar(
+                                    child: Icon(Icons.work_history_outlined),
+                                  ),
+                                  title: Text(
+                                    row['movement_type']
+                                        .toString()
+                                        .replaceAll('_', ' '),
+                                  ),
+                                  subtitle: Text(
+                                    '${row['effective_date']} • ${row['status']}\n'
+                                    '${row['old_job_title']?.toString().isEmpty == false ? row['old_job_title'] : row['old_designation']}'
+                                    ' → '
+                                    '${row['new_job_title']?.toString().isEmpty == false ? row['new_job_title'] : row['new_designation']}\n'
+                                    '₹${row['old_salary'] ?? '-'} → ₹${row['new_salary'] ?? '-'}\n'
+                                    '${row['reason']}',
+                                  ),
+                                  isThreeLine: false,
+                                ),
+                                if (row['status'] == 'DRAFT')
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      0,
+                                      12,
+                                      12,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: OutlinedButton(
+                                            onPressed: () async {
+                                              await _service.careerAction(
+                                                employeeId:
+                                                    (employee['id'] as num)
+                                                        .toInt(),
+                                                movementId:
+                                                    (row['id'] as num).toInt(),
+                                                action: 'CANCEL',
+                                              );
+                                              if (dialogContext.mounted) {
+                                                await refresh(setLocal);
+                                              }
+                                            },
+                                            child: const Text('CANCEL DRAFT'),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: FilledButton(
+                                            onPressed: () async {
+                                              await _service.careerAction(
+                                                employeeId:
+                                                    (employee['id'] as num)
+                                                        .toInt(),
+                                                movementId:
+                                                    (row['id'] as num).toInt(),
+                                                action: 'APPROVE',
+                                              );
+                                              if (dialogContext.mounted) {
+                                                await refresh(setLocal);
+                                                await _load();
+                                              }
+                                            },
+                                            child: const Text('APPROVE'),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('CLOSE'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<bool> _createCareerMovement(
+    BuildContext dialogContext,
+    Map<String, dynamic> current,
+  ) async {
+    String movementType = 'PROMOTION';
+    String designation = (current['designation'] ?? 'ENGINEER').toString();
+    final title = TextEditingController(
+      text: current['job_title']?.toString() ?? '',
+    );
+    final department = TextEditingController(
+      text: current['department']?.toString() ?? '',
+    );
+    final grade = TextEditingController(
+      text: current['grade']?.toString() ?? '',
+    );
+    final salary = TextEditingController(
+      text: current['salary']?.toString() ?? '',
+    );
+    final reason = TextEditingController();
+    DateTime effectiveDate = DateTime.now();
+    int? managerId = (current['reporting_manager'] as Map?)?['id'] as int?;
+
+    final saved = await showDialog<bool>(
+          context: dialogContext,
+          builder: (context) => StatefulBuilder(
+            builder: (context, setLocal) => AlertDialog(
+              title: const Text('New career movement'),
+              content: SizedBox(
+                width: 520,
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      DropdownButtonFormField<String>(
+                        initialValue: movementType,
+                        decoration: const InputDecoration(
+                          labelText: 'Movement type',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'PROMOTION',
+                            child: Text('Promotion'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'DESIGNATION_CHANGE',
+                            child: Text('Designation change'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'SALARY_REVISION',
+                            child: Text('Salary revision'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'TRANSFER',
+                            child: Text('Department transfer'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'MANAGER_CHANGE',
+                            child: Text('Reporting manager change'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'DEMOTION',
+                            child: Text('Demotion'),
+                          ),
+                        ],
+                        onChanged: (v) =>
+                            setLocal(() => movementType = v ?? 'PROMOTION'),
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        initialValue: designation,
+                        decoration: const InputDecoration(
+                          labelText: 'Operational designation',
+                          helperText:
+                              'Controls app permissions. Use Job title for Senior Engineer / Team Leader etc.',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'ENGINEER',
+                            child: Text('Engineer'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'OFFICE',
+                            child: Text('Office staff'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'CALLING',
+                            child: Text('Calling staff'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'MANAGER',
+                            child: Text('Manager'),
+                          ),
+                        ],
+                        onChanged: (v) =>
+                            setLocal(() => designation = v ?? designation),
+                      ),
+                      TextField(
+                        controller: title,
+                        decoration: const InputDecoration(
+                          labelText: 'Job title',
+                          hintText: 'Senior Engineer / Team Leader',
+                        ),
+                      ),
+                      TextField(
+                        controller: department,
+                        decoration: const InputDecoration(
+                          labelText: 'Department',
+                        ),
+                      ),
+                      TextField(
+                        controller: grade,
+                        decoration: const InputDecoration(
+                          labelText: 'Grade / level',
+                        ),
+                      ),
+                      TextField(
+                        controller: salary,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Monthly salary',
+                        ),
+                      ),
+                      DropdownButtonFormField<int?>(
+                        initialValue: managerId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Reporting manager',
+                        ),
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('No reporting manager'),
+                          ),
+                          ..._employees
+                              .where(
+                                (e) =>
+                                    e['is_active'] == true &&
+                                    e['id'] != current['id'],
+                              )
+                              .map(
+                                (e) => DropdownMenuItem<int?>(
+                                  value: (e['id'] as num).toInt(),
+                                  child: Text(
+                                    '${e['name']} • ${e['designation']}',
+                                  ),
+                                ),
+                              ),
+                        ],
+                        onChanged: (v) => setLocal(() => managerId = v),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.event_available_outlined),
+                        title: const Text('Effective date'),
+                        subtitle: Text(
+                          '${effectiveDate.day}/${effectiveDate.month}/${effectiveDate.year}',
+                        ),
+                        onTap: () async {
+                          final value = await showDatePicker(
+                            context: context,
+                            initialDate: effectiveDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 3650),
+                            ),
+                          );
+                          if (value != null) {
+                            setLocal(() => effectiveDate = value);
+                          }
+                        },
+                      ),
+                      TextField(
+                        controller: reason,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Reason / HR note *',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('CANCEL'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('SAVE DRAFT'),
+                ),
+              ],
+            ),
+          ),
+        ) ??
+        false;
+
+    if (!saved || reason.text.trim().isEmpty) {
+      title.dispose();
+      department.dispose();
+      grade.dispose();
+      salary.dispose();
+      reason.dispose();
+      return false;
+    }
+
+    try {
+      await _service.createCareerMovement(
+        employeeId: (current['id'] as num).toInt(),
+        payload: {
+          'movement_type': movementType,
+          'new_designation': designation,
+          'new_job_title': title.text.trim(),
+          'new_department': department.text.trim(),
+          'new_grade': grade.text.trim(),
+          'new_salary': salary.text.trim(),
+          'new_reporting_manager_id': managerId,
+          'effective_date':
+              '${effectiveDate.year}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')}',
+          'reason': reason.text.trim(),
+        },
+      );
+      return true;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+          ),
+        );
+      }
+      return false;
+    } finally {
+      title.dispose();
+      department.dispose();
+      grade.dispose();
+      salary.dispose();
+      reason.dispose();
+    }
+  }
+
+  Future<void> _setEmployeeActive(
+    Map<String, dynamic> employee,
+    bool active,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(active ? 'Reactivate employee?' : 'Deactivate employee?'),
+        content: Text(
+          active
+              ? '${employee['name']} will be able to login again.'
+              : '${employee['name']} login will be disabled while old work history stays available.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(active ? 'REACTIVATE' : 'DEACTIVATE'),
+          ),
+        ],
+      ),
+    ) ?? false;
+    if (!confirmed) return;
+
+    try {
+      await _service.lifecycle(
+        employeeId: (employee['id'] as num).toInt(),
+        action: active ? 'reactivate' : 'deactivate',
+      );
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error.toString().replaceFirst('Exception: ', ''),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeTestEmployee(Map<String, dynamic> employee) async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove test employee'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'This works only when the employee has no linked attendance, jobs, payroll, customers or other work history. Otherwise deactivate the account.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(labelText: 'Type DELETE'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('REMOVE'),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirmed) {
+      controller.dispose();
+      return;
+    }
+
+    try {
+      await _service.lifecycle(
+        employeeId: (employee['id'] as num).toInt(),
+        action: 'permanent_delete',
+        confirm: controller.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Test employee removed.')),
+        );
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error.toString().replaceFirst('Exception: ', ''),
+            ),
+          ),
+        );
+      }
+    } finally {
+      controller.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Employees')),
@@ -313,7 +893,90 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               children: [
                 Text(_company, style: Theme.of(context).textTheme.titleLarge),
-                Text('${_employees.length} employees in this workspace'),
+                Text('${_filteredEmployees.length} of ${_employees.length} employees in this workspace'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  onChanged: (value) => setState(() => _query = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search name, employee ID, phone, email...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                            icon: const Icon(Icons.clear),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _designationFilter,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Designation'),
+                        items: _designations
+                            .map(
+                              (v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(
+                                  v == 'ALL' ? 'All designations' : v,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(() => _designationFilter = v ?? 'ALL'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _accountFilter,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Account'),
+                        items: const [
+                          DropdownMenuItem(value: 'ALL', child: Text('All')),
+                          DropdownMenuItem(value: 'ACTIVE', child: Text('Active')),
+                          DropdownMenuItem(value: 'INACTIVE', child: Text('Inactive')),
+                        ],
+                        onChanged: (v) => setState(() => _accountFilter = v ?? 'ALL'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _locationFilter,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Location status',
+                    prefixIcon: Icon(Icons.location_on_outlined),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'ALL',
+                      child: Text('All employees'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'RECEIVED',
+                      child: Text('Location received'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'MISSING',
+                      child: Text('Location missing'),
+                    ),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _locationFilter = v ?? 'ALL'),
+                ),
                 const SizedBox(height: 16),
                 if (_employees.isEmpty)
                   const Card(
@@ -326,7 +989,14 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                       ),
                     ),
                   ),
-                ..._employees.map(
+                if (_employees.isNotEmpty && _filteredEmployees.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(22),
+                      child: Center(child: Text('No matching employees found.')),
+                    ),
+                  ),
+                ..._filteredEmployees.map(
                   (employee) => Card(
                     child: ListTile(
                       leading: CircleAvatar(
@@ -339,16 +1009,61 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                       ),
                       title: Text(employee['name'].toString()),
                       subtitle: Text(
-                        '${employee['employee_id']} • ${employee['phone']}\n${employee['designation']} • ₹${employee['salary']}',
+                        '${employee['employee_id']} • ${employee['phone']}\n'
+                        '${employee['job_title']?.toString().isNotEmpty == true ? employee['job_title'] : employee['designation']}'
+                        '${employee['department']?.toString().isEmpty == false ? ' • ${employee['department']}' : ''}'
+                        ' • ₹${employee['salary']}\n'
+                        '${employee['location_received'] == true ? 'Location received' : 'Location missing'}'
+                        '${employee['last_location_updated'] == null ? '' : ' • last update ${employee['last_location_updated']}'}',
                       ),
                       isThreeLine: true,
-                      trailing: Icon(
-                        employee['is_active'] == true
-                            ? Icons.verified_rounded
-                            : Icons.block_rounded,
-                        color: employee['is_active'] == true
-                            ? Colors.green
-                            : Colors.red,
+                      trailing: PopupMenuButton<String>(
+                        tooltip: 'Employee actions',
+                        onSelected: (value) {
+                          if (value == 'career') {
+                            _career(employee);
+                          } else if (value == 'deactivate') {
+                            _setEmployeeActive(employee, false);
+                          } else if (value == 'reactivate') {
+                            _setEmployeeActive(employee, true);
+                          } else if (value == 'remove_test') {
+                            _removeTestEmployee(employee);
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'career',
+                            child: ListTile(
+                              leading: Icon(Icons.trending_up_rounded),
+                              title: Text('Career & Promotion'),
+                            ),
+                          ),
+                          const PopupMenuDivider(),
+                          if (employee['is_active'] == true)
+                            const PopupMenuItem(
+                              value: 'deactivate',
+                              child: ListTile(
+                                leading: Icon(Icons.block_outlined),
+                                title: Text('Deactivate'),
+                              ),
+                            )
+                          else
+                            const PopupMenuItem(
+                              value: 'reactivate',
+                              child: ListTile(
+                                leading: Icon(Icons.restore),
+                                title: Text('Reactivate'),
+                              ),
+                            ),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'remove_test',
+                            child: ListTile(
+                              leading: Icon(Icons.delete_outline),
+                              title: Text('Remove test employee'),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

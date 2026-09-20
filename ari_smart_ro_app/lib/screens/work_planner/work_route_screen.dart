@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/api_service.dart';
 import '../../services/work_planner_service.dart';
+import '../../utils/search_utils.dart';
 import '../complaint/complaint_details_screen.dart';
 import '../jobs/job_details_screen.dart';
 import 'calendar_rent_collection_screen.dart';
@@ -29,11 +30,20 @@ class _WorkRouteScreenState extends State<WorkRouteScreen> {
   String? _error;
   int _missing = 0;
   String _role = 'ENGINEER';
+  final _searchController = TextEditingController();
+  String _query = '';
+  String _typeFilter = 'ALL';
 
   @override
   void initState() {
     super.initState();
     _initialise();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _initialise() async {
@@ -259,7 +269,25 @@ class _WorkRouteScreenState extends State<WorkRouteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final markers = _stops.map((event) {
+    final filteredStops = _stops.where((event) {
+      final type = (event['type'] ?? '').toString().toUpperCase();
+      if (_typeFilter != 'ALL' && type != _typeFilter) return false;
+      final customer = Map<String, dynamic>.from(event['customer'] as Map);
+      return matchesAllSearchTerms(_query, [
+        (event['title'] ?? '').toString(),
+        (event['status'] ?? '').toString(),
+        type,
+        (event['sequence'] ?? '').toString(),
+        (customer['name'] ?? '').toString(),
+        (customer['customer_id'] ?? '').toString(),
+        (customer['phone'] ?? '').toString(),
+        (customer['address'] ?? '').toString(),
+        (customer['area'] ?? '').toString(),
+        (customer['city'] ?? '').toString(),
+        (customer['pincode'] ?? '').toString(),
+      ]);
+    }).toList();
+    final markers = filteredStops.map((event) {
       final point = _point(event)!;
       return Marker(
         point: point,
@@ -320,6 +348,44 @@ class _WorkRouteScreenState extends State<WorkRouteScreen> {
             )
           : Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                  child: TextField(
+                    controller: _searchController,
+                    textInputAction: TextInputAction.search,
+                    onChanged: (value) => setState(() => _query = value),
+                    decoration: InputDecoration(
+                      hintText: 'Search customer, ID, phone, area or work...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _query.isEmpty ? null : IconButton(
+                        onPressed: () { _searchController.clear(); setState(() => _query = ''); },
+                        icon: const Icon(Icons.clear),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _typeFilter,
+                          decoration: const InputDecoration(labelText: 'Work type'),
+                          items: const [
+                            DropdownMenuItem(value: 'ALL', child: Text('All work')),
+                            DropdownMenuItem(value: 'JOB', child: Text('Jobs')),
+                            DropdownMenuItem(value: 'COMPLAINT', child: Text('Complaints')),
+                            DropdownMenuItem(value: 'RENT', child: Text('Rent collection')),
+                          ],
+                          onChanged: (v) => setState(() => _typeFilter = v ?? 'ALL'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('${filteredStops.length}/${_stops.length}'),
+                    ],
+                  ),
+                ),
                 if (_missing > 0)
                   MaterialBanner(
                     content: Text(
@@ -345,7 +411,7 @@ class _WorkRouteScreenState extends State<WorkRouteScreen> {
                     options: MapOptions(
                       initialCenter: markers.isEmpty
                           ? _fallback
-                          : _point(_stops.first)!,
+                          : _point(filteredStops.first)!,
                       initialZoom: 13,
                     ),
                     children: [
@@ -361,16 +427,16 @@ class _WorkRouteScreenState extends State<WorkRouteScreen> {
                 ),
                 Expanded(
                   flex: 2,
-                  child: _stops.isEmpty
+                  child: filteredStops.isEmpty
                       ? const Center(
                           child: Text('No mapped work stops for this day.'),
                         )
                       : ListView.separated(
                           padding: const EdgeInsets.all(12),
-                          itemCount: _stops.length,
+                          itemCount: filteredStops.length,
                           separatorBuilder: (_, _) => const SizedBox(height: 6),
                           itemBuilder: (_, index) {
-                            final event = _stops[index],
+                            final event = filteredStops[index],
                                 customer = Map<String, dynamic>.from(
                                   event['customer'] as Map,
                                 ),

@@ -10,7 +10,7 @@ class BagService {
   final storage = const FlutterSecureStorage();
 
   Future<List<BagItemModel>> getMyBag() async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
 
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/inventory/my-bag/"),
@@ -48,7 +48,7 @@ class BagService {
   }
 
   Future<Map<String, dynamic>> verifyQRCode(String serialNumber) async {
-    final token = await storage.read(key: "access");
+    final token = await ApiService.getAccessToken();
     final engineerId = await storage.read(key: "user_id");
 
     final response = await http.post(

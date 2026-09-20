@@ -174,10 +174,11 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
       await _player.setFilePath(file.path);
       await _player.play();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('ANDY voice failed: $e')));
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -229,12 +230,13 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
     }
 
     if (!await _recorder.hasPermission()) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Microphone permission is required for ANDY voice.'),
           ),
         );
+      }
       return;
     }
     final directory = await getTemporaryDirectory();

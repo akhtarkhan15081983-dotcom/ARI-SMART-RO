@@ -2011,14 +2011,14 @@ class CustomerRentAPITests(TestCase):
             1,
         )
 
-    def test_office_cannot_view_admin_rent_management(self):
-        office = User.objects.create_user(
+    def test_calling_staff_cannot_view_rent_management(self):
+        calling = User.objects.create_user(
             phone="9100000004",
             password="Test@123",
-            role="OFFICE",
+            role="CALLING",
             is_verified=True,
         )
-        self.client.force_authenticate(user=office)
+        self.client.force_authenticate(user=calling)
         response = self.client.get("/api/customers/rent-management/")
         self.assertEqual(response.status_code, 403)
 
@@ -2202,7 +2202,7 @@ class CustomerRentAPITests(TestCase):
             "/api/customers/rent-management/payment/",
             {
                 "customer_id": self.customer.id,
-                "amount": "501.00",
+                "amount": "10000.00",
                 "payment_mode": "CASH",
             },
             format="json",

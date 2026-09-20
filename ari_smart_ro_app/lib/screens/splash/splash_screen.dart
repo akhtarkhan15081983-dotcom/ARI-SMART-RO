@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../services/api_service.dart';
+import '../../services/device_capability_service.dart';
 import '../../services/referral_link_service.dart';
 import '../../services/tenant_brand_service.dart';
 import '../dashboard/dashboard_screen.dart';
@@ -20,7 +21,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  late final VideoPlayerController _videoController;
+  VideoPlayerController? _videoController;
   late final AnimationController _animationController;
   late final Animation<double> _fade;
   late final Animation<double> _scale;
@@ -50,9 +51,6 @@ class _SplashScreenState extends State<SplashScreen>
     _scale = Tween<double>(begin: .94, end: 1).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOutBack),
     );
-    _videoController = VideoPlayerController.asset(
-      'assets/videos/ari_water_fill.mp4',
-    );
     if (!TenantBrandService.isDedicatedBuild) {
       _fallbackTimer = Timer(_splashDuration, _goToNext);
     }
@@ -80,18 +78,29 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     try {
-      await _videoController.initialize();
-      await _videoController.setLooping(false);
-      await _videoController.setVolume(0);
-      _videoController.addListener(_videoListener);
+      final lowMemoryDevice = await DeviceCapabilityService.isLowMemoryDevice();
+      if (!mounted) return;
+      if (lowMemoryDevice) {
+        await _animationController.forward();
+        return;
+      }
+
+      final videoController = VideoPlayerController.asset(
+        'assets/videos/ari_water_fill.mp4',
+      );
+      _videoController = videoController;
+      await videoController.initialize();
+      await videoController.setLooping(false);
+      await videoController.setVolume(0);
+      videoController.addListener(_videoListener);
       if (!mounted) return;
       setState(() => _videoReady = true);
       await _animationController.forward();
-      final duration = _videoController.value.duration;
+      final duration = videoController.value.duration;
       if (duration > const Duration(seconds: 5)) {
-        await _videoController.seekTo(const Duration(seconds: 5));
+        await videoController.seekTo(const Duration(seconds: 5));
       }
-      await _videoController.play();
+      await videoController.play();
     } catch (error) {
       debugPrint('SPLASH VIDEO ERROR: $error');
       if (mounted) await _animationController.forward();
@@ -99,8 +108,9 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   void _videoListener() {
-    if (!_videoController.value.isInitialized) return;
-    if (_videoController.value.position >= const Duration(seconds: 7)) {
+    final videoController = _videoController;
+    if (videoController == null || !videoController.value.isInitialized) return;
+    if (videoController.value.position >= const Duration(seconds: 7)) {
       _goToNext();
     }
   }
@@ -110,8 +120,9 @@ class _SplashScreenState extends State<SplashScreen>
     _navigated = true;
     _fallbackTimer?.cancel();
     try {
-      if (_videoController.value.isPlaying) {
-        await _videoController.pause();
+      final videoController = _videoController;
+      if (videoController != null && videoController.value.isPlaying) {
+        await videoController.pause();
       }
     } catch (_) {}
 
@@ -147,8 +158,8 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _fallbackTimer?.cancel();
-    _videoController.removeListener(_videoListener);
-    _videoController.dispose();
+    _videoController?.removeListener(_videoListener);
+    _videoController?.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -162,13 +173,13 @@ class _SplashScreenState extends State<SplashScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (_videoReady)
+          if (_videoReady && _videoController != null)
             FittedBox(
               fit: BoxFit.cover,
               child: SizedBox(
-                width: _videoController.value.size.width,
-                height: _videoController.value.size.height,
-                child: VideoPlayer(_videoController),
+                width: _videoController!.value.size.width,
+                height: _videoController!.value.size.height,
+                child: VideoPlayer(_videoController!),
               ),
             )
           else

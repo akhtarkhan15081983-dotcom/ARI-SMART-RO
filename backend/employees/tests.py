@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
 from accounts.models import User
@@ -951,3 +952,98 @@ class TenantEmployeeManagementTests(TestCase):
         listed = self.client.get("/api/employees/manage/")
         self.assertEqual(listed.status_code, 200)
         self.assertEqual([row["phone"] for row in listed.data["employees"]], ["9300000002"])
+
+
+
+class FaceReEnrollmentFlowTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            phone="9300000001",
+            password="Test@123",
+            role="ADMIN",
+            is_verified=True,
+        )
+        self.employee_user = User.objects.create_user(
+            phone="9300000002",
+            password="Test@123",
+            first_name="Re",
+            last_name="Enroll",
+            role="OFFICE",
+            is_verified=True,
+        )
+        self.employee = EmployeeProfile.objects.create(
+            user=self.employee_user,
+            employee_id="EMP-REENROLL-001",
+            gender="MALE",
+            joining_date=date(2026, 1, 1),
+            designation="OFFICE",
+            is_active=True,
+            face_enrolled_at=timezone.now(),
+            attendance_device_id="old-device",
+            face_enrollment_allowed=False,
+        )
+
+    def _photo(self, name="reenroll.jpg"):
+        return SimpleUploadedFile(
+            name,
+            b"\xff\xd8\xff\xe0" + b"0" * 1024,
+            content_type="image/jpeg",
+        )
+
+    def test_admin_face_list_includes_non_engineer_employee(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get("/api/employees/admin/face-enrollments/")
+        self.assertEqual(response.status_code, 200)
+        ids = {item["id"] for item in response.data}
+        self.assertIn(self.employee.id, ids)
+
+    def test_admin_can_allow_reenrollment_and_employee_profile_sees_it(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            f"/api/employees/{self.employee.id}/face-enrollment-control/",
+            {"action": "allow_reenrollment"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["face_enrollment_allowed"])
+
+        self.client.force_authenticate(self.employee_user)
+        profile = self.client.get("/api/employees/profile/")
+        self.assertEqual(profile.status_code, 200)
+        self.assertTrue(profile.data["face_enrollment_allowed"])
+
+    def test_successful_reenrollment_rebinds_device_and_relocks_permission(self):
+        self.employee.face_enrollment_allowed = True
+        self.employee.save(update_fields=["face_enrollment_allowed"])
+
+        self.client.force_authenticate(self.employee_user)
+        response = self.client.post(
+            "/api/employees/face-enrollment/",
+            {
+                "device_id": "new-device",
+                "photo": self._photo(),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.attendance_device_id, "new-device")
+        self.assertFalse(self.employee.face_enrollment_allowed)
+        self.assertIsNotNone(self.employee.face_enrolled_at)
+
+    def test_reenrollment_remains_locked_without_admin_permission(self):
+        self.client.force_authenticate(self.employee_user)
+        response = self.client.post(
+            "/api/employees/face-enrollment/",
+            {
+                "device_id": "blocked-device",
+                "photo": self._photo("blocked.jpg"),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.attendance_device_id, "old-device")

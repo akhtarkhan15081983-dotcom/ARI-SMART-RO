@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/rent_management_model.dart';
 import '../../services/rent_management_service.dart';
+import '../../utils/search_utils.dart';
 
 class RentManagementScreen extends StatefulWidget {
   const RentManagementScreen({super.key});
@@ -29,19 +30,26 @@ class _RentManagementScreenState extends State<RentManagementScreen> {
 
   String _searchQuery = "";
 
+  String _statusFilter = "ALL";
+
   List<RentManagementCustomer> get _filteredCustomers {
-    final query = _searchQuery.trim().toLowerCase();
-
-    if (query.isEmpty) {
-      return _customers;
-    }
-
     return _customers.where((customer) {
-      return customer.name.toLowerCase().contains(query) ||
-          customer.customerId.toLowerCase().contains(query) ||
-          customer.phone.toLowerCase().contains(query) ||
-          customer.cardNumber.toLowerCase().contains(query) ||
-          customer.oldCardNumber.toLowerCase().contains(query);
+      final matchesStatus =
+          _statusFilter == "ALL" ||
+          (_statusFilter == "DUE"
+              ? customer.status == "PENDING" || customer.status == "PARTIAL"
+              : customer.status == _statusFilter);
+      return matchesStatus &&
+          matchesAllSearchTerms(_searchQuery, [
+            customer.name,
+            customer.customerId,
+            customer.phone,
+            customer.cardNumber,
+            customer.oldCardNumber,
+            customer.roModel,
+            customer.status,
+            customer.dueDate,
+          ]);
     }).toList();
   }
 
@@ -515,6 +523,29 @@ class _RentManagementScreenState extends State<RentManagementScreen> {
               borderRadius: BorderRadius.circular(14),
               borderSide: const BorderSide(color: Colors.blue, width: 1.5),
             ),
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: ["ALL", "DUE", "PARTIAL", "PAID"].map((status) {
+              final label = status == "ALL"
+                  ? "All"
+                  : status == "DUE"
+                  ? "Due"
+                  : status[0] + status.substring(1).toLowerCase();
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(label),
+                  selected: _statusFilter == status,
+                  onSelected: (_) => setState(() => _statusFilter = status),
+                ),
+              );
+            }).toList(),
           ),
         ),
 

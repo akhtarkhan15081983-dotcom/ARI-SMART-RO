@@ -8,6 +8,7 @@ void main() {
       'manager': DashboardItems.manager,
       'engineer': DashboardItems.engineer,
       'office': DashboardItems.office,
+      'calling': DashboardItems.calling,
     };
 
     for (final entry in dashboards.entries) {

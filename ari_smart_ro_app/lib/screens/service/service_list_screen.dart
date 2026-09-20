@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/service_model.dart';
 import '../../services/service_service.dart';
+import '../../services/api_service.dart';
 
 class ServiceListScreen extends StatefulWidget {
   const ServiceListScreen({super.key});
@@ -15,6 +16,11 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   final ServiceService _service = ServiceService();
 
   late Future<List<ServiceModel>> _futureServices;
+  String _role = 'CUSTOMER';
+
+  bool get _canComplete =>
+      {'ADMIN', 'MANAGER', 'OFFICE', 'ENGINEER'}.contains(_role);
+  bool get _canExport => {'ADMIN', 'MANAGER', 'OFFICE'}.contains(_role);
 
   // ============================================================
   // SEARCH
@@ -33,6 +39,13 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     super.initState();
 
     _loadServices();
+    _loadRole();
+  }
+
+  Future<void> _loadRole() async {
+    final role = (await ApiService.getRole() ?? 'CUSTOMER').trim().toUpperCase();
+    if (!mounted) return;
+    setState(() => _role = role);
   }
 
   // ============================================================
@@ -332,7 +345,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   ),
                 ),
 
-                if (service.status.toUpperCase() != 'COMPLETED') ...[
+                if (_canComplete &&
+                    service.status.toUpperCase() != 'COMPLETED') ...[
                   const SizedBox(width: 10),
 
                   Expanded(
@@ -365,11 +379,12 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         title: const Text('Service Requests'),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            tooltip: 'Export Service Report',
-            onPressed: _exportReport,
-          ),
+          if (_canExport)
+            IconButton(
+              icon: const Icon(Icons.file_download),
+              tooltip: 'Export Service Report',
+              onPressed: _exportReport,
+            ),
         ],
       ),
 

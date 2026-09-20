@@ -9,13 +9,15 @@ class ClaimReferralSerializer(serializers.Serializer):
 class ReferralSerializer(serializers.ModelSerializer):
     referrer_name = serializers.CharField(source="referrer.get_full_name", read_only=True)
     referred_name = serializers.CharField(source="referred_user.get_full_name", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    referred_type_label = serializers.CharField(source="get_referred_type_display", read_only=True)
 
     class Meta:
         model = Referral
         fields = [
             "id", "referral_code", "referrer_name", "referred_name",
-            "referred_type", "status", "qualifying_amount",
-            "qualified_at", "risk_reasons", "created_at",
+            "referred_type", "referred_type_label", "status", "status_label",
+            "qualifying_amount", "qualified_at", "created_at",
         ]
         read_only_fields = fields
 
@@ -35,7 +37,12 @@ class WalletRewardSerializer(serializers.ModelSerializer):
 
 
 class WalletLedgerEntrySerializer(serializers.ModelSerializer):
+    reward_label = serializers.CharField(source="reward.get_reward_type_display", read_only=True)
+
     class Meta:
         model = WalletLedgerEntry
-        fields = "__all__"
+        fields = [
+            "id", "entry_type", "amount", "description", "reward_label",
+            "reference_type", "reference_id", "created_at",
+        ]
         read_only_fields = fields

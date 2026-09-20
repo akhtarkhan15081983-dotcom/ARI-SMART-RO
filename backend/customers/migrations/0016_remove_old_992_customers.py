@@ -1,3 +1,4 @@
+import os
 from django.db import migrations, transaction
 
 
@@ -10,6 +11,9 @@ def _first_unique(qs):
 
 
 def remove_old_customers(apps, schema_editor):
+    if os.environ.get("ARI_SKIP_EXACT_EXCEL_IMPORT_FOR_TESTS", "").strip() == "1":
+        return
+
     Customer = apps.get_model("customers", "Customer")
     CustomerRentHistory = apps.get_model("customers", "CustomerRentHistory")
     CustomerRentPayment = apps.get_model("customers", "CustomerRentPayment")

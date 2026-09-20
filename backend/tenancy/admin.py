@@ -1,3 +1,4 @@
+from .models import RoleFeaturePermission
 from django.contrib import admin
 
 from .models import Branch, Company, CompanyLifecycleEvent, CompanyMembership, CompanySubscription, SubscriptionPlan
@@ -32,3 +33,11 @@ class CompanyLifecycleEventAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+@admin.register(RoleFeaturePermission)
+class RoleFeaturePermissionAdmin(admin.ModelAdmin):
+    list_display = ("company", "role", "feature_key", "is_allowed", "updated_by", "updated_at")
+    list_filter = ("company", "role", "is_allowed")
+    search_fields = ("company__name", "company__slug", "role", "feature_key")
+    readonly_fields = ("updated_at",)

@@ -19,9 +19,6 @@ class EngineerService {
       headers: await ApiService.authHeaders(),
     );
 
-    print("ENGINEER STATUS : ${response.statusCode}");
-    print("ENGINEER BODY : ${response.body}");
-
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
 
@@ -47,14 +44,8 @@ class EngineerService {
       headers: await ApiService.authHeaders(),
     );
 
-    print("ASSIGNMENT EMPLOYEES STATUS : ${response.statusCode}");
-
-    print("ASSIGNMENT EMPLOYEES BODY : ${response.body}");
-
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
-
-      print("ASSIGNMENT EMPLOYEES TOTAL : ${data.length}");
 
       return data.map((e) => EngineerModel.fromJson(e)).toList();
     }

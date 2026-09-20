@@ -1,3 +1,5 @@
+from datetime import date
+from decimal import Decimal
 from django.utils import timezone
 from django.db import transaction
 from django.contrib.auth.password_validation import validate_password
@@ -12,8 +14,9 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator
 from accounts.models import User
 from tenancy.models import CompanyMembership
+from tenancy.access import HasRequiredFeature, has_feature_access
 
-from .models import EmployeeProfile
+from .models import EmployeeCareerMovement, EmployeeProfile
 from .serializers import (
     EmployeeLocationSerializer,
     EmployeeProfileSerializer,
@@ -35,13 +38,14 @@ def _request_company(request):
 
 
 class EmployeeManagementAPIView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "employee_management"
 
     def get(self, request):
         company = _request_company(request)
         if company is None:
             return Response({"success": False, "message": "Active company workspace not found."}, status=403)
-        employees = EmployeeProfile.objects.filter(company=company).select_related("user").order_by(
+        employees = EmployeeProfile.objects.filter(company=company).select_related("user", "reporting_manager__user").order_by(
             "user__first_name", "user__last_name"
         )
         return Response({
@@ -55,9 +59,21 @@ class EmployeeManagementAPIView(APIView):
                     "phone": employee.user.phone,
                     "email": employee.user.email,
                     "designation": employee.designation,
+                    "job_title": employee.job_title,
+                    "department": employee.department,
+                    "grade": employee.grade,
+                    "reporting_manager": None if employee.reporting_manager is None else {
+                        "id": employee.reporting_manager_id,
+                        "name": employee.reporting_manager.user.get_full_name() or employee.reporting_manager.user.phone,
+                    },
                     "joining_date": employee.joining_date,
                     "salary": employee.salary,
                     "is_active": employee.is_active and employee.user.is_active,
+                    "location_received": (
+                        employee.last_latitude is not None
+                        and employee.last_longitude is not None
+                    ),
+                    "last_location_updated": employee.last_location_updated,
                 }
                 for employee in employees
             ],
@@ -130,7 +146,7 @@ class FaceEnrollmentAPIView(APIView):
 
     def post(self, request):
         try:
-            employee = request.user.employee_profile
+            employee = EmployeeProfile.objects.get(user=request.user)
         except EmployeeProfile.DoesNotExist:
             return Response(
                 {"success": False, "message": "Employee profile not found."},
@@ -197,22 +213,20 @@ class FaceEnrollmentAPIView(APIView):
         })
 
 
-class AdminFaceSecurityListAPIView(APIView):
+class AdminFaceEnrollmentListAPIView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        company = _request_company(request)
-        if company is None:
-            return Response(
-                {"success": False, "message": "Active company workspace not found."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        employees = (
-            EmployeeProfile.objects.filter(company=company, is_active=True)
-            .select_related("user")
-            .order_by("user__first_name", "user__last_name", "id")
+        employees = EmployeeProfile.objects.filter(
+            is_active=True,
+            user__is_active=True,
+        ).select_related("user").order_by(
+            "designation",
+            "user__first_name",
+            "user__last_name",
+            "employee_id",
         )
+
         return Response([
             {
                 "id": employee.id,
@@ -220,11 +234,10 @@ class AdminFaceSecurityListAPIView(APIView):
                 "name": employee.user.get_full_name() or employee.user.phone,
                 "phone": employee.user.phone,
                 "designation": employee.designation,
-                "face_enrolled": employee.face_enrolled_at is not None,
+                "face_enrolled": bool(employee.face_enrolled_at and employee.photo),
                 "face_enrollment_verified": employee.face_enrollment_verified,
                 "face_enrollment_allowed": employee.face_enrollment_allowed,
                 "attendance_device_bound": bool(employee.attendance_device_id),
-                "has_enrollment_photo": bool(employee.photo),
             }
             for employee in employees
         ])
@@ -234,18 +247,14 @@ class AdminFaceEnrollmentControlAPIView(APIView):
     permission_classes = [IsAdmin]
 
     def post(self, request, employee_id):
-        company = _request_company(request)
-        if company is None:
+        if getattr(request.user, "role", "") != "ADMIN":
             return Response(
-                {"success": False, "message": "Active company workspace not found."},
+                {"success": False, "message": "Only an admin can control face enrollment."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         try:
-            employee = EmployeeProfile.objects.select_related("user").get(
-                id=employee_id,
-                company=company,
-            )
+            employee = EmployeeProfile.objects.select_related("user").get(id=employee_id)
         except EmployeeProfile.DoesNotExist:
             return Response(
                 {"success": False, "message": "Employee not found."},
@@ -253,14 +262,16 @@ class AdminFaceEnrollmentControlAPIView(APIView):
             )
 
         action = (request.data.get("action") or "").strip().lower()
-
         if action == "allow_reenrollment":
             employee.face_enrollment_allowed = True
             employee.save(update_fields=["face_enrollment_allowed"])
             return Response({
                 "success": True,
                 "message": "One face/device re-enrollment has been authorized by admin.",
+                "employee_id": employee.id,
                 "face_enrollment_allowed": True,
+                "face_enrolled": bool(employee.face_enrolled_at and employee.photo),
+                "attendance_device_bound": bool(employee.attendance_device_id),
             })
 
         if action == "cancel_reenrollment":
@@ -269,58 +280,10 @@ class AdminFaceEnrollmentControlAPIView(APIView):
             return Response({
                 "success": True,
                 "message": "Face/device re-enrollment authorization cancelled.",
+                "employee_id": employee.id,
                 "face_enrollment_allowed": False,
-            })
-
-        if action == "verify_enrollment":
-            if (
-                employee.face_enrolled_at is None
-                or not employee.photo
-                or not employee.attendance_device_id
-            ):
-                return Response(
-                    {
-                        "success": False,
-                        "message": "A face photo and bound attendance device are required before verification.",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            employee.face_enrollment_verified = True
-            employee.face_enrollment_allowed = False
-            employee.save(update_fields=[
-                "face_enrollment_verified",
-                "face_enrollment_allowed",
-            ])
-            return Response({
-                "success": True,
-                "message": "Face and attendance device enrollment verified by admin.",
-                "face_enrollment_verified": True,
-            })
-
-        if action in {"reject_enrollment", "reset_enrollment"}:
-            employee.photo = None
-            employee.face_enrolled_at = None
-            employee.face_enrollment_verified = False
-            employee.face_enrollment_allowed = False
-            employee.attendance_device_id = ""
-            employee.save(update_fields=[
-                "photo",
-                "face_enrolled_at",
-                "face_enrollment_verified",
-                "face_enrollment_allowed",
-                "attendance_device_id",
-            ])
-            message = (
-                "Enrollment rejected. The employee must capture a fresh face photo and bind the device again."
-                if action == "reject_enrollment"
-                else "Face and attendance device enrollment reset."
-            )
-            return Response({
-                "success": True,
-                "message": message,
-                "face_enrollment_verified": False,
-                "face_enrollment_allowed": False,
-                "attendance_device_bound": False,
+                "face_enrolled": bool(employee.face_enrolled_at and employee.photo),
+                "attendance_device_bound": bool(employee.attendance_device_id),
             })
 
         return Response(
@@ -371,7 +334,7 @@ class EmployeeProfileAPIView(APIView):
 
     def get(self, request):
         try:
-            profile = request.user.employee_profile
+            profile = EmployeeProfile.objects.get(user=request.user)
         except EmployeeProfile.DoesNotExist:
             return Response({"error": "Employee profile not found."}, status=404)
         serializer = EmployeeProfileSerializer(profile, context={"request": request})
@@ -384,7 +347,7 @@ class EmployeeProfileAPIView(APIView):
 
     def put(self, request):
         try:
-            profile = request.user.employee_profile
+            profile = EmployeeProfile.objects.get(user=request.user)
         except EmployeeProfile.DoesNotExist:
             return Response({"error": "Employee profile not found."}, status=404)
         serializer = EmployeeProfileUpdateSerializer(profile, data=request.data, partial=True)
@@ -430,7 +393,8 @@ class AssignmentEmployeeListAPIView(APIView):
 # ============================================================
 
 class EmployeeLifecycleAPIView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "employee_management"
 
     def _profile_has_operational_history(self, employee):
         for relation in employee._meta.related_objects:
@@ -453,6 +417,8 @@ class EmployeeLifecycleAPIView(APIView):
 
     @transaction.atomic
     def post(self, request, employee_id):
+        if not has_feature_access(request, "employee_career_manage"):
+            return Response({"detail": "Career management permission is required."}, status=403)
         company = _request_company(request)
         if company is None:
             return Response({"success": False, "message": "Active company workspace not found."}, status=403)
@@ -506,3 +472,215 @@ class EmployeeLifecycleAPIView(APIView):
             return Response({"success": True, "message": f"{name} permanently deleted."})
 
         return Response({"detail": "Invalid employee lifecycle action."}, status=400)
+
+
+# ============================================================
+# CORPORATE CAREER MOVEMENT / PROMOTION WORKFLOW
+# ============================================================
+
+class EmployeeCareerMovementAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, employee_id):
+        if not has_feature_access(request, "employee_career_manage"):
+            return Response({"detail": "Career management permission is required."}, status=403)
+        company = _request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+        employee = EmployeeProfile.objects.filter(pk=employee_id, company=company).select_related(
+            "user", "reporting_manager__user"
+        ).first()
+        if employee is None:
+            return Response({"detail": "Employee not found."}, status=404)
+        rows = employee.career_movements.select_related(
+            "created_by", "approved_by", "old_reporting_manager__user", "new_reporting_manager__user"
+        )[:200]
+        return Response({
+            "employee": {
+                "id": employee.id,
+                "employee_id": employee.employee_id,
+                "name": employee.user.get_full_name() or employee.user.phone,
+                "designation": employee.designation,
+                "job_title": employee.job_title,
+                "department": employee.department,
+                "grade": employee.grade,
+                "salary": employee.salary,
+                "reporting_manager": None if employee.reporting_manager is None else {
+                    "id": employee.reporting_manager_id,
+                    "name": employee.reporting_manager.user.get_full_name() or employee.reporting_manager.user.phone,
+                },
+            },
+            "history": [{
+                "id": row.id,
+                "movement_type": row.movement_type,
+                "effective_date": row.effective_date,
+                "old_designation": row.old_designation,
+                "new_designation": row.new_designation,
+                "old_job_title": row.old_job_title,
+                "new_job_title": row.new_job_title,
+                "old_department": row.old_department,
+                "new_department": row.new_department,
+                "old_grade": row.old_grade,
+                "new_grade": row.new_grade,
+                "old_salary": row.old_salary,
+                "new_salary": row.new_salary,
+                "old_reporting_manager": None if row.old_reporting_manager is None else (
+                    row.old_reporting_manager.user.get_full_name() or row.old_reporting_manager.user.phone
+                ),
+                "new_reporting_manager": None if row.new_reporting_manager is None else (
+                    row.new_reporting_manager.user.get_full_name() or row.new_reporting_manager.user.phone
+                ),
+                "reason": row.reason,
+                "status": row.status,
+                "created_by": row.created_by.get_full_name() or row.created_by.phone,
+                "approved_by": None if row.approved_by is None else (row.approved_by.get_full_name() or row.approved_by.phone),
+                "approved_at": row.approved_at,
+            } for row in rows],
+        })
+
+    @transaction.atomic
+    def post(self, request, employee_id):
+        company = _request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+        employee = EmployeeProfile.objects.select_for_update().filter(
+            pk=employee_id, company=company, is_active=True
+        ).first()
+        if employee is None:
+            return Response({"detail": "Active employee not found."}, status=404)
+
+        movement_type = str(request.data.get("movement_type") or "PROMOTION").upper()
+        allowed_types = {choice[0] for choice in EmployeeCareerMovement.TYPE_CHOICES}
+        if movement_type not in allowed_types:
+            return Response({"detail": "Invalid career movement type."}, status=400)
+
+        try:
+            effective_date = date.fromisoformat(str(request.data.get("effective_date") or ""))
+        except ValueError:
+            return Response({"detail": "Valid effective date is required."}, status=400)
+
+        reason = str(request.data.get("reason") or "").strip()
+        if not reason:
+            return Response({"detail": "Reason is required."}, status=400)
+
+        new_designation = str(request.data.get("new_designation") or employee.designation).upper()
+        if new_designation not in {choice[0] for choice in EmployeeProfile.DESIGNATION_CHOICES}:
+            return Response({"detail": "Invalid new designation."}, status=400)
+
+        new_job_title = str(request.data.get("new_job_title") or employee.job_title).strip()[:120]
+        new_department = str(request.data.get("new_department") or employee.department).strip()[:100]
+        new_grade = str(request.data.get("new_grade") or employee.grade).strip()[:50]
+
+        raw_salary = request.data.get("new_salary")
+        try:
+            new_salary = employee.salary if raw_salary in (None, "") else Decimal(str(raw_salary))
+        except Exception:
+            return Response({"detail": "Valid new salary is required."}, status=400)
+        if new_salary < 0:
+            return Response({"detail": "Salary cannot be negative."}, status=400)
+
+        manager_id = request.data.get("new_reporting_manager_id")
+        new_manager = employee.reporting_manager
+        if manager_id not in (None, ""):
+            new_manager = EmployeeProfile.objects.filter(
+                pk=manager_id, company=company, is_active=True
+            ).first()
+            if new_manager is None:
+                return Response({"detail": "Reporting manager not found."}, status=400)
+            if new_manager.id == employee.id:
+                return Response({"detail": "Employee cannot report to themselves."}, status=400)
+
+        row = EmployeeCareerMovement.objects.create(
+            employee=employee,
+            movement_type=movement_type,
+            effective_date=effective_date,
+            old_designation=employee.designation,
+            new_designation=new_designation,
+            old_job_title=employee.job_title,
+            new_job_title=new_job_title,
+            old_department=employee.department,
+            new_department=new_department,
+            old_grade=employee.grade,
+            new_grade=new_grade,
+            old_salary=employee.salary,
+            new_salary=new_salary,
+            old_reporting_manager=employee.reporting_manager,
+            new_reporting_manager=new_manager,
+            reason=reason[:500],
+            created_by=request.user,
+        )
+        return Response({
+            "id": row.id,
+            "status": row.status,
+            "detail": "Career movement saved as draft for approval.",
+        }, status=201)
+
+
+class EmployeeCareerMovementActionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, employee_id, movement_id):
+        if not has_feature_access(request, "employee_career_manage"):
+            return Response({"detail": "Career management permission is required."}, status=403)
+        company = _request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        row = EmployeeCareerMovement.objects.select_for_update().select_related(
+            "employee__user"
+        ).filter(
+            pk=movement_id,
+            employee_id=employee_id,
+            employee__company=company,
+            status="DRAFT",
+        ).first()
+        if row is None:
+            return Response({"detail": "Draft career movement not found."}, status=404)
+
+        action = str(request.data.get("action") or "").upper()
+        if action == "CANCEL":
+            row.status = "CANCELLED"
+            row.cancelled_at = timezone.now()
+            row.save(update_fields=["status", "cancelled_at"])
+            return Response({"detail": "Career movement cancelled.", "status": row.status})
+
+        if action != "APPROVE":
+            return Response({"detail": "Action must be APPROVE or CANCEL."}, status=400)
+
+        if row.effective_date > timezone.localdate():
+            return Response({
+                "detail": (
+                    "Future-dated career movement is scheduled as a draft. "
+                    "Approve it on or after its effective date."
+                )
+            }, status=400)
+
+        employee = row.employee
+        employee.designation = row.new_designation or employee.designation
+        employee.job_title = row.new_job_title
+        employee.department = row.new_department
+        employee.grade = row.new_grade
+        if row.new_salary is not None:
+            employee.salary = row.new_salary
+        employee.reporting_manager = row.new_reporting_manager
+        employee.save(update_fields=[
+            "designation", "job_title", "department", "grade", "salary", "reporting_manager"
+        ])
+
+        role = "MANAGER" if employee.designation == "MANAGER" else employee.designation
+        employee.user.role = role
+        employee.user.save(update_fields=["role"])
+        CompanyMembership.objects.filter(company=company, user=employee.user).update(
+            role="MANAGER" if employee.designation == "MANAGER" else "STAFF"
+        )
+
+        row.status = "APPROVED"
+        row.approved_by = request.user
+        row.approved_at = timezone.now()
+        row.save(update_fields=["status", "approved_by", "approved_at"])
+
+        return Response({
+            "detail": "Career movement approved and employee profile updated.",
+            "status": row.status,
+        })

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/attendance_model.dart';
@@ -5,11 +7,18 @@ import '../../services/api_service.dart';
 import '../../services/attendance_service.dart';
 import '../../services/live_location_service.dart';
 import '../../services/saas_admin_service.dart';
+import '../../services/role_permission_service.dart';
+import '../../services/notification_center_service.dart';
+import '../../utils/search_utils.dart';
 import '../admin/face_security_admin_screen.dart';
 import '../admin/attendance_security_test_screen.dart';
 import '../admin/attendance_review_admin_screen.dart';
 import '../admin/engineer_bag_admin_screen.dart';
 import '../admin/saas_super_admin_screen.dart';
+import '../admin/password_reset_approval_screen.dart';
+import '../admin/role_access_control_screen.dart';
+import '../admin/notification_offer_admin_screen.dart';
+import '../notifications/notification_center_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
 import '../bag/my_bag_screen.dart';
@@ -36,6 +45,7 @@ import '../work_planner/work_route_screen.dart';
 import '../hrms/hrms_screen.dart';
 import '../hrms/employee_management_screen.dart';
 import '../inventory/inventory_workflow_screen.dart';
+import '../calling/calling_desk_screen.dart';
 import 'dashboard_card.dart';
 import 'dashboard_items.dart';
 
@@ -45,10 +55,15 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   final AttendanceService _attendanceService = AttendanceService();
   final LiveLocationService _liveLocationService = LiveLocationService();
   final SaasAdminService _saasAdminService = const SaasAdminService();
+  final RolePermissionService _rolePermissionService =
+      const RolePermissionService();
+  final NotificationCenterService _notificationCenterService =
+      const NotificationCenterService();
   static const List<DashboardItem> _customerItems = [
     DashboardItems.andy,
     DashboardItem(title: 'My RO', icon: Icons.water_drop, route: 'my_ro'),
@@ -63,11 +78,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       icon: Icons.report_problem,
       route: 'complaint',
     ),
-    DashboardItem(
-      title: 'Referral',
-      icon: Icons.card_giftcard,
-      route: 'referral',
-    ),
+    DashboardItems.referral,
     DashboardItem(title: 'Shop', icon: Icons.shopping_cart, route: 'shop'),
     DashboardItem(title: 'History', icon: Icons.history, route: 'history'),
     DashboardItem(title: 'Profile', icon: Icons.person, route: 'profile'),
@@ -75,15 +86,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
   AttendanceModel? _todayAttendance;
   String _role = 'CUSTOMER';
   bool _isPlatformSuperAdmin = false;
+  Set<String> _allowedFeatures = const {};
+  int _notificationUnread = 0;
   bool _isLoadingAttendance = true,
       _isLoadingRole = true,
       _isExitDialogShowing = false;
 
+  Timer? _dashboardRefreshTimer;
+  final _toolSearchController = TextEditingController();
+  String _toolQuery = '';
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadDashboard();
     _startLiveLocationIfRequired();
+    _dashboardRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) _refreshSessionAndDashboard();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _refreshSessionAndDashboard();
+    }
+  }
+
+  Future<void> _refreshSessionAndDashboard() async {
+    await ApiService.ensureValidSession();
+    if (mounted) await _loadDashboard();
   }
 
   Future<void> _startLiveLocationIfRequired() async {
@@ -103,9 +136,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() => _isPlatformSuperAdmin = allowed);
     }
     if (_role != 'CUSTOMER') {
+      try {
+        final data = await _rolePermissionService.getPermissions(role: _role);
+        final allowed = (data['allowed_features'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toSet();
+        if (mounted) setState(() => _allowedFeatures = allowed);
+      } catch (_) {
+        if (mounted) setState(() => _allowedFeatures = const {});
+      }
+    }
+    if (_role != 'CUSTOMER') {
       await _loadAttendance();
     } else if (mounted) {
       setState(() => _isLoadingAttendance = false);
+    }
+    try {
+      final notifications = await _notificationCenterService.fetch();
+      if (mounted) setState(() => _notificationUnread = notifications.unreadCount);
+    } catch (_) {
+      // Notification center must never block the dashboard.
     }
   }
 
@@ -149,9 +199,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _normaliseRole(String? role) {
     final v = role?.trim().toUpperCase().replaceAll('ROLE_', '');
-    return {'ADMIN', 'MANAGER', 'OFFICE', 'ENGINEER', 'CUSTOMER'}.contains(v)
+    return {'ADMIN', 'MANAGER', 'OFFICE', 'CALLING', 'ENGINEER', 'CUSTOMER'}.contains(v)
         ? v!
         : 'CUSTOMER';
+  }
+
+  List<DashboardItem> _applyRolePermissions(List<DashboardItem> items) {
+    if (_role == 'ADMIN' || _role == 'CUSTOMER') return items;
+    if (_allowedFeatures.isEmpty) return const [];
+    const alwaysVisible = {'andy'};
+    return items
+        .where(
+          (item) =>
+              alwaysVisible.contains(item.route) ||
+              _allowedFeatures.contains(item.route),
+        )
+        .toList();
   }
 
   List<DashboardItem> get _dashboardItems {
@@ -167,11 +230,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ...DashboardItems.admin,
         ];
       case 'MANAGER':
-        return DashboardItems.manager;
+        return _applyRolePermissions(DashboardItems.manager);
       case 'OFFICE':
-        return DashboardItems.office;
+        return _applyRolePermissions(DashboardItems.office);
+      case 'CALLING':
+        return _applyRolePermissions(DashboardItems.calling);
       case 'ENGINEER':
-        return DashboardItems.engineer;
+        return _applyRolePermissions(DashboardItems.engineer);
       default:
         return _customerItems;
     }
@@ -296,6 +361,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _showComingSoon('Restricted');
         }
         return;
+      case 'password_reset_approvals':
+        if (_role == 'ADMIN') {
+          _push(const PasswordResetApprovalScreen());
+        } else {
+          _showComingSoon('Restricted');
+        }
+        return;
+      case 'role_access_control':
+        if (_role == 'ADMIN') {
+          _push(const RoleAccessControlScreen());
+        } else {
+          _showComingSoon('Only admin can control role access.');
+        }
+        return;
+      case 'notification_offer_admin':
+        if (_role == 'ADMIN') {
+          _push(const NotificationOfferAdminScreen());
+        } else {
+          _showComingSoon('Only admin can manage notifications and offers.');
+        }
+        return;
       case 'attendance_review_admin':
         if (_role == 'ADMIN') {
           _push(const AttendanceReviewAdminScreen());
@@ -315,6 +401,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             .push(MaterialPageRoute(builder: (_) => const AttendanceScreen()))
             .then((_) => _loadAttendance());
         return;
+      case 'calling_desk':
+        if (_role == 'ADMIN' || _allowedFeatures.contains('calling_desk')) {
+          _push(const CallingDeskScreen());
+        } else {
+          _showComingSoon('Calling desk permission is required.');
+        }
+        return;
       case 'jobs':
         _push(const MyJobsScreen());
         return;
@@ -331,19 +424,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _push(const HrmsScreen());
         return;
       case 'employee_management':
-        if (_role == 'ADMIN') {
+        if (_role == 'ADMIN' || _allowedFeatures.contains('employee_management')) {
           _push(const EmployeeManagementScreen());
         } else {
-          _showComingSoon('Only company administrators can manage employees.');
+          _showComingSoon('Employee management permission is required.');
         }
         return;
       case 'inventory_workflow':
-        if ({'ADMIN', 'MANAGER', 'OFFICE'}.contains(_role)) {
+        if (_role == 'ADMIN' || _allowedFeatures.contains('inventory_workflow')) {
           _push(const InventoryWorkflowScreen());
         } else {
-          _showComingSoon(
-            'Inventory control is restricted to authorised staff.',
-          );
+          _showComingSoon('Inventory control permission is required.');
         }
         return;
       case 'bag':
@@ -429,6 +520,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'complaint',
         'map',
         'engineer_map',
+        'calling_desk',
       },
       'Finance': {
         'rent',
@@ -556,6 +648,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _dashboardRefreshTimer?.cancel();
+    _toolSearchController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     _liveLocationService.stopTracking();
     super.dispose();
   }
@@ -565,7 +660,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_isLoadingRole) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final items = _dashboardItems, isCustomer = _role == 'CUSTOMER';
+    final allItems = _dashboardItems, isCustomer = _role == 'CUSTOMER';
+    final items = allItems
+        .where((item) => matchesAllSearchTerms(_toolQuery, [item.title, item.route]))
+        .toList();
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -575,6 +673,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
         appBar: AppBar(
           title: Text(isCustomer ? 'ARI Smart RO' : '$_role Dashboard'),
           actions: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  tooltip: 'Notifications',
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationCenterScreen(),
+                      ),
+                    );
+                    if (mounted) _loadDashboard();
+                  },
+                  icon: const Icon(Icons.notifications_outlined),
+                ),
+                if (_notificationUnread > 0)
+                  Positioned(
+                    right: 5,
+                    top: 5,
+                    child: Container(
+                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _notificationUnread > 99 ? '99+' : '$_notificationUnread',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             IconButton(onPressed: _logout, icon: const Icon(Icons.logout)),
           ],
         ),
@@ -612,6 +749,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
+              TextField(
+                controller: _toolSearchController,
+                textInputAction: TextInputAction.search,
+                onChanged: (value) => setState(() => _toolQuery = value),
+                decoration: InputDecoration(
+                  hintText: 'Search tools, reports, rent, parts, employees...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _toolQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _toolSearchController.clear();
+                            setState(() => _toolQuery = '');
+                          },
+                          icon: const Icon(Icons.clear),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (items.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(22),
+                    child: Center(child: Text('No matching dashboard tool found')),
+                  ),
+                )
+              else
               _CommandGrid(
                 role: _role,
                 groups: _dashboardGroups(items),
@@ -699,6 +863,8 @@ class _CommandGrid extends StatelessWidget {
                         children: [
                           Text(
                             group.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                           const SizedBox(height: 3),

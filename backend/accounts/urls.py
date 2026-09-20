@@ -7,12 +7,24 @@ from .views import (
     VerifyOTPAPIView,
     LoginAPIView,
     ChangePasswordAPIView,
+    ForgotPasswordRequestAPIView,
+    AdminPasswordResetRequestListAPIView,
+    AdminPasswordResetReviewAPIView,
+    CompleteAdminApprovedPasswordResetAPIView,
 )
 from .sim_verification import SimVerificationPollAPIView, SimVerificationStartAPIView, SmsGatewayIngestAPIView
 from .engagement import CustomerEngagementAPIView
+from .notifications import (
+    AdminNotificationCampaignAPIView,
+    AdminOfferAPIView,
+    NotificationCenterAPIView,
+)
 
 
 urlpatterns = [
+    path("notifications/", NotificationCenterAPIView.as_view(), name="notification-center"),
+    path("admin/notification-campaigns/", AdminNotificationCampaignAPIView.as_view(), name="admin-notification-campaigns"),
+    path("admin/offers/", AdminOfferAPIView.as_view(), name="admin-offers"),
     path("customer-engagement/", CustomerEngagementAPIView.as_view(), name="customer-engagement"),
     path("sim-verification/start/", SimVerificationStartAPIView.as_view(), name="sim-verification-start"),
     path("sim-verification/poll/", SimVerificationPollAPIView.as_view(), name="sim-verification-poll"),
@@ -66,6 +78,26 @@ urlpatterns = [
         "change-password/",
         ChangePasswordAPIView.as_view(),
         name="change-password",
+    ),
+    path(
+        "forgot-password/request/",
+        ForgotPasswordRequestAPIView.as_view(),
+        name="forgot-password-request",
+    ),
+    path(
+        "forgot-password/complete/",
+        CompleteAdminApprovedPasswordResetAPIView.as_view(),
+        name="forgot-password-complete",
+    ),
+    path(
+        "admin/password-reset-requests/",
+        AdminPasswordResetRequestListAPIView.as_view(),
+        name="admin-password-reset-request-list",
+    ),
+    path(
+        "admin/password-reset-requests/<int:reset_request_id>/review/",
+        AdminPasswordResetReviewAPIView.as_view(),
+        name="admin-password-reset-request-review",
     ),
     path(
         "token/refresh/",
