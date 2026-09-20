@@ -12,7 +12,7 @@ from jobs.models import Job
 from products.models import ProductCategory, ROModel
 from tenancy.models import Company, CompanyMembership
 from .hrms import calculate_payroll
-from .models import EmployeeCareerMovement, EmployeePenalty, EmployeeProfile, HRPolicy
+from .models import EmployeeCareerMovement, EmployeeDocument, EmployeePenalty, EmployeeProfile, HRPolicy, PerformanceReview
 
 
 class HRMSPolicyTests(APITestCase):
@@ -302,3 +302,98 @@ class CorporateCareerMovementTests(APITestCase):
         self.assertEqual(approved.status_code, 400)
         self.employee.refresh_from_db()
         self.assertEqual(self.employee.job_title, "Engineer")
+
+
+class PerformanceAndDocumentComplianceTests(APITestCase):
+    def setUp(self):
+        self.company = Company.objects.create(
+            name="ARI HR Compliance Test",
+            slug="ari-hr-compliance-test",
+            phone="9111111150",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        self.admin = User.objects.create_user(
+            phone="9111111151",
+            password="Strong@Test1",
+            role="ADMIN",
+            first_name="Admin",
+            is_verified=True,
+        )
+        self.employee_user = User.objects.create_user(
+            phone="9111111152",
+            password="Strong@Test1",
+            role="ENGINEER",
+            first_name="Engineer",
+            is_verified=True,
+        )
+        self.employee = EmployeeProfile.objects.create(
+            company=self.company,
+            user=self.employee_user,
+            employee_id="EMP-COMP-1",
+            joining_date=date(2025, 1, 1),
+            designation="ENGINEER",
+            gender="MALE",
+            salary=Decimal("20000"),
+        )
+        CompanyMembership.objects.create(
+            company=self.company, user=self.admin, role="OWNER", is_active=True
+        )
+        CompanyMembership.objects.create(
+            company=self.company, user=self.employee_user, role="STAFF", is_active=True
+        )
+
+    def test_admin_can_create_finalize_and_employee_acknowledge_review(self):
+        self.client.force_authenticate(self.admin)
+        created = self.client.post(
+            "/api/employees/hrms/performance/",
+            {
+                "employee_id": self.employee.id,
+                "period_start": "2026-09-01",
+                "period_end": "2026-09-30",
+                "goals_score": "90",
+                "attendance_score": "95",
+                "service_quality_score": "88",
+                "customer_score": "92",
+                "sales_score": "85",
+                "strengths": "Customer handling",
+                "improvement_plan": "Increase first-time-fix rate",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        review = PerformanceReview.objects.get(pk=created.data["id"])
+        self.assertEqual(review.status, "SUBMITTED")
+        self.assertEqual(review.overall_score, Decimal("90.00"))
+
+        finalized = self.client.post(
+            f"/api/employees/hrms/performance/{review.id}/action/",
+            {"action": "FINALIZE"},
+            format="json",
+        )
+        self.assertEqual(finalized.status_code, 200)
+
+        self.client.force_authenticate(self.employee_user)
+        acknowledged = self.client.post(
+            f"/api/employees/hrms/performance/{review.id}/action/",
+            {"action": "ACKNOWLEDGE"},
+            format="json",
+        )
+        self.assertEqual(acknowledged.status_code, 200)
+        review.refresh_from_db()
+        self.assertEqual(review.status, "ACKNOWLEDGED")
+
+    def test_document_compliance_marks_expired_document(self):
+        EmployeeDocument.objects.create(
+            employee=self.employee,
+            document_type="Driving Licence",
+            document_number="DL-TEST",
+            expiry_date=timezone.localdate() - timedelta(days=1),
+            verified=True,
+        )
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(
+            f"/api/employees/hrms/documents/?employee_id={self.employee.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["documents"][0]["expiry_state"], "EXPIRED")
