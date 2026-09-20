@@ -221,7 +221,7 @@ class JobPartSecurityFixtures:
             customer=self.customer,
             ro_asset=self.asset,
             engineer=self.engineer,
-            job_type="INSTALLATION",
+            job_type="SERVICE",
             priority="MEDIUM",
             scheduled_date=timezone.now(),
             status="IN_PROGRESS",
@@ -235,7 +235,7 @@ class JobPartSecurityFixtures:
             customer=self.customer,
             ro_asset=self.asset,
             engineer=self.other_engineer,
-            job_type="INSTALLATION",
+            job_type="SERVICE",
             priority="MEDIUM",
             scheduled_date=timezone.now(),
             status="IN_PROGRESS",
@@ -256,6 +256,13 @@ class JobPartSecurityFixtures:
 
 
 class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.job.job_type = "INSTALLATION"
+        self.job.save(update_fields=["job_type"])
+        self.other_job.job_type = "INSTALLATION"
+        self.other_job.save(update_fields=["job_type"])
 
     # =========================================================
     # 1. CORRECT ENGINEER CAN USE OWN BAG PART
