@@ -619,7 +619,7 @@ class EmployeeCareerMovementActionAPIView(APIView):
             return Response({"detail": "Active company workspace not found."}, status=403)
 
         row = EmployeeCareerMovement.objects.select_for_update().select_related(
-            "employee__user", "new_reporting_manager"
+            "employee__user"
         ).filter(
             pk=movement_id,
             employee_id=employee_id,
