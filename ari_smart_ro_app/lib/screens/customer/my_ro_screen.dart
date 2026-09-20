@@ -278,7 +278,7 @@ class _MyROScreenState extends State<MyROScreen> {
                           ),
                           _infoRow(
                             'Job',
-                            '${data['job_number'] ?? ''} • ${data['job_type'] ?? ''}',
+                            "${data['job_number'] ?? ''} • ${data['job_type'] ?? ''}",
                             Icons.work_outline,
                           ),
                           _infoRow(
