@@ -21,6 +21,9 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(() {
+      if (mounted && !_tabs.indexIsChanging) setState(() {});
+    });
     _load();
   }
 
