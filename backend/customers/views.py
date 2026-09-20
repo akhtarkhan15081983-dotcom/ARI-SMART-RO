@@ -16,6 +16,7 @@ from employees.models import EmployeeProfile
 from .models import Customer, PublicCustomerRequest
 from .serializers import PublicCustomerRequestSerializer
 
+from django.conf import settings
 from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -75,6 +76,11 @@ class PublicCustomerRequestAPIView(APIView):
     authentication_classes = []
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "public_request"
+
+    def get_throttles(self):
+        if getattr(settings, "DISABLE_AUTH_THROTTLING", False):
+            return []
+        return super().get_throttles()
 
     def post(self, request):
         serializer = PublicCustomerRequestSerializer(data=request.data)
