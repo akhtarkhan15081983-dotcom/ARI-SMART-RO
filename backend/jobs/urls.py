@@ -93,7 +93,7 @@ urlpatterns = [
         name="customer-active-job-otp",
     ),
     path(
-        "jobs/customer-assigned-engineer/",
+        "jobs/customer/assigned-engineer/",
         CustomerAssignedEngineerAPIView.as_view(),
         name="customer-assigned-engineer",
     ),
