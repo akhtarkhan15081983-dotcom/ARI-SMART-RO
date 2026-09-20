@@ -112,7 +112,11 @@ def has_feature_access(request, feature_key):
         return True
     company = request_company(request)
     if company is None:
-        return False
+        # Legacy employee accounts created before multi-company tenancy may
+        # not have a CompanyMembership yet. Preserve their original role
+        # permissions while keeping company-specific overrides for migrated
+        # accounts.
+        return feature_key in DEFAULT_ROLE_FEATURES.get(role, set())
     return feature_key in effective_role_features(company, role)
 
 
