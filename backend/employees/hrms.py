@@ -4,17 +4,19 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from attendance.models import Attendance
 from installation.models import Installation
 from jobs.models import Job
-from .models import EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
+from tenancy.models import CompanyMembership
+from .models import EmployeeDocument, EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
 
 
 MONEY = Decimal("0.01")
@@ -154,6 +156,59 @@ def calculate_payroll(employee, payroll_month):
         "rent_incentive": rent_incentive, "sale_incentive": sale_incentive,
         "other_deductions": total_other_deductions, "net_salary": max(Decimal("0"), net),
         "snapshot": {"calendar_days": days_in_month, "absent_days": str(absent_days), "unpaid_leave_units": str(unpaid_leave_units), "rent_installations": rent_count, "sale_installations": sale_count, "daily_rate": str(_money(daily_rate)), "hourly_rate": str(_money(hourly_rate)), "manual_penalty_ids": penalty_ids, "manual_penalty_count": len(penalty_ids), "manual_penalty_amount": str(manual_penalty), "work_delay_penalty_days": work_penalty_days, "work_delay_penalty_amount": str(work_delay_penalty), "work_delay_penalty_rate": "10.00", "work_delay_penalty_jobs": work_penalty_jobs},
+    }
+
+
+def _employee_scope(request):
+    queryset = EmployeeProfile.objects.select_related("user")
+    membership = (
+        CompanyMembership.objects.filter(
+            user=request.user,
+            is_active=True,
+            company__is_active=True,
+            company__lifecycle_status="ACTIVE",
+        )
+        .select_related("company")
+        .first()
+    )
+    if membership is not None:
+        return queryset.filter(company=membership.company)
+    try:
+        company_id = request.user.employee_profile.company_id
+    except (AttributeError, EmployeeProfile.DoesNotExist):
+        company_id = None
+    return queryset.filter(company_id=company_id) if company_id else queryset
+
+
+def _parse_period(value):
+    if value:
+        return _month(value)
+    today = timezone.localdate()
+    return today.replace(day=1)
+
+
+def _document_payload(document, request=None):
+    file_url = None
+    if document.file:
+        try:
+            file_url = (
+                request.build_absolute_uri(document.file.url)
+                if request is not None
+                else document.file.url
+            )
+        except Exception:
+            file_url = None
+    return {
+        "id": document.id,
+        "employee_id": document.employee_id,
+        "employee_code": document.employee.employee_id,
+        "employee_name": document.employee.user.get_full_name() or document.employee.user.phone,
+        "document_type": document.document_type,
+        "document_number": document.document_number,
+        "expiry_date": document.expiry_date,
+        "verified": document.verified,
+        "file_url": file_url,
+        "uploaded_at": document.uploaded_at,
     }
 
 
@@ -613,3 +668,282 @@ class PayrollExcelReportAPIView(APIView):
         response = HttpResponse(stream.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f'attachment; filename="ARI_Salary_Register_{month:%Y_%m}.xlsx"'
         return response
+
+
+class AdminHrmsCommandCenterAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _role(request.user, "ADMIN", "MANAGER"):
+            return Response(
+                {"detail": "Only Admin or Manager can access the HR command center."},
+                status=403,
+            )
+
+        try:
+            period = _parse_period(request.query_params.get("month"))
+        except ValueError:
+            return Response({"detail": "Month must be YYYY-MM."}, status=400)
+
+        today = timezone.localdate()
+        period_end = period.replace(day=calendar.monthrange(period.year, period.month)[1])
+        employees = _employee_scope(request)
+        active = employees.filter(is_active=True, user__is_active=True)
+        employee_ids = list(active.values_list("id", flat=True))
+
+        today_attendance = Attendance.objects.filter(
+            employee_id__in=employee_ids,
+            date=today,
+        )
+        month_attendance = Attendance.objects.filter(
+            employee_id__in=employee_ids,
+            date__range=(period, min(period_end, today)),
+        )
+
+        by_designation = {
+            row["designation"]: row["count"]
+            for row in active.values("designation").annotate(count=Count("id")).order_by("designation")
+        }
+
+        leave_rows = LeaveRequest.objects.filter(
+            employee_id__in=employee_ids,
+            start_date__lte=period_end,
+            end_date__gte=period,
+        )
+        payroll_rows = PayrollRecord.objects.filter(
+            employee_id__in=employee_ids,
+            payroll_month=period,
+        )
+        payroll_totals = payroll_rows.aggregate(total_net=Sum("net_salary"))
+
+        documents = EmployeeDocument.objects.filter(employee_id__in=employee_ids)
+        expiring_limit = today + timedelta(days=30)
+        expired_documents = documents.filter(expiry_date__lt=today)
+        expiring_documents = documents.filter(
+            expiry_date__gte=today,
+            expiry_date__lte=expiring_limit,
+        )
+
+        jobs = Job.objects.filter(
+            engineer_id__in=employee_ids,
+            scheduled_date__date__range=(period, period_end),
+        )
+        completed_jobs = jobs.filter(status="COMPLETED").count()
+
+        directory = []
+        today_by_employee = {
+            row.employee_id: row
+            for row in today_attendance.select_related("employee")
+        }
+        document_counts = {
+            row["employee_id"]: row
+            for row in documents.values("employee_id").annotate(
+                total=Count("id"),
+                verified_count=Count("id", filter=Q(verified=True)),
+            )
+        }
+        month_counts = {
+            row["employee_id"]: row
+            for row in month_attendance.values("employee_id").annotate(
+                attendance_days=Count("id"),
+                total_hours=Sum("working_hours"),
+            )
+        }
+
+        for employee in active.order_by("user__first_name", "user__last_name", "employee_id")[:500]:
+            today_row = today_by_employee.get(employee.id)
+            docs = document_counts.get(employee.id, {})
+            month_row = month_counts.get(employee.id, {})
+            directory.append({
+                "id": employee.id,
+                "employee_id": employee.employee_id,
+                "name": employee.user.get_full_name() or employee.user.phone,
+                "phone": employee.user.phone,
+                "designation": employee.designation,
+                "joining_date": employee.joining_date,
+                "salary": employee.salary,
+                "city": employee.city,
+                "is_online": employee.is_online,
+                "location_received": (
+                    employee.last_latitude is not None
+                    and employee.last_longitude is not None
+                ),
+                "today_attendance": None if today_row is None else {
+                    "status": today_row.status,
+                    "check_in": today_row.check_in,
+                    "check_out": today_row.check_out,
+                    "working_hours": today_row.working_hours,
+                    "identity_review_status": today_row.identity_review_status,
+                },
+                "month_attendance_days": month_row.get("attendance_days", 0),
+                "month_working_hours": month_row.get("total_hours") or 0,
+                "documents_total": docs.get("total", 0),
+                "documents_verified": docs.get("verified_count", 0),
+            })
+
+        alerts = [
+            {
+                "type": "DOCUMENT_EXPIRED",
+                "severity": "HIGH",
+                "title": f"{row.employee.user.get_full_name() or row.employee.user.phone}: {row.document_type} expired",
+                "date": row.expiry_date,
+                "employee_id": row.employee.employee_id,
+            }
+            for row in expired_documents.select_related("employee__user").order_by("expiry_date")[:20]
+        ]
+        alerts += [
+            {
+                "type": "DOCUMENT_EXPIRING",
+                "severity": "MEDIUM",
+                "title": f"{row.employee.user.get_full_name() or row.employee.user.phone}: {row.document_type} expires soon",
+                "date": row.expiry_date,
+                "employee_id": row.employee.employee_id,
+            }
+            for row in expiring_documents.select_related("employee__user").order_by("expiry_date")[:20]
+        ]
+        pending_leave_count = leave_rows.filter(status="PENDING").count()
+        pending_review_count = month_attendance.filter(identity_review_status="PENDING").count()
+        if pending_leave_count:
+            alerts.insert(0, {
+                "type": "LEAVE_APPROVAL",
+                "severity": "MEDIUM",
+                "title": f"{pending_leave_count} leave request(s) awaiting approval",
+                "date": today,
+            })
+        if pending_review_count:
+            alerts.insert(0, {
+                "type": "ATTENDANCE_REVIEW",
+                "severity": "HIGH",
+                "title": f"{pending_review_count} attendance selfie review(s) pending",
+                "date": today,
+            })
+
+        return Response({
+            "period": period.strftime("%Y-%m"),
+            "generated_at": timezone.now(),
+            "headcount": {
+                "active": active.count(),
+                "inactive": employees.exclude(is_active=True, user__is_active=True).count(),
+                "by_designation": by_designation,
+            },
+            "attendance_today": {
+                "present": today_attendance.exclude(status="ABSENT").count(),
+                "absent_marked": today_attendance.filter(status="ABSENT").count(),
+                "checked_out": today_attendance.filter(check_out__isnull=False).count(),
+                "missing": max(0, active.count() - today_attendance.count()),
+                "pending_identity_reviews": today_attendance.filter(identity_review_status="PENDING").count(),
+            },
+            "attendance_month": {
+                "records": month_attendance.count(),
+                "present_records": month_attendance.filter(status="PRESENT").count(),
+                "half_day_records": month_attendance.filter(status="HALF_DAY").count(),
+                "leave_records": month_attendance.filter(status="LEAVE").count(),
+                "total_hours": str(month_attendance.aggregate(total=Sum("working_hours"))["total"] or Decimal("0")),
+            },
+            "leave": {
+                "pending": pending_leave_count,
+                "approved": leave_rows.filter(status="APPROVED").count(),
+                "rejected": leave_rows.filter(status="REJECTED").count(),
+            },
+            "payroll": {
+                "records": payroll_rows.count(),
+                "draft": payroll_rows.filter(status="DRAFT").count(),
+                "approved": payroll_rows.filter(status="APPROVED").count(),
+                "paid": payroll_rows.filter(status="PAID").count(),
+                "total_net": str(payroll_totals["total_net"] or Decimal("0")),
+            },
+            "documents": {
+                "total": documents.count(),
+                "verified": documents.filter(verified=True).count(),
+                "unverified": documents.filter(verified=False).count(),
+                "expired": expired_documents.count(),
+                "expiring_30_days": expiring_documents.count(),
+            },
+            "work_kpis": {
+                "jobs": jobs.count(),
+                "completed": completed_jobs,
+                "open": jobs.exclude(status__in=["COMPLETED", "CANCELLED"]).count(),
+                "completion_rate": round((completed_jobs / jobs.count()) * 100, 1) if jobs.exists() else 0,
+            },
+            "alerts": alerts[:30],
+            "employees": directory,
+        })
+
+
+class EmployeeDocumentAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
+
+    def get(self, request):
+        scope = _employee_scope(request)
+        if _role(request.user, "ADMIN", "MANAGER"):
+            employee_ids = scope.values_list("id", flat=True)
+            rows = EmployeeDocument.objects.filter(employee_id__in=employee_ids)
+            employee_id = request.query_params.get("employee_id")
+            if employee_id:
+                rows = rows.filter(employee_id=employee_id)
+        else:
+            rows = EmployeeDocument.objects.filter(employee__user=request.user)
+        rows = rows.select_related("employee__user").order_by(
+            "employee__employee_id", "document_type", "-uploaded_at"
+        )
+        return Response({
+            "documents": [_document_payload(row, request) for row in rows[:1000]],
+        })
+
+    def post(self, request):
+        if not _role(request.user, "ADMIN"):
+            return Response({"detail": "Only Admin can add employee documents."}, status=403)
+
+        employee = _employee_scope(request).filter(
+            pk=request.data.get("employee_id"),
+            is_active=True,
+        ).first()
+        if employee is None:
+            return Response({"detail": "Active employee not found."}, status=404)
+
+        document_type = str(request.data.get("document_type") or "").strip()
+        document_number = str(request.data.get("document_number") or "").strip()
+        expiry_raw = str(request.data.get("expiry_date") or "").strip()
+        if not document_type:
+            return Response({"detail": "Document type is required."}, status=400)
+        try:
+            expiry_date = date.fromisoformat(expiry_raw) if expiry_raw else None
+        except ValueError:
+            return Response({"detail": "Expiry date must be YYYY-MM-DD."}, status=400)
+
+        row = EmployeeDocument.objects.create(
+            employee=employee,
+            document_type=document_type[:50],
+            document_number=document_number[:100],
+            expiry_date=expiry_date,
+            file=request.FILES.get("file"),
+            verified=False,
+        )
+        return Response(_document_payload(row, request), status=201)
+
+
+class EmployeeDocumentActionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, document_id):
+        if not _role(request.user, "ADMIN"):
+            return Response({"detail": "Only Admin can verify employee documents."}, status=403)
+
+        employee_ids = _employee_scope(request).values_list("id", flat=True)
+        row = EmployeeDocument.objects.select_related("employee__user").filter(
+            pk=document_id,
+            employee_id__in=employee_ids,
+        ).first()
+        if row is None:
+            return Response({"detail": "Employee document not found."}, status=404)
+
+        action = str(request.data.get("action") or "").upper()
+        if action == "VERIFY":
+            row.verified = True
+        elif action == "UNVERIFY":
+            row.verified = False
+        else:
+            return Response({"detail": "Action must be VERIFY or UNVERIFY."}, status=400)
+        row.save(update_fields=["verified"])
+        return Response(_document_payload(row, request))
