@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import EmployeeCareerMovement, EmployeeDocument, EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
+from .models import EmployeeCareerMovement, EmployeeDocument, EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord, PerformanceReview
 
 
 @admin.register(EmployeeProfile)
@@ -100,3 +100,17 @@ class EmployeeCareerMovementAdmin(admin.ModelAdmin):
         "old_salary", "old_reporting_manager", "created_by", "approved_by",
         "approved_at", "cancelled_at", "created_at",
     )
+
+
+@admin.register(PerformanceReview)
+class PerformanceReviewAdmin(admin.ModelAdmin):
+    list_display = (
+        "employee", "period_start", "period_end", "overall_score",
+        "status", "reviewer", "finalized_at", "acknowledged_at",
+    )
+    list_filter = ("status", "period_start", "period_end")
+    search_fields = (
+        "employee__employee_id", "employee__user__first_name",
+        "employee__user__phone", "strengths", "improvement_plan",
+    )
+    readonly_fields = ("overall_score", "created_at", "updated_at", "finalized_at", "acknowledged_at")
