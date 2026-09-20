@@ -7,6 +7,10 @@ from .views import (
     VerifyOTPAPIView,
     LoginAPIView,
     ChangePasswordAPIView,
+    ForgotPasswordRequestAPIView,
+    AdminPasswordResetRequestListAPIView,
+    AdminPasswordResetReviewAPIView,
+    CompleteAdminApprovedPasswordResetAPIView,
 )
 from .sim_verification import SimVerificationPollAPIView, SimVerificationStartAPIView, SmsGatewayIngestAPIView
 from .engagement import CustomerEngagementAPIView
@@ -66,6 +70,26 @@ urlpatterns = [
         "change-password/",
         ChangePasswordAPIView.as_view(),
         name="change-password",
+    ),
+    path(
+        "forgot-password/request/",
+        ForgotPasswordRequestAPIView.as_view(),
+        name="forgot-password-request",
+    ),
+    path(
+        "forgot-password/complete/",
+        CompleteAdminApprovedPasswordResetAPIView.as_view(),
+        name="forgot-password-complete",
+    ),
+    path(
+        "admin/password-reset-requests/",
+        AdminPasswordResetRequestListAPIView.as_view(),
+        name="admin-password-reset-request-list",
+    ),
+    path(
+        "admin/password-reset-requests/<int:reset_request_id>/review/",
+        AdminPasswordResetReviewAPIView.as_view(),
+        name="admin-password-reset-request-review",
     ),
     path(
         "token/refresh/",
