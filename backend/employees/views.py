@@ -13,7 +13,7 @@ from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator
 from accounts.models import User
 from tenancy.models import CompanyMembership
 
-from .models import EmployeeProfile
+from .models import EmployeeCareerMovement, EmployeeProfile
 from .serializers import (
     EmployeeLocationSerializer,
     EmployeeProfileSerializer,
@@ -458,3 +458,203 @@ class EmployeeLifecycleAPIView(APIView):
             return Response({"success": True, "message": f"{name} permanently deleted."})
 
         return Response({"detail": "Invalid employee lifecycle action."}, status=400)
+
+
+# ============================================================
+# CORPORATE CAREER MOVEMENT / PROMOTION WORKFLOW
+# ============================================================
+
+class EmployeeCareerMovementAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request, employee_id):
+        company = _request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+        employee = EmployeeProfile.objects.filter(pk=employee_id, company=company).select_related(
+            "user", "reporting_manager__user"
+        ).first()
+        if employee is None:
+            return Response({"detail": "Employee not found."}, status=404)
+        rows = employee.career_movements.select_related(
+            "created_by", "approved_by", "old_reporting_manager__user", "new_reporting_manager__user"
+        )[:200]
+        return Response({
+            "employee": {
+                "id": employee.id,
+                "employee_id": employee.employee_id,
+                "name": employee.user.get_full_name() or employee.user.phone,
+                "designation": employee.designation,
+                "job_title": employee.job_title,
+                "department": employee.department,
+                "grade": employee.grade,
+                "salary": employee.salary,
+                "reporting_manager": None if employee.reporting_manager is None else {
+                    "id": employee.reporting_manager_id,
+                    "name": employee.reporting_manager.user.get_full_name() or employee.reporting_manager.user.phone,
+                },
+            },
+            "history": [{
+                "id": row.id,
+                "movement_type": row.movement_type,
+                "effective_date": row.effective_date,
+                "old_designation": row.old_designation,
+                "new_designation": row.new_designation,
+                "old_job_title": row.old_job_title,
+                "new_job_title": row.new_job_title,
+                "old_department": row.old_department,
+                "new_department": row.new_department,
+                "old_grade": row.old_grade,
+                "new_grade": row.new_grade,
+                "old_salary": row.old_salary,
+                "new_salary": row.new_salary,
+                "old_reporting_manager": None if row.old_reporting_manager is None else (
+                    row.old_reporting_manager.user.get_full_name() or row.old_reporting_manager.user.phone
+                ),
+                "new_reporting_manager": None if row.new_reporting_manager is None else (
+                    row.new_reporting_manager.user.get_full_name() or row.new_reporting_manager.user.phone
+                ),
+                "reason": row.reason,
+                "status": row.status,
+                "created_by": row.created_by.get_full_name() or row.created_by.phone,
+                "approved_by": None if row.approved_by is None else (row.approved_by.get_full_name() or row.approved_by.phone),
+                "approved_at": row.approved_at,
+            } for row in rows],
+        })
+
+    @transaction.atomic
+    def post(self, request, employee_id):
+        company = _request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+        employee = EmployeeProfile.objects.select_for_update().filter(
+            pk=employee_id, company=company, is_active=True
+        ).first()
+        if employee is None:
+            return Response({"detail": "Active employee not found."}, status=404)
+
+        movement_type = str(request.data.get("movement_type") or "PROMOTION").upper()
+        allowed_types = {choice[0] for choice in EmployeeCareerMovement.TYPE_CHOICES}
+        if movement_type not in allowed_types:
+            return Response({"detail": "Invalid career movement type."}, status=400)
+
+        try:
+            effective_date = date.fromisoformat(str(request.data.get("effective_date") or ""))
+        except ValueError:
+            return Response({"detail": "Valid effective date is required."}, status=400)
+
+        reason = str(request.data.get("reason") or "").strip()
+        if not reason:
+            return Response({"detail": "Reason is required."}, status=400)
+
+        new_designation = str(request.data.get("new_designation") or employee.designation).upper()
+        if new_designation not in {choice[0] for choice in EmployeeProfile.DESIGNATION_CHOICES}:
+            return Response({"detail": "Invalid new designation."}, status=400)
+
+        new_job_title = str(request.data.get("new_job_title") or employee.job_title).strip()[:120]
+        new_department = str(request.data.get("new_department") or employee.department).strip()[:100]
+        new_grade = str(request.data.get("new_grade") or employee.grade).strip()[:50]
+
+        raw_salary = request.data.get("new_salary")
+        try:
+            new_salary = employee.salary if raw_salary in (None, "") else Decimal(str(raw_salary))
+        except Exception:
+            return Response({"detail": "Valid new salary is required."}, status=400)
+        if new_salary < 0:
+            return Response({"detail": "Salary cannot be negative."}, status=400)
+
+        manager_id = request.data.get("new_reporting_manager_id")
+        new_manager = employee.reporting_manager
+        if manager_id not in (None, ""):
+            new_manager = EmployeeProfile.objects.filter(
+                pk=manager_id, company=company, is_active=True
+            ).first()
+            if new_manager is None:
+                return Response({"detail": "Reporting manager not found."}, status=400)
+            if new_manager.id == employee.id:
+                return Response({"detail": "Employee cannot report to themselves."}, status=400)
+
+        row = EmployeeCareerMovement.objects.create(
+            employee=employee,
+            movement_type=movement_type,
+            effective_date=effective_date,
+            old_designation=employee.designation,
+            new_designation=new_designation,
+            old_job_title=employee.job_title,
+            new_job_title=new_job_title,
+            old_department=employee.department,
+            new_department=new_department,
+            old_grade=employee.grade,
+            new_grade=new_grade,
+            old_salary=employee.salary,
+            new_salary=new_salary,
+            old_reporting_manager=employee.reporting_manager,
+            new_reporting_manager=new_manager,
+            reason=reason[:500],
+            created_by=request.user,
+        )
+        return Response({
+            "id": row.id,
+            "status": row.status,
+            "detail": "Career movement saved as draft for approval.",
+        }, status=201)
+
+
+class EmployeeCareerMovementActionAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    @transaction.atomic
+    def post(self, request, employee_id, movement_id):
+        company = _request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        row = EmployeeCareerMovement.objects.select_for_update().select_related(
+            "employee__user", "new_reporting_manager"
+        ).filter(
+            pk=movement_id,
+            employee_id=employee_id,
+            employee__company=company,
+            status="DRAFT",
+        ).first()
+        if row is None:
+            return Response({"detail": "Draft career movement not found."}, status=404)
+
+        action = str(request.data.get("action") or "").upper()
+        if action == "CANCEL":
+            row.status = "CANCELLED"
+            row.cancelled_at = timezone.now()
+            row.save(update_fields=["status", "cancelled_at"])
+            return Response({"detail": "Career movement cancelled.", "status": row.status})
+
+        if action != "APPROVE":
+            return Response({"detail": "Action must be APPROVE or CANCEL."}, status=400)
+
+        employee = row.employee
+        employee.designation = row.new_designation or employee.designation
+        employee.job_title = row.new_job_title
+        employee.department = row.new_department
+        employee.grade = row.new_grade
+        if row.new_salary is not None:
+            employee.salary = row.new_salary
+        employee.reporting_manager = row.new_reporting_manager
+        employee.save(update_fields=[
+            "designation", "job_title", "department", "grade", "salary", "reporting_manager"
+        ])
+
+        role = "MANAGER" if employee.designation == "MANAGER" else employee.designation
+        employee.user.role = role
+        employee.user.save(update_fields=["role"])
+        CompanyMembership.objects.filter(company=company, user=employee.user).update(
+            role="MANAGER" if employee.designation == "MANAGER" else "STAFF"
+        )
+
+        row.status = "APPROVED"
+        row.approved_by = request.user
+        row.approved_at = timezone.now()
+        row.save(update_fields=["status", "approved_by", "approved_at"])
+
+        return Response({
+            "detail": "Career movement approved and employee profile updated.",
+            "status": row.status,
+        })
