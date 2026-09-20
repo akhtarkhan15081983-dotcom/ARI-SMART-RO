@@ -12,7 +12,8 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 
-from .models import Branch, Company, CompanyLifecycleEvent, CompanyMembership, CompanySubscription, RoleFeaturePermission, SubscriptionPlan
+from .models import Branch, Company, CompanyLifecycleEvent, CompanyMembership, CompanySubscription, SubscriptionPlan
+from .access import ROLE_FEATURE_CATALOG, effective_role_features, request_company
 from .serializers import (
     CompanyLifecycleEventSerializer, CompanySerializer, MembershipSerializer,
     PublicCompanyBrandSerializer, SubscriptionPlanSerializer,
@@ -23,90 +24,11 @@ def _platform_super_admin(user):
     return bool(user and user.is_authenticated and user.is_active and user.is_superuser)
 
 
-ROLE_FEATURE_CATALOG = {
-    "attendance": "Attendance",
-    "hrms": "Employee HRMS",
-    "work_calendar": "Work Calendar",
-    "work_route": "Work Route",
-    "jobs": "Jobs",
-    "assigned_customers": "Assigned Customers",
-    "customers": "Customers",
-    "walkin": "Walk-In Installation",
-    "service": "Service",
-    "bag": "Engineer Bag",
-    "request": "Part Request",
-    "qr": "QR Verification",
-    "rent_management": "Rent Management",
-    "payment_history": "Payment History",
-    "complaint": "Complaint",
-    "referral": "Refer & Wallet",
-    "profile": "Profile",
-    "reports": "Business Reports",
-    "inventory_workflow": "Inventory Control",
-    "calling_desk": "Calling Desk",
-    "map": "Live Map",
-    "engineer_map": "Engineer Live Location",
-    "employee_management": "Employee Management",
-    "performance_admin": "Performance Management",
-    "documents_admin": "Document Compliance",
-}
-
-DEFAULT_ROLE_FEATURES = {
-    "MANAGER": {
-        "attendance", "hrms", "work_calendar", "work_route", "jobs",
-        "assigned_customers", "customers", "walkin", "service", "bag",
-        "request", "qr", "rent_management", "payment_history", "complaint",
-        "referral", "profile", "reports", "inventory_workflow", "calling_desk",
-        "map", "engineer_map", "performance_admin", "documents_admin",
-    },
-    "OFFICE": {
-        "attendance", "hrms", "customers", "walkin", "service",
-        "rent_management", "payment_history", "reports", "inventory_workflow",
-        "work_calendar", "work_route", "complaint", "referral", "profile",
-        "calling_desk", "documents_admin",
-    },
-    "CALLING": {"attendance", "hrms", "calling_desk", "profile"},
-    "ENGINEER": {
-        "attendance", "hrms", "work_calendar", "work_route", "jobs",
-        "assigned_customers", "customers", "walkin", "service", "bag",
-        "request", "qr", "rent_management", "complaint", "referral", "profile",
-    },
-}
-
-
-def _request_company(request):
-    membership = (
-        CompanyMembership.objects.filter(
-            user=request.user,
-            is_active=True,
-            company__is_active=True,
-            company__lifecycle_status="ACTIVE",
-        )
-        .select_related("company")
-        .first()
-    )
-    return membership.company if membership else None
-
-
-def effective_role_features(company, role):
-    role = str(role or "").strip().upper()
-    if role == "ADMIN":
-        return set(ROLE_FEATURE_CATALOG.keys())
-    defaults = set(DEFAULT_ROLE_FEATURES.get(role, set()))
-    overrides = RoleFeaturePermission.objects.filter(company=company, role=role)
-    for row in overrides:
-        if row.is_allowed:
-            defaults.add(row.feature_key)
-        else:
-            defaults.discard(row.feature_key)
-    return defaults
-
-
 class RoleFeaturePermissionAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        company = _request_company(request)
+        company = request_company(request)
         if company is None:
             return Response({"detail": "Active company workspace not found."}, status=403)
         role = str(request.query_params.get("role") or request.user.role or "").upper()
@@ -126,7 +48,7 @@ class RoleFeaturePermissionAPIView(APIView):
     def post(self, request):
         if str(getattr(request.user, "role", "") or "").upper() != "ADMIN":
             return Response({"detail": "Only admin can change role permissions."}, status=403)
-        company = _request_company(request)
+        company = request_company(request)
         if company is None:
             return Response({"detail": "Active company workspace not found."}, status=403)
 
