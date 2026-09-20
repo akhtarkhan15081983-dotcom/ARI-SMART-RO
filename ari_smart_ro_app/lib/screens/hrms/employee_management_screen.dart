@@ -451,7 +451,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Employee ID: ${employee['employee_id']}',
+                  "Employee ID: ${employee['employee_id']}",
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 14),
@@ -459,10 +459,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                   QrImageView(data: 'ARI-EMP:$code', size: 150),
                 const SizedBox(height: 8),
                 Text('Verification: $code'),
-                Text('Valid until: ${idCard['valid_until'] ?? '-'}'),
+                Text("Valid until: ${idCard['valid_until'] ?? '-'}"),
                 const Divider(height: 26),
                 Text(
-                  'Onboarding: ${onboarding['status'] ?? '-'}',
+                  "Onboarding: ${onboarding['status'] ?? '-'}",
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
                 Text(
