@@ -331,6 +331,7 @@ class NotificationCampaign(models.Model):
 
 
 class UserNotification(models.Model):
+    event_key = models.CharField(max_length=160, blank=True, default="")
     campaign = models.ForeignKey(
         NotificationCampaign,
         on_delete=models.SET_NULL,
@@ -356,6 +357,12 @@ class UserNotification(models.Model):
         indexes = [
             models.Index(fields=["user", "is_read", "created_at"], name="acct_notif_user_read_idx"),
             models.Index(fields=["category", "created_at"], name="acct_notif_category_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "event_key"],
+                name="unique_user_notification_event",
+            )
         ]
 
     def __str__(self):
