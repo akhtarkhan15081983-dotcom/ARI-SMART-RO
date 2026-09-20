@@ -13,6 +13,7 @@ import '../admin/attendance_security_test_screen.dart';
 import '../admin/attendance_review_admin_screen.dart';
 import '../admin/engineer_bag_admin_screen.dart';
 import '../admin/saas_super_admin_screen.dart';
+import '../admin/password_reset_approval_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
 import '../bag/my_bag_screen.dart';
@@ -315,6 +316,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       case 'face_security_admin':
         if (_role == 'ADMIN') {
           _push(const FaceSecurityAdminScreen());
+        } else {
+          _showComingSoon('Restricted');
+        }
+        return;
+      case 'password_reset_approvals':
+        if (_role == 'ADMIN') {
+          _push(const PasswordResetApprovalScreen());
         } else {
           _showComingSoon('Restricted');
         }
