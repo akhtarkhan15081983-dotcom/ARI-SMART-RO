@@ -13,6 +13,32 @@ class HrmsService {
   Future<List<Map<String, dynamic>>> leaves() async =>
       _list('/employees/hrms/leaves/', 'leaves');
 
+  Future<Map<String, dynamic>> commandCenter({String? month}) async {
+    final suffix = month == null ? '' : '?month=$month';
+    final response = await http.get(
+      Uri.parse('${ApiService.baseUrl}/employees/hrms/command-center/$suffix'),
+      headers: await ApiService.authHeaders(),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> documents({int? employeeId}) async {
+    final suffix = employeeId == null ? '' : '?employee_id=$employeeId';
+    return _list('/employees/hrms/documents/$suffix', 'documents');
+  }
+
+  Future<void> verifyDocument(int documentId, {required bool verified}) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/documents/$documentId/action/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({'action': verified ? 'VERIFY' : 'UNVERIFY'}),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+  }
+
   Future<Map<String, dynamic>> dashboard() async {
     final response = await http.get(
       Uri.parse('${ApiService.baseUrl}/employees/hrms/dashboard/'),
