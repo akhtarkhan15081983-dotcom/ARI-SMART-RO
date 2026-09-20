@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
 
 from customers.models import Customer
 
@@ -40,6 +41,38 @@ class ProfessionalReferralFlowTests(TestCase):
     def setUp(self):
         self.referrer = self._customer("9100000001", "Referrer")
         self.code = get_or_create_profile(self.referrer).referral_code
+
+    def test_every_authenticated_role_can_open_referral_wallet(self):
+        for index, role in enumerate(("ADMIN", "MANAGER", "ENGINEER", "OFFICE"), start=1):
+            user = get_user_model().objects.create_user(
+                phone=f"920000000{index}",
+                password="Test@123",
+                role=role,
+                is_verified=True,
+                first_name=role.title(),
+            )
+            client = APIClient()
+            client.force_authenticate(user=user)
+
+            response = client.get("/api/referrals/me/")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.data["capabilities"]["can_refer"])
+            self.assertFalse(response.data["capabilities"]["can_apply_referral_code"])
+            self.assertTrue(response.data["referral_code"].startswith("ARI"))
+
+    def test_customer_wallet_summary_contains_company_dashboard_fields(self):
+        client = APIClient()
+        client.force_authenticate(user=self.referrer)
+
+        response = client.get("/api/referrals/me/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("wallet_balance", response.data)
+        self.assertIn("lifetime_earnings", response.data)
+        self.assertIn("referral_stats", response.data)
+        self.assertIn("transactions", response.data)
+        self.assertTrue(response.data["capabilities"]["can_apply_referral_code"])
 
     def test_verified_claim_automatically_credits_100_points_to_referrer(self):
         referred = self._customer("9100000002", "Referred")

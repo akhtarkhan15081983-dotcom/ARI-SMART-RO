@@ -58,7 +58,7 @@ def change_job_status(job, new_status):
 
     config = STATUS_CONFIG[new_status]
 
-    if new_status == "COMPLETED":
+    if new_status == "COMPLETED" and job.job_type == "INSTALLATION":
 
         if not job.parts_used.exists():
             raise ValueError(
