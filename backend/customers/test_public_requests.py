@@ -1,4 +1,8 @@
 from django.urls import reverse
+from django.utils import timezone
+from decimal import Decimal
+
+from accounts.models import CustomerEngagement
 from rest_framework.test import APITestCase
 
 from products.models import ProductCategory, ROModel
@@ -91,3 +95,52 @@ class PublicCustomerRequestTests(APITestCase):
         )
         self.assertEqual(sale_response.status_code, 400)
         self.assertEqual(rent_response.status_code, 201)
+
+
+    def test_purchase_promo_code_reduces_total(self):
+        CustomerEngagement.objects.create(
+            kind="OFFER",
+            audience="ALL",
+            title="Festival Purchase Offer",
+            message="₹1000 off",
+            discount_type="FIXED",
+            discount_value=Decimal("1000.00"),
+            promo_code="FEST1000",
+            offer_scope="PURCHASE",
+            auto_apply=False,
+            valid_from=timezone.now(),
+            priority=90,
+            action="SHOP",
+        )
+        response = self.client.post(
+            self.url,
+            {
+                **self.contact,
+                "request_type": "PURCHASE",
+                "product": self.product.id,
+                "quantity": 1,
+                "offer_code": "FEST1000",
+                "payment_method": "COD",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        order = PublicCustomerRequest.objects.get()
+        self.assertEqual(order.base_amount, Decimal("8999.00"))
+        self.assertEqual(order.discount_amount, Decimal("1000.00"))
+        self.assertEqual(order.total_amount, Decimal("7999.00"))
+        self.assertEqual(order.applied_offer.title, "Festival Purchase Offer")
+        self.assertEqual(response.data["total_amount"], "7999.00")
+
+    def test_invalid_purchase_promo_code_is_rejected(self):
+        response = self.client.post(
+            self.url,
+            {
+                **self.contact,
+                "request_type": "PURCHASE",
+                "product": self.product.id,
+                "offer_code": "INVALID",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)

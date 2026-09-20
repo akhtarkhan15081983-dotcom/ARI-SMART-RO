@@ -217,6 +217,15 @@ class CustomerEngagement(models.Model):
         ("RENT", "Pay Rent"),
         ("SERVICE", "Book Service"),
         ("REFERRAL", "Open Referral"),
+        ("NOTIFICATIONS", "Open Notification Center"),
+    ]
+    OFFER_SCOPE_CHOICES = [
+        ("NONE", "Message Only"),
+        ("RENT", "Rent"),
+        ("PURCHASE", "Purchase"),
+        ("SERVICE", "Service"),
+        ("AMC", "AMC"),
+        ("REFERRAL", "Referral"),
     ]
 
     kind = models.CharField(max_length=16, choices=KIND_CHOICES, default="ANNOUNCEMENT")
@@ -231,11 +240,15 @@ class CustomerEngagement(models.Model):
     discount_type = models.CharField(max_length=10, choices=DISCOUNT_CHOICES, default="NONE")
     discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     promo_code = models.CharField(max_length=30, blank=True, default="")
+    offer_scope = models.CharField(max_length=12, choices=OFFER_SCOPE_CHOICES, default="NONE")
+    auto_apply = models.BooleanField(default=False)
+    max_discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    minimum_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     terms = models.CharField(max_length=300, blank=True, default="")
     valid_from = models.DateTimeField(default=timezone.now)
     valid_until = models.DateTimeField(null=True, blank=True)
     priority = models.PositiveSmallIntegerField(default=50)
-    action = models.CharField(max_length=12, choices=ACTION_CHOICES, default="NONE")
+    action = models.CharField(max_length=16, choices=ACTION_CHOICES, default="NONE")
     action_label = models.CharField(max_length=40, blank=True, default="")
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
@@ -260,6 +273,132 @@ class CustomerEngagementRead(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["engagement", "user"], name="unique_engagement_read")
         ]
+
+
+class NotificationCampaign(models.Model):
+    CATEGORY_CHOICES = [
+        ("GENERAL", "General"),
+        ("HRMS", "HRMS"),
+        ("ATTENDANCE", "Attendance"),
+        ("LEAVE", "Leave"),
+        ("PAYROLL", "Payroll"),
+        ("JOB", "Job"),
+        ("SERVICE", "Service"),
+        ("COMPLAINT", "Complaint"),
+        ("RENT", "Rent"),
+        ("PAYMENT", "Payment"),
+        ("OFFER", "Offer"),
+        ("SECURITY", "Security"),
+        ("SYSTEM", "System"),
+    ]
+    PRIORITY_CHOICES = [
+        ("LOW", "Low"),
+        ("NORMAL", "Normal"),
+        ("HIGH", "High"),
+        ("CRITICAL", "Critical"),
+    ]
+    AUDIENCE_CHOICES = [
+        ("ALL", "Everyone"),
+        ("CUSTOMERS", "All Customers"),
+        ("EMPLOYEES", "All Employees"),
+        ("ROLE", "Specific Role"),
+        ("USERS", "Selected Users"),
+    ]
+    ACTION_CHOICES = CustomerEngagement.ACTION_CHOICES
+
+    title = models.CharField(max_length=140)
+    message = models.TextField(max_length=1000)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default="GENERAL")
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default="NORMAL")
+    audience = models.CharField(max_length=16, choices=AUDIENCE_CHOICES, default="ALL")
+    target_role = models.CharField(max_length=20, choices=User.ROLE_CHOICES, blank=True, default="")
+    target_users = models.ManyToManyField(User, blank=True, related_name="notification_campaign_targets")
+    action = models.CharField(max_length=16, choices=ACTION_CHOICES, default="NONE")
+    action_label = models.CharField(max_length=50, blank=True, default="")
+    valid_until = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="created_notification_campaigns",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
+class UserNotification(models.Model):
+    event_key = models.CharField(max_length=160, blank=True, default="")
+    campaign = models.ForeignKey(
+        NotificationCampaign,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deliveries",
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    title = models.CharField(max_length=140)
+    message = models.TextField(max_length=1000)
+    category = models.CharField(max_length=20, choices=NotificationCampaign.CATEGORY_CHOICES, default="GENERAL")
+    priority = models.CharField(max_length=10, choices=NotificationCampaign.PRIORITY_CHOICES, default="NORMAL")
+    action = models.CharField(max_length=16, choices=NotificationCampaign.ACTION_CHOICES, default="NONE")
+    action_label = models.CharField(max_length=50, blank=True, default="")
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    valid_until = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "is_read", "created_at"], name="acct_notif_user_read_idx"),
+            models.Index(fields=["category", "created_at"], name="acct_notif_category_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "event_key"],
+                name="unique_user_notification_event",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user.phone}: {self.title}"
+
+
+class OfferRedemption(models.Model):
+    engagement = models.ForeignKey(
+        CustomerEngagement,
+        on_delete=models.PROTECT,
+        related_name="redemptions",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="offer_redemptions",
+    )
+    customer_phone = models.CharField(max_length=15, blank=True, default="")
+    scope = models.CharField(max_length=12, choices=CustomerEngagement.OFFER_SCOPE_CHOICES)
+    reference = models.CharField(max_length=80)
+    base_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    final_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    redeemed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-redeemed_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["engagement", "scope", "reference"],
+                name="unique_offer_scope_reference_redemption",
+            )
+        ]
+
 
 
 class SmsGatewaySubmission(models.Model):

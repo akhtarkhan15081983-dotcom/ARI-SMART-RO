@@ -8,6 +8,7 @@ import '../../services/attendance_service.dart';
 import '../../services/live_location_service.dart';
 import '../../services/saas_admin_service.dart';
 import '../../services/role_permission_service.dart';
+import '../../services/notification_center_service.dart';
 import '../../utils/search_utils.dart';
 import '../admin/face_security_admin_screen.dart';
 import '../admin/attendance_security_test_screen.dart';
@@ -16,6 +17,8 @@ import '../admin/engineer_bag_admin_screen.dart';
 import '../admin/saas_super_admin_screen.dart';
 import '../admin/password_reset_approval_screen.dart';
 import '../admin/role_access_control_screen.dart';
+import '../admin/notification_offer_admin_screen.dart';
+import '../notifications/notification_center_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
 import '../bag/my_bag_screen.dart';
@@ -59,6 +62,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   final SaasAdminService _saasAdminService = const SaasAdminService();
   final RolePermissionService _rolePermissionService =
       const RolePermissionService();
+  final NotificationCenterService _notificationCenterService =
+      const NotificationCenterService();
   static const List<DashboardItem> _customerItems = [
     DashboardItems.andy,
     DashboardItem(title: 'My RO', icon: Icons.water_drop, route: 'my_ro'),
@@ -82,6 +87,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   String _role = 'CUSTOMER';
   bool _isPlatformSuperAdmin = false;
   Set<String> _allowedFeatures = const {};
+  int _notificationUnread = 0;
   bool _isLoadingAttendance = true,
       _isLoadingRole = true,
       _isExitDialogShowing = false;
@@ -144,6 +150,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       await _loadAttendance();
     } else if (mounted) {
       setState(() => _isLoadingAttendance = false);
+    }
+    try {
+      final notifications = await _notificationCenterService.fetch();
+      if (mounted) setState(() => _notificationUnread = notifications.unreadCount);
+    } catch (_) {
+      // Notification center must never block the dashboard.
     }
   }
 
@@ -361,6 +373,13 @@ class _DashboardScreenState extends State<DashboardScreen>
           _push(const RoleAccessControlScreen());
         } else {
           _showComingSoon('Only admin can control role access.');
+        }
+        return;
+      case 'notification_offer_admin':
+        if (_role == 'ADMIN') {
+          _push(const NotificationOfferAdminScreen());
+        } else {
+          _showComingSoon('Only admin can manage notifications and offers.');
         }
         return;
       case 'attendance_review_admin':
@@ -654,6 +673,45 @@ class _DashboardScreenState extends State<DashboardScreen>
         appBar: AppBar(
           title: Text(isCustomer ? 'ARI Smart RO' : '$_role Dashboard'),
           actions: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  tooltip: 'Notifications',
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationCenterScreen(),
+                      ),
+                    );
+                    if (mounted) _loadDashboard();
+                  },
+                  icon: const Icon(Icons.notifications_outlined),
+                ),
+                if (_notificationUnread > 0)
+                  Positioned(
+                    right: 5,
+                    top: 5,
+                    child: Container(
+                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _notificationUnread > 99 ? '99+' : '$_notificationUnread',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             IconButton(onPressed: _logout, icon: const Icon(Icons.logout)),
           ],
         ),

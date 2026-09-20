@@ -1,12 +1,12 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import AuthSecurityEvent, CustomerEngagement, CustomerEngagementRead, SimVerificationChallenge, SmsGatewayDevice, SmsGatewaySubmission, User
+from .models import AuthSecurityEvent, CustomerEngagement, CustomerEngagementRead, NotificationCampaign, OfferRedemption, SimVerificationChallenge, SmsGatewayDevice, SmsGatewaySubmission, User, UserNotification
 
 
 @admin.register(CustomerEngagement)
 class CustomerEngagementAdmin(admin.ModelAdmin):
-    list_display = ("title", "kind", "audience", "target_user", "discount_type", "discount_value", "valid_until", "is_active")
-    list_filter = ("kind", "audience", "discount_type", "is_active", "valid_from", "valid_until")
+    list_display = ("title", "kind", "audience", "target_user", "offer_scope", "discount_type", "discount_value", "auto_apply", "valid_until", "is_active")
+    list_filter = ("kind", "audience", "offer_scope", "discount_type", "auto_apply", "is_active", "valid_from", "valid_until")
     search_fields = ("title", "message", "promo_code", "target_user__phone", "target_user__first_name")
     autocomplete_fields = ("target_user",)
     readonly_fields = ("created_at", "created_by")
@@ -143,4 +143,35 @@ class SmsGatewaySubmissionAdmin(admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(NotificationCampaign)
+class NotificationCampaignAdmin(admin.ModelAdmin):
+    list_display = ("title", "category", "priority", "audience", "target_role", "is_active", "created_by", "created_at")
+    list_filter = ("category", "priority", "audience", "target_role", "is_active")
+    search_fields = ("title", "message")
+    filter_horizontal = ("target_users",)
+    readonly_fields = ("created_at",)
+
+
+@admin.register(UserNotification)
+class UserNotificationAdmin(admin.ModelAdmin):
+    list_display = ("user", "title", "category", "priority", "is_read", "created_at")
+    list_filter = ("category", "priority", "is_read", "created_at")
+    search_fields = ("user__phone", "user__first_name", "title", "message", "event_key")
+    readonly_fields = ("campaign", "event_key", "user", "title", "message", "category", "priority", "action", "action_label", "metadata", "created_at", "read_at")
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(OfferRedemption)
+class OfferRedemptionAdmin(admin.ModelAdmin):
+    list_display = ("engagement", "scope", "customer_phone", "base_amount", "discount_amount", "final_amount", "redeemed_at")
+    list_filter = ("scope", "redeemed_at")
+    search_fields = ("engagement__title", "engagement__promo_code", "customer_phone", "reference")
+    readonly_fields = ("engagement", "user", "customer_phone", "scope", "reference", "base_amount", "discount_amount", "final_amount", "redeemed_at")
+
+    def has_add_permission(self, request):
         return False

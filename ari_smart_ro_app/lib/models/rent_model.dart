@@ -67,6 +67,10 @@ class CustomerRentInfo {
 class CurrentRent {
   final String status;
 
+  final double baseRent;
+  final double discountAmount;
+  final String offerTitle;
+  final String promoCode;
   final double expectedRent;
   final double paidAmount;
   final double balance;
@@ -78,6 +82,10 @@ class CurrentRent {
 
   CurrentRent({
     required this.status,
+    required this.baseRent,
+    required this.discountAmount,
+    required this.offerTitle,
+    required this.promoCode,
     required this.expectedRent,
     required this.paidAmount,
     required this.balance,
@@ -102,6 +110,20 @@ class CurrentRent {
   factory CurrentRent.fromJson(Map<String, dynamic> json) {
     return CurrentRent(
       status: json["status"]?.toString() ?? "PENDING",
+
+      baseRent:
+          double.tryParse(json["base_rent"]?.toString() ?? json["expected_rent"]?.toString() ?? "0") ?? 0,
+
+      discountAmount:
+          double.tryParse(json["discount_amount"]?.toString() ?? "0") ?? 0,
+
+      offerTitle: json["applied_offer"] is Map
+          ? (json["applied_offer"]["title"]?.toString() ?? "")
+          : "",
+
+      promoCode: json["applied_offer"] is Map
+          ? (json["applied_offer"]["promo_code"]?.toString() ?? "")
+          : "",
 
       expectedRent:
           double.tryParse(json["expected_rent"]?.toString() ?? "0") ?? 0,

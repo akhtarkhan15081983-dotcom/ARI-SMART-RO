@@ -64,6 +64,15 @@ class PublicCustomerRequest(models.Model):
     pincode = models.CharField(max_length=6)
     quantity = models.PositiveSmallIntegerField(default=1)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    base_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    applied_offer = models.ForeignKey(
+        "accounts.CustomerEngagement",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="public_request_applications",
+    )
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     payment_method = models.CharField(
         max_length=10,
@@ -308,6 +317,26 @@ class CustomerRentHistory(models.Model):
     rent_month = models.DateField(
         null=True,
         blank=True,
+    )
+
+    base_rent = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+    )
+
+    discount_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+    )
+
+    applied_offer = models.ForeignKey(
+        "accounts.CustomerEngagement",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="rent_history_applications",
     )
 
     expected_rent = models.DecimalField(
