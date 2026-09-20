@@ -15,6 +15,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
   List<Map<String, dynamic>> _leaves = [], _payroll = [], _holidays = [];
   List<Map<String, dynamic>> _penalties = [], _penaltyEmployees = [];
   Map<String, dynamic> _dashboard = {};
+  Map<String, dynamic> _commandCenter = {};
   bool _loading = true;
   String _role = '';
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month - 1);
@@ -60,6 +61,9 @@ class _HrmsScreenState extends State<HrmsScreen> {
     setState(() => _loading = true);
     try {
       _role = (await ApiService.getRole() ?? '').toUpperCase();
+      final commandCenter = _role == 'ADMIN'
+          ? await _service.commandCenter(month: _monthValue)
+          : <String, dynamic>{};
       final values = await Future.wait<dynamic>([
         _service.leaves(),
         _service.payroll(month: _role == 'ADMIN' ? _monthValue : null),
@@ -71,6 +75,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
         setState(() {
           _leaves = values[0];
           _payroll = values[1];
+          _commandCenter = commandCenter;
           _dashboard = _role == 'ADMIN'
               ? <String, dynamic>{}
               : Map<String, dynamic>.from(values[2] as Map);
@@ -354,6 +359,10 @@ class _HrmsScreenState extends State<HrmsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (_role == 'ADMIN') ...[
+                  _enterpriseCommandCenter(),
+                  const SizedBox(height: 14),
+                ],
                 if (_role == 'ADMIN')
                   Card(
                     child: Padding(
@@ -669,6 +678,212 @@ class _HrmsScreenState extends State<HrmsScreen> {
       ],
     ),
   );
+  Map<String, dynamic> _ccMap(String key) =>
+      Map<String, dynamic>.from(_commandCenter[key] as Map? ?? const {});
+
+  Widget _enterpriseCommandCenter() {
+    final headcount = _ccMap('headcount');
+    final attendance = _ccMap('attendance_today');
+    final leave = _ccMap('leave');
+    final payroll = _ccMap('payroll');
+    final documents = _ccMap('documents');
+    final work = _ccMap('work_kpis');
+    final alerts = List<Map<String, dynamic>>.from(
+      _commandCenter['alerts'] as List? ?? const [],
+    );
+    final employees = List<Map<String, dynamic>>.from(
+      _commandCenter['employees'] as List? ?? const [],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF071E3D), Color(0xFF0B5CAB)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'HR COMMAND CENTER',
+                style: TextStyle(
+                  color: Color(0xFFBFE3FF),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Workforce • Attendance • Payroll • Compliance',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(child: _heroMetric('Active workforce', '${headcount['active'] ?? 0}')),
+                  const SizedBox(width: 10),
+                  Expanded(child: _heroMetric('Present today', '${attendance['present'] ?? 0}')),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: _heroMetric('Pending leave', '${leave['pending'] ?? 0}')),
+                  const SizedBox(width: 10),
+                  Expanded(child: _heroMetric('Net payroll', _money(payroll['total_net'] ?? 0))),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 1.45,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          children: [
+            _metricCard(
+              Icons.person_off_outlined,
+              'Attendance missing',
+              '${attendance['missing'] ?? 0}',
+              const Color(0xFFD04A3A),
+            ),
+            _metricCard(
+              Icons.verified_user_outlined,
+              'Selfie review',
+              '${attendance['pending_identity_reviews'] ?? 0} pending',
+              const Color(0xFFE17819),
+            ),
+            _metricCard(
+              Icons.description_outlined,
+              'HR documents',
+              '${documents['verified'] ?? 0}/${documents['total'] ?? 0} verified',
+              const Color(0xFF0878D8),
+            ),
+            _metricCard(
+              Icons.event_busy_outlined,
+              'Compliance alerts',
+              '${(documents['expired'] ?? 0) + (documents['expiring_30_days'] ?? 0)}',
+              const Color(0xFF7B4BC4),
+            ),
+            _metricCard(
+              Icons.task_alt_outlined,
+              'Job completion',
+              '${work['completion_rate'] ?? 0}%',
+              const Color(0xFF0A8F70),
+            ),
+            _metricCard(
+              Icons.payments_outlined,
+              'Payroll paid',
+              '${payroll['paid'] ?? 0}/${payroll['records'] ?? 0}',
+              const Color(0xFF315BA8),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          icon: Icons.notifications_active_outlined,
+          title: 'HR action centre',
+          child: alerts.isEmpty
+              ? const Text(
+                  'No urgent HR actions. Workforce controls are healthy.',
+                  style: TextStyle(color: Color(0xFF687386)),
+                )
+              : Column(
+                  children: alerts
+                      .take(6)
+                      .map(
+                        (row) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: CircleAvatar(
+                            child: Icon(
+                              row['severity'] == 'HIGH'
+                                  ? Icons.priority_high
+                                  : Icons.notifications_none,
+                            ),
+                          ),
+                          title: Text(
+                            row['title']?.toString() ?? 'HR action required',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          subtitle: Text(row['date']?.toString() ?? ''),
+                        ),
+                      )
+                      .toList(),
+                ),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          icon: Icons.groups_2_outlined,
+          title: 'Workforce directory',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${employees.length} active employees • live HR snapshot',
+                style: const TextStyle(color: Color(0xFF687386)),
+              ),
+              const SizedBox(height: 8),
+              ...employees.take(8).map(
+                (row) {
+                  final today = row['today_attendance'] is Map
+                      ? Map<String, dynamic>.from(row['today_attendance'] as Map)
+                      : <String, dynamic>{};
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        child: Text(
+                          (row['name']?.toString().isNotEmpty ?? false)
+                              ? row['name'].toString().substring(0, 1).toUpperCase()
+                              : '?',
+                        ),
+                      ),
+                      title: Text(
+                        row['name']?.toString() ?? 'Employee',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      subtitle: Text(
+                        '${row['employee_id']} • ${row['designation']}\n'
+                        'Today: ${today.isEmpty ? 'Not marked' : today['status']} • '
+                        'Docs: ${row['documents_verified']}/${row['documents_total']}',
+                      ),
+                      isThreeLine: true,
+                      trailing: Icon(
+                        row['location_received'] == true
+                            ? Icons.location_on
+                            : Icons.location_off_outlined,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              if (employees.length > 8)
+                Text(
+                  '+ ${employees.length - 8} more employees available in Employees.',
+                  style: const TextStyle(color: Color(0xFF687386)),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _adminReportOverview() {
     final pendingLeaves = _leaves
         .where((row) => row['status'] == 'PENDING')
