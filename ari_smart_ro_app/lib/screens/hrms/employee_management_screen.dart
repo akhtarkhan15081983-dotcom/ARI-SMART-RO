@@ -93,7 +93,12 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         lastName = TextEditingController();
     final phone = TextEditingController(), email = TextEditingController();
     final salary = TextEditingController(), password = TextEditingController();
+    final jobTitle = TextEditingController(), department = TextEditingController();
+    final grade = TextEditingController(), address = TextEditingController();
+    final city = TextEditingController(), state = TextEditingController();
+    final emergencyName = TextEditingController(), emergencyContact = TextEditingController();
     String designation = 'ENGINEER', gender = 'OTHER';
+    int? reportingManagerId;
     DateTime joiningDate = DateTime.now();
     bool saving = false, obscure = true;
     final saved =
@@ -200,6 +205,74 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                           ),
                         ),
                         const SizedBox(height: 10),
+                        TextFormField(
+                          controller: jobTitle,
+                          decoration: const InputDecoration(
+                            labelText: 'Job title',
+                            hintText: 'Senior Engineer / Team Leader',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: department,
+                          decoration: const InputDecoration(labelText: 'Department'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: grade,
+                          decoration: const InputDecoration(labelText: 'Grade / level'),
+                        ),
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<int?>(
+                          initialValue: reportingManagerId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Reporting manager'),
+                          items: [
+                            const DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text('No reporting manager'),
+                            ),
+                            ..._employees
+                                .where((e) => e['is_active'] == true)
+                                .map(
+                                  (e) => DropdownMenuItem<int?>(
+                                    value: (e['id'] as num).toInt(),
+                                    child: Text('${e['name']} • ${e['designation']}'),
+                                  ),
+                                ),
+                          ],
+                          onChanged: (value) =>
+                              setLocal(() => reportingManagerId = value),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: address,
+                          maxLines: 2,
+                          decoration: const InputDecoration(labelText: 'Address'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: city,
+                          decoration: const InputDecoration(labelText: 'City'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: state,
+                          decoration: const InputDecoration(labelText: 'State'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: emergencyName,
+                          decoration: const InputDecoration(labelText: 'Emergency contact name'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: emergencyContact,
+                          keyboardType: TextInputType.phone,
+                          maxLength: 10,
+                          decoration: const InputDecoration(labelText: 'Emergency contact number'),
+                        ),
+                        const SizedBox(height: 10),
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.event_available_rounded),
@@ -273,6 +346,15 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                               'salary': salary.text.trim().isEmpty
                                   ? '0'
                                   : salary.text.trim(),
+                              'job_title': jobTitle.text.trim(),
+                              'department': department.text.trim(),
+                              'grade': grade.text.trim(),
+                              'reporting_manager_id': reportingManagerId,
+                              'address': address.text.trim(),
+                              'city': city.text.trim(),
+                              'state': state.text.trim(),
+                              'emergency_name': emergencyName.text.trim(),
+                              'emergency_contact': emergencyContact.text.trim(),
                               'initial_password': password.text,
                             });
                             if (context.mounted) Navigator.pop(context, true);
@@ -313,6 +395,14 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       email,
       salary,
       password,
+      jobTitle,
+      department,
+      grade,
+      address,
+      city,
+      state,
+      emergencyName,
+      emergencyContact,
     ]) {
       controller.dispose();
     }
