@@ -11,7 +11,7 @@ class RolePermissionService {
     final suffix = role == null || role.isEmpty ? '' : '?role=$role';
     final response = await http
         .get(
-          Uri.parse('${ApiService.baseUrl}/tenancy/role-permissions/$suffix'),
+          Uri.parse('${ApiService.baseUrl}/saas/role-permissions/$suffix'),
           headers: await ApiService.authHeaders(),
         )
         .timeout(const Duration(seconds: 20));
@@ -26,7 +26,7 @@ class RolePermissionService {
   }) async {
     final response = await http
         .post(
-          Uri.parse('${ApiService.baseUrl}/tenancy/role-permissions/'),
+          Uri.parse('${ApiService.baseUrl}/saas/role-permissions/'),
           headers: await ApiService.authHeaders(),
           body: jsonEncode({
             'role': role,
