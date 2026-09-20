@@ -248,6 +248,17 @@ class AdminOfferAPIView(APIView):
             return Response({"detail": "Percentage discount cannot exceed 100%."}, status=400)
         if max_discount < 0 or minimum_amount < 0:
             return Response({"detail": "Minimum amount and maximum discount cannot be negative."}, status=400)
+        try:
+            priority_value = int(request.data.get("priority") or 50)
+        except (TypeError, ValueError):
+            return Response({"detail": "Offer priority must be a number."}, status=400)
+        priority_value = max(0, min(priority_value, 100))
+        raw_auto_apply = request.data.get("auto_apply", False)
+        auto_apply = (
+            raw_auto_apply
+            if isinstance(raw_auto_apply, bool)
+            else str(raw_auto_apply).strip().lower() in {"1", "true", "yes", "on"}
+        )
 
         valid_until = None
         raw_valid_until = request.data.get("valid_until")
@@ -270,12 +281,12 @@ class AdminOfferAPIView(APIView):
             discount_value=discount_value,
             promo_code=str(request.data.get("promo_code") or "").strip()[:30],
             offer_scope=offer_scope,
-            auto_apply=bool(request.data.get("auto_apply", False)),
+            auto_apply=auto_apply,
             max_discount=max_discount,
             minimum_amount=minimum_amount,
             terms=str(request.data.get("terms") or "").strip()[:300],
             valid_until=valid_until,
-            priority=int(request.data.get("priority") or 50),
+            priority=priority_value,
             action=action,
             action_label=str(request.data.get("action_label") or "").strip()[:40],
             created_by=request.user,
