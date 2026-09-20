@@ -15,7 +15,7 @@ from tenancy.access import HasRequiredFeature, has_feature_access
 from attendance.models import Attendance
 from installation.models import Installation
 from jobs.models import Job
-from .models import EmployeeDocument, EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord, PerformanceReview
+from .models import EmployeeDocument, EmployeePenalty, EmployeeProfile, EmployeeTrainingAssignment, Holiday, HRPolicy, LeaveRequest, PayrollRecord, PerformanceReview
 
 
 MONEY = Decimal("0.01")
@@ -215,6 +215,10 @@ class EmployeeHrmsDashboardAPIView(APIView):
             pending_performance_reviews = performance_rows.exclude(
                 status__in=["FINAL", "ACKNOWLEDGED"]
             ).count()
+            training_rows = EmployeeTrainingAssignment.objects.filter(employee__in=employees)
+            training_overdue = training_rows.filter(status="OVERDUE").count()
+            training_completed = training_rows.filter(status="COMPLETED").count()
+            training_pending = training_rows.exclude(status="COMPLETED").count()
 
             designation_counts = {}
             for row in employees:
@@ -256,6 +260,9 @@ class EmployeeHrmsDashboardAPIView(APIView):
                     "documents_expiring_30_days": expiring_documents,
                     "documents_expired": expired_documents,
                     "documents_unverified": unverified_documents,
+                    "training_overdue": training_overdue,
+                    "training_pending": training_pending,
+                    "training_completed": training_completed,
                 },
                 "performance": {
                     "pending_reviews": pending_performance_reviews,
