@@ -239,7 +239,7 @@ class JobService {
 
   Future<Map<String, dynamic>> getCustomerAssignedEngineer() async {
     final response = await http.get(
-      Uri.parse("${ApiService.baseUrl}/jobs/customer-assigned-engineer/"),
+      Uri.parse("${ApiService.baseUrl}/jobs/customer/assigned-engineer/"),
       headers: await _headers(),
     );
     if (response.statusCode == 200) {
