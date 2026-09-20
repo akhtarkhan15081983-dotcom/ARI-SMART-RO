@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 
-from .models import Branch, Company, CompanyLifecycleEvent, CompanyMembership, CompanySubscription, SubscriptionPlan
+from .models import Branch, Company, CompanyLifecycleEvent, CompanyMembership, CompanySubscription, RoleFeaturePermission, SubscriptionPlan
 from .access import ROLE_FEATURE_CATALOG, effective_role_features, request_company
 from .serializers import (
     CompanyLifecycleEventSerializer, CompanySerializer, MembershipSerializer,
