@@ -42,6 +42,9 @@ def _sync_employee(user):
     if profile is None:
         return
 
+    from employees.training import sync_training_assignments
+    sync_training_assignments(profile)
+
     from employees.models import LeaveRequest, PayrollRecord
     from jobs.models import Job
 
@@ -200,12 +203,13 @@ def _sync_customer(user):
 def _sync_admin(user):
     if str(getattr(user, "role", "")).upper() != "ADMIN":
         return
-    from employees.models import LeaveRequest, PayrollRecord, EmployeePenalty, PerformanceReview
+    from employees.models import LeaveRequest, PayrollRecord, EmployeePenalty, PerformanceReview, EmployeeTrainingAssignment
     pending_leave = LeaveRequest.objects.filter(status="PENDING").count()
     draft_payroll = PayrollRecord.objects.filter(status="DRAFT").count()
     draft_penalty = EmployeePenalty.objects.filter(status="DRAFT").count()
     pending_review = PerformanceReview.objects.exclude(status__in=["FINAL", "ACKNOWLEDGED"]).count()
-    total = pending_leave + draft_payroll + draft_penalty + pending_review
+    overdue_training = EmployeeTrainingAssignment.objects.filter(status="OVERDUE").count()
+    total = pending_leave + draft_payroll + draft_penalty + pending_review + overdue_training
     if total:
         today = timezone.localdate().isoformat()
         upsert_notification(
@@ -214,7 +218,8 @@ def _sync_admin(user):
             "HR approvals need attention",
             (
                 f"{pending_leave} leave • {draft_payroll} payroll • "
-                f"{draft_penalty} penalty • {pending_review} performance review pending."
+                f"{draft_penalty} penalty • {pending_review} performance review • "
+                f"{overdue_training} training overdue."
             ),
             category="HRMS",
             priority="HIGH",
