@@ -220,6 +220,8 @@ class TrainingListAPIView(APIView):
     def get(self, request):
         role = str(getattr(request.user, "role", "")).upper()
         if role == "ADMIN":
+            for employee in EmployeeProfile.objects.filter(is_active=True):
+                sync_training_assignments(employee)
             rows = EmployeeTrainingAssignment.objects.select_related(
                 "employee__user", "course", "penalty"
             ).order_by("status", "due_date", "employee__employee_id")
