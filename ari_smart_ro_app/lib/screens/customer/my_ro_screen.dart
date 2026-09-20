@@ -17,6 +17,7 @@ class _MyROScreenState extends State<MyROScreen> {
 
   late Future<CustomerModel?> _customerFuture;
   late Future<Map<String, dynamic>> _otpFuture;
+  late Future<Map<String, dynamic>> _engineerFuture;
 
   @override
   void initState() {
@@ -24,6 +25,7 @@ class _MyROScreenState extends State<MyROScreen> {
 
     _customerFuture = _loadMyRO();
     _otpFuture = _jobService.getCustomerActiveOTP();
+    _engineerFuture = _jobService.getCustomerAssignedEngineer();
   }
 
   // ============================================================
@@ -48,6 +50,7 @@ class _MyROScreenState extends State<MyROScreen> {
     setState(() {
       _customerFuture = _loadMyRO();
       _otpFuture = _jobService.getCustomerActiveOTP();
+      _engineerFuture = _jobService.getCustomerAssignedEngineer();
     });
 
     await _customerFuture;
@@ -175,6 +178,148 @@ class _MyROScreenState extends State<MyROScreen> {
               padding: const EdgeInsets.all(16),
 
               children: [
+                FutureBuilder<Map<String, dynamic>>(
+                  future: _engineerFuture,
+                  builder: (context, engineerSnapshot) {
+                    final data = engineerSnapshot.data;
+                    if (data == null || data['available'] != true) {
+                      return const SizedBox.shrink();
+                    }
+                    final engineer = Map<String, dynamic>.from(
+                      data['engineer'] as Map? ?? const {},
+                    );
+                    final photo = (engineer['photo'] ?? '').toString();
+                    final identityVerified =
+                        engineer['identity_verified'] == true &&
+                        engineer['active'] == true;
+                    return Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 18),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: identityVerified
+                              ? Colors.green.withValues(alpha: .45)
+                              : Colors.orange.withValues(alpha: .45),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: .07),
+                            blurRadius: 12,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 34,
+                                backgroundImage:
+                                    photo.isNotEmpty ? NetworkImage(photo) : null,
+                                child: photo.isEmpty
+                                    ? const Icon(Icons.engineering, size: 32)
+                                    : null,
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'YOUR ARI ENGINEER',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      (engineer['name'] ?? '').toString(),
+                                      style: const TextStyle(
+                                        fontSize: 19,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    Text(
+                                      (engineer['job_title']
+                                                  ?.toString()
+                                                  .trim()
+                                                  .isNotEmpty ==
+                                              true
+                                          ? engineer['job_title']
+                                          : engineer['designation'])
+                                      .toString(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                identityVerified
+                                    ? Icons.verified_user_rounded
+                                    : Icons.warning_amber_rounded,
+                                color: identityVerified
+                                    ? Colors.green
+                                    : Colors.orange,
+                                size: 30,
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 28),
+                          _infoRow(
+                            'Employee ID',
+                            (engineer['employee_id'] ?? '').toString(),
+                            Icons.badge_outlined,
+                          ),
+                          _infoRow(
+                            'Job',
+                            "${data['job_number'] ?? ''} • ${data['job_type'] ?? ''}",
+                            Icons.work_outline,
+                          ),
+                          _infoRow(
+                            'Visit status',
+                            (data['job_status'] ?? '').toString().replaceAll('_', ' '),
+                            Icons.route_outlined,
+                          ),
+                          _infoRow(
+                            'Verification code',
+                            (engineer['verification_code'] ?? '').toString(),
+                            Icons.verified_outlined,
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: identityVerified
+                                  ? Colors.green.withValues(alpha: .08)
+                                  : Colors.orange.withValues(alpha: .08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              identityVerified
+                                  ? 'Official ARI employee identity verified. Match the photo and Employee ID before sharing the service OTP.'
+                                  : 'Employee is assigned to your job, but identity verification is pending. Contact ARI Admin before sharing OTP if you are unsure.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: identityVerified
+                                    ? Colors.green.shade800
+                                    : Colors.orange.shade900,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+
                 FutureBuilder<Map<String, dynamic>>(
                   future: _otpFuture,
                   builder: (context, otpSnapshot) {
@@ -343,40 +488,23 @@ class _MyROScreenState extends State<MyROScreen> {
                 // ==================================================
                 _sectionTitle("Service Engineer", Icons.engineering),
 
-                _infoCard(
-                  children: [
-                    _infoRow(
-                      "Engineer",
-                      customer.assignedEngineer != null &&
-                              customer.engineerName.isNotEmpty
-                          ? customer.engineerName
-                          : "Not Assigned",
-                      Icons.engineering,
-                    ),
-
-                    if (customer.assignedEngineer == null)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              color: Colors.orange,
-                              size: 20,
-                            ),
-
-                            SizedBox(width: 8),
-
-                            Expanded(
-                              child: Text(
-                                "Your service engineer has not been assigned yet.",
-                                style: TextStyle(color: Colors.orange),
-                              ),
-                            ),
-                          ],
+                FutureBuilder<Map<String, dynamic>>(
+                  future: _engineerFuture,
+                  builder: (context, engineerSnapshot) {
+                    final data = engineerSnapshot.data;
+                    final available = data != null && data['available'] == true;
+                    return _infoCard(
+                      children: [
+                        _infoRow(
+                          "Engineer Assignment",
+                          available
+                              ? "Assigned • Verify using the official card above"
+                              : "No active engineer visit assigned",
+                          Icons.engineering,
                         ),
-                      ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 18),

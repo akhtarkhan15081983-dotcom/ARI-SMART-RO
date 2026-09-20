@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/employee_management_service.dart';
 import '../../utils/search_utils.dart';
@@ -92,7 +93,12 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         lastName = TextEditingController();
     final phone = TextEditingController(), email = TextEditingController();
     final salary = TextEditingController(), password = TextEditingController();
+    final jobTitle = TextEditingController(), department = TextEditingController();
+    final grade = TextEditingController(), address = TextEditingController();
+    final city = TextEditingController(), state = TextEditingController();
+    final emergencyName = TextEditingController(), emergencyContact = TextEditingController();
     String designation = 'ENGINEER', gender = 'OTHER';
+    int? reportingManagerId;
     DateTime joiningDate = DateTime.now();
     bool saving = false, obscure = true;
     final saved =
@@ -199,6 +205,74 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                           ),
                         ),
                         const SizedBox(height: 10),
+                        TextFormField(
+                          controller: jobTitle,
+                          decoration: const InputDecoration(
+                            labelText: 'Job title',
+                            hintText: 'Senior Engineer / Team Leader',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: department,
+                          decoration: const InputDecoration(labelText: 'Department'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: grade,
+                          decoration: const InputDecoration(labelText: 'Grade / level'),
+                        ),
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<int?>(
+                          initialValue: reportingManagerId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Reporting manager'),
+                          items: [
+                            const DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text('No reporting manager'),
+                            ),
+                            ..._employees
+                                .where((e) => e['is_active'] == true)
+                                .map(
+                                  (e) => DropdownMenuItem<int?>(
+                                    value: (e['id'] as num).toInt(),
+                                    child: Text('${e['name']} • ${e['designation']}'),
+                                  ),
+                                ),
+                          ],
+                          onChanged: (value) =>
+                              setLocal(() => reportingManagerId = value),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: address,
+                          maxLines: 2,
+                          decoration: const InputDecoration(labelText: 'Address'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: city,
+                          decoration: const InputDecoration(labelText: 'City'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: state,
+                          decoration: const InputDecoration(labelText: 'State'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: emergencyName,
+                          decoration: const InputDecoration(labelText: 'Emergency contact name'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: emergencyContact,
+                          keyboardType: TextInputType.phone,
+                          maxLength: 10,
+                          decoration: const InputDecoration(labelText: 'Emergency contact number'),
+                        ),
+                        const SizedBox(height: 10),
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.event_available_rounded),
@@ -272,6 +346,15 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                               'salary': salary.text.trim().isEmpty
                                   ? '0'
                                   : salary.text.trim(),
+                              'job_title': jobTitle.text.trim(),
+                              'department': department.text.trim(),
+                              'grade': grade.text.trim(),
+                              'reporting_manager_id': reportingManagerId,
+                              'address': address.text.trim(),
+                              'city': city.text.trim(),
+                              'state': state.text.trim(),
+                              'emergency_name': emergencyName.text.trim(),
+                              'emergency_contact': emergencyContact.text.trim(),
                               'initial_password': password.text,
                             });
                             if (context.mounted) Navigator.pop(context, true);
@@ -312,6 +395,14 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       email,
       salary,
       password,
+      jobTitle,
+      department,
+      grade,
+      address,
+      city,
+      state,
+      emergencyName,
+      emergencyContact,
     ]) {
       controller.dispose();
     }
@@ -323,6 +414,74 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         );
       }
     }
+  }
+
+  Future<void> _showIdCard(Map<String, dynamic> employee) async {
+    final idCard = Map<String, dynamic>.from(
+      employee['id_card'] as Map? ?? const {},
+    );
+    final onboarding = Map<String, dynamic>.from(
+      employee['onboarding'] as Map? ?? const {},
+    );
+    final photo = (employee['photo'] ?? '').toString();
+    final code = (idCard['verification_code'] ?? '').toString();
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Official Employee ID'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 46,
+                  backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+                  child: photo.isEmpty ? const Icon(Icons.person, size: 42) : null,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  employee['name'].toString(),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  employee['job_title']?.toString().isNotEmpty == true
+                      ? employee['job_title'].toString()
+                      : employee['designation'].toString(),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Employee ID: ${employee['employee_id']}",
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 14),
+                if (code.isNotEmpty)
+                  QrImageView(data: 'ARI-EMP:$code', size: 150),
+                const SizedBox(height: 8),
+                Text('Verification: $code'),
+                Text("Valid until: ${idCard['valid_until'] ?? '-'}"),
+                const Divider(height: 26),
+                Text(
+                  "Onboarding: ${onboarding['status'] ?? '-'}",
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  onboarding['ready'] == true
+                      ? 'Ready for duty'
+                      : 'Pending joining requirements',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _career(Map<String, dynamic> employee) async {
@@ -1020,7 +1179,9 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                       trailing: PopupMenuButton<String>(
                         tooltip: 'Employee actions',
                         onSelected: (value) {
-                          if (value == 'career') {
+                          if (value == 'id_card') {
+                            _showIdCard(employee);
+                          } else if (value == 'career') {
                             _career(employee);
                           } else if (value == 'deactivate') {
                             _setEmployeeActive(employee, false);
@@ -1031,6 +1192,13 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                           }
                         },
                         itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'id_card',
+                            child: ListTile(
+                              leading: Icon(Icons.badge_rounded),
+                              title: Text('View Digital ID'),
+                            ),
+                          ),
                           const PopupMenuItem(
                             value: 'career',
                             child: ListTile(

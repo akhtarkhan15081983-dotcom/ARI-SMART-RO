@@ -92,12 +92,12 @@ jobs:
           flutter build apk --debug
           --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
       - name: Prepare shareable APK
-        run: cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.17-latest.apk
+        run: cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.18-latest.apk
       - name: Upload latest Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-v1.0.17-latest
-          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.17-latest.apk
+          name: ARI-SMART-RO-v1.0.18-latest
+          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.18-latest.apk
           if-no-files-found: error
           retention-days: 30
 

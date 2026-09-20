@@ -13,6 +13,8 @@ from .views import (
     EmployeeLifecycleAPIView,
     EmployeeCareerMovementAPIView,
     EmployeeCareerMovementActionAPIView,
+    EmployeeIdCardAPIView,
+    EmployeeIdVerifyAPIView,
 )
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
 from .training import (
@@ -24,6 +26,8 @@ from .training import (
 
 urlpatterns = [
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
+    path("employees/id-card/", EmployeeIdCardAPIView.as_view(), name="employee-id-card"),
+    path("employees/verify-id/<str:code>/", EmployeeIdVerifyAPIView.as_view(), name="employee-id-verify"),
     path(
         "employees/manage/<int:employee_id>/lifecycle/",
         EmployeeLifecycleAPIView.as_view(),

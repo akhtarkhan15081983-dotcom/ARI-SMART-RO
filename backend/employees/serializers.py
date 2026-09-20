@@ -46,6 +46,8 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source="user.role", read_only=True)
     photo = serializers.SerializerMethodField()
     face_enrolled = serializers.SerializerMethodField()
+    id_card = serializers.SerializerMethodField()
+    onboarding = serializers.SerializerMethodField()
 
     class Meta:
         model = EmployeeProfile
@@ -71,6 +73,8 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             "face_enrolled_at",
             "face_enrollment_verified",
             "attendance_device_id",
+            "id_card",
+            "onboarding",
         ]
         read_only_fields = [
             "face_enrolled_at",
@@ -86,6 +90,38 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
 
     def get_face_enrolled(self, obj):
         return bool(obj.face_enrolled_at and obj.photo)
+
+    def get_id_card(self, obj):
+        return {
+            "verification_code": obj.public_verification_code,
+            "issued_at": obj.id_card_issued_at.isoformat() if obj.id_card_issued_at else None,
+            "valid_until": obj.id_card_valid_until.isoformat() if obj.id_card_valid_until else None,
+            "active": bool(obj.is_active and obj.user.is_active),
+        }
+
+    def get_onboarding(self, obj):
+        profile_complete = bool(
+            obj.user.first_name
+            and obj.joining_date
+            and obj.designation
+        )
+        security_complete = bool(
+            obj.photo
+            and obj.face_enrollment_verified
+            and obj.attendance_device_id
+        )
+        mandatory = obj.training_assignments.filter(
+            course__is_active=True,
+            course__is_mandatory=True,
+        )
+        training_complete = not mandatory.exclude(status="COMPLETED").exists()
+        return {
+            "status": obj.onboarding_status,
+            "profile_complete": profile_complete,
+            "security_complete": security_complete,
+            "training_complete": training_complete,
+            "ready": profile_complete and security_complete and training_complete,
+        }
 
 
 class EmployeeProfileUpdateSerializer(serializers.ModelSerializer):

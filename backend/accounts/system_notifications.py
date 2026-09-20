@@ -187,16 +187,28 @@ def _sync_customer(user):
             },
         )
 
-    for job in Job.objects.filter(customer=customer).exclude(status__in=["CANCELLED"]).order_by("-updated_at")[:12]:
+    for job in Job.objects.filter(customer=customer).exclude(status__in=["CANCELLED"]).select_related(
+        "engineer__user"
+    ).order_by("-updated_at")[:12]:
+        engineer_name = job.engineer.user.get_full_name() or job.engineer.employee_id
+        engineer_identity = f"{engineer_name} • {job.engineer.employee_id}"
         upsert_notification(
             user,
             f"customer-job:{job.id}:{job.status}",
             f"{job.get_job_type_display()} update",
-            f"Your request/job {job.job_id} is {job.status.replace('_', ' ').lower()}.",
+            (
+                f"Your request/job {job.job_id} is {job.status.replace('_', ' ').lower()}. "
+                f"Assigned engineer: {engineer_identity}."
+            ),
             category="SERVICE" if job.job_type == "SERVICE" else ("COMPLAINT" if job.job_type == "COMPLAINT" else "JOB"),
             priority="HIGH" if job.status in {"ON_THE_WAY", "ARRIVED"} else "NORMAL",
             action="SERVICE" if job.job_type == "SERVICE" else "NONE",
-            metadata={"job_id": job.id, "job_code": job.job_id},
+            metadata={
+                "job_id": job.id,
+                "job_code": job.job_id,
+                "engineer_employee_id": job.engineer.employee_id,
+                "engineer_name": engineer_name,
+            },
         )
 
 

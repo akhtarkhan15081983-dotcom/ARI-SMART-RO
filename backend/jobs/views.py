@@ -921,6 +921,81 @@ def _job_otp_payload(job):
     }
 
 
+def _customer_for_user(user):
+    customer = Customer.objects.filter(user=user).first()
+    if customer is None:
+        customer = Customer.objects.filter(
+            phone=user.phone,
+            user__isnull=True,
+        ).first()
+    return customer
+
+
+def _safe_engineer_payload(request, job):
+    engineer = job.engineer
+    photo = request.build_absolute_uri(engineer.photo.url) if engineer.photo else None
+    return {
+        "job_id": job.id,
+        "job_number": job.job_id,
+        "job_type": job.job_type,
+        "job_status": job.status,
+        "scheduled_date": job.scheduled_date.isoformat() if job.scheduled_date else None,
+        "engineer": {
+            "name": engineer.user.get_full_name() or engineer.user.phone,
+            "employee_id": engineer.employee_id,
+            "designation": engineer.designation,
+            "job_title": engineer.job_title,
+            "photo": photo,
+            "company": getattr(engineer.company, "name", "") if engineer.company_id else "",
+            "verification_code": engineer.public_verification_code,
+            "qr_payload": f"ARI-EMP:{engineer.public_verification_code}",
+            "active": bool(engineer.is_active and engineer.user.is_active),
+            "identity_verified": bool(engineer.face_enrollment_verified),
+            "id_card_valid_until": (
+                engineer.id_card_valid_until.isoformat()
+                if engineer.id_card_valid_until else None
+            ),
+        },
+    }
+
+
+class CustomerAssignedEngineerAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != "CUSTOMER" or not request.user.is_verified:
+            return Response(
+                {"detail": "Verified customer access required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        customer = _customer_for_user(request.user)
+        if customer is None:
+            return Response({"available": False, "reason": "CUSTOMER_NOT_FOUND"})
+
+        job = (
+            Job.objects.select_related(
+                "customer",
+                "engineer__user",
+                "engineer__company",
+            )
+            .filter(
+                customer=customer,
+                status__in=[
+                    "ASSIGNED",
+                    "ACCEPTED",
+                    "ON_THE_WAY",
+                    "ARRIVED",
+                    "IN_PROGRESS",
+                ],
+            )
+            .order_by("-scheduled_date", "-id")
+            .first()
+        )
+        if job is None:
+            return Response({"available": False, "reason": "NO_ACTIVE_JOB"})
+        return Response({"available": True, **_safe_engineer_payload(request, job)})
+
+
 class CustomerActiveOTPAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -931,12 +1006,7 @@ class CustomerActiveOTPAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        customer = Customer.objects.filter(user=request.user).first()
-        if customer is None:
-            customer = Customer.objects.filter(
-                phone=request.user.phone,
-                user__isnull=True,
-            ).first()
+        customer = _customer_for_user(request.user)
 
         if customer is None:
             return Response({"available": False, "reason": "CUSTOMER_NOT_FOUND"})
