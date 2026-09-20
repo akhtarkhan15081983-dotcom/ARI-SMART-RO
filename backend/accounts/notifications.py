@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
@@ -138,6 +140,16 @@ class AdminNotificationCampaignAPIView(APIView):
         if not title or not message:
             return Response({"detail": "Title and message are required."}, status=400)
 
+        category = str(request.data.get("category") or "GENERAL").upper()
+        priority = str(request.data.get("priority") or "NORMAL").upper()
+        action = str(request.data.get("action") or "NONE").upper()
+        if category not in {choice[0] for choice in NotificationCampaign.CATEGORY_CHOICES}:
+            return Response({"detail": "Invalid notification category."}, status=400)
+        if priority not in {choice[0] for choice in NotificationCampaign.PRIORITY_CHOICES}:
+            return Response({"detail": "Invalid notification priority."}, status=400)
+        if action not in {choice[0] for choice in NotificationCampaign.ACTION_CHOICES}:
+            return Response({"detail": "Invalid notification action."}, status=400)
+
         valid_until = None
         raw_valid_until = request.data.get("valid_until")
         if raw_valid_until:
@@ -151,11 +163,11 @@ class AdminNotificationCampaignAPIView(APIView):
         campaign = NotificationCampaign.objects.create(
             title=title[:140],
             message=message[:1000],
-            category=str(request.data.get("category") or "GENERAL").upper(),
-            priority=str(request.data.get("priority") or "NORMAL").upper(),
+            category=category,
+            priority=priority,
             audience=audience,
             target_role=target_role if audience == "ROLE" else "",
-            action=str(request.data.get("action") or "NONE").upper(),
+            action=action,
             action_label=str(request.data.get("action_label") or "").strip()[:50],
             valid_until=valid_until,
             created_by=request.user,
@@ -215,6 +227,28 @@ class AdminOfferAPIView(APIView):
         elif audience != "ALL":
             return Response({"detail": "Offer audience must be ALL or TARGETED."}, status=400)
 
+        discount_type = str(request.data.get("discount_type") or "NONE").upper()
+        offer_scope = str(request.data.get("offer_scope") or "NONE").upper()
+        action = str(request.data.get("action") or "NONE").upper()
+        if discount_type not in {"PERCENT", "FIXED"}:
+            return Response({"detail": "Discount type must be PERCENT or FIXED."}, status=400)
+        if offer_scope not in {"RENT", "PURCHASE", "SERVICE", "AMC", "REFERRAL"}:
+            return Response({"detail": "Select a valid offer scope."}, status=400)
+        if action not in {choice[0] for choice in CustomerEngagement.ACTION_CHOICES}:
+            return Response({"detail": "Invalid offer action."}, status=400)
+        try:
+            discount_value = Decimal(str(request.data.get("discount_value") or 0))
+            max_discount = Decimal(str(request.data.get("max_discount") or 0))
+            minimum_amount = Decimal(str(request.data.get("minimum_amount") or 0))
+        except (InvalidOperation, ValueError, TypeError):
+            return Response({"detail": "Discount amounts must be valid numbers."}, status=400)
+        if discount_value <= 0:
+            return Response({"detail": "Discount value must be greater than zero."}, status=400)
+        if discount_type == "PERCENT" and discount_value > 100:
+            return Response({"detail": "Percentage discount cannot exceed 100%."}, status=400)
+        if max_discount < 0 or minimum_amount < 0:
+            return Response({"detail": "Minimum amount and maximum discount cannot be negative."}, status=400)
+
         valid_until = None
         raw_valid_until = request.data.get("valid_until")
         if raw_valid_until:
@@ -232,17 +266,17 @@ class AdminOfferAPIView(APIView):
             title=title[:120],
             message=message[:500],
             badge_text=str(request.data.get("badge_text") or "").strip()[:30],
-            discount_type=str(request.data.get("discount_type") or "NONE").upper(),
-            discount_value=request.data.get("discount_value") or 0,
+            discount_type=discount_type,
+            discount_value=discount_value,
             promo_code=str(request.data.get("promo_code") or "").strip()[:30],
-            offer_scope=str(request.data.get("offer_scope") or "NONE").upper(),
+            offer_scope=offer_scope,
             auto_apply=bool(request.data.get("auto_apply", False)),
-            max_discount=request.data.get("max_discount") or 0,
-            minimum_amount=request.data.get("minimum_amount") or 0,
+            max_discount=max_discount,
+            minimum_amount=minimum_amount,
             terms=str(request.data.get("terms") or "").strip()[:300],
             valid_until=valid_until,
             priority=int(request.data.get("priority") or 50),
-            action=str(request.data.get("action") or "NONE").upper(),
+            action=action,
             action_label=str(request.data.get("action_label") or "").strip()[:40],
             created_by=request.user,
         )
