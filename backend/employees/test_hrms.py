@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.utils import timezone
@@ -10,8 +10,9 @@ from attendance.models import Attendance
 from customers.models import Customer
 from jobs.models import Job
 from products.models import ProductCategory, ROModel
+from tenancy.models import Company, CompanyMembership
 from .hrms import calculate_payroll
-from .models import EmployeePenalty, EmployeeProfile, HRPolicy
+from .models import EmployeeCareerMovement, EmployeeDocument, EmployeePenalty, EmployeeProfile, HRPolicy, PerformanceReview
 
 
 class HRMSPolicyTests(APITestCase):
@@ -168,3 +169,231 @@ class EmployeePenaltyWorkflowTests(HRMSPolicyTests):
         self.assertEqual(result["other_deductions"], Decimal("100.00"))
         self.assertEqual(result["net_salary"], Decimal("1100.00"))
         self.assertEqual(result["snapshot"]["manual_penalty_ids"], [penalty.id])
+
+class CorporateHrmsDashboardTests(HRMSPolicyTests):
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user(
+            phone="9111111177",
+            password="Strong@Test1",
+            role="ADMIN",
+            first_name="HR Admin",
+        )
+
+    def test_admin_dashboard_returns_corporate_workforce_and_approval_metrics(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get("/api/employees/hrms/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["scope"], "CORPORATE")
+        self.assertIn("workforce", response.data)
+        self.assertIn("approvals", response.data)
+        self.assertIn("payroll", response.data)
+        self.assertIn("attendance", response.data)
+        self.assertGreaterEqual(response.data["workforce"]["active_employees"], 1)
+
+
+class CorporateCareerMovementTests(APITestCase):
+    def setUp(self):
+        self.company = Company.objects.create(
+            name="ARI Corporate HR Test",
+            slug="ari-corporate-hr-test",
+            phone="9111111160",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        self.admin = User.objects.create_user(
+            phone="9111111161",
+            password="Strong@Test1",
+            role="ADMIN",
+            first_name="HR Admin",
+            is_verified=True,
+        )
+        self.employee_user = User.objects.create_user(
+            phone="9111111162",
+            password="Strong@Test1",
+            role="ENGINEER",
+            first_name="Aman",
+            is_verified=True,
+        )
+        self.employee = EmployeeProfile.objects.create(
+            company=self.company,
+            user=self.employee_user,
+            employee_id="EMP-CORP-1",
+            joining_date=date(2025, 1, 1),
+            designation="ENGINEER",
+            job_title="Engineer",
+            department="Service",
+            grade="L1",
+            gender="MALE",
+            salary=Decimal("20000.00"),
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.admin,
+            role="OWNER",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.employee_user,
+            role="STAFF",
+            is_active=True,
+        )
+        self.client.force_authenticate(self.admin)
+
+    def test_promotion_draft_and_approval_updates_profile_and_keeps_history(self):
+        today = timezone.localdate().isoformat()
+        created = self.client.post(
+            f"/api/employees/manage/{self.employee.id}/career/",
+            {
+                "movement_type": "PROMOTION",
+                "effective_date": today,
+                "new_designation": "ENGINEER",
+                "new_job_title": "Senior Engineer",
+                "new_department": "Service",
+                "new_grade": "L2",
+                "new_salary": "25000.00",
+                "reason": "Performance promotion",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        movement = EmployeeCareerMovement.objects.get(pk=created.data["id"])
+        self.assertEqual(movement.status, "DRAFT")
+        self.assertEqual(movement.old_job_title, "Engineer")
+        self.assertEqual(movement.new_job_title, "Senior Engineer")
+
+        approved = self.client.post(
+            f"/api/employees/manage/{self.employee.id}/career/{movement.id}/action/",
+            {"action": "APPROVE"},
+            format="json",
+        )
+        self.assertEqual(approved.status_code, 200)
+
+        self.employee.refresh_from_db()
+        movement.refresh_from_db()
+        self.assertEqual(self.employee.job_title, "Senior Engineer")
+        self.assertEqual(self.employee.grade, "L2")
+        self.assertEqual(self.employee.salary, Decimal("25000.00"))
+        self.assertEqual(movement.status, "APPROVED")
+        self.assertEqual(movement.approved_by, self.admin)
+
+    def test_future_dated_promotion_stays_draft_until_effective_date(self):
+        future = (timezone.localdate() + timedelta(days=30)).isoformat()
+        created = self.client.post(
+            f"/api/employees/manage/{self.employee.id}/career/",
+            {
+                "movement_type": "PROMOTION",
+                "effective_date": future,
+                "new_designation": "ENGINEER",
+                "new_job_title": "Senior Engineer",
+                "new_salary": "25000.00",
+                "reason": "Scheduled promotion",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        movement_id = created.data["id"]
+        approved = self.client.post(
+            f"/api/employees/manage/{self.employee.id}/career/{movement_id}/action/",
+            {"action": "APPROVE"},
+            format="json",
+        )
+        self.assertEqual(approved.status_code, 400)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.job_title, "Engineer")
+
+
+class PerformanceAndDocumentComplianceTests(APITestCase):
+    def setUp(self):
+        self.company = Company.objects.create(
+            name="ARI HR Compliance Test",
+            slug="ari-hr-compliance-test",
+            phone="9111111150",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        self.admin = User.objects.create_user(
+            phone="9111111151",
+            password="Strong@Test1",
+            role="ADMIN",
+            first_name="Admin",
+            is_verified=True,
+        )
+        self.employee_user = User.objects.create_user(
+            phone="9111111152",
+            password="Strong@Test1",
+            role="ENGINEER",
+            first_name="Engineer",
+            is_verified=True,
+        )
+        self.employee = EmployeeProfile.objects.create(
+            company=self.company,
+            user=self.employee_user,
+            employee_id="EMP-COMP-1",
+            joining_date=date(2025, 1, 1),
+            designation="ENGINEER",
+            gender="MALE",
+            salary=Decimal("20000"),
+        )
+        CompanyMembership.objects.create(
+            company=self.company, user=self.admin, role="OWNER", is_active=True
+        )
+        CompanyMembership.objects.create(
+            company=self.company, user=self.employee_user, role="STAFF", is_active=True
+        )
+
+    def test_admin_can_create_finalize_and_employee_acknowledge_review(self):
+        self.client.force_authenticate(self.admin)
+        created = self.client.post(
+            "/api/employees/hrms/performance/",
+            {
+                "employee_id": self.employee.id,
+                "period_start": "2026-09-01",
+                "period_end": "2026-09-30",
+                "goals_score": "90",
+                "attendance_score": "95",
+                "service_quality_score": "88",
+                "customer_score": "92",
+                "sales_score": "85",
+                "strengths": "Customer handling",
+                "improvement_plan": "Increase first-time-fix rate",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        review = PerformanceReview.objects.get(pk=created.data["id"])
+        self.assertEqual(review.status, "SUBMITTED")
+        self.assertEqual(review.overall_score, Decimal("90.00"))
+
+        finalized = self.client.post(
+            f"/api/employees/hrms/performance/{review.id}/action/",
+            {"action": "FINALIZE"},
+            format="json",
+        )
+        self.assertEqual(finalized.status_code, 200)
+
+        self.client.force_authenticate(self.employee_user)
+        acknowledged = self.client.post(
+            f"/api/employees/hrms/performance/{review.id}/action/",
+            {"action": "ACKNOWLEDGE"},
+            format="json",
+        )
+        self.assertEqual(acknowledged.status_code, 200)
+        review.refresh_from_db()
+        self.assertEqual(review.status, "ACKNOWLEDGED")
+
+    def test_document_compliance_marks_expired_document(self):
+        EmployeeDocument.objects.create(
+            employee=self.employee,
+            document_type="Driving Licence",
+            document_number="DL-TEST",
+            expiry_date=timezone.localdate() - timedelta(days=1),
+            verified=True,
+        )
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(
+            f"/api/employees/hrms/documents/?employee_id={self.employee.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["documents"][0]["expiry_state"], "EXPIRED")

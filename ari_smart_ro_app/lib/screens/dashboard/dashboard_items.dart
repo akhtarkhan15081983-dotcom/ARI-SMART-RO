@@ -139,6 +139,11 @@ class DashboardItems {
       route: "password_reset_approvals",
     ),
     const DashboardItem(
+      title: "Role Access Control",
+      icon: Icons.manage_accounts_rounded,
+      route: "role_access_control",
+    ),
+    const DashboardItem(
       title: "Attendance Selfie Review",
       icon: Icons.fact_check_outlined,
       route: "attendance_review_admin",

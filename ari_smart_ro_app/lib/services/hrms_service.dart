@@ -86,6 +86,23 @@ class HrmsService {
     if (response.statusCode != 200) throw Exception(_message(response));
   }
 
+  Future<List<Map<String, dynamic>>> performanceReviews() async =>
+      _list('/employees/hrms/performance/', 'reviews');
+
+  Future<void> performanceAction(int reviewId, String action) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/performance/$reviewId/action/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({'action': action}),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+  }
+
+  Future<List<Map<String, dynamic>>> documents() async =>
+      _list('/employees/hrms/documents/', 'documents');
+
   Future<List<Map<String, dynamic>>> payroll({String? month}) async {
     final suffix = month == null ? '' : '?month=$month';
     return _list('/employees/hrms/payroll/$suffix', 'payroll');
@@ -131,6 +148,17 @@ class HrmsService {
       Uri.parse('${ApiService.baseUrl}/employees/hrms/leaves/$leaveId/review/'),
       headers: await ApiService.authHeaders(),
       body: jsonEncode({'status': status, 'review_note': note}),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+  }
+
+  Future<void> payrollAction(int payrollId, String action) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/payroll/$payrollId/action/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({'action': action}),
     );
     if (response.statusCode != 200) throw Exception(_message(response));
   }

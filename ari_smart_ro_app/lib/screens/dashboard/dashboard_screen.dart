@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/attendance_service.dart';
 import '../../services/live_location_service.dart';
 import '../../services/saas_admin_service.dart';
+import '../../services/role_permission_service.dart';
 import '../../utils/search_utils.dart';
 import '../admin/face_security_admin_screen.dart';
 import '../admin/attendance_security_test_screen.dart';
@@ -14,6 +15,7 @@ import '../admin/attendance_review_admin_screen.dart';
 import '../admin/engineer_bag_admin_screen.dart';
 import '../admin/saas_super_admin_screen.dart';
 import '../admin/password_reset_approval_screen.dart';
+import '../admin/role_access_control_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
 import '../bag/my_bag_screen.dart';
@@ -55,6 +57,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   final AttendanceService _attendanceService = AttendanceService();
   final LiveLocationService _liveLocationService = LiveLocationService();
   final SaasAdminService _saasAdminService = const SaasAdminService();
+  final RolePermissionService _rolePermissionService =
+      const RolePermissionService();
   static const List<DashboardItem> _customerItems = [
     DashboardItems.andy,
     DashboardItem(title: 'My RO', icon: Icons.water_drop, route: 'my_ro'),
@@ -77,6 +81,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   AttendanceModel? _todayAttendance;
   String _role = 'CUSTOMER';
   bool _isPlatformSuperAdmin = false;
+  Set<String> _allowedFeatures = const {};
   bool _isLoadingAttendance = true,
       _isLoadingRole = true,
       _isExitDialogShowing = false;
@@ -123,6 +128,17 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (_role == 'ADMIN') {
       final allowed = await _saasAdminService.canAccess();
       if (mounted) setState(() => _isPlatformSuperAdmin = allowed);
+    }
+    if (_role != 'CUSTOMER') {
+      try {
+        final data = await _rolePermissionService.getPermissions(role: _role);
+        final allowed = (data['allowed_features'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toSet();
+        if (mounted) setState(() => _allowedFeatures = allowed);
+      } catch (_) {
+        if (mounted) setState(() => _allowedFeatures = const {});
+      }
     }
     if (_role != 'CUSTOMER') {
       await _loadAttendance();
@@ -176,6 +192,19 @@ class _DashboardScreenState extends State<DashboardScreen>
         : 'CUSTOMER';
   }
 
+  List<DashboardItem> _applyRolePermissions(List<DashboardItem> items) {
+    if (_role == 'ADMIN' || _role == 'CUSTOMER') return items;
+    if (_allowedFeatures.isEmpty) return const [];
+    const alwaysVisible = {'andy'};
+    return items
+        .where(
+          (item) =>
+              alwaysVisible.contains(item.route) ||
+              _allowedFeatures.contains(item.route),
+        )
+        .toList();
+  }
+
   List<DashboardItem> get _dashboardItems {
     switch (_role) {
       case 'ADMIN':
@@ -189,13 +218,13 @@ class _DashboardScreenState extends State<DashboardScreen>
           ...DashboardItems.admin,
         ];
       case 'MANAGER':
-        return DashboardItems.manager;
+        return _applyRolePermissions(DashboardItems.manager);
       case 'OFFICE':
-        return DashboardItems.office;
+        return _applyRolePermissions(DashboardItems.office);
       case 'CALLING':
-        return DashboardItems.calling;
+        return _applyRolePermissions(DashboardItems.calling);
       case 'ENGINEER':
-        return DashboardItems.engineer;
+        return _applyRolePermissions(DashboardItems.engineer);
       default:
         return _customerItems;
     }
@@ -327,6 +356,13 @@ class _DashboardScreenState extends State<DashboardScreen>
           _showComingSoon('Restricted');
         }
         return;
+      case 'role_access_control':
+        if (_role == 'ADMIN') {
+          _push(const RoleAccessControlScreen());
+        } else {
+          _showComingSoon('Only admin can control role access.');
+        }
+        return;
       case 'attendance_review_admin':
         if (_role == 'ADMIN') {
           _push(const AttendanceReviewAdminScreen());
@@ -347,10 +383,10 @@ class _DashboardScreenState extends State<DashboardScreen>
             .then((_) => _loadAttendance());
         return;
       case 'calling_desk':
-        if ({'ADMIN', 'MANAGER', 'OFFICE', 'CALLING'}.contains(_role)) {
+        if (_role == 'ADMIN' || _allowedFeatures.contains('calling_desk')) {
           _push(const CallingDeskScreen());
         } else {
-          _showComingSoon('Calling desk access is restricted to authorised staff.');
+          _showComingSoon('Calling desk permission is required.');
         }
         return;
       case 'jobs':
@@ -369,19 +405,17 @@ class _DashboardScreenState extends State<DashboardScreen>
         _push(const HrmsScreen());
         return;
       case 'employee_management':
-        if (_role == 'ADMIN') {
+        if (_role == 'ADMIN' || _allowedFeatures.contains('employee_management')) {
           _push(const EmployeeManagementScreen());
         } else {
-          _showComingSoon('Only company administrators can manage employees.');
+          _showComingSoon('Employee management permission is required.');
         }
         return;
       case 'inventory_workflow':
-        if ({'ADMIN', 'MANAGER', 'OFFICE'}.contains(_role)) {
+        if (_role == 'ADMIN' || _allowedFeatures.contains('inventory_workflow')) {
           _push(const InventoryWorkflowScreen());
         } else {
-          _showComingSoon(
-            'Inventory control is restricted to authorised staff.',
-          );
+          _showComingSoon('Inventory control permission is required.');
         }
         return;
       case 'bag':

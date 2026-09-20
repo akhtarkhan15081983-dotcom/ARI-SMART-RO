@@ -10,11 +10,12 @@ from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tenancy.access import HasRequiredFeature, has_feature_access
 
 from attendance.models import Attendance
 from installation.models import Installation
 from jobs.models import Job
-from .models import EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord
+from .models import EmployeeDocument, EmployeePenalty, EmployeeProfile, Holiday, HRPolicy, LeaveRequest, PayrollRecord, PerformanceReview
 
 
 MONEY = Decimal("0.01")
@@ -158,17 +159,122 @@ def calculate_payroll(employee, payroll_month):
 
 
 class EmployeeHrmsDashboardAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
+        today = timezone.localdate()
+        month_start = today.replace(day=1)
+        policy = HRPolicy.current()
+
+        if _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+            month_end = today.replace(day=calendar.monthrange(today.year, today.month)[1])
+            employees = EmployeeProfile.objects.filter(is_active=True).select_related("user")
+            attendance = Attendance.objects.filter(date__range=(month_start, today))
+            leaves = LeaveRequest.objects.filter(
+                start_date__lte=month_end,
+                end_date__gte=month_start,
+            )
+            payroll = PayrollRecord.objects.filter(payroll_month=month_start)
+            penalties = EmployeePenalty.objects.filter(
+                penalty_date__range=(month_start, today)
+            )
+            present_today = Attendance.objects.filter(
+                date=today,
+            ).exclude(status="ABSENT").values("employee_id").distinct().count()
+            active_count = employees.count()
+            pending_leaves = leaves.filter(status="PENDING").count()
+            approved_leaves = leaves.filter(status="APPROVED").count()
+            draft_payroll = payroll.filter(status="DRAFT").count()
+            approved_payroll = payroll.filter(status="APPROVED").count()
+            paid_payroll = payroll.filter(status="PAID").count()
+            payroll_net = payroll.aggregate(total=Sum("net_salary"))["total"] or Decimal("0")
+            overtime_amount = payroll.aggregate(total=Sum("overtime_amount"))["total"] or Decimal("0")
+            incentives = (
+                (payroll.aggregate(total=Sum("rent_incentive"))["total"] or Decimal("0"))
+                + (payroll.aggregate(total=Sum("sale_incentive"))["total"] or Decimal("0"))
+            )
+            approved_penalties = penalties.filter(status="APPROVED").aggregate(
+                total=Sum("amount")
+            )["total"] or Decimal("0")
+            document_rows = EmployeeDocument.objects.filter(employee__in=employees)
+            expiring_documents = document_rows.filter(
+                expiry_date__isnull=False,
+                expiry_date__gte=today,
+                expiry_date__lte=today + timedelta(days=30),
+            ).count()
+            expired_documents = document_rows.filter(
+                expiry_date__isnull=False,
+                expiry_date__lt=today,
+            ).count()
+            unverified_documents = document_rows.filter(verified=False).count()
+            performance_rows = PerformanceReview.objects.filter(
+                employee__in=employees,
+                period_end__gte=month_start,
+            )
+            pending_performance_reviews = performance_rows.exclude(
+                status__in=["FINAL", "ACKNOWLEDGED"]
+            ).count()
+
+            designation_counts = {}
+            for row in employees:
+                label = row.get_designation_display()
+                designation_counts[label] = designation_counts.get(label, 0) + 1
+
+            return Response({
+                "scope": "CORPORATE",
+                "month": month_start.strftime("%Y-%m"),
+                "workforce": {
+                    "active_employees": active_count,
+                    "present_today": present_today,
+                    "absent_or_not_checked_in": max(0, active_count - present_today),
+                    "designation_mix": designation_counts,
+                },
+                "approvals": {
+                    "pending_leaves": pending_leaves,
+                    "approved_leaves": approved_leaves,
+                    "draft_payroll": draft_payroll,
+                    "approved_payroll": approved_payroll,
+                    "paid_payroll": paid_payroll,
+                    "draft_penalties": penalties.filter(status="DRAFT").count(),
+                },
+                "payroll": {
+                    "net_salary": str(_money(payroll_net)),
+                    "overtime_amount": str(_money(overtime_amount)),
+                    "incentives": str(_money(incentives)),
+                    "approved_penalties": str(_money(approved_penalties)),
+                },
+                "attendance": {
+                    "records_this_month": attendance.count(),
+                    "half_days": attendance.filter(status="HALF_DAY").count(),
+                    "absences": attendance.filter(status="ABSENT").count(),
+                    "pending_selfie_reviews": attendance.filter(
+                        identity_review_status="PENDING"
+                    ).count(),
+                },
+                "compliance": {
+                    "documents_expiring_30_days": expiring_documents,
+                    "documents_expired": expired_documents,
+                    "documents_unverified": unverified_documents,
+                },
+                "performance": {
+                    "pending_reviews": pending_performance_reviews,
+                    "reviews_this_period": performance_rows.count(),
+                },
+                "policy": {
+                    "office_start_time": policy.office_start_time.strftime("%I:%M %p"),
+                    "daily_work_hours": str(policy.daily_work_hours),
+                    "late_penalty": str(policy.late_penalty_amount),
+                    "monthly_paid_leaves": policy.monthly_paid_leaves,
+                    "monthly_paid_half_days": policy.monthly_paid_half_days,
+                },
+            })
+
         try:
             employee = request.user.employee_profile
         except (AttributeError, EmployeeProfile.DoesNotExist):
             return Response({"detail": "Employee profile not found."}, status=404)
 
-        today = timezone.localdate()
-        month_start = today.replace(day=1)
-        policy = HRPolicy.current()
         attendance = Attendance.objects.filter(
             employee=employee, date__range=(month_start, today)
         )
@@ -261,7 +367,8 @@ class EmployeeHrmsDashboardAPIView(APIView):
 
 
 class HolidayAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         year = request.query_params.get("year")
@@ -281,8 +388,8 @@ class HolidayAPIView(APIView):
         } for row in rows[:500]]})
 
     def post(self, request):
-        if not _role(request.user, "ADMIN", "OFFICE"):
-            return Response({"detail": "Only admin or office can declare a holiday."}, status=403)
+        if not has_feature_access(request, "hrms_holiday_manage"):
+            return Response({"detail": "Holiday management permission is required."}, status=403)
         try:
             holiday_date = date.fromisoformat(request.data.get("date", ""))
         except ValueError:
@@ -303,11 +410,12 @@ class HolidayAPIView(APIView):
 
 
 class HolidayDetailAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def delete(self, request, holiday_id):
-        if not _role(request.user, "ADMIN", "OFFICE"):
-            return Response({"detail": "Only admin or office can remove a holiday."}, status=403)
+        if not has_feature_access(request, "hrms_holiday_manage"):
+            return Response({"detail": "Holiday management permission is required."}, status=403)
         deleted, _ = Holiday.objects.filter(pk=holiday_id).delete()
         if not deleted:
             return Response({"detail": "Holiday not found."}, status=404)
@@ -315,7 +423,8 @@ class HolidayDetailAPIView(APIView):
 
 
 class LeaveRequestAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         rows = LeaveRequest.objects.select_related("employee__user")
@@ -411,11 +520,12 @@ class LeaveRequestAPIView(APIView):
 
 
 class LeaveReviewAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def post(self, request, leave_id):
-        if not _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
-            return Response({"detail": "Not permitted."}, status=403)
+        if not has_feature_access(request, "hrms_leave_approve"):
+            return Response({"detail": "Leave approval permission is required."}, status=403)
         row = LeaveRequest.objects.filter(pk=leave_id, status="PENDING").first()
         if row is None:
             return Response({"detail": "Pending leave not found."}, status=404)
@@ -430,11 +540,12 @@ class LeaveReviewAPIView(APIView):
 
 
 class PayrollAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         rows = PayrollRecord.objects.select_related("employee__user")
-        if _role(request.user, "ADMIN"):
+        if has_feature_access(request, "hrms_payroll_manage"):
             if request.query_params.get("month"):
                 rows = rows.filter(payroll_month=_month(request.query_params["month"]))
         else:
@@ -443,8 +554,8 @@ class PayrollAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can generate payroll."}, status=403)
+        if not has_feature_access(request, "hrms_payroll_manage"):
+            return Response({"detail": "Payroll management permission is required."}, status=403)
         try:
             month = _month(request.data.get("month", ""))
         except ValueError:
@@ -468,11 +579,12 @@ class PayrollAPIView(APIView):
 
 
 class PayrollActionAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def post(self, request, payroll_id):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can approve payroll."}, status=403)
+        if not has_feature_access(request, "hrms_payroll_manage"):
+            return Response({"detail": "Payroll management permission is required."}, status=403)
         row = PayrollRecord.objects.filter(pk=payroll_id).first()
         if row is None:
             return Response({"detail": "Payroll record not found."}, status=404)
@@ -489,7 +601,8 @@ class PayrollActionAPIView(APIView):
 
 
 class EmployeePenaltyAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
         rows = EmployeePenalty.objects.select_related("employee__user", "created_by", "approved_by")
@@ -509,7 +622,7 @@ class EmployeePenaltyAPIView(APIView):
             "approved_at": row.approved_at,
         } for row in rows[:1000]]
         response = {"penalties": data}
-        if _role(request.user, "ADMIN"):
+        if has_feature_access(request, "hrms_penalty_manage"):
             response["employees"] = [{
                 "id": employee.id,
                 "employee_id": employee.employee_id,
@@ -518,8 +631,8 @@ class EmployeePenaltyAPIView(APIView):
         return Response(response)
 
     def post(self, request):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can create an employee penalty."}, status=403)
+        if not has_feature_access(request, "hrms_penalty_manage"):
+            return Response({"detail": "Penalty management permission is required."}, status=403)
         employee = EmployeeProfile.objects.filter(pk=request.data.get("employee_id"), is_active=True).first()
         if employee is None:
             return Response({"detail": "Active employee is required."}, status=400)
@@ -542,12 +655,13 @@ class EmployeePenaltyAPIView(APIView):
 
 
 class EmployeePenaltyActionAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     @transaction.atomic
     def post(self, request, penalty_id):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can approve or cancel a penalty."}, status=403)
+        if not has_feature_access(request, "hrms_penalty_manage"):
+            return Response({"detail": "Penalty management permission is required."}, status=403)
         row = EmployeePenalty.objects.select_for_update().filter(pk=penalty_id, status="DRAFT").first()
         if row is None:
             return Response({"detail": "Draft penalty not found."}, status=404)
@@ -567,11 +681,12 @@ class EmployeePenaltyActionAPIView(APIView):
 
 
 class PayrollExcelReportAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
 
     def get(self, request):
-        if not _role(request.user, "ADMIN"):
-            return Response({"detail": "Only admin can export salary register."}, status=403)
+        if not has_feature_access(request, "hrms_payroll_manage"):
+            return Response({"detail": "Payroll management permission is required."}, status=403)
         try:
             month = _month(request.query_params.get("month", ""))
         except ValueError:
@@ -613,3 +728,199 @@ class PayrollExcelReportAPIView(APIView):
         response = HttpResponse(stream.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f'attachment; filename="ARI_Salary_Register_{month:%Y_%m}.xlsx"'
         return response
+
+
+class PerformanceReviewAPIView(APIView):
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
+
+    def get(self, request):
+        rows = PerformanceReview.objects.select_related(
+            "employee__user", "reviewer"
+        )
+        can_manage = has_feature_access(request, "hrms_performance_manage")
+        if not can_manage:
+            rows = rows.filter(employee__user=request.user)
+        employee_id = request.query_params.get("employee_id")
+        if employee_id and can_manage:
+            rows = rows.filter(employee_id=employee_id)
+
+        return Response({
+            "reviews": [{
+                "id": row.id,
+                "employee_id": row.employee_id,
+                "employee_name": row.employee.user.get_full_name() or row.employee.user.phone,
+                "period_start": row.period_start,
+                "period_end": row.period_end,
+                "reviewer": row.reviewer.get_full_name() or row.reviewer.phone,
+                "goals_score": row.goals_score,
+                "attendance_score": row.attendance_score,
+                "service_quality_score": row.service_quality_score,
+                "customer_score": row.customer_score,
+                "sales_score": row.sales_score,
+                "overall_score": row.overall_score,
+                "strengths": row.strengths,
+                "improvement_plan": row.improvement_plan,
+                "comments": row.comments,
+                "status": row.status,
+                "finalized_at": row.finalized_at,
+                "acknowledged_at": row.acknowledged_at,
+            } for row in rows[:500]]
+        })
+
+    def post(self, request):
+        if not has_feature_access(request, "hrms_performance_manage"):
+            return Response({"detail": "Performance management permission is required."}, status=403)
+
+        try:
+            employee = EmployeeProfile.objects.get(
+                pk=request.data.get("employee_id"),
+                is_active=True,
+            )
+            period_start = date.fromisoformat(str(request.data.get("period_start") or ""))
+            period_end = date.fromisoformat(str(request.data.get("period_end") or ""))
+        except (EmployeeProfile.DoesNotExist, ValueError, TypeError):
+            return Response({"detail": "Valid employee and review period are required."}, status=400)
+
+        if period_end < period_start:
+            return Response({"detail": "Review period end cannot be before start."}, status=400)
+
+        score_fields = [
+            "goals_score",
+            "attendance_score",
+            "service_quality_score",
+            "customer_score",
+            "sales_score",
+        ]
+        scores = {}
+        try:
+            for field in score_fields:
+                value = Decimal(str(request.data.get(field, 0)))
+                if value < 0 or value > 100:
+                    return Response({"detail": f"{field} must be between 0 and 100."}, status=400)
+                scores[field] = value
+        except Exception:
+            return Response({"detail": "Performance scores must be numeric."}, status=400)
+
+        row, created = PerformanceReview.objects.get_or_create(
+            employee=employee,
+            period_start=period_start,
+            period_end=period_end,
+            defaults={"reviewer": request.user},
+        )
+        if not created and row.status in {"FINAL", "ACKNOWLEDGED"}:
+            return Response({"detail": "Finalized review cannot be edited."}, status=409)
+
+        row.reviewer = request.user
+        for field, value in scores.items():
+            setattr(row, field, value)
+        row.strengths = str(request.data.get("strengths") or "").strip()
+        row.improvement_plan = str(request.data.get("improvement_plan") or "").strip()
+        row.comments = str(request.data.get("comments") or "").strip()
+        row.recalculate()
+        row.status = "SUBMITTED"
+        row.save()
+        return Response({
+            "id": row.id,
+            "status": row.status,
+            "overall_score": row.overall_score,
+            "detail": "Performance review saved.",
+        }, status=201 if created else 200)
+
+
+class PerformanceReviewActionAPIView(APIView):
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
+
+    def post(self, request, review_id):
+        row = PerformanceReview.objects.select_related("employee__user").filter(pk=review_id).first()
+        if row is None:
+            return Response({"detail": "Performance review not found."}, status=404)
+
+        action = str(request.data.get("action") or "").upper()
+        if action == "FINALIZE":
+            if not has_feature_access(request, "hrms_performance_manage"):
+                return Response({"detail": "Performance management permission is required."}, status=403)
+            if row.status not in {"DRAFT", "SUBMITTED"}:
+                return Response({"detail": "Only draft/submitted review can be finalized."}, status=400)
+            row.status = "FINAL"
+            row.finalized_at = timezone.now()
+            row.save(update_fields=["status", "finalized_at", "updated_at"])
+            return Response({"detail": "Performance review finalized.", "status": row.status})
+
+        if action == "ACKNOWLEDGE":
+            if row.employee.user_id != request.user.id:
+                return Response({"detail": "Only the employee can acknowledge this review."}, status=403)
+            if row.status != "FINAL":
+                return Response({"detail": "Only a final review can be acknowledged."}, status=400)
+            row.status = "ACKNOWLEDGED"
+            row.acknowledged_at = timezone.now()
+            row.save(update_fields=["status", "acknowledged_at", "updated_at"])
+            return Response({"detail": "Performance review acknowledged.", "status": row.status})
+
+        return Response({"detail": "Action must be FINALIZE or ACKNOWLEDGE."}, status=400)
+
+
+class EmployeeDocumentComplianceAPIView(APIView):
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "hrms"
+
+    def get(self, request):
+        rows = EmployeeDocument.objects.select_related("employee__user")
+        can_manage = has_feature_access(request, "hrms_documents_manage")
+        if not can_manage:
+            rows = rows.filter(employee__user=request.user)
+        employee_id = request.query_params.get("employee_id")
+        if employee_id and can_manage:
+            rows = rows.filter(employee_id=employee_id)
+
+        today = timezone.localdate()
+        data = []
+        for row in rows[:500]:
+            if row.expiry_date is None:
+                expiry_state = "NO_EXPIRY"
+            elif row.expiry_date < today:
+                expiry_state = "EXPIRED"
+            elif row.expiry_date <= today + timedelta(days=30):
+                expiry_state = "EXPIRING_SOON"
+            else:
+                expiry_state = "VALID"
+            data.append({
+                "id": row.id,
+                "employee_id": row.employee_id,
+                "employee_name": row.employee.user.get_full_name() or row.employee.user.phone,
+                "document_type": row.document_type,
+                "document_number": row.document_number,
+                "expiry_date": row.expiry_date,
+                "verified": row.verified,
+                "expiry_state": expiry_state,
+                "uploaded_at": row.uploaded_at,
+            })
+
+        return Response({"documents": data})
+
+    def post(self, request):
+        if not has_feature_access(request, "hrms_documents_manage"):
+            return Response({"detail": "Document management permission is required."}, status=403)
+        employee = EmployeeProfile.objects.filter(pk=request.data.get("employee_id")).first()
+        if employee is None:
+            return Response({"detail": "Employee not found."}, status=404)
+        document_type = str(request.data.get("document_type") or "").strip()
+        if not document_type:
+            return Response({"detail": "Document type is required."}, status=400)
+        expiry_date = None
+        raw_expiry = request.data.get("expiry_date")
+        if raw_expiry:
+            try:
+                expiry_date = date.fromisoformat(str(raw_expiry))
+            except ValueError:
+                return Response({"detail": "Valid expiry date is required."}, status=400)
+
+        row = EmployeeDocument.objects.create(
+            employee=employee,
+            document_type=document_type[:50],
+            document_number=str(request.data.get("document_number") or "").strip()[:100],
+            expiry_date=expiry_date,
+            verified=bool(request.data.get("verified", False)),
+        )
+        return Response({"id": row.id, "detail": "Employee document record added."}, status=201)

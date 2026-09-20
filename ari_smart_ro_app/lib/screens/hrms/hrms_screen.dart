@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
 import '../../services/hrms_service.dart';
+import '../../services/role_permission_service.dart';
 import '../../utils/search_utils.dart';
 
 class HrmsScreen extends StatefulWidget {
@@ -12,11 +13,14 @@ class HrmsScreen extends StatefulWidget {
 
 class _HrmsScreenState extends State<HrmsScreen> {
   final _service = HrmsService();
+  final _rolePermissionService = const RolePermissionService();
   List<Map<String, dynamic>> _leaves = [], _payroll = [], _holidays = [];
   List<Map<String, dynamic>> _penalties = [], _penaltyEmployees = [];
+  List<Map<String, dynamic>> _performanceReviews = [], _documents = [];
   Map<String, dynamic> _dashboard = {};
   bool _loading = true;
   String _role = '';
+  Set<String> _allowedFeatures = const {};
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month - 1);
   final _searchController = TextEditingController();
   String _query = '';
@@ -56,36 +60,50 @@ class _HrmsScreenState extends State<HrmsScreen> {
   String get _monthValue =>
       '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
 
+  bool _has(String key) => _role == 'ADMIN' || _allowedFeatures.contains(key);
+  bool get _canLeaveApprove => _has('hrms_leave_approve');
+  bool get _canPayrollManage => _has('hrms_payroll_manage');
+  bool get _canPenaltyManage => _has('hrms_penalty_manage');
+  bool get _canPerformanceManage => _has('hrms_performance_manage');
+  bool get _canDocumentsManage => _has('hrms_documents_manage');
+  bool get _canHolidayManage => _has('hrms_holiday_manage');
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
       _role = (await ApiService.getRole() ?? '').toUpperCase();
+      final permissionData =
+          await _rolePermissionService.getPermissions(role: _role);
+      _allowedFeatures =
+          (permissionData['allowed_features'] as List<dynamic>? ?? const [])
+              .map((e) => e.toString())
+              .toSet();
       final values = await Future.wait<dynamic>([
         _service.leaves(),
-        _service.payroll(month: _role == 'ADMIN' ? _monthValue : null),
-        if (_role != 'ADMIN') _service.dashboard(),
+        _service.payroll(month: _canPayrollManage ? _monthValue : null),
+        _service.dashboard(),
         _service.holidays(year: DateTime.now().year),
         _service.penalties(),
+        _service.performanceReviews(),
+        _service.documents(),
       ]);
       if (mounted) {
         setState(() {
           _leaves = values[0];
           _payroll = values[1];
-          _dashboard = _role == 'ADMIN'
-              ? <String, dynamic>{}
-              : Map<String, dynamic>.from(values[2] as Map);
-          _holidays = List<Map<String, dynamic>>.from(
-            values[_role == 'ADMIN' ? 2 : 3] as List,
-          );
-          final penaltyData = Map<String, dynamic>.from(
-            values[_role == 'ADMIN' ? 3 : 4] as Map,
-          );
+          _dashboard = Map<String, dynamic>.from(values[2] as Map);
+          _holidays = List<Map<String, dynamic>>.from(values[3] as List);
+          final penaltyData = Map<String, dynamic>.from(values[4] as Map);
           _penalties = List<Map<String, dynamic>>.from(
             penaltyData['penalties'] as List? ?? const [],
           );
           _penaltyEmployees = List<Map<String, dynamic>>.from(
             penaltyData['employees'] as List? ?? const [],
           );
+          _performanceReviews = List<Map<String, dynamic>>.from(
+            values[5] as List,
+          );
+          _documents = List<Map<String, dynamic>>.from(values[6] as List);
         });
       }
     } catch (error) {
@@ -307,6 +325,25 @@ class _HrmsScreenState extends State<HrmsScreen> {
     }
   }
 
+  Future<void> _payrollAction(
+    Map<String, dynamic> row,
+    String action,
+  ) async {
+    final id = (row['id'] as num?)?.toInt();
+    if (id == null) return;
+    try {
+      await _service.payrollAction(id, action);
+      _show(
+        action == 'APPROVE'
+            ? 'Payroll approved successfully.'
+            : 'Payroll marked as paid.',
+      );
+      await _load();
+    } catch (e) {
+      _show(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   Future<void> _generate() async {
     try {
       final count = await _service.generatePayroll(_monthValue);
@@ -354,7 +391,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (_role == 'ADMIN')
+                if (_canPayrollManage)
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -414,8 +451,8 @@ class _HrmsScreenState extends State<HrmsScreen> {
                       ),
                     ),
                   ),
-                if (_role != 'ADMIN') _employeeOverview(),
                 if (_role == 'ADMIN') _adminReportOverview(),
+                if (_role != 'ADMIN') _employeeOverview(),
                 const SizedBox(height: 14),
                 TextField(
                   controller: _searchController,
@@ -430,6 +467,10 @@ class _HrmsScreenState extends State<HrmsScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 14),
+                _performanceSection(),
+                const SizedBox(height: 14),
+                _documentComplianceSection(),
                 const SizedBox(height: 14),
                 _holidaySection(),
                 const SizedBox(height: 14),
@@ -456,7 +497,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                         child: Icon(Icons.receipt_long),
                       ),
                       title: Text(
-                        _role == 'ADMIN'
+                        _canPayrollManage
                             ? (row['employee_name']?.toString() ?? '')
                             : '${row['month']} Payslip',
                       ),
@@ -500,6 +541,30 @@ class _HrmsScreenState extends State<HrmsScreen> {
                           _money(row['net_salary']),
                           bold: true,
                         ),
+                        if (_canPayrollManage &&
+                            row['status'] == 'DRAFT') ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () => _payrollAction(row, 'APPROVE'),
+                              icon: const Icon(Icons.verified_outlined),
+                              label: const Text('APPROVE PAYROLL'),
+                            ),
+                          ),
+                        ],
+                        if (_canPayrollManage &&
+                            row['status'] == 'APPROVED') ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () => _payrollAction(row, 'MARK_PAID'),
+                              icon: const Icon(Icons.payments_outlined),
+                              label: const Text('MARK AS PAID'),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -546,9 +611,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                                 : Icons.event,
                           ),
                           title: Text(
-                            _role == 'ADMIN' ||
-                                    _role == 'MANAGER' ||
-                                    _role == 'OFFICE'
+                            _canLeaveApprove
                                 ? '${row['employee_name']} • ${row['type']}'
                                 : row['type'].toString().replaceAll('_', ' '),
                           ),
@@ -560,9 +623,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                           trailing: Chip(label: Text(row['status'].toString())),
                         ),
                         if (row['status'] == 'PENDING' &&
-                            (_role == 'ADMIN' ||
-                                _role == 'MANAGER' ||
-                                _role == 'OFFICE')) ...[
+                            _canLeaveApprove) ...[
                           const Divider(height: 1),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -631,7 +692,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                         isThreeLine: true,
                         trailing: Chip(label: Text(row['status'].toString())),
                       ),
-                      if (_role == 'ADMIN' && row['status'] == 'DRAFT')
+                      if (_canPenaltyManage && row['status'] == 'DRAFT')
                         Padding(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                           child: Row(
@@ -658,7 +719,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                   ),
                 ),
               ),
-        if (_role == 'ADMIN') ...[
+        if (_canPenaltyManage) ...[
           const SizedBox(height: 8),
           FilledButton.icon(
             onPressed: _createPenalty,
@@ -670,27 +731,79 @@ class _HrmsScreenState extends State<HrmsScreen> {
     ),
   );
   Widget _adminReportOverview() {
-    final pendingLeaves = _leaves
-        .where((row) => row['status'] == 'PENDING')
-        .length;
-    final approvedLeaves = _leaves
-        .where((row) => row['status'] == 'APPROVED')
-        .length;
-    final grossPayroll = _payroll.fold<double>(
-      0,
-      (sum, row) => sum + (double.tryParse('${row['net_salary']}') ?? 0),
+    final workforce = _map('workforce');
+    final approvals = _map('approvals');
+    final payroll = _map('payroll');
+    final attendance = _map('attendance');
+    final designationMix = Map<String, dynamic>.from(
+      workforce['designation_mix'] as Map? ?? const {},
     );
-    final pendingPayroll = _payroll
-        .where((row) => row['status'] != 'PAID')
-        .length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0B2447), Color(0xFF19376D)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'CORPORATE HRMS',
+                style: TextStyle(
+                  color: Color(0xFFB7D7FF),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'People Operations Command Center',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Live workforce, approvals, payroll and policy overview • $_monthValue',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: _heroMetric(
+                      'Active workforce',
+                      '${workforce['active_employees'] ?? 0}',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _heroMetric(
+                      'Present today',
+                      '${workforce['present_today'] ?? 0}',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
         Text(
-          'Admin HR reports',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+          'Executive snapshot',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
         ),
         const SizedBox(height: 10),
         GridView.count(
@@ -702,35 +815,109 @@ class _HrmsScreenState extends State<HrmsScreen> {
           crossAxisSpacing: 10,
           children: [
             _metricCard(
-              Icons.pending_actions,
-              'Pending leaves',
-              '$pendingLeaves',
+              Icons.pending_actions_rounded,
+              'Pending leave approvals',
+              '${approvals['pending_leaves'] ?? 0}',
               const Color(0xFFE17819),
             ),
             _metricCard(
-              Icons.event_available,
-              'Approved leaves',
-              '$approvedLeaves',
-              const Color(0xFF0A8F70),
+              Icons.payments_outlined,
+              'Payroll drafts',
+              '${approvals['draft_payroll'] ?? 0}',
+              const Color(0xFF7B4BC4),
             ),
             _metricCard(
               Icons.account_balance_wallet_outlined,
-              'Net salary register',
-              _money(grossPayroll),
+              'Net salary',
+              _money(payroll['net_salary']),
               const Color(0xFF0878D8),
             ),
             _metricCard(
-              Icons.receipt_long_outlined,
-              'Payroll pending',
-              '$pendingPayroll',
-              const Color(0xFF7B4BC4),
+              Icons.more_time_rounded,
+              'Overtime payout',
+              _money(payroll['overtime_amount']),
+              const Color(0xFF0A8F70),
             ),
           ],
         ),
-        const SizedBox(height: 10),
-        const Text(
-          'Employee-wise attendance, penalties, overtime, incentives, leave records and payroll details are shown below and included in the salary Excel report.',
-          style: TextStyle(color: Color(0xFF687386)),
+        const SizedBox(height: 12),
+        _sectionCard(
+          icon: Icons.groups_2_outlined,
+          title: 'Workforce structure',
+          child: designationMix.isEmpty
+              ? const Text('No active workforce data available.')
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: designationMix.entries
+                      .map(
+                        (entry) => Chip(
+                          avatar: const Icon(Icons.badge_outlined, size: 18),
+                          label: Text('${entry.key}: ${entry.value}'),
+                        ),
+                      )
+                      .toList(),
+                ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          icon: Icons.assignment_turned_in_outlined,
+          title: 'Approval queue',
+          child: Column(
+            children: [
+              _line(
+                'Leave requests awaiting review',
+                '${approvals['pending_leaves'] ?? 0}',
+                bold: true,
+              ),
+              _line(
+                'Payroll awaiting approval',
+                '${approvals['draft_payroll'] ?? 0}',
+              ),
+              _line(
+                'Approved payroll awaiting payment',
+                '${approvals['approved_payroll'] ?? 0}',
+              ),
+              _line(
+                'Penalty drafts awaiting approval',
+                '${approvals['draft_penalties'] ?? 0}',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          icon: Icons.insights_outlined,
+          title: 'Attendance & cost controls',
+          child: Column(
+            children: [
+              _line(
+                'Not checked-in / absent today',
+                '${workforce['absent_or_not_checked_in'] ?? 0}',
+              ),
+              _line(
+                'Half-days this month',
+                '${attendance['half_days'] ?? 0}',
+              ),
+              _line(
+                'Absences this month',
+                '${attendance['absences'] ?? 0}',
+              ),
+              _line(
+                'Pending selfie reviews',
+                '${attendance['pending_selfie_reviews'] ?? 0}',
+              ),
+              _line(
+                'Performance incentives',
+                _money(payroll['incentives']),
+              ),
+              _line(
+                'Approved penalties',
+                _money(payroll['approved_penalties']),
+                bold: true,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -768,7 +955,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
                       : null,
                 ),
               ),
-        if (_role == 'ADMIN' || _role == 'OFFICE') ...[
+        if (_canHolidayManage) ...[
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _declareHoliday,
@@ -776,6 +963,106 @@ class _HrmsScreenState extends State<HrmsScreen> {
             label: const Text('DECLARE HOLIDAY'),
           ),
         ],
+      ],
+    ),
+  );
+
+  Widget _performanceSection() => _sectionCard(
+    icon: Icons.insights_rounded,
+    title: 'Performance & Appraisal',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_performanceReviews.isEmpty)
+          const Text(
+            'No performance review available yet.',
+            style: TextStyle(color: Color(0xFF687386)),
+          )
+        else
+          ..._performanceReviews.take(12).map(
+            (row) => Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.assessment_outlined),
+                    ),
+                    title: Text(
+                      _canPerformanceManage
+                          ? '${row['employee_name']} • Score ${row['overall_score']}'
+                          : 'Overall score ${row['overall_score']}',
+                    ),
+                    subtitle: Text(
+                      '${row['period_start']} to ${row['period_end']}\n'
+                      'Goals ${row['goals_score']} • Attendance ${row['attendance_score']} • '
+                      'Service ${row['service_quality_score']}\n'
+                      'Customer ${row['customer_score']} • Sales ${row['sales_score']}'
+                      '${(row['improvement_plan']?.toString() ?? '').isEmpty ? '' : '\nPlan: ${row['improvement_plan']}'}',
+                    ),
+                    isThreeLine: true,
+                    trailing: Chip(label: Text(row['status'].toString())),
+                  ),
+                  if (!_canPerformanceManage &&
+                      row['status'] == 'FINAL')
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () => _acknowledgePerformance(row),
+                          icon: const Icon(Icons.check_circle_outline),
+                          label: const Text('ACKNOWLEDGE REVIEW'),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  Widget _documentComplianceSection() => _sectionCard(
+    icon: Icons.folder_copy_outlined,
+    title: 'Employee Document Compliance',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_documents.isEmpty)
+          const Text(
+            'No employee document records available.',
+            style: TextStyle(color: Color(0xFF687386)),
+          )
+        else
+          ..._documents.take(20).map(
+            (row) {
+              final state = row['expiry_state']?.toString() ?? 'VALID';
+              final warning =
+                  state == 'EXPIRED' || state == 'EXPIRING_SOON' || row['verified'] != true;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  warning ? Icons.warning_amber_rounded : Icons.verified_outlined,
+                ),
+                title: Text(
+                  _canDocumentsManage
+                      ? '${row['employee_name']} • ${row['document_type']}'
+                      : row['document_type'].toString(),
+                ),
+                subtitle: Text(
+                  '${row['document_number'] ?? ''}'
+                  '${row['expiry_date'] == null ? '' : ' • expires ${row['expiry_date']}'}',
+                ),
+                trailing: Chip(
+                  label: Text(
+                    row['verified'] == true ? state : 'UNVERIFIED',
+                  ),
+                ),
+              );
+            },
+          ),
       ],
     ),
   );
@@ -977,6 +1264,16 @@ class _HrmsScreenState extends State<HrmsScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _acknowledgePerformance(Map<String, dynamic> row) async {
+    try {
+      await _service.performanceAction((row['id'] as num).toInt(), 'ACKNOWLEDGE');
+      _show('Performance review acknowledged.');
+      await _load();
+    } catch (error) {
+      _show(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> _declareHoliday() async {

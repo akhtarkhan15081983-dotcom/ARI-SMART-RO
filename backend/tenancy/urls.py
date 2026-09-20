@@ -6,6 +6,7 @@ from .views import (
     SuperAdminCompanyOnboardingAPIView,
     SuperAdminCompanyLifecycleAPIView, SuperAdminCompanyLifecycleHistoryAPIView,
     SuperAdminCompanyDetailAPIView,
+    RoleFeaturePermissionAPIView,
 )
 
 urlpatterns = [
@@ -13,6 +14,7 @@ urlpatterns = [
     path("brand/<slug:slug>/", PublicCompanyBrandAPIView.as_view(), name="public-company-brand"),
     path("companies/", MyCompaniesAPIView.as_view(), name="my-companies"),
     path("companies/create/", CompanyCreateAPIView.as_view(), name="company-create"),
+    path("role-permissions/", RoleFeaturePermissionAPIView.as_view(), name="role-feature-permissions"),
     path("super-admin/dashboard/", SuperAdminDashboardAPIView.as_view(), name="saas-super-admin-dashboard"),
     path("super-admin/companies/onboard/", SuperAdminCompanyOnboardingAPIView.as_view(), name="saas-super-admin-company-onboard"),
     path("super-admin/companies/<int:company_id>/subscription-status/", SuperAdminSubscriptionStatusAPIView.as_view(), name="saas-super-admin-subscription-status"),
