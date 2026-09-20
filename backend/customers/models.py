@@ -310,6 +310,26 @@ class CustomerRentHistory(models.Model):
         blank=True,
     )
 
+    base_rent = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+    )
+
+    discount_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+    )
+
+    applied_offer = models.ForeignKey(
+        "accounts.CustomerEngagement",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="rent_history_applications",
+    )
+
     expected_rent = models.DecimalField(
         max_digits=10,
         decimal_places=2,
