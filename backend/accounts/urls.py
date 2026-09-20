@@ -14,9 +14,17 @@ from .views import (
 )
 from .sim_verification import SimVerificationPollAPIView, SimVerificationStartAPIView, SmsGatewayIngestAPIView
 from .engagement import CustomerEngagementAPIView
+from .notifications import (
+    AdminNotificationCampaignAPIView,
+    AdminOfferAPIView,
+    NotificationCenterAPIView,
+)
 
 
 urlpatterns = [
+    path("notifications/", NotificationCenterAPIView.as_view(), name="notification-center"),
+    path("admin/notification-campaigns/", AdminNotificationCampaignAPIView.as_view(), name="admin-notification-campaigns"),
+    path("admin/offers/", AdminOfferAPIView.as_view(), name="admin-offers"),
     path("customer-engagement/", CustomerEngagementAPIView.as_view(), name="customer-engagement"),
     path("sim-verification/start/", SimVerificationStartAPIView.as_view(), name="sim-verification-start"),
     path("sim-verification/poll/", SimVerificationPollAPIView.as_view(), name="sim-verification-poll"),
