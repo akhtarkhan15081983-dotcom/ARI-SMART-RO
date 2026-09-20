@@ -144,6 +144,11 @@ class DashboardItems {
       route: "role_access_control",
     ),
     const DashboardItem(
+      title: "Notifications & Offers",
+      icon: Icons.notifications_active_rounded,
+      route: "notification_offer_admin",
+    ),
+    const DashboardItem(
       title: "Attendance Selfie Review",
       icon: Icons.fact_check_outlined,
       route: "attendance_review_admin",
