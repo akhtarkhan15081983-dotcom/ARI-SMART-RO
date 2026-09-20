@@ -161,14 +161,91 @@ class EmployeeHrmsDashboardAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        today = timezone.localdate()
+        month_start = today.replace(day=1)
+        policy = HRPolicy.current()
+
+        if _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+            month_end = today.replace(day=calendar.monthrange(today.year, today.month)[1])
+            employees = EmployeeProfile.objects.filter(is_active=True).select_related("user")
+            attendance = Attendance.objects.filter(date__range=(month_start, today))
+            leaves = LeaveRequest.objects.filter(
+                start_date__lte=month_end,
+                end_date__gte=month_start,
+            )
+            payroll = PayrollRecord.objects.filter(payroll_month=month_start)
+            penalties = EmployeePenalty.objects.filter(
+                penalty_date__range=(month_start, today)
+            )
+            present_today = Attendance.objects.filter(
+                date=today,
+            ).exclude(status="ABSENT").values("employee_id").distinct().count()
+            active_count = employees.count()
+            pending_leaves = leaves.filter(status="PENDING").count()
+            approved_leaves = leaves.filter(status="APPROVED").count()
+            draft_payroll = payroll.filter(status="DRAFT").count()
+            approved_payroll = payroll.filter(status="APPROVED").count()
+            paid_payroll = payroll.filter(status="PAID").count()
+            payroll_net = payroll.aggregate(total=Sum("net_salary"))["total"] or Decimal("0")
+            overtime_amount = payroll.aggregate(total=Sum("overtime_amount"))["total"] or Decimal("0")
+            incentives = (
+                (payroll.aggregate(total=Sum("rent_incentive"))["total"] or Decimal("0"))
+                + (payroll.aggregate(total=Sum("sale_incentive"))["total"] or Decimal("0"))
+            )
+            approved_penalties = penalties.filter(status="APPROVED").aggregate(
+                total=Sum("amount")
+            )["total"] or Decimal("0")
+
+            designation_counts = {}
+            for row in employees:
+                label = row.get_designation_display()
+                designation_counts[label] = designation_counts.get(label, 0) + 1
+
+            return Response({
+                "scope": "CORPORATE",
+                "month": month_start.strftime("%Y-%m"),
+                "workforce": {
+                    "active_employees": active_count,
+                    "present_today": present_today,
+                    "absent_or_not_checked_in": max(0, active_count - present_today),
+                    "designation_mix": designation_counts,
+                },
+                "approvals": {
+                    "pending_leaves": pending_leaves,
+                    "approved_leaves": approved_leaves,
+                    "draft_payroll": draft_payroll,
+                    "approved_payroll": approved_payroll,
+                    "paid_payroll": paid_payroll,
+                    "draft_penalties": penalties.filter(status="DRAFT").count(),
+                },
+                "payroll": {
+                    "net_salary": str(_money(payroll_net)),
+                    "overtime_amount": str(_money(overtime_amount)),
+                    "incentives": str(_money(incentives)),
+                    "approved_penalties": str(_money(approved_penalties)),
+                },
+                "attendance": {
+                    "records_this_month": attendance.count(),
+                    "half_days": attendance.filter(status="HALF_DAY").count(),
+                    "absences": attendance.filter(status="ABSENT").count(),
+                    "pending_selfie_reviews": attendance.filter(
+                        identity_review_status="PENDING"
+                    ).count(),
+                },
+                "policy": {
+                    "office_start_time": policy.office_start_time.strftime("%I:%M %p"),
+                    "daily_work_hours": str(policy.daily_work_hours),
+                    "late_penalty": str(policy.late_penalty_amount),
+                    "monthly_paid_leaves": policy.monthly_paid_leaves,
+                    "monthly_paid_half_days": policy.monthly_paid_half_days,
+                },
+            })
+
         try:
             employee = request.user.employee_profile
         except (AttributeError, EmployeeProfile.DoesNotExist):
             return Response({"detail": "Employee profile not found."}, status=404)
 
-        today = timezone.localdate()
-        month_start = today.replace(day=1)
-        policy = HRPolicy.current()
         attendance = Attendance.objects.filter(
             employee=employee, date__range=(month_start, today)
         )
