@@ -19,3 +19,5 @@
 - Verification codes are random and unique.
 - Arbitrary private HR data is never returned by employee verification endpoints.
 - Unassigned customers receive no engineer identity.
+
+- Admin can immediately see joining readiness and open the official digital ID from Employee Management.
