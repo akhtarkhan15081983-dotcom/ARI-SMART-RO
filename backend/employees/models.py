@@ -327,6 +327,63 @@ class EmployeePenalty(models.Model):
         return f"{self.employee.employee_id} - {self.amount} - {self.status}"
 
 
+class PerformanceReview(models.Model):
+    STATUS_CHOICES = [
+        ("DRAFT", "Draft"),
+        ("SUBMITTED", "Submitted"),
+        ("FINAL", "Final"),
+        ("ACKNOWLEDGED", "Acknowledged"),
+    ]
+
+    employee = models.ForeignKey(
+        EmployeeProfile,
+        on_delete=models.PROTECT,
+        related_name="performance_reviews",
+    )
+    period_start = models.DateField()
+    period_end = models.DateField()
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="performance_reviews_given",
+    )
+    goals_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    attendance_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    service_quality_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    customer_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    sales_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    overall_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    strengths = models.TextField(blank=True, default="")
+    improvement_plan = models.TextField(blank=True, default="")
+    comments = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="DRAFT")
+    finalized_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-period_end", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "period_start", "period_end"],
+                name="unique_employee_performance_period",
+            )
+        ]
+
+    def recalculate(self):
+        values = [
+            self.goals_score,
+            self.attendance_score,
+            self.service_quality_score,
+            self.customer_score,
+            self.sales_score,
+        ]
+        self.overall_score = sum(values) / len(values)
+        return self.overall_score
+
+
+
 class EmployeeDocument(models.Model):
     employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name="hr_documents")
     document_type = models.CharField(max_length=50)
