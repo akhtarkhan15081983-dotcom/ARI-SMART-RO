@@ -58,6 +58,11 @@ class EmployeeManagementAPIView(APIView):
                     "joining_date": employee.joining_date,
                     "salary": employee.salary,
                     "is_active": employee.is_active and employee.user.is_active,
+                    "location_received": (
+                        employee.last_latitude is not None
+                        and employee.last_longitude is not None
+                    ),
+                    "last_location_updated": employee.last_location_updated,
                 }
                 for employee in employees
             ],
