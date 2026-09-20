@@ -237,6 +237,17 @@ class JobService {
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
+  Future<Map<String, dynamic>> getCustomerAssignedEngineer() async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/jobs/customer-assigned-engineer/"),
+      headers: await _headers(),
+    );
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception("Unable to load assigned engineer");
+  }
+
   Future<Map<String, dynamic>> getCustomerActiveOTP() async {
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/jobs/customer-active-otp/"),
