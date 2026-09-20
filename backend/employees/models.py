@@ -384,6 +384,127 @@ class PerformanceReview(models.Model):
 
 
 
+
+class TrainingCourse(models.Model):
+    AUDIENCE_CHOICES = [
+        ("ALL", "All Employees"),
+        ("ENGINEER", "Engineer"),
+        ("MANAGER", "Manager"),
+        ("OFFICE", "Office Staff"),
+        ("CALLING", "Calling Staff"),
+    ]
+
+    title = models.CharField(max_length=180)
+    slug = models.SlugField(max_length=180, unique=True)
+    description = models.TextField(blank=True, default="")
+    audience = models.CharField(max_length=20, choices=AUDIENCE_CHOICES, default="ALL")
+    is_mandatory = models.BooleanField(default=True)
+    passing_score = models.PositiveIntegerField(default=80)
+    due_days = models.PositiveIntegerField(default=7)
+    grace_days = models.PositiveIntegerField(default=2)
+    penalty_amount = models.DecimalField(max_digits=10, decimal_places=2, default=100)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_training_courses",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["title"]
+
+    def __str__(self):
+        return self.title
+
+
+class TrainingLesson(models.Model):
+    course = models.ForeignKey(TrainingCourse, on_delete=models.CASCADE, related_name="lessons")
+    order = models.PositiveIntegerField(default=1)
+    title = models.CharField(max_length=180)
+    content = models.TextField()
+    key_takeaway = models.CharField(max_length=300, blank=True, default="")
+
+    class Meta:
+        ordering = ["course", "order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["course", "order"], name="unique_training_lesson_order")
+        ]
+
+    def __str__(self):
+        return f"{self.course.title} • {self.title}"
+
+
+class TrainingQuestion(models.Model):
+    course = models.ForeignKey(TrainingCourse, on_delete=models.CASCADE, related_name="questions")
+    order = models.PositiveIntegerField(default=1)
+    question = models.CharField(max_length=500)
+    option_a = models.CharField(max_length=300)
+    option_b = models.CharField(max_length=300)
+    option_c = models.CharField(max_length=300)
+    option_d = models.CharField(max_length=300)
+    correct_option = models.CharField(
+        max_length=1,
+        choices=[("A", "A"), ("B", "B"), ("C", "C"), ("D", "D")],
+    )
+    explanation = models.CharField(max_length=500, blank=True, default="")
+
+    class Meta:
+        ordering = ["course", "order", "id"]
+
+    def __str__(self):
+        return self.question[:80]
+
+
+class EmployeeTrainingAssignment(models.Model):
+    STATUS_CHOICES = [
+        ("PENDING", "Pending"),
+        ("IN_PROGRESS", "In Progress"),
+        ("COMPLETED", "Completed"),
+        ("OVERDUE", "Overdue"),
+    ]
+
+    employee = models.ForeignKey(
+        EmployeeProfile,
+        on_delete=models.CASCADE,
+        related_name="training_assignments",
+    )
+    course = models.ForeignKey(
+        TrainingCourse,
+        on_delete=models.PROTECT,
+        related_name="assignments",
+    )
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    due_date = models.DateField()
+    grace_until = models.DateField()
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="PENDING")
+    lessons_completed = models.JSONField(default=list, blank=True)
+    quiz_score = models.PositiveIntegerField(default=0)
+    attempts = models.PositiveIntegerField(default=0)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    compliance_strike = models.BooleanField(default=False)
+    penalty_created = models.BooleanField(default=False)
+    penalty = models.ForeignKey(
+        EmployeePenalty,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="training_assignments",
+    )
+
+    class Meta:
+        ordering = ["status", "due_date", "-assigned_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "course"],
+                name="unique_employee_training_course",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.employee.employee_id} • {self.course.title}"
+
+
 class EmployeeDocument(models.Model):
     employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name="hr_documents")
     document_type = models.CharField(max_length=50)

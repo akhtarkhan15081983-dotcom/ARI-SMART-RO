@@ -41,6 +41,11 @@ class DashboardItems {
       route: "hrms",
     ),
     const DashboardItem(
+      title: "Training",
+      icon: Icons.school_rounded,
+      route: "training",
+    ),
+    const DashboardItem(
       title: "Work Calendar",
       icon: Icons.calendar_month,
       route: "work_calendar",
@@ -186,6 +191,11 @@ class DashboardItems {
       route: "hrms",
     ),
     const DashboardItem(
+      title: "Training",
+      icon: Icons.school_rounded,
+      route: "training",
+    ),
+    const DashboardItem(
       title: "Customers",
       icon: Icons.people,
       route: "customers",
@@ -249,6 +259,11 @@ class DashboardItems {
       title: "Employee HRMS",
       icon: Icons.badge_outlined,
       route: "hrms",
+    ),
+    const DashboardItem(
+      title: "Training",
+      icon: Icons.school_rounded,
+      route: "training",
     ),
     const DashboardItem(
       title: "Calling Desk",

@@ -43,6 +43,7 @@ import '../shop/shop_screen.dart';
 import '../work_planner/work_calendar_screen.dart';
 import '../work_planner/work_route_screen.dart';
 import '../hrms/hrms_screen.dart';
+import '../hrms/training_screen.dart';
 import '../hrms/employee_management_screen.dart';
 import '../inventory/inventory_workflow_screen.dart';
 import '../calling/calling_desk_screen.dart';
@@ -255,7 +256,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool get _engineerWorkLocked =>
       _engineerMissingCheckIn || _engineerReviewRejected || _engineerCheckedOut;
   bool _allowedWhenLocked(String route) =>
-      route == 'attendance' || route == 'profile' || route == 'andy';
+      route == 'attendance' ||
+      route == 'profile' ||
+      route == 'training' ||
+      route == 'andy';
   String get _engineerLockMessage {
     if (_engineerReviewRejected) {
       final n = _todayAttendance?.identityReviewNote?.trim();
@@ -422,6 +426,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         return;
       case 'hrms':
         _push(const HrmsScreen());
+        return;
+      case 'training':
+        _push(const TrainingScreen());
         return;
       case 'employee_management':
         if (_role == 'ADMIN' || _allowedFeatures.contains('employee_management')) {

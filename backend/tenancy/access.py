@@ -7,6 +7,7 @@ from .models import CompanyMembership, RoleFeaturePermission
 ROLE_FEATURE_CATALOG = {
     "attendance": "Attendance",
     "hrms": "Employee HRMS",
+    "training": "Mandatory Training",
     "work_calendar": "Work Calendar",
     "work_route": "Work Route",
     "jobs": "Jobs",
@@ -41,7 +42,7 @@ ROLE_FEATURE_CATALOG = {
 
 DEFAULT_ROLE_FEATURES = {
     "MANAGER": {
-        "attendance", "hrms", "work_calendar", "work_route", "jobs",
+        "attendance", "hrms", "training", "work_calendar", "work_route", "jobs",
         "assigned_customers", "customers", "walkin", "service", "bag",
         "request", "qr", "rent_management", "payment_history", "complaint",
         "referral", "profile", "reports", "inventory_workflow", "calling_desk",
@@ -49,15 +50,15 @@ DEFAULT_ROLE_FEATURES = {
         "hrms_leave_approve", "hrms_performance_manage", "hrms_holiday_manage",
     },
     "OFFICE": {
-        "attendance", "hrms", "customers", "walkin", "service",
+        "attendance", "hrms", "training", "customers", "walkin", "service",
         "rent_management", "payment_history", "reports", "inventory_workflow",
         "work_calendar", "work_route", "complaint", "referral", "profile",
         "calling_desk", "documents_admin", "hrms_documents_manage",
         "hrms_holiday_manage",
     },
-    "CALLING": {"attendance", "hrms", "calling_desk", "profile"},
+    "CALLING": {"attendance", "hrms", "training", "calling_desk", "profile"},
     "ENGINEER": {
-        "attendance", "hrms", "work_calendar", "work_route", "jobs",
+        "attendance", "hrms", "training", "work_calendar", "work_route", "jobs",
         "assigned_customers", "customers", "walkin", "service", "bag",
         "request", "qr", "rent_management", "complaint", "referral", "profile",
     },
