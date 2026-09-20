@@ -639,6 +639,14 @@ class EmployeeCareerMovementActionAPIView(APIView):
         if action != "APPROVE":
             return Response({"detail": "Action must be APPROVE or CANCEL."}, status=400)
 
+        if row.effective_date > timezone.localdate():
+            return Response({
+                "detail": (
+                    "Future-dated career movement is scheduled as a draft. "
+                    "Approve it on or after its effective date."
+                )
+            }, status=400)
+
         employee = row.employee
         employee.designation = row.new_designation or employee.designation
         employee.job_title = row.new_job_title
