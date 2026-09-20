@@ -193,7 +193,7 @@ class _PasswordResetApprovalScreenState
                                     'User',
                               ),
                               subtitle: Text(
-                                '${row['phone']} • ${row['role']}\nStatus: ${row['status']}',
+                                "${row['phone']} • ${row['role']}\nStatus: ${row['status']}",
                               ),
                               isThreeLine: true,
                               trailing: row['status'] == 'PENDING'
