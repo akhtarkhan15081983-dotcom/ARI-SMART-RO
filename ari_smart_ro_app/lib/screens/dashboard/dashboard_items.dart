@@ -41,6 +41,21 @@ class DashboardItems {
       route: "hrms",
     ),
     const DashboardItem(
+      title: "Training",
+      icon: Icons.school_rounded,
+      route: "training",
+    ),
+    const DashboardItem(
+      title: "Training",
+      icon: Icons.school_rounded,
+      route: "training",
+    ),
+    const DashboardItem(
+      title: "Training",
+      icon: Icons.school_rounded,
+      route: "training",
+    ),
+    const DashboardItem(
       title: "Work Calendar",
       icon: Icons.calendar_month,
       route: "work_calendar",
