@@ -53,6 +53,7 @@ class Migration(migrations.Migration):
             name="NotificationCampaign",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("event_key", models.CharField(blank=True, default="", max_length=160)),
                 ("title", models.CharField(max_length=140)),
                 ("message", models.TextField(max_length=1000)),
                 ("category", models.CharField(
@@ -157,6 +158,10 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="usernotification",
             index=models.Index(fields=["category", "created_at"], name="acct_notif_category_idx"),
+        ),
+        migrations.AddConstraint(
+            model_name="usernotification",
+            constraint=models.UniqueConstraint(fields=("user", "event_key"), name="unique_user_notification_event"),
         ),
         migrations.AddConstraint(
             model_name="offerredemption",
