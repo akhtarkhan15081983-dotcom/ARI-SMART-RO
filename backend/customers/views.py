@@ -1,6 +1,8 @@
 from rest_framework import generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import ScopedRateThrottle
+from accounts.offers import best_offer, customer_offer_user
+from accounts.models import OfferRedemption
 from accounts.permissions import (
     IsAdminOrManager,
     IsEngineer,
@@ -39,6 +41,33 @@ from referrals.services import (
     calculate_max_redeemable,
     redeem_wallet,
 )
+
+
+def _sync_current_rent_offer(customer, rent_record):
+    """Apply the best active rent offer before payment starts.
+
+    Once any payment has been recorded for the month, the month's expected
+    rent is frozen so a later campaign cannot rewrite a partially-paid ledger.
+    """
+    base_rent = Decimal(str(customer.monthly_rent or 0)).quantize(Decimal("0.01"))
+    paid = Decimal(str(rent_record.paid_amount or 0)).quantize(Decimal("0.01"))
+
+    if paid > 0:
+        if Decimal(str(rent_record.base_rent or 0)) <= 0:
+            rent_record.base_rent = Decimal(str(rent_record.expected_rent or base_rent))
+            rent_record.save(update_fields=["base_rent"])
+        return rent_record
+
+    offer_user = customer_offer_user(customer)
+    offer, discount, final_rent = best_offer(offer_user, "RENT", base_rent)
+    rent_record.base_rent = base_rent
+    rent_record.discount_amount = discount
+    rent_record.expected_rent = final_rent
+    rent_record.applied_offer = offer
+    rent_record.save(update_fields=[
+        "base_rent", "discount_amount", "expected_rent", "applied_offer",
+    ])
+    return rent_record
 
 
 class PublicCustomerRequestAPIView(APIView):
@@ -1322,17 +1351,8 @@ class CustomerRentAPIView(APIView):
             },
         )
 
-        # ----------------------------------------------------
-        # IF RENT AMOUNT CHANGED
-        # ----------------------------------------------------
-
-        if rent_record.expected_rent != customer.monthly_rent:
-
-            rent_record.expected_rent = customer.monthly_rent
-
-            rent_record.save(
-                update_fields=["expected_rent"]
-            )
+        # Apply current active rent offer before any payment is made.
+        rent_record = _sync_current_rent_offer(customer, rent_record)
 
         # ----------------------------------------------------
         # PAYMENT CALCULATION
@@ -1520,6 +1540,16 @@ class CustomerRentAPIView(APIView):
 
                     "rent_month": current_month.isoformat(),
 
+                    "base_rent": float(rent_record.base_rent or expected),
+                    "discount_amount": float(rent_record.discount_amount or 0),
+                    "applied_offer": (
+                        {
+                            "id": rent_record.applied_offer_id,
+                            "title": rent_record.applied_offer.title,
+                            "promo_code": rent_record.applied_offer.promo_code,
+                        }
+                        if rent_record.applied_offer_id else None
+                    ),
                     "expected_rent": expected,
 
                     "paid_amount": paid,
@@ -1650,24 +1680,8 @@ class RentManagementAPIView(APIView):
                 )
             )
 
-            # -----------------------------------------------
-            # UPDATE RENT IF CUSTOMER RENT CHANGED
-            # -----------------------------------------------
-
-            if (
-                rent_record.expected_rent
-                != customer.monthly_rent
-            ):
-
-                rent_record.expected_rent = (
-                    customer.monthly_rent
-                )
-
-                rent_record.save(
-                    update_fields=[
-                        "expected_rent"
-                    ]
-                )
+            # Apply current active rent offer before any payment is made.
+            rent_record = _sync_current_rent_offer(customer, rent_record)
 
             # ------------------------------------------------
             # AMOUNTS
@@ -1850,6 +1864,16 @@ class RentManagementAPIView(APIView):
                         "rent_month":
                             current_month.isoformat(),
 
+                        "base_rent": float(rent_record.base_rent or expected),
+                        "discount_amount": float(rent_record.discount_amount or 0),
+                        "applied_offer": (
+                            {
+                                "id": rent_record.applied_offer_id,
+                                "title": rent_record.applied_offer.title,
+                                "promo_code": rent_record.applied_offer.promo_code,
+                            }
+                            if rent_record.applied_offer_id else None
+                        ),
                         "expected_rent":
                             expected,
 
@@ -2283,25 +2307,8 @@ class RentPaymentCreateAPIView(APIView):
             )
         )
 
-        # ====================================================
-        # UPDATE EXPECTED RENT
-        # ====================================================
-
-        if (
-            rent_record.expected_rent
-            != customer_monthly_rent
-        ):
-
-            rent_record.expected_rent = (
-                customer_monthly_rent
-            )
-
-            rent_record.save(
-                update_fields=[
-                    "expected_rent",
-                   
-                ]
-            )
+        # Freeze/apply the active rent offer before payment validation.
+        rent_record = _sync_current_rent_offer(customer, rent_record)
 
         # ====================================================
         # CURRENT BALANCE
@@ -2637,6 +2644,20 @@ class RentPaymentCreateAPIView(APIView):
                 collected_by=collector,
             )
         )
+
+        if rent_record.applied_offer_id and rent_record.discount_amount > 0:
+            OfferRedemption.objects.get_or_create(
+                engagement=rent_record.applied_offer,
+                scope="RENT",
+                reference=f"{customer.id}:{rent_month.isoformat()}",
+                defaults={
+                    "user": customer_offer_user(customer),
+                    "customer_phone": customer.phone,
+                    "base_amount": rent_record.base_rent,
+                    "discount_amount": rent_record.discount_amount,
+                    "final_amount": rent_record.expected_rent,
+                },
+            )
 
         # Save first-time GPS only after every payment validation has passed.
         # Failed collection attempts must not change customer data.
