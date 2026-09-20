@@ -14,6 +14,7 @@ class _HrmsScreenState extends State<HrmsScreen> {
   final _service = HrmsService();
   List<Map<String, dynamic>> _leaves = [], _payroll = [], _holidays = [];
   List<Map<String, dynamic>> _penalties = [], _penaltyEmployees = [];
+  List<Map<String, dynamic>> _performanceReviews = [], _documents = [];
   Map<String, dynamic> _dashboard = {};
   bool _loading = true;
   String _role = '';
@@ -66,6 +67,8 @@ class _HrmsScreenState extends State<HrmsScreen> {
         _service.dashboard(),
         _service.holidays(year: DateTime.now().year),
         _service.penalties(),
+        _service.performanceReviews(),
+        _service.documents(),
       ]);
       if (mounted) {
         setState(() {
@@ -80,6 +83,10 @@ class _HrmsScreenState extends State<HrmsScreen> {
           _penaltyEmployees = List<Map<String, dynamic>>.from(
             penaltyData['employees'] as List? ?? const [],
           );
+          _performanceReviews = List<Map<String, dynamic>>.from(
+            values[5] as List,
+          );
+          _documents = List<Map<String, dynamic>>.from(values[6] as List);
         });
       }
     } catch (error) {
@@ -443,6 +450,10 @@ class _HrmsScreenState extends State<HrmsScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 14),
+                _performanceSection(),
+                const SizedBox(height: 14),
+                _documentComplianceSection(),
                 const SizedBox(height: 14),
                 _holidaySection(),
                 const SizedBox(height: 14),
@@ -943,6 +954,108 @@ class _HrmsScreenState extends State<HrmsScreen> {
     ),
   );
 
+  Widget _performanceSection() => _sectionCard(
+    icon: Icons.insights_rounded,
+    title: 'Performance & Appraisal',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_performanceReviews.isEmpty)
+          const Text(
+            'No performance review available yet.',
+            style: TextStyle(color: Color(0xFF687386)),
+          )
+        else
+          ..._performanceReviews.take(12).map(
+            (row) => Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.assessment_outlined),
+                    ),
+                    title: Text(
+                      _role == 'ADMIN' || _role == 'MANAGER' || _role == 'OFFICE'
+                          ? '${row['employee_name']} • Score ${row['overall_score']}'
+                          : 'Overall score ${row['overall_score']}',
+                    ),
+                    subtitle: Text(
+                      '${row['period_start']} to ${row['period_end']}\n'
+                      'Goals ${row['goals_score']} • Attendance ${row['attendance_score']} • '
+                      'Service ${row['service_quality_score']}\n'
+                      'Customer ${row['customer_score']} • Sales ${row['sales_score']}'
+                      '${(row['improvement_plan']?.toString() ?? '').isEmpty ? '' : '\nPlan: ${row['improvement_plan']}'}',
+                    ),
+                    isThreeLine: true,
+                    trailing: Chip(label: Text(row['status'].toString())),
+                  ),
+                  if (_role != 'ADMIN' &&
+                      _role != 'MANAGER' &&
+                      _role != 'OFFICE' &&
+                      row['status'] == 'FINAL')
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () => _acknowledgePerformance(row),
+                          icon: const Icon(Icons.check_circle_outline),
+                          label: const Text('ACKNOWLEDGE REVIEW'),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  Widget _documentComplianceSection() => _sectionCard(
+    icon: Icons.folder_copy_outlined,
+    title: 'Employee Document Compliance',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_documents.isEmpty)
+          const Text(
+            'No employee document records available.',
+            style: TextStyle(color: Color(0xFF687386)),
+          )
+        else
+          ..._documents.take(20).map(
+            (row) {
+              final state = row['expiry_state']?.toString() ?? 'VALID';
+              final warning =
+                  state == 'EXPIRED' || state == 'EXPIRING_SOON' || row['verified'] != true;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  warning ? Icons.warning_amber_rounded : Icons.verified_outlined,
+                ),
+                title: Text(
+                  _role == 'ADMIN' || _role == 'MANAGER' || _role == 'OFFICE'
+                      ? '${row['employee_name']} • ${row['document_type']}'
+                      : row['document_type'].toString(),
+                ),
+                subtitle: Text(
+                  '${row['document_number'] ?? ''}'
+                  '${row['expiry_date'] == null ? '' : ' • expires ${row['expiry_date']}'}',
+                ),
+                trailing: Chip(
+                  label: Text(
+                    row['verified'] == true ? state : 'UNVERIFIED',
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    ),
+  );
+
   Widget _employeeOverview() {
     final employee = _map('employee');
     final attendance = _map('attendance');
@@ -1140,6 +1253,16 @@ class _HrmsScreenState extends State<HrmsScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _acknowledgePerformance(Map<String, dynamic> row) async {
+    try {
+      await _service.performanceAction((row['id'] as num).toInt(), 'ACKNOWLEDGE');
+      _show('Performance review acknowledged.');
+      await _load();
+    } catch (error) {
+      _show(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> _declareHoliday() async {
