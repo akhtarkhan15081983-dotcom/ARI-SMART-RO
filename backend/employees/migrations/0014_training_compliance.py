@@ -4,6 +4,7 @@ from django.db import migrations, models
 import django.db.models.deletion
 from django.utils.text import slugify
 from django.utils import timezone
+from datetime import timedelta
 
 
 def seed_training(apps, schema_editor):
@@ -232,8 +233,8 @@ Your personal reputation and ARI SMART RO’s reputation are connected in every 
             employee=employee,
             course=course,
             defaults={
-                "due_date": today + timezone.timedelta(days=course.due_days),
-                "grace_until": today + timezone.timedelta(days=course.due_days + course.grace_days),
+                "due_date": today + timedelta(days=course.due_days),
+                "grace_until": today + timedelta(days=course.due_days + course.grace_days),
             },
         )
 
