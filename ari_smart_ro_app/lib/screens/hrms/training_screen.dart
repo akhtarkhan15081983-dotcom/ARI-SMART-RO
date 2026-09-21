@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+
+import '../../services/api_service.dart';
 
 import '../../services/training_service.dart';
 
@@ -344,6 +347,25 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
     notes.dispose();
   }
 
+
+  Future<void> _issueCertificate() async {
+    try {
+      await _service.issueCertificate(widget.assignmentId);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ARI certification issued successfully.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    }
+  }
+
   Future<void> _submitQuiz() async {
     final questions = List<Map<String, dynamic>>.from(
       _course['questions'] as List? ?? const [],
@@ -428,6 +450,14 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                       '% • Due: ' +
                       (_course['due_date'] ?? '-').toString(),
                   style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 16),
+                _CertificationCard(
+                  certification: Map<String, dynamic>.from(
+                    _course['certification'] as Map? ?? const <String, dynamic>{},
+                  ),
+                  adminView: widget.adminView,
+                  onIssue: _issueCertificate,
                 ),
                 const SizedBox(height: 16),
                 ...lessons.map(
@@ -598,6 +628,98 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
     );
   }
 }
+
+class _CertificationCard extends StatelessWidget {
+  const _CertificationCard({
+    required this.certification,
+    required this.adminView,
+    required this.onIssue,
+  });
+
+  final Map<String, dynamic> certification;
+  final bool adminView;
+  final VoidCallback onIssue;
+
+  @override
+  Widget build(BuildContext context) {
+    final issued = certification['issued'] == true;
+    final eligible = certification['eligible'] == true;
+    final certificate = Map<String, dynamic>.from(
+      certification['certificate'] as Map? ?? const <String, dynamic>{},
+    );
+    final requirements = Map<String, dynamic>.from(
+      certification['requirements'] as Map? ?? const <String, dynamic>{},
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.workspace_premium_rounded, size: 30),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    issued ? 'ARI Certified Professional' : 'ARI Certification',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (issued) ...[
+              Text('Certificate: ${certificate['certificate_number'] ?? '-'}'),
+              Text('Status: ${certificate['status'] ?? '-'}'),
+              Text('Final score: ${certificate['final_score'] ?? 0}%'),
+              Text('Valid until: ${certificate['valid_until'] ?? '-'}'),
+              Text(
+                'Verification code: ${certificate['verification_code'] ?? '-'}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: QrImageView(
+                  data:
+                      '${ApiService.baseUrl}/employees/hrms/training/certificates/verify/${certificate['verification_code'] ?? ''}/',
+                  size: 150,
+                ),
+              ),
+              const Center(
+                child: Text(
+                  'Scan to verify certificate',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ] else ...[
+              Text(
+                eligible
+                    ? 'All certification requirements are complete.'
+                    : 'Complete all 30 days, pass the quiz and complete Trainer reviews to qualify.',
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Trainer reviews: ${requirements['reviews_received'] ?? 0}/${requirements['required_reviews'] ?? 0} • '
+                'Average: ${requirements['trainer_average'] ?? 0}/5 • minimum 3/5',
+              ),
+              if (adminView && eligible) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: onIssue,
+                  icon: const Icon(Icons.workspace_premium),
+                  label: const Text('ISSUE ARI CERTIFICATE'),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 
 class _TrainingVideo extends StatefulWidget {
   const _TrainingVideo({required this.assetPath, required this.onCompleted});

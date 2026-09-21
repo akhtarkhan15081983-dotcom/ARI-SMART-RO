@@ -87,6 +87,33 @@ class TrainingService {
     if (response.statusCode != 200) throw Exception(_message(response));
   }
 
+
+  Future<Map<String, dynamic>> issueCertificate(int assignmentId) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/training/$assignmentId/certificate/issue/',
+      ),
+      headers: await ApiService.authHeaders(),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<Map<String, dynamic>> revokeCertificate(
+    int assignmentId, {
+    String reason = '',
+  }) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/training/$assignmentId/certificate/revoke/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({'reason': reason.trim()}),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
   String _message(http.Response response) {
     try {
       final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);

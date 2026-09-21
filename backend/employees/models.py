@@ -574,6 +574,41 @@ class TrainingTrainerReview(models.Model):
         return f"{self.assignment} • Day {self.lesson.day_number}"
 
 
+class TrainingCertificate(models.Model):
+    assignment = models.OneToOneField(
+        EmployeeTrainingAssignment,
+        on_delete=models.CASCADE,
+        related_name="certificate",
+    )
+    certificate_number = models.CharField(max_length=40, unique=True)
+    verification_code = models.CharField(max_length=48, unique=True)
+    quiz_score = models.PositiveIntegerField(default=0)
+    trainer_average = models.DecimalField(max_digits=4, decimal_places=2, default=0)
+    final_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="training_certificates_issued",
+    )
+    issued_at = models.DateTimeField(auto_now_add=True)
+    valid_until = models.DateField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="training_certificates_revoked",
+    )
+    revoke_reason = models.CharField(max_length=500, blank=True, default="")
+
+    class Meta:
+        ordering = ["-issued_at"]
+
+    def __str__(self):
+        return f"{self.certificate_number} • {self.assignment.employee.employee_id}"
+
+
 class EmployeeDocument(models.Model):
     employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name="hr_documents")
     document_type = models.CharField(max_length=50)
