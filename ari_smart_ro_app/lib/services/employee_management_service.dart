@@ -16,6 +16,22 @@ class EmployeeManagementService {
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
+  Future<void> setCustomerEditPermission({
+    required int employeeId,
+    required bool isAllowed,
+  }) async {
+    final response = await http
+        .post(
+          Uri.parse(
+            '${ApiService.baseUrl}/employees/manage/$employeeId/customer-edit-permission/',
+          ),
+          headers: await ApiService.authHeaders(),
+          body: jsonEncode({'is_allowed': isAllowed}),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) throw Exception(_message(response));
+  }
+
   Future<void> create(Map<String, dynamic> payload) async {
     final response = await http
         .post(
