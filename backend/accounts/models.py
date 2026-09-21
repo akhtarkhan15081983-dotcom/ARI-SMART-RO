@@ -114,6 +114,8 @@ class AuthSecurityEvent(models.Model):
     EVENT_CHOICES = [
         ("LOGIN_SUCCESS", "Login Success"),
         ("LOGIN_FAILED", "Login Failed"),
+        ("LOGIN_DEVICE_BLOCKED", "Login Device Blocked"),
+        ("LOGIN_DEVICE_RESET", "Login Device Reset"),
         ("ACCOUNT_LOCKED", "Account Locked"),
         ("OTP_VERIFIED", "OTP Verified"),
         ("JOB_OTP_ADMIN_VIEWED", "Job OTP Admin Viewed"),
