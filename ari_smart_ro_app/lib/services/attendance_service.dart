@@ -106,6 +106,67 @@ class AttendanceService {
     );
   }
 
+  Future<Map<String, dynamic>> overtimeStatus() async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/attendance/overtime/"),
+      headers: await _headers(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_message(response, 'Unable to load overtime status.'));
+    }
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<String> requestOvertime({
+    required double hours,
+    required String reason,
+  }) async {
+    final response = await http.post(
+      Uri.parse("${ApiService.baseUrl}/attendance/overtime/"),
+      headers: await _headers(),
+      body: jsonEncode({'hours': hours, 'reason': reason}),
+    );
+    if (response.statusCode != 201) {
+      throw Exception(_message(response, 'Unable to request overtime.'));
+    }
+    final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    return (data['message'] ?? 'Overtime request sent.').toString();
+  }
+
+  Future<String> startOvertime() async {
+    final response = await http.post(
+      Uri.parse("${ApiService.baseUrl}/attendance/overtime/start/"),
+      headers: await _headers(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_message(response, 'Unable to start overtime.'));
+    }
+    final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    return (data['message'] ?? 'Approved overtime started.').toString();
+  }
+
+  Future<String> stopOvertime() async {
+    final response = await http.post(
+      Uri.parse("${ApiService.baseUrl}/attendance/overtime/stop/"),
+      headers: await _headers(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_message(response, 'Unable to stop overtime.'));
+    }
+    final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    return (data['message'] ?? 'Overtime stopped.').toString();
+  }
+
+  String _message(http.Response response, String fallback) {
+    try {
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return (data['detail'] ?? data['message'] ?? fallback).toString();
+      }
+    } catch (_) {}
+    return fallback;
+  }
+
   // ===========================
   // TODAY ATTENDANCE
   // ===========================
