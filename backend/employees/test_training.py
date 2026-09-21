@@ -224,6 +224,42 @@ class EmployeeTrainingTests(APITestCase):
             certificate.certificate_number,
         )
 
+    def test_public_certificate_pdf_is_generated(self):
+        assignment = EmployeeTrainingAssignment.objects.create(
+            employee=self.employee,
+            course=self.course,
+            due_date=timezone.localdate() + timedelta(days=30),
+            grace_until=timezone.localdate() + timedelta(days=32),
+            lessons_completed=[self.lesson1.id, self.lesson2.id],
+            quiz_score=100,
+            status="COMPLETED",
+            completed_at=timezone.now(),
+        )
+        for lesson in (self.lesson1, self.lesson2):
+            TrainingTrainerReview.objects.create(
+                assignment=assignment,
+                lesson=lesson,
+                trainer=self.admin,
+                behaviour_score=4,
+                communication_score=4,
+                knowledge_score=4,
+            )
+        self.client.force_authenticate(self.admin)
+        self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/certificate/issue/",
+            {},
+            format="json",
+        )
+        certificate = TrainingCertificate.objects.get(assignment=assignment)
+
+        self.client.force_authenticate(user=None)
+        response = self.client.get(
+            f"/api/employees/hrms/training/certificates/{certificate.verification_code}/pdf/"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
     def test_certificate_requires_all_trainer_reviews(self):
         assignment = EmployeeTrainingAssignment.objects.create(
             employee=self.employee,

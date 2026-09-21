@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/api_service.dart';
 
@@ -691,6 +692,22 @@ class _CertificationCard extends StatelessWidget {
                 child: Text(
                   'Scan to verify certificate',
                   style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final code = (certificate['verification_code'] ?? '').toString();
+                    if (code.isEmpty) return;
+                    final uri = Uri.parse(
+                      '${ApiService.baseUrl}/employees/hrms/training/certificates/$code/pdf/',
+                    );
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  },
+                  icon: const Icon(Icons.picture_as_pdf),
+                  label: const Text('VIEW / SHARE PDF CERTIFICATE'),
                 ),
               ),
             ] else ...[
