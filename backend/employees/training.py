@@ -329,9 +329,18 @@ class TrainingListAPIView(APIView):
                         1 for r in rows
                         if r.penalty_id and getattr(r.penalty, "status", "") == "DRAFT"
                     ),
+                    "scheduled": sum(1 for r in rows if r.scheduled_start_at is not None),
+                    "not_scheduled": sum(
+                        1 for r in rows
+                        if r.status != "COMPLETED" and r.scheduled_start_at is None
+                    ),
                     "due_next_2_days": sum(
                         1 for r in rows
-                        if r.status != "COMPLETED" and 0 <= (r.due_date - today).days <= 2
+                        if (
+                            r.status != "COMPLETED"
+                            and r.scheduled_start_at is not None
+                            and 0 <= (r.due_date - today).days <= 2
+                        )
                     ),
                 },
                 "assignments": [
