@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -539,7 +539,7 @@ class TrainingScheduleAPIView(APIView):
             start_date = parse_date(raw_start)
             if start_date is not None:
                 start_at = timezone.make_aware(
-                    timezone.datetime.combine(start_date, timezone.datetime.min.time())
+                    datetime.combine(start_date, time.min)
                 )
         if start_at is None:
             return Response({"detail": "Select a valid training start date/time."}, status=400)
