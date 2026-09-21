@@ -582,7 +582,7 @@ class PayrollAPIView(APIView):
                 rows = rows.filter(payroll_month=_month(request.query_params["month"]))
         else:
             rows = rows.filter(employee__user=request.user)
-        return Response({"payroll": [{"id": r.id, "employee": r.employee.employee_id, "employee_name": r.employee.user.get_full_name(), "month": r.payroll_month, "base_salary": r.base_salary, "late_penalty": r.late_penalty, "half_day_deduction": r.half_day_deduction, "absence_deduction": r.absence_deduction, "overtime_hours": r.overtime_hours, "overtime_amount": r.overtime_amount, "rent_incentive": r.rent_incentive, "sale_incentive": r.sale_incentive, "other_earnings": r.other_earnings, "other_deductions": r.other_deductions, "net_salary": r.net_salary, "status": r.status, "snapshot": r.calculation_snapshot} for r in rows[:1000]]})
+        return Response({"payroll": [{"id": r.id, "employee": r.employee.employee_id, "employee_name": r.employee.user.get_full_name(), "month": r.payroll_month, "base_salary": r.base_salary, "late_penalty": r.late_penalty, "half_day_deduction": r.half_day_deduction, "absence_deduction": r.absence_deduction, "short_hours": r.short_hours, "short_hours_deduction": r.short_hours_deduction, "overtime_hours": r.overtime_hours, "overtime_amount": r.overtime_amount, "rent_incentive": r.rent_incentive, "sale_incentive": r.sale_incentive, "other_earnings": r.other_earnings, "other_deductions": r.other_deductions, "net_salary": r.net_salary, "status": r.status, "snapshot": r.calculation_snapshot} for r in rows[:1000]]})
 
     @transaction.atomic
     def post(self, request):
@@ -731,7 +731,7 @@ class PayrollExcelReportAPIView(APIView):
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Salary Register"
-        headers = ["Employee ID", "Employee", "Base Salary", "Payable Base", "Late Days", "Late Penalty", "Half-day Deduction", "Absence Deduction", "OT Hours", "OT Amount", "Rent Incentive", "Sale Incentive", "Other Earnings", "Other Deductions", "Net Salary", "Status"]
+        headers = ["Employee ID", "Employee", "Base Salary", "Payable Base", "Late Days", "Late Penalty", "Half-day Deduction", "Absence Deduction", "Short Hours", "Short-hours Deduction", "Approved OT Hours", "Approved OT Amount", "Rent Incentive", "Sale Incentive", "Other Earnings", "Other Deductions", "Net Salary", "Status"]
         sheet.append([f"ARI SMART RO — Salary Register {month:%B %Y}"])
         sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
         sheet["A1"].font = Font(size=16, bold=True, color="FFFFFF")
@@ -742,9 +742,9 @@ class PayrollExcelReportAPIView(APIView):
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor="0868D7")
         for row in rows:
-            sheet.append([row.employee.employee_id, row.employee.user.get_full_name(), row.base_salary, row.payable_base, row.late_days, row.late_penalty, row.half_day_deduction, row.absence_deduction, row.overtime_hours, row.overtime_amount, row.rent_incentive, row.sale_incentive, row.other_earnings, row.other_deductions, row.net_salary, row.status])
+            sheet.append([row.employee.employee_id, row.employee.user.get_full_name(), row.base_salary, row.payable_base, row.late_days, row.late_penalty, row.half_day_deduction, row.absence_deduction, row.short_hours, row.short_hours_deduction, row.overtime_hours, row.overtime_amount, row.rent_incentive, row.sale_incentive, row.other_earnings, row.other_deductions, row.net_salary, row.status])
         sheet.freeze_panes = "A3"
-        sheet.auto_filter.ref = f"A2:P{max(2, sheet.max_row)}"
+        sheet.auto_filter.ref = f"A2:R{max(2, sheet.max_row)}"
         for column_index in range(1, sheet.max_column + 1):
             letter = get_column_letter(column_index)
             values = (
