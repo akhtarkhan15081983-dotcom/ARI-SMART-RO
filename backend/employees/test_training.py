@@ -53,6 +53,8 @@ class EmployeeTrainingTests(APITestCase):
             due_days=7,
             grace_days=2,
             penalty_amount=Decimal("100.00"),
+            is_published=True,
+            required_trainer_reviews=2,
             created_by=self.admin,
         )
         self.lesson1 = TrainingLesson.objects.create(
@@ -330,3 +332,157 @@ class EmployeeTrainingTests(APITestCase):
         self.assertEqual(response.data["scope"], "ADMIN")
         self.assertEqual(response.data["summary"]["total"], 1)
         self.assertEqual(response.data["summary"]["due_next_2_days"], 1)
+
+
+class TrainingAcademyBuilderTests(APITestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            phone="9777710001",
+            password="Strong@Test1",
+            first_name="Academy",
+            role="ADMIN",
+            is_verified=True,
+        )
+        self.employee_user = User.objects.create_user(
+            phone="9777710002",
+            password="Strong@Test1",
+            first_name="Learner",
+            role="ENGINEER",
+            is_verified=True,
+        )
+        self.employee = EmployeeProfile.objects.create(
+            user=self.employee_user,
+            gender="MALE",
+            joining_date=timezone.localdate(),
+            designation="ENGINEER",
+            salary=Decimal("21000.00"),
+            is_active=True,
+        )
+
+    def test_admin_can_build_publish_assign_and_certify_test_based_course(self):
+        self.client.force_authenticate(self.admin)
+        created = self.client.post(
+            "/api/employees/hrms/training/admin/courses/",
+            {
+                "title": "Pump & SV Diagnostic Academy",
+                "description": "Detailed technical diagnostic and customer explanation course.",
+                "audience": "ENGINEER",
+                "passing_score": 80,
+                "due_days": 10,
+                "grace_days": 2,
+                "certificate_enabled": True,
+                "certificate_valid_days": 180,
+                "required_trainer_reviews": 0,
+                "minimum_trainer_average": 3,
+                "is_mandatory": False,
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        course_id = created.data["id"]
+        self.assertFalse(created.data["is_published"])
+
+        short_lesson = self.client.post(
+            f"/api/employees/hrms/training/admin/courses/{course_id}/lessons/",
+            {"title": "Too short", "content": "Short"},
+            format="json",
+        )
+        self.assertEqual(short_lesson.status_code, 400)
+
+        lesson = self.client.post(
+            f"/api/employees/hrms/training/admin/courses/{course_id}/lessons/",
+            {
+                "title": "Diagnose before replacing",
+                "content": (
+                    "Start with the symptom, inspect power and water conditions, review job history, "
+                    "check switches and valves, record evidence, isolate the likely fault, explain the "
+                    "reasoning to the customer, and replace a part only when diagnosis supports it."
+                ),
+                "key_takeaway": "Evidence before replacement.",
+                "practice_task": "Run a mock no-start diagnostic and explain the decision.",
+                "trainer_script": "Demonstrate one wrong and one correct diagnostic sequence.",
+                "duration_minutes": 60,
+                "day_number": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(lesson.status_code, 201)
+
+        question = self.client.post(
+            f"/api/employees/hrms/training/admin/courses/{course_id}/questions/",
+            {
+                "question": "What should happen before replacing the pump?",
+                "option_a": "Replace it immediately",
+                "option_b": "Evidence-based diagnosis",
+                "option_c": "Ask the customer to choose",
+                "option_d": "Close the job",
+                "correct_option": "B",
+                "explanation": "Diagnosis prevents unnecessary replacement.",
+            },
+            format="json",
+        )
+        self.assertEqual(question.status_code, 201)
+
+        published = self.client.patch(
+            f"/api/employees/hrms/training/admin/courses/{course_id}/",
+            {"is_published": True},
+            format="json",
+        )
+        self.assertEqual(published.status_code, 200)
+        self.assertTrue(published.data["is_published"])
+
+        assigned = self.client.post(
+            f"/api/employees/hrms/training/admin/courses/{course_id}/assign/",
+            {"employee_ids": [self.employee.id]},
+            format="json",
+        )
+        self.assertEqual(assigned.status_code, 200)
+        self.assertEqual(assigned.data["created"], 1)
+
+        assignment = EmployeeTrainingAssignment.objects.get(
+            employee=self.employee,
+            course_id=course_id,
+        )
+
+        self.client.force_authenticate(self.employee_user)
+        done = self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/lessons/{assignment.course.lessons.first().id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(done.status_code, 200)
+
+        q = assignment.course.questions.first()
+        result = self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/quiz/",
+            {"answers": {str(q.id): "B"}},
+            format="json",
+        )
+        self.assertEqual(result.status_code, 200)
+        self.assertTrue(result.data["passed"])
+
+        self.client.force_authenticate(self.admin)
+        certificate = self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/certificate/issue/",
+            {},
+            format="json",
+        )
+        self.assertEqual(certificate.status_code, 200)
+        self.assertTrue(certificate.data["issued"])
+        self.assertEqual(certificate.data["certificate"]["final_score"], 100.0)
+
+    def test_course_cannot_publish_without_lesson_and_question(self):
+        self.client.force_authenticate(self.admin)
+        created = self.client.post(
+            "/api/employees/hrms/training/admin/courses/",
+            {"title": "Incomplete Draft", "audience": "ALL"},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        response = self.client.patch(
+            f"/api/employees/hrms/training/admin/courses/{created.data['id']}/",
+            {"is_published": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("lesson", response.data["detail"].lower())
