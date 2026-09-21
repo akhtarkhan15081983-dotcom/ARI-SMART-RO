@@ -619,9 +619,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
                 subtitle: Text(
-                  "\${row["employee_id"] ?? ""} • \${row["designation"] ?? ""}\n"
-                  "Regular \${row["regular_hours"] ?? "0.00"}h • OT \${row["overtime_hours"] ?? "0.00"}h • "
-                  "\${row["total_actions"] ?? 0} actions",
+                  "${row["employee_id"] ?? ""} • ${row["designation"] ?? ""}\n"
+                  "Regular ${row["regular_hours"] ?? "0.00"}h • OT ${row["overtime_hours"] ?? "0.00"}h • "
+                  "${row["total_actions"] ?? 0} actions",
                 ),
                 isThreeLine: true,
                 trailing: const Icon(Icons.chevron_right_rounded),
@@ -656,12 +656,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
               ),
               Text(
-                "\${row["employee_id"] ?? ""} • \${row["designation"] ?? ""}",
+                "${row["employee_id"] ?? ""} • ${row["designation"] ?? ""}",
               ),
               const SizedBox(height: 14),
               _metricGrid([
-                ("Regular Hours", "\${row["regular_hours"] ?? "0.00"} h", Icons.schedule),
-                ("Approved OT", "\${row["overtime_hours"] ?? "0.00"} h", Icons.more_time_rounded),
+                ("Regular Hours", "${row["regular_hours"] ?? "0.00"} h", Icons.schedule),
+                ("Approved OT", "${row["overtime_hours"] ?? "0.00"} h", Icons.more_time_rounded),
                 ("Jobs", _number(row["jobs_completed"]), Icons.task_alt),
                 ("Complaints", _number(row["complaints_resolved"]), Icons.report_problem_outlined),
                 ("Services", _number(row["services_completed"]), Icons.miscellaneous_services_outlined),
@@ -694,8 +694,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     ),
                     title: Text(item["detail"]?.toString() ?? ""),
                     subtitle: Text(
-                      "\${item["type"] ?? ""} • \${item["reference"] ?? ""}"
-                      "\${timeLabel.isEmpty ? "" : " • $timeLabel"}",
+                      "${item["type"] ?? ""} • ${item["reference"] ?? ""}"
+                      "${timeLabel.isEmpty ? "" : " • $timeLabel"}",
                     ),
                   );
                 }),
