@@ -1015,6 +1015,8 @@ def build_hrms_report(period):
         "late_penalty": row.late_penalty,
         "half_day_deduction": row.half_day_deduction,
         "absence_deduction": row.absence_deduction,
+        "short_hours": row.short_hours,
+        "short_hours_deduction": row.short_hours_deduction,
         "overtime_hours": row.overtime_hours,
         "overtime_amount": row.overtime_amount,
         "rent_incentive": row.rent_incentive,
@@ -1078,7 +1080,8 @@ def _excel_value(value, field=""):
         "expected", "paid", "outstanding", "purchase_value", "working_hours",
         "current", "31_60_days", "61_90_days", "over_90_days",
         "monthly_salary", "base_salary", "payable_base", "late_penalty",
-        "half_day_deduction", "absence_deduction", "overtime_amount",
+        "half_day_deduction", "absence_deduction", "short_hours",
+        "short_hours_deduction", "overtime_amount",
         "rent_incentive", "sale_incentive", "other_earnings",
         "other_deductions", "net_salary", "payroll_net", "incentives",
     }
