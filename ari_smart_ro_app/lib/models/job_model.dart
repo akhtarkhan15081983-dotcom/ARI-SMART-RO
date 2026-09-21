@@ -46,37 +46,45 @@ class JobModel {
 
   factory JobModel.fromJson(Map<String, dynamic> json) {
     return JobModel(
-      id: json["id"],
-
+      id: (json["id"] as num).toInt(),
       jobId: json["job_id"] ?? "",
-
       customerName: json["customer_name"] ?? "",
-
       customerPhone: json["customer_phone"] ?? json["phone"] ?? "",
-
       customerAddress: json["customer_address"] ?? json["address"] ?? "",
-
-      phone: json["phone"] ?? "",
-      address: json["address"] ?? "",
+      phone: json["phone"] ?? json["customer_phone"] ?? "",
+      address: json["address"] ?? json["customer_address"] ?? "",
       area: json["area"] ?? "",
       city: json["city"] ?? "",
-
       assetId: json["asset_id"] ?? "",
       engineerName: json["engineer_name"] ?? "",
-
       latitude: double.tryParse(json["latitude"].toString()) ?? 0,
-
       longitude: double.tryParse(json["longitude"].toString()) ?? 0,
-
       jobType: json["job_type"] ?? "",
-
       priority: json["priority"] ?? "",
-
       status: json["status"] ?? "",
-
       scheduledDate: json["scheduled_date"] ?? "",
-
       remarks: json["remarks"] ?? "",
     );
   }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        "id": id,
+        "job_id": jobId,
+        "customer_name": customerName,
+        "customer_phone": customerPhone,
+        "customer_address": customerAddress,
+        "phone": phone,
+        "address": address,
+        "area": area,
+        "city": city,
+        "asset_id": assetId,
+        "engineer_name": engineerName,
+        "latitude": latitude,
+        "longitude": longitude,
+        "job_type": jobType,
+        "priority": priority,
+        "status": status,
+        "scheduled_date": scheduledDate,
+        "remarks": remarks,
+      };
 }
