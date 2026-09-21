@@ -13,6 +13,7 @@ from .models import (
     TrainingCourse,
     TrainingLesson,
     TrainingQuestion,
+    TrainingTrainerReview,
 )
 from .training import enforce_assignment
 
@@ -129,6 +130,45 @@ class EmployeeTrainingTests(APITestCase):
                 event_key=f"training-complete:{assignment_id}",
             ).exists()
         )
+
+
+    def test_admin_can_record_trainer_review_and_employee_cannot(self):
+        assignment = EmployeeTrainingAssignment.objects.create(
+            employee=self.employee,
+            course=self.course,
+            due_date=timezone.localdate() + timedelta(days=30),
+            grace_until=timezone.localdate() + timedelta(days=32),
+        )
+        self.client.force_authenticate(self.admin)
+        url = (
+            f"/api/employees/hrms/training/{assignment.id}/"
+            f"lessons/{self.lesson1.id}/trainer-review/"
+        )
+        response = self.client.post(
+            url,
+            {
+                "behaviour_score": 4,
+                "communication_score": 3,
+                "knowledge_score": 5,
+                "strengths": "Calm listening",
+                "gaps": "Needs clearer closing",
+                "coaching_action": "Practice the closing script three times",
+                "notes": "Day 1 role-play completed",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        review = TrainingTrainerReview.objects.get(
+            assignment=assignment,
+            lesson=self.lesson1,
+        )
+        self.assertEqual(review.trainer, self.admin)
+        self.assertEqual(review.behaviour_score, 4)
+        self.assertEqual(review.coaching_action, "Practice the closing script three times")
+
+        self.client.force_authenticate(self.employee_user)
+        denied = self.client.post(url, {"behaviour_score": 5}, format="json")
+        self.assertEqual(denied.status_code, 403)
 
     def test_overdue_training_creates_one_draft_penalty_after_grace(self):
         assignment = EmployeeTrainingAssignment.objects.create(
