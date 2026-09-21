@@ -71,10 +71,32 @@ class Attendance(models.Model):
     identity_reviewed_at = models.DateTimeField(null=True, blank=True)
     identity_review_note = models.CharField(max_length=255, blank=True, default="")
 
+    regular_shift_end_at = models.DateTimeField(null=True, blank=True)
+    regular_working_hours = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+    overtime_working_hours = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
     working_hours = models.DecimalField(
         max_digits=5,
         decimal_places=2,
         default=0,
+    )
+    auto_checked_out = models.BooleanField(default=False)
+    checkout_reason = models.CharField(
+        max_length=24,
+        choices=[
+            ("", "Not checked out"),
+            ("MANUAL", "Manual checkout"),
+            ("AUTO_8_HOURS", "Automatic regular shift checkout"),
+        ],
+        blank=True,
+        default="",
     )
 
     status = models.CharField(
@@ -96,6 +118,60 @@ class Attendance(models.Model):
 
     def __str__(self):
         return f"{self.employee} - {self.date}"
+
+
+class OvertimeRequest(models.Model):
+    STATUS_CHOICES = [
+        ("PENDING", "Pending admin approval"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+        ("COMPLETED", "Completed"),
+        ("CANCELLED", "Cancelled"),
+    ]
+    END_REASON_CHOICES = [
+        ("", "Not ended"),
+        ("MANUAL", "Employee ended overtime"),
+        ("AUTO_APPROVED_LIMIT", "Approved overtime limit reached"),
+    ]
+
+    attendance = models.OneToOneField(
+        Attendance,
+        on_delete=models.CASCADE,
+        related_name="overtime_request",
+    )
+    requested_hours = models.DecimalField(max_digits=4, decimal_places=2, default=1)
+    approved_hours = models.DecimalField(max_digits=4, decimal_places=2, default=0)
+    reason = models.CharField(max_length=500)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="PENDING")
+    requested_at = models.DateTimeField(auto_now_add=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_overtime_requests",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.CharField(max_length=300, blank=True, default="")
+    started_at = models.DateTimeField(null=True, blank=True)
+    planned_end_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    end_reason = models.CharField(
+        max_length=24,
+        choices=END_REASON_CHOICES,
+        blank=True,
+        default="",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-requested_at"]
+
+    def __str__(self):
+        return (
+            f"{self.attendance.employee.employee_id} - "
+            f"{self.attendance.date} - {self.status}"
+        )
 
 
 class AttendanceDeviceOverride(models.Model):
