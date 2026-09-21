@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 
 import '../../services/training_service.dart';
+import 'training_builder_screen.dart';
 
 class TrainingScreen extends StatefulWidget {
   const TrainingScreen({super.key});
@@ -47,7 +48,24 @@ class _TrainingScreenState extends State<TrainingScreen> {
       _data['assignments'] as List? ?? const [],
     );
     return Scaffold(
-      appBar: AppBar(title: const Text('Employee Training')),
+      appBar: AppBar(
+        title: const Text('Employee Training'),
+        actions: [
+          if (scope == 'ADMIN')
+            IconButton(
+              tooltip: 'Training Builder',
+              icon: const Icon(Icons.construction_rounded),
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const TrainingBuilderScreen(),
+                  ),
+                );
+                await _load();
+              },
+            ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
@@ -442,7 +460,7 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '30-day plan: ' +
+                  'Training plan: ' +
                       (_course['planned_days'] ?? 0).toString() +
                       ' days • ' +
                       (_course['planned_minutes'] ?? 0).toString() +
@@ -453,19 +471,25 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 16),
-                _CertificationCard(
-                  certification: Map<String, dynamic>.from(
-                    _course['certification'] as Map? ?? const <String, dynamic>{},
+                if (_course['certificate_enabled'] == true) ...[
+                  _CertificationCard(
+                    certification: Map<String, dynamic>.from(
+                      _course['certification'] as Map? ?? const <String, dynamic>{},
+                    ),
+                    adminView: widget.adminView,
+                    onIssue: _issueCertificate,
                   ),
-                  adminView: widget.adminView,
-                  onIssue: _issueCertificate,
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
                 ...lessons.map(
                   (lesson) {
                     final lessonId = (lesson['id'] as num).toInt();
                     final videoAsset = (lesson['video_asset'] ?? '').toString();
-                    final hasVideo = videoAsset.isNotEmpty;
+                    final videoUrl = (lesson['video_url'] ?? '').toString();
+                    final resourceUrl = (lesson['resource_url'] ?? '').toString();
+                    final resourceLabel =
+                        (lesson['resource_label'] ?? 'Open training resource').toString();
+                    final hasVideo = videoAsset.isNotEmpty || videoUrl.isNotEmpty;
                     return Card(
                     child: ExpansionTile(
                       leading: Icon(
@@ -483,7 +507,7 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                             (lesson['key_takeaway'] ?? '').toString(),
                       ),
                       children: [
-                        if (hasVideo)
+                        if (videoAsset.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                             child: _TrainingVideo(
@@ -493,10 +517,52 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                               ),
                             ),
                           ),
+                        if (videoUrl.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                            child: FilledButton.tonalIcon(
+                              onPressed: () async {
+                                final uri = Uri.tryParse(videoUrl);
+                                if (uri == null) return;
+                                final opened = await launchUrl(
+                                  uri,
+                                  mode: LaunchMode.externalApplication,
+                                );
+                                if (opened && mounted) {
+                                  setState(() => _watchedVideos.add(lessonId));
+                                }
+                              },
+                              icon: const Icon(Icons.ondemand_video_rounded),
+                              label: const Text('OPEN TRAINING VIDEO'),
+                            ),
+                          ),
                         Padding(
                           padding: const EdgeInsets.all(16),
-                          child: Text((lesson['content'] ?? '').toString()),
+                          child: SelectableText(
+                            (lesson['content'] ?? '').toString(),
+                          ),
                         ),
+                        if (resourceUrl.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                final uri = Uri.tryParse(resourceUrl);
+                                if (uri != null) {
+                                  await launchUrl(
+                                    uri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.link_rounded),
+                              label: Text(
+                                resourceLabel.isEmpty
+                                    ? 'OPEN TRAINING RESOURCE'
+                                    : resourceLabel,
+                              ),
+                            ),
+                          ),
                         if ((lesson['practice_task'] ?? '').toString().isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -714,7 +780,7 @@ class _CertificationCard extends StatelessWidget {
               Text(
                 eligible
                     ? 'All certification requirements are complete.'
-                    : 'Complete all 30 days, pass the quiz and complete Trainer reviews to qualify.',
+                    : 'Complete all lessons, pass the test and meet the configured Trainer review standard to qualify.',
               ),
               const SizedBox(height: 8),
               Text(
