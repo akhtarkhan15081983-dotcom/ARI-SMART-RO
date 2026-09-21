@@ -16,6 +16,21 @@ class VerifiedCustomerJWTAuthentication(JWTAuthentication):
         user, token = result
         if user.is_superuser or user.role == "CUSTOMER":
             return user, token
+
+        if user.role != "ADMIN":
+            device_id = str(request.headers.get("X-ARI-Device-ID", "") or "").strip()[:64]
+            bound_device_id = str(getattr(user, "active_login_device_id", "") or "").strip()
+            if not bound_device_id:
+                raise AuthenticationFailed(
+                    "Employee login device has been reset. Please sign in again.",
+                    code="employee_device_login_required",
+                )
+            if not device_id or device_id != bound_device_id:
+                raise AuthenticationFailed(
+                    "This employee session belongs to another phone.",
+                    code="employee_device_mismatch",
+                )
+
         membership = (
             user.company_memberships.filter(is_active=True)
             .select_related("company")
