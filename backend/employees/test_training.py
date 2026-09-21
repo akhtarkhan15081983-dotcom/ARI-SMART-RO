@@ -57,12 +57,14 @@ class EmployeeTrainingTests(APITestCase):
         self.lesson1 = TrainingLesson.objects.create(
             course=self.course,
             order=1,
+            day_number=1,
             title="Listen first",
             content="Listen without interrupting and acknowledge the concern.",
         )
         self.lesson2 = TrainingLesson.objects.create(
             course=self.course,
             order=2,
+            day_number=2,
             title="Resolve professionally",
             content="Explain the next action clearly and keep promises.",
         )
@@ -79,26 +81,32 @@ class EmployeeTrainingTests(APITestCase):
                 explanation="A is the professional response.",
             )
 
-    def test_employee_course_auto_assignment_and_lesson_gate(self):
+    def test_employee_course_auto_assignment_is_locked_until_admin_schedules(self):
         self.client.force_authenticate(self.employee_user)
         response = self.client.get("/api/employees/hrms/training/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["scope"], "EMPLOYEE")
         self.assertEqual(len(response.data["assignments"]), 1)
+        self.assertFalse(response.data["assignments"][0]["scheduled"])
 
         assignment_id = response.data["assignments"][0]["id"]
-        quiz = self.client.post(
-            f"/api/employees/hrms/training/{assignment_id}/quiz/",
-            {"answers": {}},
+        lesson = self.client.post(
+            f"/api/employees/hrms/training/{assignment_id}/lessons/{self.lesson1.id}/complete/",
+            {},
             format="json",
         )
-        self.assertEqual(quiz.status_code, 400)
-        self.assertIn("Complete every lesson", quiz.data["detail"])
+        self.assertEqual(lesson.status_code, 423)
+        self.assertIn("Admin has not scheduled", lesson.data["detail"])
 
     def test_employee_can_complete_lessons_and_pass_quiz(self):
         self.client.force_authenticate(self.employee_user)
         listing = self.client.get("/api/employees/hrms/training/")
         assignment_id = listing.data["assignments"][0]["id"]
+        assignment = EmployeeTrainingAssignment.objects.get(pk=assignment_id)
+        assignment.scheduled_start_at = timezone.now() - timedelta(days=2)
+        assignment.due_date = timezone.localdate() + timedelta(days=30)
+        assignment.grace_until = timezone.localdate() + timedelta(days=32)
+        assignment.save(update_fields=["scheduled_start_at", "due_date", "grace_until"])
 
         for lesson in (self.lesson1, self.lesson2):
             done = self.client.post(
@@ -130,6 +138,67 @@ class EmployeeTrainingTests(APITestCase):
                 event_key=f"training-complete:{assignment_id}",
             ).exists()
         )
+
+
+    def test_admin_schedules_training_and_only_one_day_opens(self):
+        assignment = EmployeeTrainingAssignment.objects.create(
+            employee=self.employee,
+            course=self.course,
+            due_date=timezone.localdate() + timedelta(days=7),
+            grace_until=timezone.localdate() + timedelta(days=9),
+        )
+        self.client.force_authenticate(self.admin)
+        start_at = timezone.now()
+        scheduled = self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/schedule/",
+            {"start_at": start_at.isoformat()},
+            format="json",
+        )
+        self.assertEqual(scheduled.status_code, 200)
+
+        assignment.refresh_from_db()
+        self.assertIsNotNone(assignment.scheduled_start_at)
+        self.assertEqual(assignment.release_interval_days, 1)
+        self.assertEqual(assignment.scheduled_by, self.admin)
+
+        self.client.force_authenticate(self.employee_user)
+        day1 = self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/lessons/{self.lesson1.id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(day1.status_code, 200)
+
+        day2 = self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/lessons/{self.lesson2.id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(day2.status_code, 423)
+        self.assertIn("opens on", day2.data["detail"])
+
+        detail = self.client.get(
+            f"/api/employees/hrms/training/{assignment.id}/"
+        )
+        lessons = detail.data["lessons"]
+        self.assertFalse(lessons[0]["locked"])
+        self.assertTrue(lessons[1]["locked"])
+        self.assertEqual(lessons[1]["content"], "")
+
+    def test_non_admin_cannot_schedule_training(self):
+        assignment = EmployeeTrainingAssignment.objects.create(
+            employee=self.employee,
+            course=self.course,
+            due_date=timezone.localdate() + timedelta(days=7),
+            grace_until=timezone.localdate() + timedelta(days=9),
+        )
+        self.client.force_authenticate(self.employee_user)
+        response = self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/schedule/",
+            {"start_at": timezone.now().isoformat()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
 
 
     def test_admin_can_record_trainer_review_and_employee_cannot(self):
@@ -202,6 +271,7 @@ class EmployeeTrainingTests(APITestCase):
         EmployeeTrainingAssignment.objects.create(
             employee=self.employee,
             course=self.course,
+            scheduled_start_at=timezone.now(),
             due_date=timezone.localdate() + timedelta(days=1),
             grace_until=timezone.localdate() + timedelta(days=3),
         )
