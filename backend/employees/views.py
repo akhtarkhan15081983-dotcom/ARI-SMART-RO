@@ -115,6 +115,7 @@ class EmployeeManagementAPIView(APIView):
         return Response({
             "success": True,
             "company": {"id": company.id, "name": company.name},
+            "can_delegate_customer_edit": str(getattr(request.user, "role", "") or "").upper() == "ADMIN",
             "employees": [
                 {
                     "id": employee.id,
