@@ -57,6 +57,36 @@ class TrainingService {
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
+
+  Future<void> saveTrainerReview(
+    int assignmentId,
+    int lessonId, {
+    required int behaviourScore,
+    required int communicationScore,
+    required int knowledgeScore,
+    required String strengths,
+    required String gaps,
+    required String coachingAction,
+    String notes = '',
+  }) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/training/$assignmentId/lessons/$lessonId/trainer-review/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({
+        'behaviour_score': behaviourScore,
+        'communication_score': communicationScore,
+        'knowledge_score': knowledgeScore,
+        'strengths': strengths.trim(),
+        'gaps': gaps.trim(),
+        'coaching_action': coachingAction.trim(),
+        'notes': notes.trim(),
+      }),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+  }
+
   String _message(http.Response response) {
     try {
       final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
