@@ -66,6 +66,18 @@ class CustomerService {
     );
   }
 
+  Future<bool> canEditCustomer() async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/customers/edit-permission/"),
+      headers: await ApiService.authHeaders(),
+    );
+
+    if (response.statusCode != 200) return false;
+    final decoded = jsonDecode(response.body);
+    return decoded is Map<String, dynamic> &&
+        decoded["can_edit_customer"] == true;
+  }
+
   Future<CustomerModel> getCustomer(int customerId) async {
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/customers/$customerId/"),
