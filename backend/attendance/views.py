@@ -119,6 +119,7 @@ class CheckInAPIView(APIView):
             identity_review_status="PENDING",
             remarks=remarks,
         )
+        recalculate_attendance(attendance)
         if used_override:
             emergency_override.is_active = False
             emergency_override.save(update_fields=["is_active"])
