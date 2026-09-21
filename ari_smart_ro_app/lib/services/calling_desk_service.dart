@@ -22,6 +22,7 @@ class CallingDeskService {
     required String outcome,
     required String note,
     DateTime? nextFollowUp,
+    int durationSeconds = 0,
   }) async {
     final response = await http.patch(
       Uri.parse('${ApiService.baseUrl}/customers/calling-desk/$id/'),
@@ -30,9 +31,40 @@ class CallingDeskService {
         'outcome': outcome,
         'note': note.trim(),
         'next_follow_up_at': nextFollowUp?.toUtc().toIso8601String() ?? '',
+        'duration_seconds': durationSeconds,
       }),
     );
     if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<Map<String, dynamic>> createLead({
+    int? customerId,
+    String customerName = '',
+    String phone = '',
+    String city = '',
+    String requestType = 'SERVICE',
+    String priority = 'NORMAL',
+    String planName = '',
+    String notes = '',
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ApiService.baseUrl}/customers/calling-desk/'),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({
+        if (customerId != null) 'customer_id': customerId,
+        'customer_name': customerName.trim(),
+        'phone': phone.trim(),
+        'city': city.trim(),
+        'request_type': requestType,
+        'priority': priority,
+        'plan_name': planName.trim(),
+        'notes': notes.trim(),
+      }),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(_message(response));
+    }
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
