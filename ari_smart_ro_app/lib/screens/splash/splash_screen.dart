@@ -229,12 +229,11 @@ class _SplashScreenState extends State<SplashScreen>
                     children: [
                       const Spacer(),
                       Container(
-                        width: 82,
-                        height: 82,
+                        width: 96,
+                        height: 96,
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Colors.white, Color(0xFFE6FAFF)],
-                          ),
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(26),
                           boxShadow: const [
                             BoxShadow(
@@ -244,10 +243,14 @@ class _SplashScreenState extends State<SplashScreen>
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.water_drop_rounded,
-                          size: 42,
-                          color: _blue,
+                        child: Image.asset(
+                          'assets/images/ari_smart_ro_icon.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) => const Icon(
+                            Icons.water_drop_rounded,
+                            size: 46,
+                            color: _blue,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 22),
