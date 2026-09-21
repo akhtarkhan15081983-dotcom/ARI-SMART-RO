@@ -22,6 +22,7 @@ from .training import (
     TrainingLessonCompleteAPIView,
     TrainingListAPIView,
     TrainingQuizSubmitAPIView,
+    TrainingTrainerReviewAPIView,
 )
 
 urlpatterns = [
@@ -59,6 +60,7 @@ urlpatterns = [
     path("employees/hrms/training/<int:assignment_id>/", TrainingDetailAPIView.as_view(), name="hrms-training-detail"),
     path("employees/hrms/training/<int:assignment_id>/lessons/<int:lesson_id>/complete/", TrainingLessonCompleteAPIView.as_view(), name="hrms-training-lesson-complete"),
     path("employees/hrms/training/<int:assignment_id>/quiz/", TrainingQuizSubmitAPIView.as_view(), name="hrms-training-quiz"),
+    path("employees/hrms/training/<int:assignment_id>/lessons/<int:lesson_id>/trainer-review/", TrainingTrainerReviewAPIView.as_view(), name="hrms-training-trainer-review"),
     path("employees/hrms/reports/payroll.xlsx", PayrollExcelReportAPIView.as_view(), name="hrms-payroll-excel"),
     path(
         "employees/live-location/",
