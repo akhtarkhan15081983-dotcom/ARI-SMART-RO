@@ -39,13 +39,17 @@ class ApiService {
     return storage.read(key: "refresh");
   }
 
-  static Future<Map<String, String>> authHeaders() async {
-    final token = await getAccessToken();
+  static Future<Map<String, String>> deviceHeaders() async {
     final deviceId = await _deviceId();
-    final headers = <String, String>{
+    return <String, String>{
       "Content-Type": "application/json",
       "X-ARI-Device-ID": deviceId,
     };
+  }
+
+  static Future<Map<String, String>> authHeaders() async {
+    final token = await getAccessToken();
+    final headers = await deviceHeaders();
 
     if (token != null && token.isNotEmpty) {
       headers["Authorization"] = "Bearer $token";
