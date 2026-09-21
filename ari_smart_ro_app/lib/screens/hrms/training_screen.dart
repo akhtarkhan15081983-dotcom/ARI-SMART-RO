@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+
+import '../../services/api_service.dart';
 
 import '../../services/training_service.dart';
 
@@ -675,6 +678,20 @@ class _CertificationCard extends StatelessWidget {
               Text(
                 'Verification code: ${certificate['verification_code'] ?? '-'}',
                 style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: QrImageView(
+                  data:
+                      '${ApiService.baseUrl}/employees/hrms/training/certificates/verify/${certificate['verification_code'] ?? ''}/',
+                  size: 150,
+                ),
+              ),
+              const Center(
+                child: Text(
+                  'Scan to verify certificate',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
             ] else ...[
               Text(
