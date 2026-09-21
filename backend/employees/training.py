@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+import secrets
 
 from django.db import transaction
 from django.utils import timezone
@@ -16,6 +17,7 @@ from .models import (
     EmployeeTrainingAssignment,
     TrainingCourse,
     TrainingTrainerReview,
+    TrainingCertificate,
 )
 
 
@@ -160,6 +162,69 @@ def enforce_assignment(assignment):
     return assignment
 
 
+
+def _trainer_average(row):
+    reviews = list(row.trainer_reviews.all())
+    if not reviews:
+        return Decimal("0.00")
+    total = sum(
+        review.behaviour_score + review.communication_score + review.knowledge_score
+        for review in reviews
+    )
+    return Decimal(total) / Decimal(len(reviews) * 3)
+
+
+def _certificate_payload(row):
+    certificate = getattr(row, "certificate", None)
+    lesson_count = row.course.lessons.count()
+    completed_count = len({int(v) for v in (row.lessons_completed or [])})
+    reviews_count = row.trainer_reviews.count()
+    trainer_average = _trainer_average(row)
+    all_lessons_complete = lesson_count > 0 and completed_count >= lesson_count
+    quiz_passed = row.quiz_score >= row.course.passing_score
+    required_reviews = lesson_count
+    trainer_reviews_complete = reviews_count >= required_reviews
+    trainer_standard_met = trainer_reviews_complete and trainer_average >= Decimal("3.00")
+    eligible = (
+        row.status == "COMPLETED"
+        and all_lessons_complete
+        and quiz_passed
+        and trainer_standard_met
+    )
+    payload = {
+        "eligible": eligible,
+        "requirements": {
+            "lessons_complete": all_lessons_complete,
+            "quiz_passed": quiz_passed,
+            "trainer_reviews_complete": trainer_reviews_complete,
+            "trainer_standard_met": trainer_standard_met,
+            "required_reviews": required_reviews,
+            "reviews_received": reviews_count,
+            "minimum_trainer_average": 3.0,
+            "trainer_average": float(round(trainer_average, 2)),
+        },
+        "issued": certificate is not None,
+    }
+    if certificate is not None:
+        expired = timezone.localdate() > certificate.valid_until
+        revoked = certificate.revoked_at is not None
+        payload["certificate"] = {
+            "certificate_number": certificate.certificate_number,
+            "verification_code": certificate.verification_code,
+            "employee_name": row.employee.user.get_full_name() or row.employee.user.phone,
+            "employee_code": row.employee.employee_id,
+            "course_title": row.course.title,
+            "quiz_score": certificate.quiz_score,
+            "trainer_average": float(certificate.trainer_average),
+            "final_score": float(certificate.final_score),
+            "issued_at": certificate.issued_at.isoformat(),
+            "valid_until": certificate.valid_until.isoformat(),
+            "status": "REVOKED" if revoked else ("EXPIRED" if expired else "VALID"),
+            "revoke_reason": certificate.revoke_reason,
+        }
+    return payload
+
+
 def _assignment_payload(row, include_content=False):
     course = row.course
     lessons = list(course.lessons.all())
@@ -187,6 +252,7 @@ def _assignment_payload(row, include_content=False):
         "planned_days": course.lessons.values("day_number").distinct().count(),
         "planned_minutes": sum(lesson.duration_minutes for lesson in lessons),
         "trainer_reviews_count": row.trainer_reviews.count(),
+        "certification": _certificate_payload(row),
     }
     if include_content:
         payload["lessons"] = [
@@ -475,4 +541,107 @@ class TrainingTrainerReviewAPIView(APIView):
             "gaps": review.gaps,
             "coaching_action": review.coaching_action,
             "notes": review.notes,
+        })
+
+
+class TrainingCertificateIssueAPIView(APIView):
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "training"
+
+    @transaction.atomic
+    def post(self, request, assignment_id):
+        if str(getattr(request.user, "role", "")).upper() != "ADMIN":
+            return Response({"detail": "Only Admin can issue training certificates."}, status=403)
+
+        row = EmployeeTrainingAssignment.objects.select_for_update().select_related(
+            "employee__user", "course"
+        ).filter(pk=assignment_id).first()
+        if row is None:
+            return Response({"detail": "Training assignment not found."}, status=404)
+
+        current = _certificate_payload(row)
+        if not current["eligible"]:
+            return Response(
+                {
+                    "detail": "Certification requirements are not complete.",
+                    "certification": current,
+                },
+                status=400,
+            )
+
+        certificate = getattr(row, "certificate", None)
+        if certificate is None:
+            year = timezone.localdate().year
+            while True:
+                verification_code = secrets.token_urlsafe(18).replace("-", "").replace("_", "")[:24].upper()
+                if not TrainingCertificate.objects.filter(verification_code=verification_code).exists():
+                    break
+            sequence = TrainingCertificate.objects.filter(
+                certificate_number__startswith=f"ARI-CERT-{year}-"
+            ).count() + 1
+            certificate_number = f"ARI-CERT-{year}-{sequence:06d}"
+            trainer_average = _trainer_average(row)
+            final_score = (
+                Decimal(row.quiz_score) * Decimal("0.60")
+                + (trainer_average * Decimal("20")) * Decimal("0.40")
+            ).quantize(Decimal("0.01"))
+            certificate = TrainingCertificate.objects.create(
+                assignment=row,
+                certificate_number=certificate_number,
+                verification_code=verification_code,
+                quiz_score=row.quiz_score,
+                trainer_average=trainer_average.quantize(Decimal("0.01")),
+                final_score=final_score,
+                issued_by=request.user,
+                valid_until=timezone.localdate() + timedelta(days=365),
+            )
+            _notify(
+                row.employee.user,
+                f"training-certificate:{row.id}",
+                "ARI Professional Certification issued",
+                f"Certificate {certificate.certificate_number} has been issued and is valid until {certificate.valid_until:%d %b %Y}.",
+                priority="HIGH",
+                metadata={
+                    "assignment_id": row.id,
+                    "certificate_number": certificate.certificate_number,
+                },
+            )
+
+        return Response(_certificate_payload(row), status=200)
+
+
+class TrainingCertificateRevokeAPIView(APIView):
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "training"
+
+    def post(self, request, assignment_id):
+        if str(getattr(request.user, "role", "")).upper() != "ADMIN":
+            return Response({"detail": "Only Admin can revoke certificates."}, status=403)
+        certificate = TrainingCertificate.objects.select_related(
+            "assignment__employee__user", "assignment__course"
+        ).filter(assignment_id=assignment_id).first()
+        if certificate is None:
+            return Response({"detail": "Certificate not found."}, status=404)
+        if certificate.revoked_at is None:
+            certificate.revoked_at = timezone.now()
+            certificate.revoked_by = request.user
+            certificate.revoke_reason = str(request.data.get("reason", "")).strip()[:500]
+            certificate.save(update_fields=["revoked_at", "revoked_by", "revoke_reason"])
+        return Response(_certificate_payload(certificate.assignment))
+
+
+class TrainingCertificateVerifyAPIView(APIView):
+    permission_classes = []
+
+    def get(self, request, code):
+        certificate = TrainingCertificate.objects.select_related(
+            "assignment__employee__user", "assignment__course"
+        ).filter(verification_code=code).first()
+        if certificate is None:
+            return Response({"valid": False, "detail": "Certificate not found."}, status=404)
+        payload = _certificate_payload(certificate.assignment)
+        status_label = payload["certificate"]["status"]
+        return Response({
+            "valid": status_label == "VALID",
+            "certificate": payload["certificate"],
         })
