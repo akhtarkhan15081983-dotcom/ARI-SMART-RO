@@ -59,7 +59,7 @@ class HolidayAdmin(admin.ModelAdmin):
 
 @admin.register(PayrollRecord)
 class PayrollRecordAdmin(admin.ModelAdmin):
-    list_display = ("employee", "payroll_month", "base_salary", "late_penalty", "overtime_amount", "rent_incentive", "sale_incentive", "net_salary", "status")
+    list_display = ("employee", "payroll_month", "base_salary", "late_penalty", "short_hours_deduction", "overtime_amount", "rent_incentive", "sale_incentive", "net_salary", "status")
     list_filter = ("status", "payroll_month")
     search_fields = ("employee__employee_id", "employee__user__first_name", "employee__user__phone")
     readonly_fields = ("calculation_snapshot", "created_at", "updated_at", "approved_at", "paid_at")
