@@ -6,7 +6,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import User
 from assets.models import ROAsset
-from attendance.models import Attendance
+from attendance.models import Attendance, OvertimeRequest
 from customers.models import Customer
 from jobs.models import Job
 from products.models import ProductCategory, ROModel
@@ -27,16 +27,51 @@ class HRMSPolicyTests(APITestCase):
     def _aware(self, hour, minute):
         return timezone.make_aware(datetime(2026, 2, 28, hour, minute))
 
-    def test_late_penalty_and_hourly_overtime(self):
-        Attendance.objects.create(
-            employee=self.employee, date=date(2026, 2, 28), check_in=self._aware(10, 30),
-            check_out=self._aware(20, 30), working_hours=Decimal("10"), status="PRESENT",
+    def test_late_penalty_and_admin_approved_hourly_overtime(self):
+        attendance = Attendance.objects.create(
+            employee=self.employee,
+            date=date(2026, 2, 28),
+            check_in=self._aware(10, 30),
+            check_out=self._aware(18, 30),
+            regular_shift_end_at=self._aware(18, 30),
+            regular_working_hours=Decimal("8"),
+            working_hours=Decimal("8"),
+            status="PRESENT",
+        )
+        OvertimeRequest.objects.create(
+            attendance=attendance,
+            requested_hours=Decimal("2"),
+            approved_hours=Decimal("2"),
+            reason="Urgent assigned work",
+            status="COMPLETED",
+            started_at=self._aware(18, 30),
+            planned_end_at=self._aware(20, 30),
+            ended_at=self._aware(20, 30),
+            end_reason="AUTO_APPROVED_LIMIT",
         )
         result = calculate_payroll(self.employee, date(2026, 2, 1))
         self.assertEqual(result["payable_base"], Decimal("1000.00"))
         self.assertEqual(result["late_penalty"], Decimal("50.00"))
+        self.assertEqual(result["overtime_hours"], Decimal("2.00"))
         self.assertEqual(result["overtime_amount"], Decimal("250.00"))
         self.assertEqual(result["net_salary"], Decimal("1200.00"))
+
+    def test_short_regular_hours_reduce_payroll(self):
+        Attendance.objects.create(
+            employee=self.employee,
+            date=date(2026, 2, 28),
+            check_in=self._aware(10, 0),
+            check_out=self._aware(16, 0),
+            regular_shift_end_at=self._aware(18, 0),
+            regular_working_hours=Decimal("6"),
+            working_hours=Decimal("6"),
+            status="PRESENT",
+        )
+        result = calculate_payroll(self.employee, date(2026, 2, 1))
+        self.assertEqual(result["short_hours"], Decimal("2.00"))
+        self.assertEqual(result["short_hours_deduction"], Decimal("250.00"))
+        self.assertEqual(result["overtime_amount"], Decimal("0.00"))
+        self.assertEqual(result["net_salary"], Decimal("750.00"))
 
     def test_after_noon_is_half_day_without_double_late_penalty(self):
         Attendance.objects.create(
@@ -162,12 +197,19 @@ class EmployeePenaltyWorkflowTests(HRMSPolicyTests):
         self.assertEqual(penalty.approved_by, self.admin)
 
         Attendance.objects.create(
-            employee=self.employee, date=date(2026, 2, 28), check_in=self._aware(10, 30),
-            check_out=self._aware(20, 30), working_hours=Decimal("10"), status="PRESENT",
+            employee=self.employee,
+            date=date(2026, 2, 28),
+            check_in=self._aware(10, 30),
+            check_out=self._aware(18, 30),
+            regular_shift_end_at=self._aware(18, 30),
+            regular_working_hours=Decimal("8"),
+            working_hours=Decimal("8"),
+            status="PRESENT",
         )
         result = calculate_payroll(self.employee, date(2026, 2, 1))
         self.assertEqual(result["other_deductions"], Decimal("100.00"))
-        self.assertEqual(result["net_salary"], Decimal("1100.00"))
+        self.assertEqual(result["overtime_amount"], Decimal("0.00"))
+        self.assertEqual(result["net_salary"], Decimal("850.00"))
         self.assertEqual(result["snapshot"]["manual_penalty_ids"], [penalty.id])
 
 class CorporateHrmsDashboardTests(HRMSPolicyTests):
