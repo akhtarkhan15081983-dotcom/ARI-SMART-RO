@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -37,6 +38,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   DateTime? _checkInTime;
   DateTime? _checkOutTime;
   DateTime? _checkoutReminderAt;
+  DateTime? _regularShiftEndAt;
+  double _regularWorkingHours = 0;
+  double _overtimeWorkingHours = 0;
+  bool _autoCheckedOut = false;
+  Map<String, dynamic>? _overtime;
+  Timer? _shiftTimer;
 
   @override
   void initState() {
@@ -63,7 +70,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _checkoutReminderAt = attendance.checkoutReminderAt == null
             ? null
             : DateTime.parse(attendance.checkoutReminderAt!).toLocal();
+        _regularShiftEndAt = attendance.regularShiftEndAt == null
+            ? _checkoutReminderAt
+            : DateTime.parse(attendance.regularShiftEndAt!).toLocal();
+        _regularWorkingHours = attendance.regularWorkingHours;
+        _overtimeWorkingHours = attendance.overtimeWorkingHours;
+        _autoCheckedOut = attendance.autoCheckedOut;
+        _overtime = attendance.overtime;
       });
+      _scheduleShiftRefresh();
       if (_isCheckedIn && !_isCheckedOut && _checkoutReminderAt != null) {
         await AttendanceReminderService.scheduleCheckout(_checkoutReminderAt!);
       } else {
@@ -72,6 +87,29 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     } catch (e) {
       debugPrint('LOAD ATTENDANCE ERROR: $e');
     }
+  }
+
+  @override
+  void dispose() {
+    _shiftTimer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleShiftRefresh() {
+    _shiftTimer?.cancel();
+    final end = _regularShiftEndAt;
+    if (end == null || _isCheckedOut || !end.isAfter(DateTime.now())) return;
+    final delay = end.difference(DateTime.now()) + const Duration(seconds: 2);
+    _shiftTimer = Timer(delay, () async {
+      if (!mounted) return;
+      await _loadTodayAttendance();
+      if (mounted && _autoCheckedOut) {
+        _showSnackBar(
+          'Regular 8-hour shift completed. You have been checked out automatically.',
+          isSuccess: true,
+        );
+      }
+    });
   }
 
   bool get _canCheckIn =>
