@@ -4,12 +4,14 @@ from rest_framework.throttling import ScopedRateThrottle
 from accounts.offers import best_offer, customer_offer_user
 from accounts.models import OfferRedemption
 from accounts.permissions import (
+    CanEditCustomer,
     IsAdminOrManager,
     IsEngineer,
     IsStaffOperator,
     IsVerifiedCustomer,
     IsVerifiedCustomerOrOperations,
     STAFF_ROLES,
+    can_edit_customers,
     user_role,
 )
 from employees.models import EmployeeProfile
@@ -1056,13 +1058,23 @@ class CustomerSearchAPIView(APIView):
 
         return Response(serializer.data)
 
+class CustomerEditPermissionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({
+            "can_edit_customer": can_edit_customers(request.user),
+            "role": user_role(request.user),
+        })
+
+
 class CustomerUpdateAPIView(generics.UpdateAPIView):
 
     queryset = Customer.objects.all()
 
     serializer_class = CustomerSerializer
 
-    permission_classes = [IsAdminOrManager]
+    permission_classes = [CanEditCustomer]
 
 class WalkInCustomerAPIView(APIView):
 
@@ -3361,7 +3373,7 @@ class CallingDeskAPIView(APIView):
 # ============================================================
 
 class CustomerLifecycleAPIView(APIView):
-    permission_classes = [IsAdminOrManager]
+    permission_classes = [CanEditCustomer]
 
     def _has_operational_history(self, customer):
         if customer.user_id:
@@ -3452,6 +3464,11 @@ class CustomerLifecycleAPIView(APIView):
             return Response({"success": True, "message": "Customer reactivated successfully."})
 
         if action == "permanent_delete":
+            if user_role(request.user) != "ADMIN":
+                return Response(
+                    {"detail": "Only Admin can permanently delete a customer."},
+                    status=403,
+                )
             if str(request.data.get("confirm") or "").strip().upper() != "DELETE":
                 return Response({"detail": "Type DELETE to confirm permanent deletion."}, status=400)
             if self._has_operational_history(customer):

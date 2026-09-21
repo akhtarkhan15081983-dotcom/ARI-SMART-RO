@@ -10,6 +10,7 @@ from .views import (
     AdminFaceEnrollmentControlAPIView,
     AdminFaceEnrollmentListAPIView,
     EmployeeManagementAPIView,
+    EmployeeCustomerEditPermissionAPIView,
     EmployeeLifecycleAPIView,
     EmployeeCareerMovementAPIView,
     EmployeeCareerMovementActionAPIView,
@@ -27,6 +28,11 @@ from .training import (
 
 urlpatterns = [
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
+    path(
+        "employees/manage/<int:employee_id>/customer-edit-permission/",
+        EmployeeCustomerEditPermissionAPIView.as_view(),
+        name="employee-customer-edit-permission",
+    ),
     path("employees/id-card/", EmployeeIdCardAPIView.as_view(), name="employee-id-card"),
     path("employees/verify-id/<str:code>/", EmployeeIdVerifyAPIView.as_view(), name="employee-id-verify"),
     path(

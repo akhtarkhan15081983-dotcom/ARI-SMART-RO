@@ -21,6 +21,7 @@ from .views import (
     PublicCustomerRequestAPIView,
     CallingDeskAPIView,
     CustomerLifecycleAPIView,
+    CustomerEditPermissionAPIView,
 )
 
 urlpatterns = [
@@ -33,6 +34,11 @@ urlpatterns = [
         "calling-desk/",
         CallingDeskAPIView.as_view(),
         name="calling-desk",
+    ),
+    path(
+        "edit-permission/",
+        CustomerEditPermissionAPIView.as_view(),
+        name="customer-edit-permission",
     ),
     path(
         "calling-desk/<int:pk>/",

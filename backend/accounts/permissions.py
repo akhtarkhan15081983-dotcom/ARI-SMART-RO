@@ -27,6 +27,24 @@ class IsAdminOrManager(BasePermission):
         )
 
 
+def can_edit_customers(user):
+    """Customer master data may be changed only by Admin or an explicitly delegated user."""
+    return bool(
+        user
+        and user.is_authenticated
+        and user.is_active
+        and (
+            user_role(user) == "ADMIN"
+            or user.has_perm("customers.change_customer")
+        )
+    )
+
+
+class CanEditCustomer(BasePermission):
+    def has_permission(self, request, view):
+        return can_edit_customers(request.user)
+
+
 class IsEngineer(BasePermission):
     def has_permission(self, request, view):
         return bool(
