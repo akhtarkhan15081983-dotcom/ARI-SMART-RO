@@ -293,6 +293,8 @@ class PayrollRecord(models.Model):
     late_penalty = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     half_day_deduction = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     absence_deduction = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    short_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    short_hours_deduction = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     overtime_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     overtime_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     rent_incentive = models.DecimalField(max_digits=10, decimal_places=2, default=0)
