@@ -35,6 +35,74 @@ class _TrainingScreenState extends State<TrainingScreen> {
   void _show(String text) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
+  Future<void> _schedule(Map<String, dynamic> row) async {
+    final currentRaw = row['scheduled_start_at']?.toString();
+    final current = currentRaw == null || currentRaw.isEmpty
+        ? DateTime.now()
+        : DateTime.tryParse(currentRaw)?.toLocal() ?? DateTime.now();
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      helpText: 'Select training start date',
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+      helpText: 'Select Day 1 unlock time',
+    );
+    if (time == null || !mounted) return;
+
+    final startAt = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Schedule employee training?'),
+        content: Text(
+          '${row['employee_name'] ?? 'Employee'}\n\n'
+          'Day 1: ${startAt.day}/${startAt.month}/${startAt.year} '
+          '${time.format(context)}\n\n'
+          'Only ONE training day/module will unlock each day. '
+          'Future modules stay locked even if the employee completes today’s module early.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('SCHEDULE'),
+          ),
+        ],
+      ),
+    ) ?? false;
+    if (!confirmed) return;
+
+    try {
+      await _service.scheduleAssignment(
+        (row['id'] as num).toInt(),
+        startAt,
+      );
+      if (!mounted) return;
+      _show('Training schedule saved. Day 1 will open at the selected time.');
+      await _load();
+    } catch (e) {
+      if (mounted) _show(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scope = (_data['scope'] ?? '').toString();
@@ -65,6 +133,10 @@ class _TrainingScreenState extends State<TrainingScreen> {
                     (row) => _AssignmentCard(
                       row: row,
                       adminView: scope == 'ADMIN',
+                      onSchedule: scope == 'ADMIN' &&
+                              (row['status'] ?? '').toString() != 'COMPLETED'
+                          ? () => _schedule(row)
+                          : null,
                       onOpen: scope == 'ADMIN'
                           ? null
                           : () async {
@@ -101,6 +173,8 @@ class _AdminSummary extends StatelessWidget {
               _metric('Total', summary['total']),
               _metric('Completed', summary['completed']),
               _metric('Overdue', summary['overdue']),
+              _metric('Scheduled', summary['scheduled']),
+              _metric('Not scheduled', summary['not_scheduled']),
               _metric('Penalty review', summary['pending_penalty_review']),
               _metric('Due ≤2 days', summary['due_next_2_days']),
             ],
@@ -117,11 +191,13 @@ class _AssignmentCard extends StatelessWidget {
     required this.row,
     required this.adminView,
     required this.onOpen,
+    required this.onSchedule,
   });
 
   final Map<String, dynamic> row;
   final bool adminView;
   final VoidCallback? onOpen;
+  final VoidCallback? onSchedule;
 
   @override
   Widget build(BuildContext context) {
@@ -156,13 +232,31 @@ class _AssignmentCard extends StatelessWidget {
                 '% / pass ' +
                 (row['passing_score'] ?? 80).toString() +
                 '%',
+            row['scheduled'] == true
+                ? 'Starts: ' + (row['scheduled_start_at'] ?? '-').toString()
+                : 'Schedule: NOT SCHEDULED — employee modules are locked',
+            'Release: 1 training module per day',
             'Due: ' + (row['due_date'] ?? '-').toString(),
             if (row['compliance_strike'] == true) 'Compliance strike recorded',
             if (row['penalty_created'] == true)
               'Penalty draft created for Admin review',
           ].join('\n'),
         ),
-        trailing: onOpen == null ? null : const Icon(Icons.chevron_right),
+        trailing: onSchedule != null
+            ? IconButton(
+                tooltip: row['scheduled'] == true
+                    ? 'Reschedule training'
+                    : 'Schedule training',
+                onPressed: onSchedule,
+                icon: Icon(
+                  row['scheduled'] == true
+                      ? Icons.event_repeat_rounded
+                      : Icons.event_available_rounded,
+                ),
+              )
+            : onOpen == null
+                ? null
+                : const Icon(Icons.chevron_right),
       ),
     );
   }
@@ -291,6 +385,26 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: Icon(
+                      _course['scheduled'] == true
+                          ? Icons.calendar_month_rounded
+                          : Icons.lock_clock_rounded,
+                    ),
+                    title: Text(
+                      _course['scheduled'] == true
+                          ? 'Daily staged training is active'
+                          : 'Training is waiting for Admin schedule',
+                    ),
+                    subtitle: Text(
+                      _course['scheduled'] == true
+                          ? 'Only one module opens each day. Start: ${_course['scheduled_start_at'] ?? '-'}'
+                          : 'No lesson content is available until Admin selects your start date.',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Text(
                   'Passing score: ' +
                       (_course['passing_score'] ?? 80).toString() +
@@ -299,8 +413,29 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 16),
-                ...lessons.map(
-                  (lesson) => Card(
+                ...lessons.map((lesson) {
+                  final locked = lesson['locked'] == true;
+                  if (locked) {
+                    return Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.lock_clock_rounded),
+                        title: Text(
+                          (lesson['title'] ?? 'Training module').toString(),
+                        ),
+                        subtitle: Text(
+                          (lesson['lock_reason'] ??
+                                  'This module is not available yet.')
+                              .toString(),
+                        ),
+                        trailing: Text(
+                          'Day ${lesson['day_number'] ?? '-'}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Card(
                     child: ExpansionTile(
                       leading: Icon(
                         lesson['completed'] == true
@@ -320,6 +455,17 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                           padding: const EdgeInsets.all(16),
                           child: Text((lesson['content'] ?? '').toString()),
                         ),
+                        if ((lesson['practice_task'] ?? '')
+                            .toString()
+                            .isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: Text(
+                              'Practice: ${lesson['practice_task']}',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
                         if (lesson['completed'] != true)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -328,13 +474,13 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                                 (lesson['id'] as num).toInt(),
                               ),
                               icon: const Icon(Icons.check),
-                              label: const Text('MARK LESSON COMPLETE'),
+                              label: const Text('MARK TODAY’S MODULE COMPLETE'),
                             ),
                           ),
                       ],
                     ),
-                  ),
-                ),
+                  );
+                }),
                 const SizedBox(height: 16),
                 if (completed)
                   const Card(

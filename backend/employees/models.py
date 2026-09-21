@@ -506,6 +506,17 @@ class EmployeeTrainingAssignment(models.Model):
         related_name="assignments",
     )
     assigned_at = models.DateTimeField(auto_now_add=True)
+    scheduled_start_at = models.DateTimeField(null=True, blank=True)
+    release_interval_days = models.PositiveSmallIntegerField(default=1)
+    lesson_completed_at = models.JSONField(default=dict, blank=True)
+    scheduled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_training_assignments",
+    )
+    schedule_updated_at = models.DateTimeField(null=True, blank=True)
     due_date = models.DateField()
     grace_until = models.DateField()
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="PENDING")

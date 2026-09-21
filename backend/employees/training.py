@@ -1,8 +1,9 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -59,6 +60,11 @@ def sync_training_assignments(employee):
 
 def enforce_assignment(assignment):
     if assignment.status == "COMPLETED":
+        return assignment
+
+    # An assignment exists for eligible employees, but compliance countdown
+    # begins only when Admin schedules the training.
+    if assignment.scheduled_start_at is None:
         return assignment
 
     today = timezone.localdate()
@@ -160,10 +166,57 @@ def enforce_assignment(assignment):
     return assignment
 
 
-def _assignment_payload(row, include_content=False):
+def _lesson_unlock_state(row, lesson, lessons, completed_ids, now=None):
+    now = now or timezone.now()
+    if lesson.id in completed_ids:
+        return {
+            "locked": False,
+            "unlock_at": None,
+            "lock_reason": "",
+        }
+
+    if row.scheduled_start_at is None:
+        return {
+            "locked": True,
+            "unlock_at": None,
+            "lock_reason": "Admin has not scheduled this training yet.",
+        }
+
+    unlock_at = row.scheduled_start_at + timedelta(
+        days=max(0, int(lesson.day_number or 1) - 1) * max(1, int(row.release_interval_days or 1))
+    )
+    if now < unlock_at:
+        return {
+            "locked": True,
+            "unlock_at": unlock_at.isoformat(),
+            "lock_reason": f"Day {lesson.day_number} opens on {timezone.localtime(unlock_at):%d %b %Y}.",
+        }
+
+    previous = None
+    for candidate in lessons:
+        if candidate.order < lesson.order:
+            previous = candidate
+        else:
+            break
+    if previous is not None and previous.id not in completed_ids:
+        return {
+            "locked": True,
+            "unlock_at": unlock_at.isoformat(),
+            "lock_reason": f"Complete Day {previous.day_number} first.",
+        }
+
+    return {
+        "locked": False,
+        "unlock_at": unlock_at.isoformat(),
+        "lock_reason": "",
+    }
+
+
+def _assignment_payload(row, include_content=False, admin_view=False):
     course = row.course
     lessons = list(course.lessons.all())
     completed_ids = {int(v) for v in (row.lessons_completed or [])}
+    now = timezone.now()
     payload = {
         "id": row.id,
         "course_id": course.id,
@@ -187,21 +240,35 @@ def _assignment_payload(row, include_content=False):
         "planned_days": course.lessons.values("day_number").distinct().count(),
         "planned_minutes": sum(lesson.duration_minutes for lesson in lessons),
         "trainer_reviews_count": row.trainer_reviews.count(),
+        "scheduled": row.scheduled_start_at is not None,
+        "scheduled_start_at": row.scheduled_start_at.isoformat() if row.scheduled_start_at else None,
+        "release_interval_days": row.release_interval_days,
+        "scheduled_by": (
+            row.scheduled_by.get_full_name() or row.scheduled_by.phone
+            if row.scheduled_by_id else None
+        ),
     }
     if include_content:
-        payload["lessons"] = [
-            {
+        lesson_rows = []
+        for lesson in lessons:
+            gate = _lesson_unlock_state(row, lesson, lessons, completed_ids, now=now)
+            can_view_content = admin_view or not gate["locked"] or lesson.id in completed_ids
+            review = next((
+                review for review in row.trainer_reviews.all()
+                if review.lesson_id == lesson.id
+            ), None)
+            lesson_rows.append({
                 "id": lesson.id,
                 "order": lesson.order,
                 "title": lesson.title,
-                "content": lesson.content,
-                "key_takeaway": lesson.key_takeaway,
-                "video_asset": lesson.video_asset,
+                "content": lesson.content if can_view_content else "",
+                "key_takeaway": lesson.key_takeaway if can_view_content else "",
+                "video_asset": lesson.video_asset if can_view_content else "",
                 "day_number": lesson.day_number,
                 "duration_minutes": lesson.duration_minutes,
-                "trainer_script": lesson.trainer_script,
-                "practice_task": lesson.practice_task,
-                "trainer_review": next(({
+                "trainer_script": lesson.trainer_script if admin_view else "",
+                "practice_task": lesson.practice_task if can_view_content else "",
+                "trainer_review": None if review is None else {
                     "behaviour_score": review.behaviour_score,
                     "communication_score": review.communication_score,
                     "knowledge_score": review.knowledge_score,
@@ -211,11 +278,14 @@ def _assignment_payload(row, include_content=False):
                     "notes": review.notes,
                     "trainer_name": review.trainer.get_full_name() or review.trainer.phone,
                     "reviewed_at": review.reviewed_at.isoformat(),
-                } for review in row.trainer_reviews.all() if review.lesson_id == lesson.id), None),
+                },
                 "completed": lesson.id in completed_ids,
-            }
-            for lesson in lessons
-        ]
+                **gate,
+            })
+        payload["lessons"] = lesson_rows
+        all_lessons_done = bool(lessons) and all(
+            lesson.id in completed_ids for lesson in lessons
+        )
         payload["questions"] = [
             {
                 "id": question.id,
@@ -229,7 +299,7 @@ def _assignment_payload(row, include_content=False):
                 },
             }
             for question in course.questions.all()
-        ]
+        ] if (admin_view or all_lessons_done) else []
     return payload
 
 
@@ -259,9 +329,18 @@ class TrainingListAPIView(APIView):
                         1 for r in rows
                         if r.penalty_id and getattr(r.penalty, "status", "") == "DRAFT"
                     ),
+                    "scheduled": sum(1 for r in rows if r.scheduled_start_at is not None),
+                    "not_scheduled": sum(
+                        1 for r in rows
+                        if r.status != "COMPLETED" and r.scheduled_start_at is None
+                    ),
                     "due_next_2_days": sum(
                         1 for r in rows
-                        if r.status != "COMPLETED" and 0 <= (r.due_date - today).days <= 2
+                        if (
+                            r.status != "COMPLETED"
+                            and r.scheduled_start_at is not None
+                            and 0 <= (r.due_date - today).days <= 2
+                        )
                     ),
                 },
                 "assignments": [
@@ -301,7 +380,13 @@ class TrainingDetailAPIView(APIView):
         if role != "ADMIN" and row.employee.user_id != request.user.id:
             return Response({"detail": "You can only view your own training."}, status=403)
         enforce_assignment(row)
-        return Response(_assignment_payload(row, include_content=True))
+        return Response(
+            _assignment_payload(
+                row,
+                include_content=True,
+                admin_view=role == "ADMIN",
+            )
+        )
 
 
 class TrainingLessonCompleteAPIView(APIView):
@@ -318,21 +403,36 @@ class TrainingLessonCompleteAPIView(APIView):
         if row.status == "COMPLETED":
             return Response(_assignment_payload(row))
 
-        lesson = row.course.lessons.filter(pk=lesson_id).first()
+        lessons = list(row.course.lessons.all())
+        lesson = next((item for item in lessons if item.pk == lesson_id), None)
         if lesson is None:
             return Response({"detail": "Lesson not found in this course."}, status=404)
+
+        completed = {int(v) for v in (row.lessons_completed or [])}
+        gate = _lesson_unlock_state(row, lesson, lessons, completed)
+        if gate["locked"]:
+            return Response(
+                {
+                    "detail": gate["lock_reason"],
+                    "unlock_at": gate["unlock_at"],
+                },
+                status=423,
+            )
+
         if lesson.video_asset and request.data.get("video_watched") is not True:
             return Response(
                 {"detail": "Please watch the complete Hindi training video before marking this lesson complete."},
                 status=400,
             )
 
-        completed = {int(v) for v in (row.lessons_completed or [])}
         completed.add(lesson.id)
         row.lessons_completed = sorted(completed)
+        completed_at = dict(row.lesson_completed_at or {})
+        completed_at[str(lesson.id)] = timezone.now().isoformat()
+        row.lesson_completed_at = completed_at
         if row.status == "PENDING":
             row.status = "IN_PROGRESS"
-        row.save(update_fields=["lessons_completed", "status"])
+        row.save(update_fields=["lessons_completed", "lesson_completed_at", "status"])
         return Response(_assignment_payload(row))
 
 
@@ -349,6 +449,12 @@ class TrainingQuizSubmitAPIView(APIView):
             return Response({"detail": "Training assignment not found."}, status=404)
         if row.status == "COMPLETED":
             return Response(_assignment_payload(row))
+
+        if row.scheduled_start_at is None:
+            return Response(
+                {"detail": "Admin has not scheduled this training yet."},
+                status=423,
+            )
 
         lessons = list(row.course.lessons.all())
         completed = {int(v) for v in (row.lessons_completed or [])}
@@ -406,6 +512,79 @@ class TrainingQuizSubmitAPIView(APIView):
             "passing_score": row.course.passing_score,
             "attempts": row.attempts,
             "review": review,
+            "assignment": _assignment_payload(row),
+        })
+
+
+class TrainingScheduleAPIView(APIView):
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "training"
+
+    @transaction.atomic
+    def post(self, request, assignment_id):
+        if str(getattr(request.user, "role", "")).upper() != "ADMIN":
+            return Response({"detail": "Only Admin can schedule employee training."}, status=403)
+
+        row = EmployeeTrainingAssignment.objects.select_for_update().select_related(
+            "employee__user", "course"
+        ).filter(pk=assignment_id).first()
+        if row is None:
+            return Response({"detail": "Training assignment not found."}, status=404)
+        if row.status == "COMPLETED":
+            return Response({"detail": "Completed training cannot be rescheduled."}, status=400)
+
+        raw_start = str(request.data.get("start_at") or "").strip()
+        start_at = parse_datetime(raw_start) if raw_start else None
+        if start_at is None and raw_start:
+            start_date = parse_date(raw_start)
+            if start_date is not None:
+                start_at = timezone.make_aware(
+                    datetime.combine(start_date, time.min)
+                )
+        if start_at is None:
+            return Response({"detail": "Select a valid training start date/time."}, status=400)
+        if timezone.is_naive(start_at):
+            start_at = timezone.make_aware(start_at)
+
+        interval_days = 1
+        planned_days = max(
+            list(row.course.lessons.values_list("day_number", flat=True)) or [1]
+        )
+        due_span = max(int(row.course.due_days or 1), planned_days * interval_days)
+        start_local_date = timezone.localtime(start_at).date()
+
+        row.scheduled_start_at = start_at
+        row.release_interval_days = interval_days
+        row.scheduled_by = request.user
+        row.schedule_updated_at = timezone.now()
+        row.due_date = start_local_date + timedelta(days=due_span)
+        row.grace_until = row.due_date + timedelta(days=row.course.grace_days)
+        row.save(update_fields=[
+            "scheduled_start_at",
+            "release_interval_days",
+            "scheduled_by",
+            "schedule_updated_at",
+            "due_date",
+            "grace_until",
+        ])
+
+        _notify(
+            row.employee.user,
+            f"training-scheduled:{row.id}:{row.schedule_updated_at.date().isoformat()}",
+            "Training schedule assigned",
+            (
+                f"{row.course.title} starts {timezone.localtime(start_at):%d %b %Y}. "
+                "Only one training day opens at a time; the next day unlocks on its scheduled date."
+            ),
+            priority="HIGH",
+            metadata={
+                "assignment_id": row.id,
+                "start_at": start_at.isoformat(),
+                "release_interval_days": 1,
+            },
+        )
+        return Response({
+            "detail": "Training schedule saved.",
             "assignment": _assignment_payload(row),
         })
 
