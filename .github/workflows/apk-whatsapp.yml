@@ -45,15 +45,15 @@ jobs:
         shell: bash
         run: |
           cd build/app/outputs/flutter-apk
-          cp app-arm64-v8a-debug.apk ARI-SMART-RO-v1.0.24-WhatsApp-ARM64.apk
-          cp app-armeabi-v7a-debug.apk ARI-SMART-RO-v1.0.24-WhatsApp-ARMv7.apk
+          cp app-arm64-v8a-debug.apk ARI-SMART-RO-v1.0.27-WhatsApp-ARM64.apk
+          cp app-armeabi-v7a-debug.apk ARI-SMART-RO-v1.0.27-WhatsApp-ARMv7.apk
 
       - name: Upload WhatsApp APKs
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-v1.0.24-WhatsApp-APKs
+          name: ARI-SMART-RO-v1.0.27-WhatsApp-APKs
           path: |
-            ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.24-WhatsApp-ARM64.apk
-            ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.24-WhatsApp-ARMv7.apk
+            ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.27-WhatsApp-ARM64.apk
+            ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.27-WhatsApp-ARMv7.apk
           if-no-files-found: error
           retention-days: 30

@@ -420,6 +420,13 @@ class TrainingCourse(models.Model):
         ("CALLING", "Calling Staff"),
     ]
 
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="training_courses",
+    )
     title = models.CharField(max_length=180)
     slug = models.SlugField(max_length=180, unique=True)
     description = models.TextField(blank=True, default="")
@@ -430,6 +437,11 @@ class TrainingCourse(models.Model):
     grace_days = models.PositiveIntegerField(default=2)
     penalty_amount = models.DecimalField(max_digits=10, decimal_places=2, default=100)
     is_active = models.BooleanField(default=True)
+    is_published = models.BooleanField(default=False)
+    certificate_enabled = models.BooleanField(default=True)
+    certificate_valid_days = models.PositiveIntegerField(default=365)
+    required_trainer_reviews = models.PositiveSmallIntegerField(default=0)
+    minimum_trainer_average = models.DecimalField(max_digits=3, decimal_places=2, default=3.00)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -451,6 +463,9 @@ class TrainingLesson(models.Model):
     content = models.TextField()
     key_takeaway = models.CharField(max_length=300, blank=True, default="")
     video_asset = models.CharField(max_length=255, blank=True, default="")
+    video_url = models.URLField(max_length=500, blank=True, default="")
+    resource_url = models.URLField(max_length=500, blank=True, default="")
+    resource_label = models.CharField(max_length=120, blank=True, default="")
     day_number = models.PositiveSmallIntegerField(default=1)
     duration_minutes = models.PositiveSmallIntegerField(default=60)
     trainer_script = models.TextField(blank=True, default="")

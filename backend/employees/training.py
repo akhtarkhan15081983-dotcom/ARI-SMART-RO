@@ -7,6 +7,7 @@ from django.http import HttpResponse
 
 from django.db import transaction
 from django.utils import timezone
+from django.utils.text import slugify
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -18,13 +19,16 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from accounts.models import UserNotification
-from tenancy.access import HasRequiredFeature
+from accounts.permissions import IsAdmin
+from tenancy.access import HasRequiredFeature, request_company
 
 from .models import (
     EmployeePenalty,
     EmployeeProfile,
     EmployeeTrainingAssignment,
     TrainingCourse,
+    TrainingLesson,
+    TrainingQuestion,
     TrainingTrainerReview,
     TrainingCertificate,
 )
@@ -51,9 +55,22 @@ def _eligible(course, employee):
     return course.audience == "ALL" or course.audience == employee.designation
 
 
+def _courses_for_employee(employee):
+    rows = TrainingCourse.objects.filter(
+        is_active=True,
+        is_published=True,
+        is_mandatory=True,
+    )
+    if employee.company_id:
+        rows = rows.filter(company_id=employee.company_id)
+    else:
+        rows = rows.filter(company__isnull=True)
+    return rows
+
+
 def sync_training_assignments(employee):
     today = timezone.localdate()
-    for course in TrainingCourse.objects.filter(is_active=True, is_mandatory=True):
+    for course in _courses_for_employee(employee):
         if not _eligible(course, employee):
             continue
         assignment, _ = EmployeeTrainingAssignment.objects.get_or_create(
@@ -191,11 +208,16 @@ def _certificate_payload(row):
     trainer_average = _trainer_average(row)
     all_lessons_complete = lesson_count > 0 and completed_count >= lesson_count
     quiz_passed = row.quiz_score >= row.course.passing_score
-    required_reviews = lesson_count
+    required_reviews = min(int(row.course.required_trainer_reviews or 0), lesson_count)
     trainer_reviews_complete = reviews_count >= required_reviews
-    trainer_standard_met = trainer_reviews_complete and trainer_average >= Decimal("3.00")
+    minimum_trainer_average = Decimal(row.course.minimum_trainer_average or 0)
+    trainer_standard_met = (
+        required_reviews == 0
+        or (trainer_reviews_complete and trainer_average >= minimum_trainer_average)
+    )
     eligible = (
-        row.status == "COMPLETED"
+        row.course.certificate_enabled
+        and row.status == "COMPLETED"
         and all_lessons_complete
         and quiz_passed
         and trainer_standard_met
@@ -209,9 +231,10 @@ def _certificate_payload(row):
             "trainer_standard_met": trainer_standard_met,
             "required_reviews": required_reviews,
             "reviews_received": reviews_count,
-            "minimum_trainer_average": 3.0,
+            "minimum_trainer_average": float(minimum_trainer_average),
             "trainer_average": float(round(trainer_average, 2)),
         },
+        "certificate_enabled": row.course.certificate_enabled,
         "issued": certificate is not None,
     }
     if certificate is not None:
@@ -247,6 +270,9 @@ def _assignment_payload(row, include_content=False):
         "mandatory": course.is_mandatory,
         "audience": course.audience,
         "passing_score": course.passing_score,
+        "certificate_enabled": course.certificate_enabled,
+        "required_trainer_reviews": course.required_trainer_reviews,
+        "minimum_trainer_average": float(course.minimum_trainer_average),
         "due_date": row.due_date.isoformat(),
         "grace_until": row.grace_until.isoformat(),
         "status": row.status,
@@ -273,6 +299,9 @@ def _assignment_payload(row, include_content=False):
                 "content": lesson.content,
                 "key_takeaway": lesson.key_takeaway,
                 "video_asset": lesson.video_asset,
+                "video_url": lesson.video_url,
+                "resource_url": lesson.resource_url,
+                "resource_label": lesson.resource_label,
                 "day_number": lesson.day_number,
                 "duration_minutes": lesson.duration_minutes,
                 "trainer_script": lesson.trainer_script,
@@ -316,11 +345,22 @@ class TrainingListAPIView(APIView):
     def get(self, request):
         role = str(getattr(request.user, "role", "")).upper()
         if role == "ADMIN":
-            for employee in EmployeeProfile.objects.filter(is_active=True):
+            company = request_company(request)
+            employees = EmployeeProfile.objects.filter(is_active=True)
+            if company is not None:
+                employees = employees.filter(company=company)
+            else:
+                employees = employees.filter(company__isnull=True)
+            for employee in employees:
                 sync_training_assignments(employee)
             rows = EmployeeTrainingAssignment.objects.select_related(
                 "employee__user", "course", "penalty"
-            ).order_by("status", "due_date", "employee__employee_id")
+            )
+            if company is not None:
+                rows = rows.filter(employee__company=company)
+            else:
+                rows = rows.filter(employee__company__isnull=True)
+            rows = rows.order_by("status", "due_date", "employee__employee_id")
             today = timezone.localdate()
             for row in rows:
                 enforce_assignment(row)
@@ -374,6 +414,12 @@ class TrainingDetailAPIView(APIView):
         row = rows.filter(pk=assignment_id).first()
         if row is None:
             return Response({"detail": "Training assignment not found."}, status=404)
+        if role == "ADMIN":
+            company = request_company(request)
+            if (company is not None and row.employee.company_id != company.id) or (
+                company is None and row.employee.company_id is not None
+            ):
+                return Response({"detail": "Training assignment not found in this workspace."}, status=404)
         if role != "ADMIN" and row.employee.user_id != request.user.id:
             return Response({"detail": "You can only view your own training."}, status=403)
         enforce_assignment(row)
@@ -397,7 +443,7 @@ class TrainingLessonCompleteAPIView(APIView):
         lesson = row.course.lessons.filter(pk=lesson_id).first()
         if lesson is None:
             return Response({"detail": "Lesson not found in this course."}, status=404)
-        if lesson.video_asset and request.data.get("video_watched") is not True:
+        if (lesson.video_asset or lesson.video_url) and request.data.get("video_watched") is not True:
             return Response(
                 {"detail": "Please watch the complete Hindi training video before marking this lesson complete."},
                 status=400,
@@ -486,6 +532,13 @@ class TrainingQuizSubmitAPIView(APIView):
         })
 
 
+def _admin_assignment_in_workspace(request, assignment):
+    company = request_company(request)
+    if company is not None:
+        return assignment.employee.company_id == company.id
+    return assignment.employee.company_id is None
+
+
 class TrainingTrainerReviewAPIView(APIView):
     permission_classes = [IsAuthenticated, HasRequiredFeature]
     required_feature = "training"
@@ -499,6 +552,8 @@ class TrainingTrainerReviewAPIView(APIView):
         ).filter(pk=assignment_id).first()
         if row is None:
             return Response({"detail": "Training assignment not found."}, status=404)
+        if not _admin_assignment_in_workspace(request, row):
+            return Response({"detail": "Training assignment not found in this workspace."}, status=404)
 
         lesson = row.course.lessons.filter(pk=lesson_id).first()
         if lesson is None:
@@ -568,6 +623,10 @@ class TrainingCertificateIssueAPIView(APIView):
         ).filter(pk=assignment_id).first()
         if row is None:
             return Response({"detail": "Training assignment not found."}, status=404)
+        if not _admin_assignment_in_workspace(request, row):
+            return Response({"detail": "Training assignment not found in this workspace."}, status=404)
+        if not row.course.certificate_enabled:
+            return Response({"detail": "Certificate is disabled for this course."}, status=400)
 
         current = _certificate_payload(row)
         if not current["eligible"]:
@@ -591,10 +650,13 @@ class TrainingCertificateIssueAPIView(APIView):
             ).count() + 1
             certificate_number = f"ARI-CERT-{year}-{sequence:06d}"
             trainer_average = _trainer_average(row)
-            final_score = (
-                Decimal(row.quiz_score) * Decimal("0.60")
-                + (trainer_average * Decimal("20")) * Decimal("0.40")
-            ).quantize(Decimal("0.01"))
+            if int(row.course.required_trainer_reviews or 0) == 0:
+                final_score = Decimal(row.quiz_score).quantize(Decimal("0.01"))
+            else:
+                final_score = (
+                    Decimal(row.quiz_score) * Decimal("0.60")
+                    + (trainer_average * Decimal("20")) * Decimal("0.40")
+                ).quantize(Decimal("0.01"))
             certificate = TrainingCertificate.objects.create(
                 assignment=row,
                 certificate_number=certificate_number,
@@ -603,7 +665,7 @@ class TrainingCertificateIssueAPIView(APIView):
                 trainer_average=trainer_average.quantize(Decimal("0.01")),
                 final_score=final_score,
                 issued_by=request.user,
-                valid_until=timezone.localdate() + timedelta(days=365),
+                valid_until=timezone.localdate() + timedelta(days=row.course.certificate_valid_days),
             )
             _notify(
                 row.employee.user,
@@ -632,12 +694,432 @@ class TrainingCertificateRevokeAPIView(APIView):
         ).filter(assignment_id=assignment_id).first()
         if certificate is None:
             return Response({"detail": "Certificate not found."}, status=404)
+        if not _admin_assignment_in_workspace(request, certificate.assignment):
+            return Response({"detail": "Certificate not found in this workspace."}, status=404)
         if certificate.revoked_at is None:
             certificate.revoked_at = timezone.now()
             certificate.revoked_by = request.user
             certificate.revoke_reason = str(request.data.get("reason", "")).strip()[:500]
             certificate.save(update_fields=["revoked_at", "revoked_by", "revoke_reason"])
         return Response(_certificate_payload(certificate.assignment))
+
+
+
+def _admin_training_company(request):
+    company = request_company(request)
+    return company
+
+
+def _unique_course_slug(title, company):
+    base = slugify(title)[:140] or "training-course"
+    prefix = company.slug if company is not None else "legacy"
+    candidate = f"{prefix}-{base}"[:180]
+    suffix = 2
+    while TrainingCourse.objects.filter(slug=candidate).exists():
+        tail = f"-{suffix}"
+        candidate = f"{prefix}-{base}"[:180-len(tail)] + tail
+        suffix += 1
+    return candidate
+
+
+def _admin_course_queryset(request):
+    company = _admin_training_company(request)
+    rows = TrainingCourse.objects.prefetch_related("lessons", "questions").order_by("-created_at")
+    return rows.filter(company=company) if company is not None else rows.filter(company__isnull=True)
+
+
+def _admin_course_payload(course, include_content=True):
+    payload = {
+        "id": course.id,
+        "title": course.title,
+        "slug": course.slug,
+        "description": course.description,
+        "audience": course.audience,
+        "is_mandatory": course.is_mandatory,
+        "passing_score": course.passing_score,
+        "due_days": course.due_days,
+        "grace_days": course.grace_days,
+        "penalty_amount": str(course.penalty_amount),
+        "is_active": course.is_active,
+        "is_published": course.is_published,
+        "certificate_enabled": course.certificate_enabled,
+        "certificate_valid_days": course.certificate_valid_days,
+        "required_trainer_reviews": course.required_trainer_reviews,
+        "minimum_trainer_average": float(course.minimum_trainer_average),
+        "lesson_count": course.lessons.count(),
+        "question_count": course.questions.count(),
+        "assignment_count": course.assignments.count(),
+        "created_at": course.created_at.isoformat(),
+    }
+    if include_content:
+        payload["lessons"] = [
+            {
+                "id": lesson.id,
+                "order": lesson.order,
+                "day_number": lesson.day_number,
+                "title": lesson.title,
+                "content": lesson.content,
+                "key_takeaway": lesson.key_takeaway,
+                "duration_minutes": lesson.duration_minutes,
+                "trainer_script": lesson.trainer_script,
+                "practice_task": lesson.practice_task,
+                "video_asset": lesson.video_asset,
+                "video_url": lesson.video_url,
+                "resource_url": lesson.resource_url,
+                "resource_label": lesson.resource_label,
+            }
+            for lesson in course.lessons.all()
+        ]
+        payload["questions"] = [
+            {
+                "id": q.id,
+                "order": q.order,
+                "question": q.question,
+                "option_a": q.option_a,
+                "option_b": q.option_b,
+                "option_c": q.option_c,
+                "option_d": q.option_d,
+                "correct_option": q.correct_option,
+                "explanation": q.explanation,
+            }
+            for q in course.questions.all()
+        ]
+    return payload
+
+
+class AdminTrainingCourseAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        return Response({
+            "courses": [_admin_course_payload(course) for course in _admin_course_queryset(request)]
+        })
+
+    def post(self, request):
+        company = _admin_training_company(request)
+        title = str(request.data.get("title") or "").strip()
+        description = str(request.data.get("description") or "").strip()
+        audience = str(request.data.get("audience") or "ALL").upper()
+        if not title:
+            return Response({"detail": "Course title is required."}, status=400)
+        if audience not in {x[0] for x in TrainingCourse.AUDIENCE_CHOICES}:
+            return Response({"detail": "Select a valid course audience."}, status=400)
+        try:
+            passing_score = max(1, min(100, int(request.data.get("passing_score", 80))))
+            due_days = max(1, int(request.data.get("due_days", 7)))
+            grace_days = max(0, int(request.data.get("grace_days", 2)))
+            required_reviews = max(0, int(request.data.get("required_trainer_reviews", 0)))
+            certificate_valid_days = max(1, int(request.data.get("certificate_valid_days", 365)))
+            minimum_trainer_average = Decimal(str(request.data.get("minimum_trainer_average", 3)))
+            penalty_amount = max(Decimal("0"), Decimal(str(request.data.get("penalty_amount", 0) or 0)))
+        except (TypeError, ValueError, ArithmeticError):
+            return Response({"detail": "One or more numeric course settings are invalid."}, status=400)
+        minimum_trainer_average = max(Decimal("1.00"), min(Decimal("5.00"), minimum_trainer_average))
+        course = TrainingCourse.objects.create(
+            company=company,
+            title=title,
+            slug=_unique_course_slug(title, company),
+            description=description,
+            audience=audience,
+            is_mandatory=bool(request.data.get("is_mandatory", True)),
+            passing_score=passing_score,
+            due_days=due_days,
+            grace_days=grace_days,
+            penalty_amount=penalty_amount,
+            certificate_enabled=bool(request.data.get("certificate_enabled", True)),
+            certificate_valid_days=certificate_valid_days,
+            required_trainer_reviews=required_reviews,
+            minimum_trainer_average=minimum_trainer_average,
+            is_active=True,
+            is_published=False,
+            created_by=request.user,
+        )
+        return Response(_admin_course_payload(course), status=201)
+
+
+class AdminTrainingCourseDetailAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def _course(self, request, course_id):
+        return _admin_course_queryset(request).filter(pk=course_id).first()
+
+    def get(self, request, course_id):
+        course = self._course(request, course_id)
+        if course is None:
+            return Response({"detail": "Training course not found."}, status=404)
+        return Response(_admin_course_payload(course))
+
+    @transaction.atomic
+    def patch(self, request, course_id):
+        course = self._course(request, course_id)
+        if course is None:
+            return Response({"detail": "Training course not found."}, status=404)
+
+        string_fields = {
+            "title": 180,
+            "description": None,
+            "audience": 20,
+        }
+        for field, limit in string_fields.items():
+            if field in request.data:
+                value = str(request.data.get(field) or "").strip()
+                if field == "title" and not value:
+                    return Response({"detail": "Course title cannot be empty."}, status=400)
+                if field == "audience" and value.upper() not in {x[0] for x in TrainingCourse.AUDIENCE_CHOICES}:
+                    return Response({"detail": "Select a valid course audience."}, status=400)
+                setattr(course, field, value.upper() if field == "audience" else (value[:limit] if limit else value))
+
+        for field in ("is_mandatory", "certificate_enabled", "is_active"):
+            if field in request.data:
+                setattr(course, field, bool(request.data.get(field)))
+
+        int_rules = {
+            "passing_score": (1, 100),
+            "due_days": (1, 3650),
+            "grace_days": (0, 3650),
+            "certificate_valid_days": (1, 3650),
+            "required_trainer_reviews": (0, 365),
+        }
+        for field, (minimum, maximum) in int_rules.items():
+            if field in request.data:
+                try:
+                    value = int(request.data.get(field))
+                except (TypeError, ValueError):
+                    return Response({"detail": f"{field} must be a number."}, status=400)
+                setattr(course, field, max(minimum, min(maximum, value)))
+
+        if "penalty_amount" in request.data:
+            try:
+                course.penalty_amount = max(Decimal("0"), Decimal(str(request.data.get("penalty_amount") or 0)))
+            except ArithmeticError:
+                return Response({"detail": "penalty_amount is invalid."}, status=400)
+        if "minimum_trainer_average" in request.data:
+            try:
+                value = Decimal(str(request.data.get("minimum_trainer_average")))
+            except ArithmeticError:
+                return Response({"detail": "minimum_trainer_average is invalid."}, status=400)
+            course.minimum_trainer_average = max(Decimal("1.00"), min(Decimal("5.00"), value))
+
+        publish_requested = request.data.get("is_published")
+        if publish_requested is True:
+            if not course.lessons.exists():
+                return Response({"detail": "Add at least one lesson before publishing."}, status=400)
+            if not course.questions.exists():
+                return Response({"detail": "Add at least one test question before publishing."}, status=400)
+            course.is_published = True
+        elif publish_requested is False:
+            course.is_published = False
+
+        course.save()
+        if course.is_published and course.is_mandatory:
+            employees = EmployeeProfile.objects.filter(is_active=True)
+            if course.company_id:
+                employees = employees.filter(company_id=course.company_id)
+            else:
+                employees = employees.filter(company__isnull=True)
+            for employee in employees:
+                if _eligible(course, employee):
+                    sync_training_assignments(employee)
+        return Response(_admin_course_payload(course))
+
+    def delete(self, request, course_id):
+        course = self._course(request, course_id)
+        if course is None:
+            return Response({"detail": "Training course not found."}, status=404)
+        if course.assignments.exists():
+            course.is_active = False
+            course.is_published = False
+            course.save(update_fields=["is_active", "is_published"])
+            return Response({"message": "Course archived because training history exists."})
+        course.delete()
+        return Response(status=204)
+
+
+class AdminTrainingLessonAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, course_id):
+        course = _admin_course_queryset(request).filter(pk=course_id).first()
+        if course is None:
+            return Response({"detail": "Training course not found."}, status=404)
+        title = str(request.data.get("title") or "").strip()
+        content = str(request.data.get("content") or "").strip()
+        if not title or len(content) < 80:
+            return Response({
+                "detail": "Lesson title and meaningful training content (at least 80 characters) are required."
+            }, status=400)
+        try:
+            order = int(request.data.get("order") or (course.lessons.count() + 1))
+            day_number = int(request.data.get("day_number") or order)
+            duration = max(5, int(request.data.get("duration_minutes") or 30))
+        except (TypeError, ValueError):
+            return Response({"detail": "Lesson order/day/duration is invalid."}, status=400)
+        if course.lessons.filter(order=order).exists():
+            return Response({"detail": "A lesson with this order already exists."}, status=409)
+        lesson = TrainingLesson.objects.create(
+            course=course,
+            order=order,
+            day_number=max(1, day_number),
+            duration_minutes=min(480, duration),
+            title=title[:180],
+            content=content,
+            key_takeaway=str(request.data.get("key_takeaway") or "").strip()[:300],
+            trainer_script=str(request.data.get("trainer_script") or "").strip(),
+            practice_task=str(request.data.get("practice_task") or "").strip(),
+            video_url=str(request.data.get("video_url") or "").strip(),
+            resource_url=str(request.data.get("resource_url") or "").strip(),
+            resource_label=str(request.data.get("resource_label") or "").strip()[:120],
+        )
+        return Response(_admin_course_payload(course), status=201)
+
+
+class AdminTrainingLessonDetailAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def _objects(self, request, course_id, lesson_id):
+        course = _admin_course_queryset(request).filter(pk=course_id).first()
+        if course is None:
+            return None, None
+        return course, course.lessons.filter(pk=lesson_id).first()
+
+    def patch(self, request, course_id, lesson_id):
+        course, lesson = self._objects(request, course_id, lesson_id)
+        if lesson is None:
+            return Response({"detail": "Training lesson not found."}, status=404)
+        for field in ("title", "content", "key_takeaway", "trainer_script", "practice_task", "video_url", "resource_url", "resource_label"):
+            if field in request.data:
+                value = str(request.data.get(field) or "").strip()
+                if field == "content" and len(value) < 80:
+                    return Response({"detail": "Lesson content must be at least 80 characters."}, status=400)
+                setattr(lesson, field, value)
+        for field in ("day_number", "duration_minutes"):
+            if field in request.data:
+                try:
+                    setattr(lesson, field, max(1, int(request.data.get(field))))
+                except (TypeError, ValueError):
+                    return Response({"detail": f"{field} is invalid."}, status=400)
+        lesson.save()
+        return Response(_admin_course_payload(course))
+
+    def delete(self, request, course_id, lesson_id):
+        course, lesson = self._objects(request, course_id, lesson_id)
+        if lesson is None:
+            return Response({"detail": "Training lesson not found."}, status=404)
+        if course.assignments.exists():
+            return Response({"detail": "Cannot delete lessons after the course has been assigned. Archive the course and create a new version."}, status=409)
+        lesson.delete()
+        return Response(status=204)
+
+
+class AdminTrainingQuestionAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, course_id):
+        course = _admin_course_queryset(request).filter(pk=course_id).first()
+        if course is None:
+            return Response({"detail": "Training course not found."}, status=404)
+        question = str(request.data.get("question") or "").strip()
+        options = [str(request.data.get(f"option_{x}") or "").strip() for x in "abcd"]
+        correct = str(request.data.get("correct_option") or "").upper().strip()
+        if not question or any(not x for x in options) or correct not in {"A", "B", "C", "D"}:
+            return Response({"detail": "Question, all four options and correct answer are required."}, status=400)
+        order = course.questions.count() + 1
+        try:
+            order = int(request.data.get("order") or order)
+        except (TypeError, ValueError):
+            return Response({"detail": "Question order is invalid."}, status=400)
+        q = TrainingQuestion.objects.create(
+            course=course,
+            order=order,
+            question=question[:500],
+            option_a=options[0][:300],
+            option_b=options[1][:300],
+            option_c=options[2][:300],
+            option_d=options[3][:300],
+            correct_option=correct,
+            explanation=str(request.data.get("explanation") or "").strip()[:500],
+        )
+        return Response(_admin_course_payload(course), status=201)
+
+
+class AdminTrainingQuestionDetailAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def _objects(self, request, course_id, question_id):
+        course = _admin_course_queryset(request).filter(pk=course_id).first()
+        if course is None:
+            return None, None
+        return course, course.questions.filter(pk=question_id).first()
+
+    def patch(self, request, course_id, question_id):
+        course, q = self._objects(request, course_id, question_id)
+        if q is None:
+            return Response({"detail": "Training question not found."}, status=404)
+        for field in ("question", "option_a", "option_b", "option_c", "option_d", "explanation"):
+            if field in request.data:
+                setattr(q, field, str(request.data.get(field) or "").strip())
+        if "correct_option" in request.data:
+            correct = str(request.data.get("correct_option") or "").upper().strip()
+            if correct not in {"A", "B", "C", "D"}:
+                return Response({"detail": "Correct option must be A, B, C or D."}, status=400)
+            q.correct_option = correct
+        q.save()
+        return Response(_admin_course_payload(course))
+
+    def delete(self, request, course_id, question_id):
+        course, q = self._objects(request, course_id, question_id)
+        if q is None:
+            return Response({"detail": "Training question not found."}, status=404)
+        if course.assignments.exists():
+            return Response({"detail": "Cannot delete test questions after assignment. Archive and version the course instead."}, status=409)
+        q.delete()
+        return Response(status=204)
+
+
+class AdminTrainingAssignAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, course_id):
+        course = _admin_course_queryset(request).filter(pk=course_id, is_active=True, is_published=True).first()
+        if course is None:
+            return Response({"detail": "Publish the training course before assigning it."}, status=404)
+        company = _admin_training_company(request)
+        employees = EmployeeProfile.objects.filter(is_active=True)
+        employees = employees.filter(company=company) if company is not None else employees.filter(company__isnull=True)
+
+        ids = request.data.get("employee_ids")
+        if isinstance(ids, list) and ids:
+            employees = employees.filter(pk__in=ids)
+        elif course.audience != "ALL":
+            employees = employees.filter(designation=course.audience)
+
+        today = timezone.localdate()
+        created = 0
+        existing = 0
+        for employee in employees:
+            if not _eligible(course, employee):
+                continue
+            _, was_created = EmployeeTrainingAssignment.objects.get_or_create(
+                employee=employee,
+                course=course,
+                defaults={
+                    "due_date": today + timedelta(days=course.due_days),
+                    "grace_until": today + timedelta(days=course.due_days + course.grace_days),
+                },
+            )
+            if was_created:
+                created += 1
+                _notify(
+                    employee.user,
+                    f"training-assigned:{course.id}:{employee.id}",
+                    "New training assigned",
+                    f"{course.title} has been assigned. Complete it by {today + timedelta(days=course.due_days):%d %b %Y}.",
+                    priority="HIGH",
+                    metadata={"course_id": course.id},
+                )
+            else:
+                existing += 1
+        return Response({"created": created, "already_assigned": existing})
 
 
 class TrainingCertificatePDFAPIView(APIView):
