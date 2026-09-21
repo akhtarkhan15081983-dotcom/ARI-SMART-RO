@@ -66,18 +66,17 @@ class _TrainingScreenState extends State<TrainingScreen> {
                     (row) => _AssignmentCard(
                       row: row,
                       adminView: scope == 'ADMIN',
-                      onOpen: scope == 'ADMIN'
-                          ? null
-                          : () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => TrainingCourseScreen(
-                                    assignmentId: (row['id'] as num).toInt(),
-                                  ),
-                                ),
-                              );
-                              await _load();
-                            },
+                      onOpen: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => TrainingCourseScreen(
+                              assignmentId: (row['id'] as num).toInt(),
+                              adminView: scope == 'ADMIN',
+                            ),
+                          ),
+                        );
+                        await _load();
+                      },
                     ),
                   ),
                 ],
@@ -170,8 +169,13 @@ class _AssignmentCard extends StatelessWidget {
 }
 
 class TrainingCourseScreen extends StatefulWidget {
-  const TrainingCourseScreen({super.key, required this.assignmentId});
+  const TrainingCourseScreen({
+    super.key,
+    required this.assignmentId,
+    this.adminView = false,
+  });
   final int assignmentId;
+  final bool adminView;
 
   @override
   State<TrainingCourseScreen> createState() => _TrainingCourseScreenState();
@@ -221,6 +225,123 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
         );
       }
     }
+  }
+
+  Future<void> _reviewLesson(Map<String, dynamic> lesson) async {
+    int behaviour = ((lesson['trainer_review'] as Map?)?['behaviour_score'] as num?)?.toInt() ?? 3;
+    int communication = ((lesson['trainer_review'] as Map?)?['communication_score'] as num?)?.toInt() ?? 3;
+    int knowledge = ((lesson['trainer_review'] as Map?)?['knowledge_score'] as num?)?.toInt() ?? 3;
+    final existing = Map<String, dynamic>.from(
+      lesson['trainer_review'] as Map? ?? const <String, dynamic>{},
+    );
+    final strengths = TextEditingController(text: (existing['strengths'] ?? '').toString());
+    final gaps = TextEditingController(text: (existing['gaps'] ?? '').toString());
+    final coaching = TextEditingController(text: (existing['coaching_action'] ?? '').toString());
+    final notes = TextEditingController(text: (existing['notes'] ?? '').toString());
+
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Trainer Review • Day ${lesson['day_number'] ?? lesson['order']}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  '1 = needs urgent coaching • 5 = excellent',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                _ScorePicker(
+                  label: 'Behaviour / व्यवहार',
+                  value: behaviour,
+                  onChanged: (v) => setDialogState(() => behaviour = v),
+                ),
+                _ScorePicker(
+                  label: 'Communication / संवाद',
+                  value: communication,
+                  onChanged: (v) => setDialogState(() => communication = v),
+                ),
+                _ScorePicker(
+                  label: 'Knowledge / ज्ञान',
+                  value: knowledge,
+                  onChanged: (v) => setDialogState(() => knowledge = v),
+                ),
+                TextField(
+                  controller: strengths,
+                  decoration: const InputDecoration(labelText: 'Strengths / अच्छाइयाँ'),
+                  minLines: 2,
+                  maxLines: 3,
+                ),
+                TextField(
+                  controller: gaps,
+                  decoration: const InputDecoration(labelText: 'Gaps / कमियाँ'),
+                  minLines: 2,
+                  maxLines: 3,
+                ),
+                TextField(
+                  controller: coaching,
+                  decoration: const InputDecoration(
+                    labelText: 'What Admin should teach next / सुधार कैसे करें',
+                  ),
+                  minLines: 2,
+                  maxLines: 4,
+                ),
+                TextField(
+                  controller: notes,
+                  decoration: const InputDecoration(labelText: 'Trainer notes'),
+                  minLines: 2,
+                  maxLines: 4,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Save Review'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (save == true) {
+      try {
+        await _service.saveTrainerReview(
+          widget.assignmentId,
+          (lesson['id'] as num).toInt(),
+          behaviourScore: behaviour,
+          communicationScore: communication,
+          knowledgeScore: knowledge,
+          strengths: strengths.text,
+          gaps: gaps.text,
+          coachingAction: coaching.text,
+          notes: notes.text,
+        );
+        await _load();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Trainer review saved.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+          );
+        }
+      }
+    }
+    strengths.dispose();
+    gaps.dispose();
+    coaching.dispose();
+    notes.dispose();
   }
 
   Future<void> _submitQuiz() async {
@@ -298,7 +419,11 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Passing score: ' +
+                  '30-day plan: ' +
+                      (_course['planned_days'] ?? 0).toString() +
+                      ' days • ' +
+                      (_course['planned_minutes'] ?? 0).toString() +
+                      ' planned minutes • 60 min/day\nPassing score: ' +
                       (_course['passing_score'] ?? 80).toString() +
                       '% • Due: ' +
                       (_course['due_date'] ?? '-').toString(),
@@ -317,13 +442,14 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                             ? Icons.check_circle
                             : Icons.menu_book_outlined,
                       ),
-                      title: Text(
-                        (lesson['order'] ?? '').toString() +
-                            '. ' +
-                            (lesson['title'] ?? '').toString(),
-                      ),
+                      title: Text((lesson['title'] ?? '').toString()),
                       subtitle: Text(
-                        (lesson['key_takeaway'] ?? '').toString(),
+                        'Day ' +
+                            (lesson['day_number'] ?? lesson['order'] ?? '').toString() +
+                            ' • ' +
+                            (lesson['duration_minutes'] ?? 60).toString() +
+                            ' min\n' +
+                            (lesson['key_takeaway'] ?? '').toString(),
                       ),
                       children: [
                         if (hasVideo)
@@ -340,7 +466,37 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                           padding: const EdgeInsets.all(16),
                           child: Text((lesson['content'] ?? '').toString()),
                         ),
-                        if (lesson['completed'] != true)
+                        if ((lesson['practice_task'] ?? '').toString().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: Text(
+                              'Practice / अभ्यास:\n' + (lesson['practice_task'] ?? '').toString(),
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        if (widget.adminView &&
+                            (lesson['trainer_script'] ?? '').toString().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: Text(
+                              'Trainer script / Admin क्या सिखाए:\n' +
+                                  (lesson['trainer_script'] ?? '').toString(),
+                            ),
+                          ),
+                        if (widget.adminView)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: FilledButton.tonalIcon(
+                              onPressed: () => _reviewLesson(lesson),
+                              icon: const Icon(Icons.rate_review_outlined),
+                              label: Text(
+                                lesson['trainer_review'] == null
+                                    ? 'ADD TRAINER REVIEW'
+                                    : 'UPDATE TRAINER REVIEW',
+                              ),
+                            ),
+                          ),
+                        if (!widget.adminView && lesson['completed'] != true)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             child: FilledButton.icon(
@@ -383,7 +539,7 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                       ),
                     ),
                   )
-                else if (allLessonsDone) ...[
+                else if (!widget.adminView && allLessonsDone) ...[
                   Text(
                     'Final Quiz',
                     style: Theme.of(context).textTheme.titleLarge,
@@ -520,4 +676,37 @@ class _TrainingVideoState extends State<_TrainingVideo> {
       ],
     );
   }
+}
+
+
+class _ScorePicker extends StatelessWidget {
+  const _ScorePicker({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(child: Text(label)),
+          DropdownButton<int>(
+            value: value,
+            items: List.generate(
+              5,
+              (index) => DropdownMenuItem(
+                value: index + 1,
+                child: Text('${index + 1}/5'),
+              ),
+            ),
+            onChanged: (v) {
+              if (v != null) onChanged(v);
+            },
+          ),
+        ],
+      );
 }
