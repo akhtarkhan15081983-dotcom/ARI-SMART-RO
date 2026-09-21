@@ -26,6 +26,7 @@ from .training import (
     TrainingCertificateIssueAPIView,
     TrainingCertificateRevokeAPIView,
     TrainingCertificateVerifyAPIView,
+    TrainingCertificatePDFAPIView,
 )
 
 urlpatterns = [
@@ -67,6 +68,7 @@ urlpatterns = [
     path("employees/hrms/training/<int:assignment_id>/certificate/issue/", TrainingCertificateIssueAPIView.as_view(), name="hrms-training-certificate-issue"),
     path("employees/hrms/training/<int:assignment_id>/certificate/revoke/", TrainingCertificateRevokeAPIView.as_view(), name="hrms-training-certificate-revoke"),
     path("employees/hrms/training/certificates/verify/<str:code>/", TrainingCertificateVerifyAPIView.as_view(), name="hrms-training-certificate-verify"),
+    path("employees/hrms/training/certificates/<str:code>/pdf/", TrainingCertificatePDFAPIView.as_view(), name="hrms-training-certificate-pdf"),
     path("employees/hrms/reports/payroll.xlsx", PayrollExcelReportAPIView.as_view(), name="hrms-payroll-excel"),
     path(
         "employees/live-location/",
