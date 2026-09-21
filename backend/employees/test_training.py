@@ -14,6 +14,7 @@ from .models import (
     TrainingLesson,
     TrainingQuestion,
     TrainingTrainerReview,
+    TrainingCertificate,
 )
 from .training import enforce_assignment
 
@@ -169,6 +170,88 @@ class EmployeeTrainingTests(APITestCase):
         self.client.force_authenticate(self.employee_user)
         denied = self.client.post(url, {"behaviour_score": 5}, format="json")
         self.assertEqual(denied.status_code, 403)
+
+    def test_admin_can_issue_and_public_can_verify_certificate(self):
+        assignment = EmployeeTrainingAssignment.objects.create(
+            employee=self.employee,
+            course=self.course,
+            due_date=timezone.localdate() + timedelta(days=30),
+            grace_until=timezone.localdate() + timedelta(days=32),
+        )
+        assignment.lessons_completed = [self.lesson1.id, self.lesson2.id]
+        assignment.quiz_score = 100
+        assignment.status = "COMPLETED"
+        assignment.completed_at = timezone.now()
+        assignment.save(
+            update_fields=["lessons_completed", "quiz_score", "status", "completed_at"]
+        )
+
+        for lesson in (self.lesson1, self.lesson2):
+            TrainingTrainerReview.objects.create(
+                assignment=assignment,
+                lesson=lesson,
+                trainer=self.admin,
+                behaviour_score=4,
+                communication_score=4,
+                knowledge_score=4,
+                strengths="Professional",
+                gaps="",
+                coaching_action="Keep practicing",
+            )
+
+        self.client.force_authenticate(self.admin)
+        issued = self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/certificate/issue/",
+            {},
+            format="json",
+        )
+        self.assertEqual(issued.status_code, 200)
+        self.assertTrue(issued.data["issued"])
+        self.assertEqual(issued.data["certificate"]["status"], "VALID")
+
+        certificate = TrainingCertificate.objects.get(assignment=assignment)
+        self.assertEqual(certificate.quiz_score, 100)
+        self.assertEqual(certificate.trainer_average, Decimal("4.00"))
+
+        self.client.force_authenticate(user=None)
+        verified = self.client.get(
+            f"/api/employees/hrms/training/certificates/verify/{certificate.verification_code}/"
+        )
+        self.assertEqual(verified.status_code, 200)
+        self.assertTrue(verified.data["valid"])
+        self.assertEqual(
+            verified.data["certificate"]["certificate_number"],
+            certificate.certificate_number,
+        )
+
+    def test_certificate_requires_all_trainer_reviews(self):
+        assignment = EmployeeTrainingAssignment.objects.create(
+            employee=self.employee,
+            course=self.course,
+            due_date=timezone.localdate() + timedelta(days=30),
+            grace_until=timezone.localdate() + timedelta(days=32),
+            lessons_completed=[self.lesson1.id, self.lesson2.id],
+            quiz_score=100,
+            status="COMPLETED",
+            completed_at=timezone.now(),
+        )
+        TrainingTrainerReview.objects.create(
+            assignment=assignment,
+            lesson=self.lesson1,
+            trainer=self.admin,
+            behaviour_score=5,
+            communication_score=5,
+            knowledge_score=5,
+        )
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            f"/api/employees/hrms/training/{assignment.id}/certificate/issue/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.data["certification"]["requirements"]["trainer_reviews_complete"])
+        self.assertFalse(TrainingCertificate.objects.filter(assignment=assignment).exists())
 
     def test_overdue_training_creates_one_draft_penalty_after_grace(self):
         assignment = EmployeeTrainingAssignment.objects.create(
