@@ -29,6 +29,13 @@ from .training import (
     TrainingCertificateRevokeAPIView,
     TrainingCertificateVerifyAPIView,
     TrainingCertificatePDFAPIView,
+    AdminTrainingCourseAPIView,
+    AdminTrainingCourseDetailAPIView,
+    AdminTrainingLessonAPIView,
+    AdminTrainingLessonDetailAPIView,
+    AdminTrainingQuestionAPIView,
+    AdminTrainingQuestionDetailAPIView,
+    AdminTrainingAssignAPIView,
 )
 
 urlpatterns = [
@@ -73,6 +80,13 @@ urlpatterns = [
     path("employees/hrms/performance/<int:review_id>/action/", PerformanceReviewActionAPIView.as_view(), name="hrms-performance-action"),
     path("employees/hrms/documents/", EmployeeDocumentComplianceAPIView.as_view(), name="hrms-documents"),
     path("employees/hrms/training/", TrainingListAPIView.as_view(), name="hrms-training"),
+    path("employees/hrms/training/admin/courses/", AdminTrainingCourseAPIView.as_view(), name="hrms-training-admin-courses"),
+    path("employees/hrms/training/admin/courses/<int:course_id>/", AdminTrainingCourseDetailAPIView.as_view(), name="hrms-training-admin-course-detail"),
+    path("employees/hrms/training/admin/courses/<int:course_id>/lessons/", AdminTrainingLessonAPIView.as_view(), name="hrms-training-admin-lessons"),
+    path("employees/hrms/training/admin/courses/<int:course_id>/lessons/<int:lesson_id>/", AdminTrainingLessonDetailAPIView.as_view(), name="hrms-training-admin-lesson-detail"),
+    path("employees/hrms/training/admin/courses/<int:course_id>/questions/", AdminTrainingQuestionAPIView.as_view(), name="hrms-training-admin-questions"),
+    path("employees/hrms/training/admin/courses/<int:course_id>/questions/<int:question_id>/", AdminTrainingQuestionDetailAPIView.as_view(), name="hrms-training-admin-question-detail"),
+    path("employees/hrms/training/admin/courses/<int:course_id>/assign/", AdminTrainingAssignAPIView.as_view(), name="hrms-training-admin-assign"),
     path("employees/hrms/training/<int:assignment_id>/", TrainingDetailAPIView.as_view(), name="hrms-training-detail"),
     path("employees/hrms/training/<int:assignment_id>/lessons/<int:lesson_id>/complete/", TrainingLessonCompleteAPIView.as_view(), name="hrms-training-lesson-complete"),
     path("employees/hrms/training/<int:assignment_id>/quiz/", TrainingQuizSubmitAPIView.as_view(), name="hrms-training-quiz"),
