@@ -650,10 +650,13 @@ class TrainingCertificateIssueAPIView(APIView):
             ).count() + 1
             certificate_number = f"ARI-CERT-{year}-{sequence:06d}"
             trainer_average = _trainer_average(row)
-            final_score = (
-                Decimal(row.quiz_score) * Decimal("0.60")
-                + (trainer_average * Decimal("20")) * Decimal("0.40")
-            ).quantize(Decimal("0.01"))
+            if int(row.course.required_trainer_reviews or 0) == 0:
+                final_score = Decimal(row.quiz_score).quantize(Decimal("0.01"))
+            else:
+                final_score = (
+                    Decimal(row.quiz_score) * Decimal("0.60")
+                    + (trainer_average * Decimal("20")) * Decimal("0.40")
+                ).quantize(Decimal("0.01"))
             certificate = TrainingCertificate.objects.create(
                 assignment=row,
                 certificate_number=certificate_number,
@@ -808,6 +811,7 @@ class AdminTrainingCourseAPIView(APIView):
             required_reviews = max(0, int(request.data.get("required_trainer_reviews", 0)))
             certificate_valid_days = max(1, int(request.data.get("certificate_valid_days", 365)))
             minimum_trainer_average = Decimal(str(request.data.get("minimum_trainer_average", 3)))
+            penalty_amount = max(Decimal("0"), Decimal(str(request.data.get("penalty_amount", 0) or 0)))
         except (TypeError, ValueError, ArithmeticError):
             return Response({"detail": "One or more numeric course settings are invalid."}, status=400)
         minimum_trainer_average = max(Decimal("1.00"), min(Decimal("5.00"), minimum_trainer_average))
@@ -821,7 +825,7 @@ class AdminTrainingCourseAPIView(APIView):
             passing_score=passing_score,
             due_days=due_days,
             grace_days=grace_days,
-            penalty_amount=Decimal(str(request.data.get("penalty_amount", 0) or 0)),
+            penalty_amount=penalty_amount,
             certificate_enabled=bool(request.data.get("certificate_enabled", True)),
             certificate_valid_days=certificate_valid_days,
             required_trainer_reviews=required_reviews,
