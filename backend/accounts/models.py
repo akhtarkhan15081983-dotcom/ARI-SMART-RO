@@ -50,6 +50,13 @@ class User(AbstractUser):
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
 
+    # Staff accounts are bound to one app installation at a time.
+    # Customers and admins are intentionally excluded from this restriction.
+    active_login_device_id = models.CharField(max_length=64, blank=True, default="")
+    previous_login_device_id = models.CharField(max_length=64, blank=True, default="")
+    login_device_bound_at = models.DateTimeField(null=True, blank=True)
+    login_device_reset_at = models.DateTimeField(null=True, blank=True)
+
     objects = UserManager()
 
     USERNAME_FIELD = "phone"
