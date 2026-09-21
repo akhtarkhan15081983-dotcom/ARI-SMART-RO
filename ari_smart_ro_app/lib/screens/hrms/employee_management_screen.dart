@@ -976,6 +976,55 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     }
   }
 
+  Future<void> _resetLoginDevice(Map<String, dynamic> employee) async {
+    if (!_canDelegateCustomerEdit) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reset login device?'),
+        content: Text(
+          '${employee['name']} will be signed out from the currently registered phone. '
+          'On the next successful login, the new phone will become the only allowed device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('RESET DEVICE'),
+          ),
+        ],
+      ),
+    ) ?? false;
+    if (!confirmed) return;
+
+    try {
+      await _service.resetLoginDevice(
+        employeeId: (employee['id'] as num).toInt(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Login device reset. Old phone is blocked; next login will register the new phone.',
+            ),
+          ),
+        );
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _setEmployeeActive(
     Map<String, dynamic> employee,
     bool active,
@@ -1237,7 +1286,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                         '${employee['department']?.toString().isEmpty == false ? ' • ${employee['department']}' : ''}'
                         ' • ₹${employee['salary']}\n'
                         '${employee['location_received'] == true ? 'Location received' : 'Location missing'}'
-                        '${employee['last_location_updated'] == null ? '' : ' • last update ${employee['last_location_updated']}'}',
+                        '${employee['last_location_updated'] == null ? '' : ' • last update ${employee['last_location_updated']}'}'
+                        '${employee['login_device_bound'] == true ? '\nLogin phone: registered' : '\nLogin phone: not registered'}',
                       ),
                       isThreeLine: true,
                       trailing: PopupMenuButton<String>(
@@ -1249,6 +1299,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                             _career(employee);
                           } else if (value == 'customer_edit') {
                             _setCustomerEditPermission(employee);
+                          } else if (value == 'reset_login_device') {
+                            _resetLoginDevice(employee);
                           } else if (value == 'deactivate') {
                             _setEmployeeActive(employee, false);
                           } else if (value == 'reactivate') {
@@ -1272,6 +1324,19 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                               title: Text('Career & Promotion'),
                             ),
                           ),
+                          if (_canDelegateCustomerEdit)
+                            PopupMenuItem(
+                              value: 'reset_login_device',
+                              child: ListTile(
+                                leading: const Icon(Icons.phonelink_erase_rounded),
+                                title: const Text('Reset Login Device'),
+                                subtitle: Text(
+                                  employee['login_device_bound'] == true
+                                      ? 'A phone is currently registered'
+                                      : 'No phone is currently registered',
+                                ),
+                              ),
+                            ),
                           if (_canDelegateCustomerEdit)
                             PopupMenuItem(
                               value: 'customer_edit',

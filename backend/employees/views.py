@@ -13,7 +13,7 @@ from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 
 from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator, can_edit_customers
-from accounts.models import User
+from accounts.models import AuthSecurityEvent, User
 from tenancy.models import CompanyMembership
 from tenancy.access import HasRequiredFeature, has_feature_access
 
@@ -142,6 +142,9 @@ class EmployeeManagementAPIView(APIView):
                     },
                     "is_active": employee.is_active and employee.user.is_active,
                     "can_edit_customer": can_edit_customers(employee.user),
+                    "login_device_bound": bool(employee.user.active_login_device_id),
+                    "login_device_bound_at": employee.user.login_device_bound_at,
+                    "login_device_reset_at": employee.user.login_device_reset_at,
                     "location_received": (
                         employee.last_latitude is not None
                         and employee.last_longitude is not None
@@ -229,6 +232,57 @@ class EmployeeManagementAPIView(APIView):
             "success": True, "message": "Employee account created successfully.",
             "employee": {"id": employee.id, "employee_id": employee.employee_id, "name": user.get_full_name()},
         }, status=201)
+
+
+class EmployeeLoginDeviceResetAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, employee_id):
+        company = _request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        employee = EmployeeProfile.objects.select_related("user").filter(
+            pk=employee_id,
+            company=company,
+        ).first()
+        if employee is None:
+            return Response({"detail": "Employee not found in this workspace."}, status=404)
+
+        user = employee.user
+        previous_device_id = str(user.active_login_device_id or "")
+        user.previous_login_device_id = previous_device_id
+        user.active_login_device_id = ""
+        user.login_device_reset_at = timezone.now()
+        user.login_device_bound_at = None
+        user.save(
+            update_fields=[
+                "previous_login_device_id",
+                "active_login_device_id",
+                "login_device_reset_at",
+                "login_device_bound_at",
+            ]
+        )
+        AuthSecurityEvent.objects.create(
+            user=user,
+            event_type="LOGIN_DEVICE_RESET",
+            device_id=str(request.headers.get("X-ARI-Device-ID", "") or "")[:64],
+            details={
+                "employee_id": employee.id,
+                "reset_by_user_id": request.user.id,
+                "had_bound_device": bool(previous_device_id),
+            },
+        )
+        return Response(
+            {
+                "success": True,
+                "message": (
+                    "Employee login device reset. The old phone session is now blocked; "
+                    "the next successful login will register the new phone."
+                ),
+                "login_device_bound": False,
+            }
+        )
 
 
 class EmployeeCustomerEditPermissionAPIView(APIView):

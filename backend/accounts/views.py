@@ -427,6 +427,45 @@ class LoginAPIView(APIView):
             user.locked_until = None
             user.save(update_fields=["failed_login_attempts", "locked_until"])
 
+        # Staff accounts are locked to one app installation at a time.
+        # Admin and customer accounts remain exempt so administrators can recover
+        # employee access and customers can use their account normally.
+        if user.role not in {"ADMIN", "CUSTOMER"} and not user.is_superuser:
+            device_id = str(request.headers.get("X-ARI-Device-ID", "") or "").strip()[:64]
+            if not device_id:
+                _security_event(request, "LOGIN_DEVICE_BLOCKED", user=user, reason="DEVICE_ID_MISSING")
+                return Response(
+                    {
+                        "success": False,
+                        "message": "This employee account requires a registered phone. Please update the ARI SMART RO app.",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            if user.active_login_device_id and user.active_login_device_id != device_id:
+                _security_event(
+                    request,
+                    "LOGIN_DEVICE_BLOCKED",
+                    user=user,
+                    reason="OTHER_DEVICE_ACTIVE",
+                )
+                return Response(
+                    {
+                        "success": False,
+                        "code": "EMPLOYEE_DEVICE_ALREADY_BOUND",
+                        "message": (
+                            "This employee ID is already active on another phone. "
+                            "Ask Admin to reset the login device before using a new phone."
+                        ),
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            if not user.active_login_device_id:
+                user.active_login_device_id = device_id
+                user.login_device_bound_at = timezone.now()
+                user.save(update_fields=["active_login_device_id", "login_device_bound_at"])
+
         _security_event(request, "LOGIN_SUCCESS", user=user)
 
         refresh = RefreshToken.for_user(
