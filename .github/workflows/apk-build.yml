@@ -83,12 +83,12 @@ jobs:
           else
             SOURCE="build/app/outputs/flutter-apk/app-debug.apk"
           fi
-          cp "$SOURCE" build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.21.apk
+          cp "$SOURCE" build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.22.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-v1.0.21-APK
-          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.21.apk
+          name: ARI-SMART-RO-v1.0.22-APK
+          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.22.apk
           if-no-files-found: error
           retention-days: 30
