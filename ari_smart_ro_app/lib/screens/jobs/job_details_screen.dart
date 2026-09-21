@@ -108,9 +108,27 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 12),
+        );
+      } catch (_) {
+        position = await Geolocator.getLastKnownPosition();
+      }
+
+      if (position == null) {
+        await _jobService.markGpsUnavailable(widget.jobId, true);
+        if (!silent) {
+          _showMessage(
+            'GPS fix is unavailable here. Work can continue; refresh GPS when a location fix is available.',
+          );
+        }
+        return;
+      }
+
+      await _jobService.markGpsUnavailable(widget.jobId, false);
       await _jobService.uploadGPS(
         widget.jobId,
         position.latitude,
