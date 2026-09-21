@@ -450,6 +450,11 @@ class TrainingLesson(models.Model):
     title = models.CharField(max_length=180)
     content = models.TextField()
     key_takeaway = models.CharField(max_length=300, blank=True, default="")
+    video_asset = models.CharField(max_length=255, blank=True, default="")
+    day_number = models.PositiveSmallIntegerField(default=1)
+    duration_minutes = models.PositiveSmallIntegerField(default=60)
+    trainer_script = models.TextField(blank=True, default="")
+    practice_task = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["course", "order", "id"]
@@ -529,6 +534,44 @@ class EmployeeTrainingAssignment(models.Model):
 
     def __str__(self):
         return f"{self.employee.employee_id} • {self.course.title}"
+
+
+class TrainingTrainerReview(models.Model):
+    assignment = models.ForeignKey(
+        EmployeeTrainingAssignment,
+        on_delete=models.CASCADE,
+        related_name="trainer_reviews",
+    )
+    lesson = models.ForeignKey(
+        TrainingLesson,
+        on_delete=models.CASCADE,
+        related_name="trainer_reviews",
+    )
+    trainer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="training_reviews_given",
+    )
+    behaviour_score = models.PositiveSmallIntegerField(default=3)
+    communication_score = models.PositiveSmallIntegerField(default=3)
+    knowledge_score = models.PositiveSmallIntegerField(default=3)
+    strengths = models.TextField(blank=True, default="")
+    gaps = models.TextField(blank=True, default="")
+    coaching_action = models.TextField(blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+    reviewed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["lesson__day_number", "lesson__order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assignment", "lesson"],
+                name="unique_training_trainer_review",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.assignment} • Day {self.lesson.day_number}"
 
 
 class EmployeeDocument(models.Model):
