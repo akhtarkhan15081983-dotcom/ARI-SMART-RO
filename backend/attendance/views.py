@@ -1,3 +1,6 @@
+from datetime import timedelta
+from decimal import Decimal, InvalidOperation
+
 from django.utils import timezone
 
 from rest_framework.views import APIView
@@ -6,7 +9,13 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import ListAPIView
 
-from .models import Attendance, AttendanceDeviceOverride
+from .models import Attendance, AttendanceDeviceOverride, OvertimeRequest
+from .work_hours import (
+    recalculate_attendance,
+    reconcile_open_attendance,
+    regular_shift_end,
+    overtime_payload,
+)
 from .serializers import AttendanceSerializer
 from .security import (
     OFFICE_LATITUDE,
@@ -15,7 +24,8 @@ from .security import (
     distance_from_office_meters,
     is_inside_office_geofence,
 )
-from employees.models import EmployeeProfile
+from employees.models import EmployeeProfile, HRPolicy
+from tenancy.access import request_company
 
 
 def _is_admin(user):
@@ -132,10 +142,22 @@ class CheckOutAPIView(APIView):
             return Response({"message": "Please Check In First."}, status=400)
         if attendance.check_out:
             return Response({"message": "Already Checked Out."}, status=400)
-        attendance.check_out = timezone.now()
-        seconds = (attendance.check_out - attendance.check_in).total_seconds()
-        attendance.working_hours = round(seconds / 3600, 2)
-        attendance.save()
+        now = timezone.now()
+        shift_end = regular_shift_end(attendance)
+        if shift_end and now >= shift_end:
+            attendance.check_out = shift_end
+            attendance.auto_checked_out = True
+            attendance.checkout_reason = "AUTO_8_HOURS"
+        else:
+            attendance.check_out = now
+            attendance.auto_checked_out = False
+            attendance.checkout_reason = "MANUAL"
+        attendance.save(update_fields=[
+            "check_out",
+            "auto_checked_out",
+            "checkout_reason",
+        ])
+        recalculate_attendance(attendance, now=now)
         return Response(AttendanceSerializer(attendance).data)
 
 
@@ -144,10 +166,251 @@ class TodayAttendanceAPIView(APIView):
 
     def get(self, request):
         employee = EmployeeProfile.objects.get(user=request.user)
+        reconcile_open_attendance(employee=employee)
         attendance = Attendance.objects.filter(employee=employee, date=timezone.localdate()).first()
         if not attendance:
             return Response({"message": "No attendance today."}, status=404)
         return Response(AttendanceSerializer(attendance).data)
+
+
+
+class OvertimeRequestAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        employee = EmployeeProfile.objects.filter(user=request.user).first()
+        if employee is None:
+            return Response({"detail": "Employee profile not found."}, status=404)
+        reconcile_open_attendance(employee=employee)
+        attendance = Attendance.objects.filter(
+            employee=employee,
+            date=timezone.localdate(),
+        ).first()
+        if attendance is None:
+            return Response({"detail": "Check in before requesting overtime."}, status=400)
+        return Response({
+            "attendance_id": attendance.id,
+            "regular_shift_end_at": regular_shift_end(attendance),
+            "regular_working_hours": str(attendance.regular_working_hours),
+            "working_hours": str(attendance.working_hours),
+            "overtime": overtime_payload(attendance),
+        })
+
+    def post(self, request):
+        employee = EmployeeProfile.objects.filter(user=request.user).first()
+        if employee is None:
+            return Response({"detail": "Employee profile not found."}, status=404)
+        reconcile_open_attendance(employee=employee)
+        attendance = Attendance.objects.filter(
+            employee=employee,
+            date=timezone.localdate(),
+            check_in__isnull=False,
+        ).first()
+        if attendance is None:
+            return Response({"detail": "Check in before requesting overtime."}, status=400)
+
+        reason = str(request.data.get("reason") or "").strip()
+        try:
+            requested_hours = Decimal(str(request.data.get("hours") or "1"))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({"detail": "Valid overtime hours are required."}, status=400)
+        if not reason:
+            return Response({"detail": "Overtime reason is required."}, status=400)
+        if requested_hours <= 0 or requested_hours > Decimal("8"):
+            return Response({"detail": "Overtime request must be between 0.25 and 8 hours."}, status=400)
+        if requested_hours < Decimal("0.25"):
+            return Response({"detail": "Minimum overtime request is 15 minutes."}, status=400)
+
+        existing = OvertimeRequest.objects.filter(attendance=attendance).first()
+        if existing and existing.status in {"APPROVED", "COMPLETED"}:
+            return Response({"detail": "Overtime is already approved/completed for today."}, status=409)
+
+        row, _ = OvertimeRequest.objects.update_or_create(
+            attendance=attendance,
+            defaults={
+                "requested_hours": requested_hours,
+                "approved_hours": Decimal("0"),
+                "reason": reason,
+                "status": "PENDING",
+                "reviewed_by": None,
+                "reviewed_at": None,
+                "review_note": "",
+                "started_at": None,
+                "planned_end_at": None,
+                "ended_at": None,
+                "end_reason": "",
+            },
+        )
+        return Response({
+            "message": "Overtime request sent to Admin for approval.",
+            "overtime": overtime_payload(attendance),
+        }, status=201)
+
+
+class OvertimeStartAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        employee = EmployeeProfile.objects.filter(user=request.user).first()
+        if employee is None:
+            return Response({"detail": "Employee profile not found."}, status=404)
+        reconcile_open_attendance(employee=employee)
+        attendance = Attendance.objects.filter(
+            employee=employee,
+            date=timezone.localdate(),
+        ).first()
+        if attendance is None:
+            return Response({"detail": "Attendance record not found."}, status=404)
+
+        overtime = OvertimeRequest.objects.filter(
+            attendance=attendance,
+            status="APPROVED",
+            started_at__isnull=True,
+        ).first()
+        if overtime is None:
+            return Response({"detail": "Admin-approved overtime is required."}, status=403)
+
+        shift_end = regular_shift_end(attendance)
+        now = timezone.now()
+        if shift_end and now < shift_end:
+            return Response(
+                {"detail": "Regular 8-hour shift is still active. Overtime starts after regular shift ends."},
+                status=400,
+            )
+
+        overtime.started_at = now
+        overtime.planned_end_at = now + timedelta(hours=float(overtime.approved_hours))
+        overtime.save(update_fields=["started_at", "planned_end_at", "updated_at"])
+        recalculate_attendance(attendance, now=now)
+        return Response({
+            "message": "Approved overtime started.",
+            "attendance": AttendanceSerializer(attendance).data,
+        })
+
+
+class OvertimeStopAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        employee = EmployeeProfile.objects.filter(user=request.user).first()
+        attendance = Attendance.objects.filter(
+            employee=employee,
+            date=timezone.localdate(),
+        ).first() if employee else None
+        if attendance is None:
+            return Response({"detail": "Attendance record not found."}, status=404)
+        overtime = OvertimeRequest.objects.filter(
+            attendance=attendance,
+            status="APPROVED",
+            started_at__isnull=False,
+            ended_at__isnull=True,
+        ).first()
+        if overtime is None:
+            return Response({"detail": "No active overtime session."}, status=400)
+        now = timezone.now()
+        overtime.ended_at = min(now, overtime.planned_end_at or now)
+        overtime.end_reason = "MANUAL"
+        overtime.status = "COMPLETED"
+        overtime.save(update_fields=["ended_at", "end_reason", "status", "updated_at"])
+        recalculate_attendance(attendance, now=now)
+        return Response({
+            "message": "Overtime stopped.",
+            "attendance": AttendanceSerializer(attendance).data,
+        })
+
+
+class AdminOvertimeAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _is_admin(request.user):
+            return Response({"detail": "Only Admin can manage overtime."}, status=403)
+        reconcile_open_attendance()
+        company = request_company(request)
+        rows = OvertimeRequest.objects.select_related(
+            "attendance__employee__user",
+            "attendance__employee__company",
+            "reviewed_by",
+        )
+        if company is not None:
+            rows = rows.filter(attendance__employee__company=company)
+        status_filter = str(request.query_params.get("status") or "").upper()
+        if status_filter in {"PENDING", "APPROVED", "REJECTED", "COMPLETED", "CANCELLED"}:
+            rows = rows.filter(status=status_filter)
+        return Response([
+            {
+                "id": row.id,
+                "attendance_id": row.attendance_id,
+                "date": row.attendance.date,
+                "employee_id": row.attendance.employee.employee_id,
+                "employee_name": row.attendance.employee.user.get_full_name() or row.attendance.employee.user.phone,
+                "designation": row.attendance.employee.designation,
+                "regular_hours": str(row.attendance.regular_working_hours),
+                "overtime_hours": str(row.attendance.overtime_working_hours),
+                "requested_hours": str(row.requested_hours),
+                "approved_hours": str(row.approved_hours),
+                "reason": row.reason,
+                "status": row.status,
+                "requested_at": row.requested_at,
+                "review_note": row.review_note,
+                "reviewed_at": row.reviewed_at,
+                "started_at": row.started_at,
+                "planned_end_at": row.planned_end_at,
+                "ended_at": row.ended_at,
+            }
+            for row in rows[:500]
+        ])
+
+    def post(self, request, request_id=None):
+        if not _is_admin(request.user):
+            return Response({"detail": "Only Admin can manage overtime."}, status=403)
+        row = OvertimeRequest.objects.select_related(
+            "attendance__employee__company"
+        ).filter(pk=request_id).first()
+        if row is None:
+            return Response({"detail": "Overtime request not found."}, status=404)
+        company = request_company(request)
+        if company is not None and row.attendance.employee.company_id != company.id:
+            return Response({"detail": "Overtime request not found in this workspace."}, status=404)
+
+        action = str(request.data.get("action") or "").upper()
+        note = str(request.data.get("note") or "").strip()[:300]
+        if action == "APPROVE":
+            try:
+                approved_hours = Decimal(str(
+                    request.data.get("approved_hours") or row.requested_hours
+                ))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response({"detail": "Valid approved overtime hours are required."}, status=400)
+            if approved_hours <= 0 or approved_hours > row.requested_hours:
+                return Response(
+                    {"detail": "Approved hours must be above zero and cannot exceed requested hours."},
+                    status=400,
+                )
+            row.status = "APPROVED"
+            row.approved_hours = approved_hours
+        elif action == "REJECT":
+            row.status = "REJECTED"
+            row.approved_hours = Decimal("0")
+        else:
+            return Response({"detail": "Action must be APPROVE or REJECT."}, status=400)
+
+        row.reviewed_by = request.user
+        row.reviewed_at = timezone.now()
+        row.review_note = note
+        row.save(update_fields=[
+            "status",
+            "approved_hours",
+            "reviewed_by",
+            "reviewed_at",
+            "review_note",
+            "updated_at",
+        ])
+        return Response({
+            "message": f"Overtime request {row.status.lower()}.",
+            "status": row.status,
+            "approved_hours": str(row.approved_hours),
+        })
 
 
 class AttendanceHistoryAPIView(ListAPIView):
