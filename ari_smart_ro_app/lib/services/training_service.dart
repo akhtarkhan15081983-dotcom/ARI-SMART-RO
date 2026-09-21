@@ -10,7 +10,7 @@ class TrainingService {
 
   Future<List<Map<String, dynamic>>> adminCourses() async {
     final response = await http.get(
-      Uri.parse('\${ApiService.baseUrl}/employees/hrms/training/admin/courses/'),
+      Uri.parse('${ApiService.baseUrl}/employees/hrms/training/admin/courses/'),
       headers: await ApiService.authHeaders(),
     );
     if (response.statusCode != 200) throw Exception(_message(response));
@@ -24,7 +24,7 @@ class TrainingService {
 
   Future<Map<String, dynamic>> createCourse(Map<String, dynamic> payload) async {
     final response = await http.post(
-      Uri.parse('\${ApiService.baseUrl}/employees/hrms/training/admin/courses/'),
+      Uri.parse('${ApiService.baseUrl}/employees/hrms/training/admin/courses/'),
       headers: await ApiService.authHeaders(),
       body: jsonEncode(payload),
     );
@@ -38,7 +38,7 @@ class TrainingService {
   ) async {
     final response = await http.patch(
       Uri.parse(
-        '\${ApiService.baseUrl}/employees/hrms/training/admin/courses/\$courseId/',
+        '${ApiService.baseUrl}/employees/hrms/training/admin/courses/$courseId/',
       ),
       headers: await ApiService.authHeaders(),
       body: jsonEncode(payload),
@@ -53,7 +53,7 @@ class TrainingService {
   ) async {
     final response = await http.post(
       Uri.parse(
-        '\${ApiService.baseUrl}/employees/hrms/training/admin/courses/\$courseId/lessons/',
+        '${ApiService.baseUrl}/employees/hrms/training/admin/courses/$courseId/lessons/',
       ),
       headers: await ApiService.authHeaders(),
       body: jsonEncode(payload),
@@ -69,7 +69,7 @@ class TrainingService {
   ) async {
     final response = await http.patch(
       Uri.parse(
-        '\${ApiService.baseUrl}/employees/hrms/training/admin/courses/\$courseId/lessons/\$lessonId/',
+        '${ApiService.baseUrl}/employees/hrms/training/admin/courses/$courseId/lessons/$lessonId/',
       ),
       headers: await ApiService.authHeaders(),
       body: jsonEncode(payload),
@@ -81,7 +81,7 @@ class TrainingService {
   Future<void> deleteLesson(int courseId, int lessonId) async {
     final response = await http.delete(
       Uri.parse(
-        '\${ApiService.baseUrl}/employees/hrms/training/admin/courses/\$courseId/lessons/\$lessonId/',
+        '${ApiService.baseUrl}/employees/hrms/training/admin/courses/$courseId/lessons/$lessonId/',
       ),
       headers: await ApiService.authHeaders(),
     );
@@ -94,7 +94,7 @@ class TrainingService {
   ) async {
     final response = await http.post(
       Uri.parse(
-        '\${ApiService.baseUrl}/employees/hrms/training/admin/courses/\$courseId/questions/',
+        '${ApiService.baseUrl}/employees/hrms/training/admin/courses/$courseId/questions/',
       ),
       headers: await ApiService.authHeaders(),
       body: jsonEncode(payload),
@@ -110,7 +110,7 @@ class TrainingService {
   ) async {
     final response = await http.patch(
       Uri.parse(
-        '\${ApiService.baseUrl}/employees/hrms/training/admin/courses/\$courseId/questions/\$questionId/',
+        '${ApiService.baseUrl}/employees/hrms/training/admin/courses/$courseId/questions/$questionId/',
       ),
       headers: await ApiService.authHeaders(),
       body: jsonEncode(payload),
@@ -122,7 +122,7 @@ class TrainingService {
   Future<void> deleteQuestion(int courseId, int questionId) async {
     final response = await http.delete(
       Uri.parse(
-        '\${ApiService.baseUrl}/employees/hrms/training/admin/courses/\$courseId/questions/\$questionId/',
+        '${ApiService.baseUrl}/employees/hrms/training/admin/courses/$courseId/questions/$questionId/',
       ),
       headers: await ApiService.authHeaders(),
     );
@@ -135,7 +135,7 @@ class TrainingService {
   }) async {
     final response = await http.post(
       Uri.parse(
-        '\${ApiService.baseUrl}/employees/hrms/training/admin/courses/\$courseId/assign/',
+        '${ApiService.baseUrl}/employees/hrms/training/admin/courses/$courseId/assign/',
       ),
       headers: await ApiService.authHeaders(),
       body: jsonEncode({'employee_ids': employeeIds}),
