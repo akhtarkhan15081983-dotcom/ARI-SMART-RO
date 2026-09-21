@@ -8,7 +8,6 @@ from django.http import HttpResponse
 from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
-from django.db.models import Q
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -533,6 +532,13 @@ class TrainingQuizSubmitAPIView(APIView):
         })
 
 
+def _admin_assignment_in_workspace(request, assignment):
+    company = request_company(request)
+    if company is not None:
+        return assignment.employee.company_id == company.id
+    return assignment.employee.company_id is None
+
+
 class TrainingTrainerReviewAPIView(APIView):
     permission_classes = [IsAuthenticated, HasRequiredFeature]
     required_feature = "training"
@@ -546,6 +552,8 @@ class TrainingTrainerReviewAPIView(APIView):
         ).filter(pk=assignment_id).first()
         if row is None:
             return Response({"detail": "Training assignment not found."}, status=404)
+        if not _admin_assignment_in_workspace(request, row):
+            return Response({"detail": "Training assignment not found in this workspace."}, status=404)
 
         lesson = row.course.lessons.filter(pk=lesson_id).first()
         if lesson is None:
@@ -615,6 +623,10 @@ class TrainingCertificateIssueAPIView(APIView):
         ).filter(pk=assignment_id).first()
         if row is None:
             return Response({"detail": "Training assignment not found."}, status=404)
+        if not _admin_assignment_in_workspace(request, row):
+            return Response({"detail": "Training assignment not found in this workspace."}, status=404)
+        if not row.course.certificate_enabled:
+            return Response({"detail": "Certificate is disabled for this course."}, status=400)
 
         current = _certificate_payload(row)
         if not current["eligible"]:
@@ -679,6 +691,8 @@ class TrainingCertificateRevokeAPIView(APIView):
         ).filter(assignment_id=assignment_id).first()
         if certificate is None:
             return Response({"detail": "Certificate not found."}, status=404)
+        if not _admin_assignment_in_workspace(request, certificate.assignment):
+            return Response({"detail": "Certificate not found in this workspace."}, status=404)
         if certificate.revoked_at is None:
             certificate.revoked_at = timezone.now()
             certificate.revoked_by = request.user
