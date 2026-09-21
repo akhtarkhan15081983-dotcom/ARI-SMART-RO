@@ -79,6 +79,25 @@ class _TrainingScreenState extends State<TrainingScreen> {
                         _data['summary'] as Map? ?? const {},
                       ),
                     ),
+                  if (scope == 'ADMIN')
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const TrainingBuilderScreen(),
+                              ),
+                            );
+                            await _load();
+                          },
+                          icon: const Icon(Icons.school_rounded),
+                          label: const Text('MANAGE TRAINING ACADEMY'),
+                        ),
+                      ),
+                    ),
                   if (rows.isEmpty)
                     const Padding(
                       padding: EdgeInsets.only(top: 120),
