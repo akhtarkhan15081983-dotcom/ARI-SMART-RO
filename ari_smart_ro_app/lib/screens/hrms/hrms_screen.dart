@@ -520,11 +520,15 @@ class _HrmsScreenState extends State<HrmsScreen> {
                           '- ${_money(row['absence_deduction'])}',
                         ),
                         _line(
+                          'Short hours (${row['short_hours'] ?? 0} hr)',
+                          '- ${_money(row['short_hours_deduction'])}',
+                        ),
+                        _line(
                           'Manual approved penalties',
                           '- ${_money(row['other_deductions'])}',
                         ),
                         _line(
-                          'Overtime (${row['overtime_hours']} hr)',
+                          'Approved overtime (${row['overtime_hours']} hr)',
                           '+ ${_money(row['overtime_amount'])}',
                         ),
                         _line(
