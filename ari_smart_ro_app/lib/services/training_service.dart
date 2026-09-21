@@ -16,6 +16,23 @@ class TrainingService {
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
+  Future<Map<String, dynamic>> scheduleAssignment(
+    int assignmentId,
+    DateTime startAt,
+  ) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/training/$assignmentId/schedule/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({
+        'start_at': startAt.toUtc().toIso8601String(),
+      }),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
   Future<Map<String, dynamic>> detail(int assignmentId) async {
     final response = await http.get(
       Uri.parse('${ApiService.baseUrl}/employees/hrms/training/$assignmentId/'),
