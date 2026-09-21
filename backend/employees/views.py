@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.utils import timezone
 from django.db import transaction
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework.views import APIView
@@ -11,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 
-from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator
+from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator, can_edit_customers
 from accounts.models import User
 from tenancy.models import CompanyMembership
 from tenancy.access import HasRequiredFeature, has_feature_access
@@ -114,6 +115,7 @@ class EmployeeManagementAPIView(APIView):
         return Response({
             "success": True,
             "company": {"id": company.id, "name": company.name},
+            "can_delegate_customer_edit": str(getattr(request.user, "role", "") or "").upper() == "ADMIN",
             "employees": [
                 {
                     "id": employee.id,
@@ -139,6 +141,7 @@ class EmployeeManagementAPIView(APIView):
                         "active": bool(employee.is_active and employee.user.is_active),
                     },
                     "is_active": employee.is_active and employee.user.is_active,
+                    "can_edit_customer": can_edit_customers(employee.user),
                     "location_received": (
                         employee.last_latitude is not None
                         and employee.last_longitude is not None
@@ -226,6 +229,47 @@ class EmployeeManagementAPIView(APIView):
             "success": True, "message": "Employee account created successfully.",
             "employee": {"id": employee.id, "employee_id": employee.employee_id, "name": user.get_full_name()},
         }, status=201)
+
+
+class EmployeeCustomerEditPermissionAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def post(self, request, employee_id):
+        company = _request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        employee = EmployeeProfile.objects.select_related("user").filter(
+            pk=employee_id,
+            company=company,
+        ).first()
+        if employee is None:
+            return Response({"detail": "Employee not found in this workspace."}, status=404)
+
+        allowed = bool(request.data.get("is_allowed", False))
+        permission = Permission.objects.filter(
+            codename="change_customer",
+            content_type__app_label="customers",
+            content_type__model="customer",
+        ).first()
+        if permission is None:
+            return Response({"detail": "Customer edit permission is unavailable."}, status=500)
+
+        if allowed:
+            employee.user.user_permissions.add(permission)
+        else:
+            employee.user.user_permissions.remove(permission)
+
+        return Response({
+            "success": True,
+            "employee_id": employee.id,
+            "can_edit_customer": can_edit_customers(employee.user),
+            "detail": (
+                "Customer edit permission granted."
+                if allowed else
+                "Customer edit permission revoked."
+            ),
+        })
 
 
 class EmployeeIdCardAPIView(APIView):
