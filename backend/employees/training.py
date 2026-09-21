@@ -1,12 +1,21 @@
 from datetime import timedelta
 from decimal import Decimal
+from io import BytesIO
 import secrets
+
+from django.http import HttpResponse
 
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+import qrcode
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas
 
 from accounts.models import UserNotification
 from tenancy.access import HasRequiredFeature
@@ -221,6 +230,7 @@ def _certificate_payload(row):
             "valid_until": certificate.valid_until.isoformat(),
             "status": "REVOKED" if revoked else ("EXPIRED" if expired else "VALID"),
             "revoke_reason": certificate.revoke_reason,
+            "pdf_path": f"/employees/hrms/training/certificates/{certificate.verification_code}/pdf/",
         }
     return payload
 
@@ -628,6 +638,191 @@ class TrainingCertificateRevokeAPIView(APIView):
             certificate.revoke_reason = str(request.data.get("reason", "")).strip()[:500]
             certificate.save(update_fields=["revoked_at", "revoked_by", "revoke_reason"])
         return Response(_certificate_payload(certificate.assignment))
+
+
+class TrainingCertificatePDFAPIView(APIView):
+    permission_classes = []
+
+    @staticmethod
+    def _safe_text(value):
+        text = str(value or "")
+        return text.encode("ascii", "ignore").decode("ascii").strip()
+
+    def get(self, request, code):
+        certificate = TrainingCertificate.objects.select_related(
+            "assignment__employee__user",
+            "assignment__course",
+            "issued_by",
+        ).filter(verification_code=code).first()
+        if certificate is None:
+            return Response({"detail": "Certificate not found."}, status=404)
+
+        row = certificate.assignment
+        payload = _certificate_payload(row)["certificate"]
+        employee_name = self._safe_text(
+            row.employee.user.get_full_name() or row.employee.user.phone
+        )
+        employee_code = self._safe_text(row.employee.employee_id)
+        course_title = self._safe_text(row.course.title.split("/")[0].strip())
+        status_label = payload["status"]
+
+        verify_url = request.build_absolute_uri(
+            f"/api/employees/hrms/training/certificates/verify/{certificate.verification_code}/"
+        )
+        qr = qrcode.QRCode(version=3, box_size=6, border=2)
+        qr.add_data(verify_url)
+        qr.make(fit=True)
+        qr_image = qr.make_image(fill_color="black", back_color="white")
+        qr_buffer = BytesIO()
+        qr_image.save(qr_buffer, format="PNG")
+        qr_buffer.seek(0)
+
+        buffer = BytesIO()
+        page_width, page_height = landscape(A4)
+        pdf = canvas.Canvas(buffer, pagesize=(page_width, page_height))
+        pdf.setTitle(f"ARI Training Certificate - {certificate.certificate_number}")
+        pdf.setAuthor("ARI SMART RO")
+
+        navy = colors.HexColor("#0B1F3A")
+        gold = colors.HexColor("#C99A2E")
+        soft = colors.HexColor("#F5F7FA")
+        muted = colors.HexColor("#5A6573")
+        green = colors.HexColor("#147D50")
+        red = colors.HexColor("#B42318")
+
+        pdf.setFillColor(soft)
+        pdf.rect(0, 0, page_width, page_height, fill=1, stroke=0)
+
+        pdf.setStrokeColor(navy)
+        pdf.setLineWidth(5)
+        pdf.rect(24, 24, page_width - 48, page_height - 48, fill=0, stroke=1)
+        pdf.setStrokeColor(gold)
+        pdf.setLineWidth(1.5)
+        pdf.rect(34, 34, page_width - 68, page_height - 68, fill=0, stroke=1)
+
+        pdf.setFillColor(navy)
+        pdf.setFont("Helvetica-Bold", 20)
+        pdf.drawCentredString(page_width / 2, page_height - 78, "ARI SMART RO")
+
+        pdf.setFillColor(gold)
+        pdf.setFont("Helvetica-Bold", 30)
+        pdf.drawCentredString(
+            page_width / 2, page_height - 125, "CERTIFICATE OF PROFESSIONAL EXCELLENCE"
+        )
+
+        pdf.setFillColor(muted)
+        pdf.setFont("Helvetica", 13)
+        pdf.drawCentredString(
+            page_width / 2,
+            page_height - 158,
+            "This certificate is proudly awarded to",
+        )
+
+        pdf.setFillColor(navy)
+        pdf.setFont("Helvetica-Bold", 27)
+        pdf.drawCentredString(page_width / 2, page_height - 205, employee_name or employee_code)
+
+        pdf.setFillColor(muted)
+        pdf.setFont("Helvetica", 12)
+        pdf.drawCentredString(
+            page_width / 2,
+            page_height - 230,
+            f"Employee ID: {employee_code}",
+        )
+
+        pdf.setFillColor(navy)
+        pdf.setFont("Helvetica", 13)
+        pdf.drawCentredString(
+            page_width / 2,
+            page_height - 275,
+            "for successfully completing the ARI corporate training programme",
+        )
+        pdf.setFont("Helvetica-Bold", 16)
+        pdf.drawCentredString(
+            page_width / 2,
+            page_height - 302,
+            course_title or "30-Day Customer Service & Professional Excellence",
+        )
+
+        box_y = 130
+        box_h = 105
+        box_x = 90
+        box_w = page_width - 300
+        pdf.setFillColor(colors.white)
+        pdf.setStrokeColor(colors.HexColor("#D0D5DD"))
+        pdf.roundRect(box_x, box_y, box_w, box_h, 10, fill=1, stroke=1)
+
+        pdf.setFillColor(navy)
+        pdf.setFont("Helvetica-Bold", 11)
+        labels = [
+            ("Quiz Score", f"{certificate.quiz_score}%"),
+            ("Trainer Avg.", f"{certificate.trainer_average}/5"),
+            ("Final Score", f"{certificate.final_score}%"),
+            ("Valid Until", certificate.valid_until.strftime("%d %b %Y")),
+        ]
+        col_w = box_w / len(labels)
+        for index, (label, value) in enumerate(labels):
+            x = box_x + col_w * index + col_w / 2
+            pdf.setFillColor(muted)
+            pdf.setFont("Helvetica", 9)
+            pdf.drawCentredString(x, box_y + 66, label)
+            pdf.setFillColor(navy)
+            pdf.setFont("Helvetica-Bold", 13)
+            pdf.drawCentredString(x, box_y + 42, value)
+
+        qr_x = page_width - 185
+        qr_y = 115
+        pdf.drawImage(
+            ImageReader(qr_buffer),
+            qr_x,
+            qr_y,
+            width=105,
+            height=105,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+        pdf.setFillColor(muted)
+        pdf.setFont("Helvetica", 8)
+        pdf.drawCentredString(qr_x + 52, qr_y - 12, "Scan to verify")
+
+        pdf.setFillColor(navy)
+        pdf.setFont("Helvetica-Bold", 9)
+        pdf.drawString(70, 88, f"Certificate No: {certificate.certificate_number}")
+        pdf.setFont("Helvetica", 8)
+        pdf.drawString(70, 72, f"Verification Code: {certificate.verification_code}")
+        pdf.drawString(
+            70,
+            56,
+            f"Issued: {timezone.localtime(certificate.issued_at).strftime('%d %b %Y')}",
+        )
+
+        status_color = green if status_label == "VALID" else red
+        pdf.setFillColor(status_color)
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawRightString(page_width - 70, 82, f"STATUS: {status_label}")
+        if status_label == "REVOKED" and certificate.revoke_reason:
+            reason = self._safe_text(certificate.revoke_reason)[:75]
+            pdf.setFont("Helvetica", 7)
+            pdf.drawRightString(page_width - 70, 66, f"Reason: {reason}")
+
+        pdf.setFillColor(muted)
+        pdf.setFont("Helvetica-Oblique", 7.5)
+        pdf.drawCentredString(
+            page_width / 2,
+            38,
+            "Digitally generated by ARI SMART RO. Verify authenticity using the QR code.",
+        )
+
+        pdf.showPage()
+        pdf.save()
+        buffer.seek(0)
+
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'inline; filename="ARI-Certificate-{certificate.certificate_number}.pdf"'
+        )
+        response["Cache-Control"] = "private, max-age=300"
+        return response
 
 
 class TrainingCertificateVerifyAPIView(APIView):
