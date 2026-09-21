@@ -15,6 +15,7 @@ from .models import (
     EmployeeProfile,
     EmployeeTrainingAssignment,
     TrainingCourse,
+    TrainingTrainerReview,
 )
 
 
@@ -183,6 +184,9 @@ def _assignment_payload(row, include_content=False):
         "lessons_completed_count": len(completed_ids),
         "progress_percent": round((len(completed_ids) / len(lessons) * 100) if lessons else 0),
         "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+        "planned_days": course.lessons.values("day_number").distinct().count(),
+        "planned_minutes": sum(lesson.duration_minutes for lesson in lessons),
+        "trainer_reviews_count": row.trainer_reviews.count(),
     }
     if include_content:
         payload["lessons"] = [
@@ -192,6 +196,22 @@ def _assignment_payload(row, include_content=False):
                 "title": lesson.title,
                 "content": lesson.content,
                 "key_takeaway": lesson.key_takeaway,
+                "video_asset": lesson.video_asset,
+                "day_number": lesson.day_number,
+                "duration_minutes": lesson.duration_minutes,
+                "trainer_script": lesson.trainer_script,
+                "practice_task": lesson.practice_task,
+                "trainer_review": next(({
+                    "behaviour_score": review.behaviour_score,
+                    "communication_score": review.communication_score,
+                    "knowledge_score": review.knowledge_score,
+                    "strengths": review.strengths,
+                    "gaps": review.gaps,
+                    "coaching_action": review.coaching_action,
+                    "notes": review.notes,
+                    "trainer_name": review.trainer.get_full_name() or review.trainer.phone,
+                    "reviewed_at": review.reviewed_at.isoformat(),
+                } for review in row.trainer_reviews.all() if review.lesson_id == lesson.id), None),
                 "completed": lesson.id in completed_ids,
             }
             for lesson in lessons
@@ -274,7 +294,7 @@ class TrainingDetailAPIView(APIView):
 
     def get(self, request, assignment_id):
         role = str(getattr(request.user, "role", "")).upper()
-        rows = EmployeeTrainingAssignment.objects.select_related("employee__user", "course", "penalty")
+        rows = EmployeeTrainingAssignment.objects.select_related("employee__user", "course", "penalty").prefetch_related("course__lessons", "trainer_reviews__trainer", "trainer_reviews__lesson")
         row = rows.filter(pk=assignment_id).first()
         if row is None:
             return Response({"detail": "Training assignment not found."}, status=404)
@@ -301,6 +321,11 @@ class TrainingLessonCompleteAPIView(APIView):
         lesson = row.course.lessons.filter(pk=lesson_id).first()
         if lesson is None:
             return Response({"detail": "Lesson not found in this course."}, status=404)
+        if lesson.video_asset and request.data.get("video_watched") is not True:
+            return Response(
+                {"detail": "Please watch the complete Hindi training video before marking this lesson complete."},
+                status=400,
+            )
 
         completed = {int(v) for v in (row.lessons_completed or [])}
         completed.add(lesson.id)
@@ -382,4 +407,72 @@ class TrainingQuizSubmitAPIView(APIView):
             "attempts": row.attempts,
             "review": review,
             "assignment": _assignment_payload(row),
+        })
+
+
+class TrainingTrainerReviewAPIView(APIView):
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "training"
+
+    def post(self, request, assignment_id, lesson_id):
+        if str(getattr(request.user, "role", "")).upper() != "ADMIN":
+            return Response({"detail": "Only Admin/Trainer can submit coaching reviews."}, status=403)
+
+        row = EmployeeTrainingAssignment.objects.select_related(
+            "employee__user", "course"
+        ).filter(pk=assignment_id).first()
+        if row is None:
+            return Response({"detail": "Training assignment not found."}, status=404)
+
+        lesson = row.course.lessons.filter(pk=lesson_id).first()
+        if lesson is None:
+            return Response({"detail": "Lesson not found in this training plan."}, status=404)
+
+        def score(name):
+            try:
+                value = int(request.data.get(name, 3))
+            except (TypeError, ValueError):
+                value = 3
+            return max(1, min(5, value))
+
+        review, _ = TrainingTrainerReview.objects.update_or_create(
+            assignment=row,
+            lesson=lesson,
+            defaults={
+                "trainer": request.user,
+                "behaviour_score": score("behaviour_score"),
+                "communication_score": score("communication_score"),
+                "knowledge_score": score("knowledge_score"),
+                "strengths": str(request.data.get("strengths", "")).strip(),
+                "gaps": str(request.data.get("gaps", "")).strip(),
+                "coaching_action": str(request.data.get("coaching_action", "")).strip(),
+                "notes": str(request.data.get("notes", "")).strip(),
+            },
+        )
+
+        _notify(
+            row.employee.user,
+            f"training-coaching:{row.id}:{lesson.id}",
+            f"Training Day {lesson.day_number} coaching updated",
+            (
+                f"Trainer feedback saved. Behaviour {review.behaviour_score}/5, "
+                f"Communication {review.communication_score}/5, Knowledge {review.knowledge_score}/5. "
+                f"Improvement action: {review.coaching_action or 'Review trainer notes.'}"
+            ),
+            priority="NORMAL",
+            metadata={"assignment_id": row.id, "lesson_id": lesson.id},
+        )
+
+        return Response({
+            "message": "Trainer review saved.",
+            "assignment_id": row.id,
+            "lesson_id": lesson.id,
+            "day_number": lesson.day_number,
+            "behaviour_score": review.behaviour_score,
+            "communication_score": review.communication_score,
+            "knowledge_score": review.knowledge_score,
+            "strengths": review.strengths,
+            "gaps": review.gaps,
+            "coaching_action": review.coaching_action,
+            "notes": review.notes,
         })
