@@ -23,6 +23,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   String _designationFilter = 'ALL';
   String _accountFilter = 'ALL';
   String _locationFilter = 'ALL';
+  bool _canDelegateCustomerEdit = false;
 
   @override
   void initState() {
@@ -72,6 +73,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       if (!mounted) return;
       setState(() {
         _company = (data['company'] as Map?)?['name']?.toString() ?? 'Company';
+        _canDelegateCustomerEdit = data['can_delegate_customer_edit'] == true;
         _employees = (data['employees'] as List<dynamic>? ?? const [])
             .map((row) => Map<String, dynamic>.from(row as Map))
             .toList();
@@ -912,6 +914,68 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     }
   }
 
+  Future<void> _setCustomerEditPermission(
+    Map<String, dynamic> employee,
+  ) async {
+    if (!_canDelegateCustomerEdit) return;
+    final current = employee['can_edit_customer'] == true;
+    final allow = !current;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          allow
+              ? 'Allow customer editing?'
+              : 'Remove customer editing permission?',
+        ),
+        content: Text(
+          allow
+              ? '${employee['name']} will be able to edit customer master details and customer status.'
+              : '${employee['name']} will no longer be able to edit customer master details or customer status.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(allow ? 'ALLOW' : 'REMOVE'),
+          ),
+        ],
+      ),
+    ) ?? false;
+    if (!confirmed) return;
+
+    try {
+      await _service.setCustomerEditPermission(
+        employeeId: (employee['id'] as num).toInt(),
+        isAllowed: allow,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              allow
+                  ? 'Customer edit permission granted.'
+                  : 'Customer edit permission removed.',
+            ),
+          ),
+        );
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _setEmployeeActive(
     Map<String, dynamic> employee,
     bool active,
@@ -1183,6 +1247,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                             _showIdCard(employee);
                           } else if (value == 'career') {
                             _career(employee);
+                          } else if (value == 'customer_edit') {
+                            _setCustomerEditPermission(employee);
                           } else if (value == 'deactivate') {
                             _setEmployeeActive(employee, false);
                           } else if (value == 'reactivate') {
@@ -1206,6 +1272,27 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                               title: Text('Career & Promotion'),
                             ),
                           ),
+                          if (_canDelegateCustomerEdit)
+                            PopupMenuItem(
+                              value: 'customer_edit',
+                              child: ListTile(
+                                leading: Icon(
+                                  employee['can_edit_customer'] == true
+                                      ? Icons.lock_open_rounded
+                                      : Icons.admin_panel_settings_outlined,
+                                ),
+                                title: Text(
+                                  employee['can_edit_customer'] == true
+                                      ? 'Remove Customer Edit Access'
+                                      : 'Allow Customer Edit Access',
+                                ),
+                                subtitle: Text(
+                                  employee['can_edit_customer'] == true
+                                      ? 'Admin delegated permission is active'
+                                      : 'Admin-only permission',
+                                ),
+                              ),
+                            ),
                           const PopupMenuDivider(),
                           if (employee['is_active'] == true)
                             const PopupMenuItem(

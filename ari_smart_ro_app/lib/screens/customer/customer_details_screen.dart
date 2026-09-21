@@ -20,11 +20,9 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
   final CustomerService _customerService = CustomerService();
 
   late CustomerModel _customer;
-  String _role = "";
+  bool _canManageCustomer = false;
   bool _savingCustomer = false;
   bool _loadingHistory = true;
-
-  bool get _canManageCustomer => _role == "ADMIN" || _role == "MANAGER";
   String? _historyError;
 
   List<dynamic> _serviceHistory = [];
@@ -33,14 +31,14 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
   void initState() {
     super.initState();
     _customer = widget.customer;
-    _loadRole();
+    _loadEditPermission();
     _loadServiceHistory();
   }
 
-  Future<void> _loadRole() async {
-    final role = await ApiService.getRole();
+  Future<void> _loadEditPermission() async {
+    final allowed = await _customerService.canEditCustomer();
     if (!mounted) return;
-    setState(() => _role = role?.trim().toUpperCase() ?? "");
+    setState(() => _canManageCustomer = allowed);
   }
 
   Future<void> _refreshCustomer() async {
@@ -292,7 +290,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
       ),
     );
 
-    for (final controller in [
+    final controllers = <TextEditingController>[
       name,
       phone,
       alternatePhone,
@@ -308,9 +306,12 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
       installationCharge,
       securityDeposit,
       installationDate,
-    ]) {
-      controller.dispose();
-    }
+    ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final controller in controllers) {
+        controller.dispose();
+      }
+    });
 
     if (values == null || !mounted) return;
 
@@ -368,7 +369,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
     ) ?? false;
 
     if (!confirmed) {
-      reason.dispose();
+      WidgetsBinding.instance.addPostFrameCallback((_) => reason.dispose());
       return;
     }
 
@@ -397,7 +398,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         );
       }
     } finally {
-      reason.dispose();
+      WidgetsBinding.instance.addPostFrameCallback((_) => reason.dispose());
       if (mounted) setState(() => _savingCustomer = false);
     }
   }
