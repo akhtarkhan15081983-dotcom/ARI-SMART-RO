@@ -10,6 +10,7 @@ from openpyxl.chart import BarChart, LineChart, Reference
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.http import HttpResponse
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -29,8 +30,10 @@ from jobs.models import Job, JobPartUsed
 from purchase.models import PurchaseItem
 from service.models import Service, ServicePart
 from employees.models import EmployeeProfile, Holiday, LeaveRequest, PayrollRecord
+from tenancy.access import request_company
 
 from .periods import resolve_period
+from .models import ClientErrorEvent
 
 
 ZERO = Decimal("0.00")
@@ -1398,3 +1401,79 @@ class ReportsExportAPIView(APIView):
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+
+
+class ClientErrorEventAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    _CONTEXT_KEYS = {"screen", "operation", "phase"}
+
+    def post(self, request):
+        company = request_company(request)
+        payload = request.data if isinstance(request.data, dict) else {}
+        message = str(payload.get("message") or "").strip()[:1000]
+        if not message:
+            return Response({"detail": "Error message is required."}, status=400)
+
+        raw_context = payload.get("context")
+        context = {}
+        if isinstance(raw_context, dict):
+            for key in self._CONTEXT_KEYS:
+                value = raw_context.get(key)
+                if value not in (None, ""):
+                    context[key] = str(value)[:160]
+
+        row = ClientErrorEvent.objects.create(
+            user=request.user,
+            company_id=getattr(company, "id", None),
+            company_name=str(getattr(company, "name", "") or "")[:180],
+            device_id=str(request.headers.get("X-ARI-Device-ID", "") or "")[:128],
+            platform=str(payload.get("platform") or "")[:24],
+            app_version=str(payload.get("app_version") or "")[:32],
+            app_build=str(payload.get("app_build") or "")[:24],
+            error_type=str(payload.get("error_type") or "")[:120],
+            message=message,
+            stack=str(payload.get("stack") or "")[:8000],
+            context=context,
+        )
+        return Response({"accepted": True, "event_id": row.id}, status=201)
+
+    def get(self, request):
+        role = str(getattr(request.user, "role", "") or "").upper()
+        if role not in {"ADMIN", "MANAGER"}:
+            return Response({"detail": "Admin or manager access is required."}, status=403)
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        rows = ClientErrorEvent.objects.filter(company_id=company.id).select_related("user")
+        error_type = str(request.query_params.get("error_type") or "").strip()
+        if error_type:
+            rows = rows.filter(error_type=error_type)
+
+        try:
+            limit = min(max(int(request.query_params.get("limit") or 100), 1), 500)
+        except (TypeError, ValueError):
+            limit = 100
+
+        return Response([
+            {
+                "id": row.id,
+                "error_type": row.error_type,
+                "message": row.message,
+                "stack": row.stack,
+                "context": row.context,
+                "platform": row.platform,
+                "app_version": row.app_version,
+                "app_build": row.app_build,
+                "device_id": row.device_id,
+                "user": None if row.user is None else {
+                    "id": row.user_id,
+                    "name": row.user.get_full_name() or row.user.phone,
+                    "role": row.user.role,
+                },
+                "created_at": row.created_at,
+            }
+            for row in rows[:limit]
+        ])
