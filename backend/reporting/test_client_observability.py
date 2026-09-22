@@ -52,8 +52,8 @@ class ClientObservabilityTests(TestCase):
                 "app_version": "1.0.34",
                 "app_build": "34",
                 "error_type": "StateError",
-                "message": "Example failure",
-                "stack": "stack line 1\nstack line 2",
+                "message": "Example failure token:secret-token",
+                "stack": "Bearer abc.def.ghi password=Secret123",
                 "context": {
                     "screen": "Attendance",
                     "operation": "check-in",
@@ -74,6 +74,11 @@ class ClientObservabilityTests(TestCase):
         self.assertEqual(row.context["screen"], "Attendance")
         self.assertNotIn("password", row.context)
         self.assertNotIn("token", row.context)
+        self.assertNotIn("secret-token", row.message)
+        self.assertNotIn("abc.def.ghi", row.stack)
+        self.assertNotIn("Secret123", row.stack)
+        self.assertIn("[REDACTED]", row.message)
+        self.assertIn("[REDACTED]", row.stack)
 
     def test_admin_reads_only_current_company_errors(self):
         ClientErrorEvent.objects.create(
