@@ -1,3 +1,4 @@
+import base64
 from datetime import date
 from decimal import Decimal
 import threading
@@ -36,6 +37,8 @@ from .models import (
     JobPartUsed,
     JobSignature,
     JobActivityLog,
+    JobGPSLog,
+    ClientActionReceipt,
 )
 from django.utils import timezone
 from .services import change_job_status
@@ -1046,7 +1049,10 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             {
                 "signature": SimpleUploadedFile(
                     "fraud.png",
-                    b"fake-signature",
+                    base64.b64decode(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
+                        "AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                    ),
                     content_type="image/png",
                 ),
                 "customer_name": "Fake Customer",
@@ -2226,3 +2232,179 @@ class JobOTPVisibilityTests(JobPartSecurityFixtures, TestCase):
         self.assertEqual(expired.status_code, 200)
         self.assertFalse(expired.data["available"])
         self.assertEqual(expired.data["reason"], "EXPIRED")
+
+
+class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
+    def setUp(self):
+        super().setUp()
+
+    def test_status_retry_with_same_action_id_is_replayed(self):
+        self.job.status = "ASSIGNED"
+        self.job.save(update_fields=["status"])
+        url = f"/api/jobs/{self.job.id}/change-status/"
+        headers = {"HTTP_X_ARI_ACTION_ID": "status-retry-001"}
+
+        first = self.client.post(
+            url,
+            {"status": "ACCEPTED"},
+            format="json",
+            **headers,
+        )
+        second = self.client.post(
+            url,
+            {"status": "ACCEPTED"},
+            format="json",
+            **headers,
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, "ACCEPTED")
+        self.assertEqual(
+            ClientActionReceipt.objects.filter(
+                user=self.engineer_user,
+                action_id="status-retry-001",
+            ).count(),
+            1,
+        )
+
+    def test_gps_retry_with_same_action_id_creates_one_log(self):
+        url = f"/api/jobs/{self.job.id}/gps/"
+        headers = {"HTTP_X_ARI_ACTION_ID": "gps-retry-001"}
+        payload = {
+            "latitude": "27.1767000",
+            "longitude": "78.0081000",
+        }
+
+        first = self.client.post(url, payload, format="json", **headers)
+        second = self.client.post(url, payload, format="json", **headers)
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(JobGPSLog.objects.filter(job=self.job).count(), 1)
+
+    def test_media_retry_with_same_action_id_creates_one_row(self):
+        url = f"/api/jobs/{self.job.id}/media/"
+        headers = {"HTTP_X_ARI_ACTION_ID": "media-retry-001"}
+
+        first = self.client.post(
+            url,
+            {
+                "media_type": "PHOTO",
+                "description": "After Photo",
+                "file": SimpleUploadedFile(
+                    "after.jpg",
+                    b"fake-image",
+                    content_type="image/jpeg",
+                ),
+            },
+            format="multipart",
+            **headers,
+        )
+        second = self.client.post(
+            url,
+            {
+                "media_type": "PHOTO",
+                "description": "After Photo",
+                "file": SimpleUploadedFile(
+                    "after-again.jpg",
+                    b"fake-image-again",
+                    content_type="image/jpeg",
+                ),
+            },
+            format="multipart",
+            **headers,
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(JobMedia.objects.filter(job=self.job).count(), 1)
+
+    def test_signature_retry_with_same_action_id_creates_one_row(self):
+        url = f"/api/jobs/{self.job.id}/signature/"
+        headers = {"HTTP_X_ARI_ACTION_ID": "signature-retry-001"}
+
+        first = self.client.post(
+            url,
+            {
+                "signature": SimpleUploadedFile(
+                    "signature.png",
+                    base64.b64decode(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
+                        "AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                    ),
+                    content_type="image/png",
+                ),
+                "customer_name": "Retry Customer",
+            },
+            format="multipart",
+            **headers,
+        )
+        second = self.client.post(
+            url,
+            {
+                "signature": SimpleUploadedFile(
+                    "signature-again.png",
+                    base64.b64decode(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
+                        "AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                    ),
+                    content_type="image/png",
+                ),
+                "customer_name": "Retry Customer",
+            },
+            format="multipart",
+            **headers,
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(JobSignature.objects.filter(job=self.job).count(), 1)
+
+    def test_same_action_id_cannot_be_reused_for_another_job(self):
+        self.job.status = "ASSIGNED"
+        self.job.save(update_fields=["status"])
+        self.other_job.status = "ASSIGNED"
+        self.other_job.engineer = self.engineer
+        self.other_job.save(update_fields=["status", "engineer"])
+
+        headers = {"HTTP_X_ARI_ACTION_ID": "shared-action-001"}
+        first = self.client.post(
+            f"/api/jobs/{self.job.id}/change-status/",
+            {"status": "ACCEPTED"},
+            format="json",
+            **headers,
+        )
+        second = self.client.post(
+            f"/api/jobs/{self.other_job.id}/change-status/",
+            {"status": "ACCEPTED"},
+            format="json",
+            **headers,
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 409)
+
+
+    def test_same_action_id_cannot_cross_action_types(self):
+        headers = {"HTTP_X_ARI_ACTION_ID": "cross-type-action-001"}
+
+        first = self.client.post(
+            f"/api/jobs/{self.job.id}/gps/",
+            {
+                "latitude": "27.1767000",
+                "longitude": "78.0081000",
+            },
+            format="json",
+            **headers,
+        )
+        second = self.client.post(
+            f"/api/jobs/{self.job.id}/change-status/",
+            {"status": "COMPLETED"},
+            format="json",
+            **headers,
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 409)
