@@ -50,8 +50,8 @@ class ClientObservabilityService {
         'app_version': device['app_version']?.toString() ?? '',
         'app_build': device['app_build']?.toString() ?? '',
         'error_type': error.runtimeType.toString(),
-        'message': _safeText(error.toString(), 1000),
-        'stack': _safeText(stack.toString(), 8000),
+        'message': sanitizeForTelemetry(error.toString(), 1000),
+        'stack': sanitizeForTelemetry(stack.toString(), 8000),
         'context': context,
       };
 
@@ -69,7 +69,7 @@ class ClientObservabilityService {
     }
   }
 
-  static String _safeText(String value, int maxLength) {
+  static String sanitizeForTelemetry(String value, int maxLength) {
     final sanitized = value
         .replaceAll(RegExp(r'Bearer\s+[A-Za-z0-9._-]+'), 'Bearer [REDACTED]')
         .replaceAll(RegExp(r'password\s*[:=]\s*\S+', caseSensitive: false), 'password=[REDACTED]')
