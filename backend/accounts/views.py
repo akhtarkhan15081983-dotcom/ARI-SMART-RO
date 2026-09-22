@@ -15,7 +15,7 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import AuthSecurityEvent, PasswordResetRequest, User
+from .models import AuthSecurityEvent, PasswordResetRequest, SystemAuditEvent, User
 from customers.models import Customer
 from tenancy.models import CompanyMembership
 from .permissions import IsAdmin
@@ -868,3 +868,62 @@ class CompleteAdminApprovedPasswordResetAPIView(APIView):
                 "message": "Password changed successfully. You can now sign in with the new password.",
             }
         )
+
+
+class AdminSystemAuditAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        membership = (
+            CompanyMembership.objects.filter(
+                user=request.user,
+                is_active=True,
+                company__is_active=True,
+                company__lifecycle_status="ACTIVE",
+            )
+            .select_related("company")
+            .first()
+        )
+        if membership is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        rows = SystemAuditEvent.objects.filter(company_id=membership.company_id).select_related("actor")
+        action = str(request.query_params.get("action") or "").strip()
+        entity_type = str(request.query_params.get("entity_type") or "").strip()
+        actor_id = str(request.query_params.get("actor_id") or "").strip()
+        if action:
+            rows = rows.filter(action=action)
+        if entity_type:
+            rows = rows.filter(entity_type=entity_type)
+        if actor_id.isdigit():
+            rows = rows.filter(actor_id=int(actor_id))
+
+        try:
+            limit = min(max(int(request.query_params.get("limit") or 100), 1), 500)
+        except (TypeError, ValueError):
+            limit = 100
+
+        return Response([
+            {
+                "id": row.id,
+                "action": row.action,
+                "entity_type": row.entity_type,
+                "entity_id": row.entity_id,
+                "company_id": row.company_id,
+                "company_name": row.company_name,
+                "actor": None if row.actor is None else {
+                    "id": row.actor_id,
+                    "name": row.actor.get_full_name() or row.actor.phone,
+                    "phone": row.actor.phone,
+                    "role": row.actor.role,
+                },
+                "ip_address": row.ip_address,
+                "device_id": row.device_id,
+                "reason": row.reason,
+                "before_state": row.before_state,
+                "after_state": row.after_state,
+                "metadata": row.metadata,
+                "created_at": row.created_at,
+            }
+            for row in rows[:limit]
+        ])

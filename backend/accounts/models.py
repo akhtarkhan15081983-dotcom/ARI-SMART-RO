@@ -421,3 +421,46 @@ class SmsGatewaySubmission(models.Model):
 
     class Meta:
         ordering = ["-received_at"]
+
+
+class SystemAuditEvent(models.Model):
+    """Append-only audit record for high-risk business and admin actions."""
+
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="system_audit_events",
+    )
+    action = models.CharField(max_length=80)
+    entity_type = models.CharField(max_length=80)
+    entity_id = models.CharField(max_length=120, blank=True, default="")
+    company_id = models.PositiveBigIntegerField(null=True, blank=True)
+    company_name = models.CharField(max_length=180, blank=True, default="")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    device_id = models.CharField(max_length=128, blank=True, default="")
+    reason = models.CharField(max_length=500, blank=True, default="")
+    before_state = models.JSONField(default=dict, blank=True)
+    after_state = models.JSONField(default=dict, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["company_id", "created_at"], name="audit_company_time_idx"),
+            models.Index(fields=["action", "created_at"], name="audit_action_time_idx"),
+            models.Index(fields=["entity_type", "entity_id", "created_at"], name="audit_entity_time_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ValueError("SystemAuditEvent records are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("SystemAuditEvent records are immutable.")
+
+    def __str__(self):
+        return f"{self.action} {self.entity_type}:{self.entity_id}"

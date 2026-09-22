@@ -11,6 +11,7 @@ from .views import (
     AdminPasswordResetRequestListAPIView,
     AdminPasswordResetReviewAPIView,
     CompleteAdminApprovedPasswordResetAPIView,
+    AdminSystemAuditAPIView,
 )
 from .sim_verification import SimVerificationPollAPIView, SimVerificationStartAPIView, SmsGatewayIngestAPIView
 from .engagement import CustomerEngagementAPIView
@@ -22,6 +23,7 @@ from .notifications import (
 
 
 urlpatterns = [
+    path("admin/system-audit/", AdminSystemAuditAPIView.as_view(), name="admin-system-audit"),
     path("notifications/", NotificationCenterAPIView.as_view(), name="notification-center"),
     path("admin/notification-campaigns/", AdminNotificationCampaignAPIView.as_view(), name="admin-notification-campaigns"),
     path("admin/offers/", AdminOfferAPIView.as_view(), name="admin-offers"),
