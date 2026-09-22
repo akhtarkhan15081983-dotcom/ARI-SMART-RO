@@ -26,8 +26,8 @@ class AttendanceReminderService {
     if (!at.isAfter(tz.TZDateTime.now(tz.local))) return;
     await _plugin.zonedSchedule(
       _notificationId,
-      'Check-out बाकी है / Checkout reminder',
-      'आपकी duty पूरी हो गई है। ARI SMART RO में check-out करना न भूलें।',
+      'Regular shift complete / 8-hour duty complete',
+      'ARI SMART RO आपकी regular shift को 8 hours पर auto-checkout करेगा। Overtime के लिए Admin approval जरूरी है।',
       at,
       const NotificationDetails(
         android: AndroidNotificationDetails(

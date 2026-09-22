@@ -182,6 +182,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
               const SizedBox(height: 12),
               _overview(),
               const SizedBox(height: 12),
+              _employeeActivitySection(),
+              const SizedBox(height: 12),
               _customerSection(),
               const SizedBox(height: 12),
               _partsSection(),
@@ -567,6 +569,139 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _employeeActivitySection() {
+    final employeeActivity = _map("employee_activity");
+    final employees = (employeeActivity["employees"] is List)
+        ? (employeeActivity["employees"] as List)
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList()
+        : <Map<String, dynamic>>[];
+
+    return _section(
+      title: _period == "daily"
+          ? "Employee Daily Activity"
+          : "Employee Activity by Period",
+      icon: Icons.groups_2_outlined,
+      initiallyExpanded: true,
+      children: [
+        _metricGrid([
+          (
+            "Active Employees",
+            _number(employeeActivity["active_employee_count"]),
+            Icons.badge_outlined,
+          ),
+          (
+            "With Activity",
+            _number(employeeActivity["employees_with_activity"]),
+            Icons.task_alt_outlined,
+          ),
+        ]),
+        const SizedBox(height: 8),
+        if (employees.isEmpty)
+          const Text("No employee activity found.")
+        else
+          ...employees.map(
+            (row) => Card(
+              elevation: 0,
+              color: const Color(0xFFF4F8FC),
+              child: ListTile(
+                onTap: () => _showEmployeeActivity(row),
+                leading: const CircleAvatar(
+                  child: Icon(Icons.person_search_outlined),
+                ),
+                title: Text(
+                  row["employee_name"]?.toString() ?? "Employee",
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: Text(
+                  "${row["employee_id"] ?? ""} • ${row["designation"] ?? ""}\n"
+                  "Regular ${row["regular_hours"] ?? "0.00"}h • OT ${row["overtime_hours"] ?? "0.00"}h • "
+                  "${row["total_actions"] ?? 0} actions",
+                ),
+                isThreeLine: true,
+                trailing: const Icon(Icons.chevron_right_rounded),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showEmployeeActivity(Map<String, dynamic> row) {
+    final activities = (row["activities"] is List)
+        ? (row["activities"] as List)
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+        : <Map<String, dynamic>>[];
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * .82,
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text(
+                row["employee_name"]?.toString() ?? "Employee",
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                "${row["employee_id"] ?? ""} • ${row["designation"] ?? ""}",
+              ),
+              const SizedBox(height: 14),
+              _metricGrid([
+                ("Regular Hours", "${row["regular_hours"] ?? "0.00"} h", Icons.schedule),
+                ("Approved OT", "${row["overtime_hours"] ?? "0.00"} h", Icons.more_time_rounded),
+                ("Jobs", _number(row["jobs_completed"]), Icons.task_alt),
+                ("Complaints", _number(row["complaints_resolved"]), Icons.report_problem_outlined),
+                ("Services", _number(row["services_completed"]), Icons.miscellaneous_services_outlined),
+                ("Installations", _number(row["installations_completed"]), Icons.handyman_outlined),
+                ("Calls", _number(row["calls_logged"]), Icons.call_outlined),
+                ("Rent Collected", _money(row["rent_collected"]), Icons.payments_outlined),
+              ]),
+              const SizedBox(height: 18),
+              Text(
+                "Activity Timeline",
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (activities.isEmpty)
+                const Text("No detailed activity recorded in this period.")
+              else
+                ...activities.map((item) {
+                  final rawTime = item["time"]?.toString();
+                  DateTime? parsed;
+                  if (rawTime != null) parsed = DateTime.tryParse(rawTime)?.toLocal();
+                  final timeLabel = parsed == null
+                      ? ""
+                      : DateFormat("dd MMM, hh:mm a").format(parsed);
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.history_rounded),
+                    ),
+                    title: Text(item["detail"]?.toString() ?? ""),
+                    subtitle: Text(
+                      "${item["type"] ?? ""} • ${item["reference"] ?? ""}"
+                      "${timeLabel.isEmpty ? "" : " • $timeLabel"}",
+                    ),
+                  );
+                }),
+            ],
+          ),
+        ),
       ),
     );
   }

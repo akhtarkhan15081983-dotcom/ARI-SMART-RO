@@ -8,6 +8,10 @@ from .views import (
     AdminAttendanceReviewListAPIView,
     AdminAttendanceReviewActionAPIView,
     AdminAttendanceDeviceOverrideAPIView,
+    OvertimeRequestAPIView,
+    OvertimeStartAPIView,
+    OvertimeStopAPIView,
+    AdminOvertimeAPIView,
 )
 
 urlpatterns = [
@@ -15,6 +19,11 @@ urlpatterns = [
     path("check-out/", CheckOutAPIView.as_view(), name="attendance-check-out"),
     path("today/", TodayAttendanceAPIView.as_view(), name="attendance-today"),
     path("history/", AttendanceHistoryAPIView.as_view(), name="attendance-history"),
+    path("overtime/", OvertimeRequestAPIView.as_view(), name="attendance-overtime-request"),
+    path("overtime/start/", OvertimeStartAPIView.as_view(), name="attendance-overtime-start"),
+    path("overtime/stop/", OvertimeStopAPIView.as_view(), name="attendance-overtime-stop"),
+    path("admin/overtime/", AdminOvertimeAPIView.as_view(), name="admin-attendance-overtime"),
+    path("admin/overtime/<int:request_id>/", AdminOvertimeAPIView.as_view(), name="admin-attendance-overtime-action"),
     path(
         "admin/device-overrides/",
         AdminAttendanceDeviceOverrideAPIView.as_view(),
