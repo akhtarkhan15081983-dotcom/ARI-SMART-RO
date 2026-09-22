@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from tenancy.access import HasRequiredFeature, has_feature_access
 
 from attendance.models import Attendance
+from attendance.work_hours import reconcile_open_attendance
 from installation.models import Installation
 from jobs.models import Job
 from .models import EmployeeDocument, EmployeePenalty, EmployeeProfile, EmployeeTrainingAssignment, Holiday, HRPolicy, LeaveRequest, PayrollRecord, PerformanceReview
@@ -36,6 +37,7 @@ def _month(value):
 
 def calculate_payroll(employee, payroll_month):
     policy = HRPolicy.current()
+    reconcile_open_attendance(employee=employee)
     days_in_month = calendar.monthrange(payroll_month.year, payroll_month.month)[1]
     month_end = payroll_month.replace(day=days_in_month)
     start = max(payroll_month, employee.joining_date)
@@ -70,6 +72,7 @@ def calculate_payroll(employee, payroll_month):
 
     late_days = half_day_units = 0
     overtime_hours = Decimal("0")
+    short_hours = Decimal("0")
     absent_days = 0
     current = start
     while current <= month_end:
@@ -83,20 +86,31 @@ def calculate_payroll(employee, payroll_month):
             if not full_leave:
                 absent_days += Decimal("0.5") if half_leave else Decimal("1")
         else:
+            is_half_day = False
             if row.check_in:
                 local_checkin = timezone.localtime(row.check_in).time().replace(tzinfo=None)
                 if local_checkin >= policy.half_day_cutoff:
                     half_day_units += 1
+                    is_half_day = True
                 elif local_checkin > policy.office_start_time:
                     late_days += 1
-            if row.status == "HALF_DAY" and (not row.check_in or timezone.localtime(row.check_in).time().replace(tzinfo=None) < policy.half_day_cutoff):
+            if row.status == "HALF_DAY" and not is_half_day:
                 half_day_units += 1
-            overtime_hours += max(Decimal("0"), Decimal(row.working_hours) - Decimal(policy.daily_work_hours))
+                is_half_day = True
+
+            regular_hours = Decimal(row.regular_working_hours or row.working_hours or 0)
+            if not is_half_day:
+                short_hours += max(
+                    Decimal("0"),
+                    Decimal(policy.daily_work_hours) - regular_hours,
+                )
+            overtime_hours += Decimal(row.overtime_working_hours or 0)
         current += timedelta(days=1)
 
     absence_deduction = _money((absent_days + unpaid_leave_units) * daily_rate)
     half_day_deduction = _money(Decimal(half_day_units) * daily_rate / Decimal("2"))
     late_penalty = _money(Decimal(late_days) * policy.late_penalty_amount)
+    short_hours_deduction = _money(short_hours * hourly_rate)
     overtime_amount = _money(overtime_hours * hourly_rate)
 
     completed = Installation.objects.filter(engineer=employee, status="COMPLETED", completed_date__isnull=False)
@@ -146,15 +160,26 @@ def calculate_payroll(employee, payroll_month):
         })
     work_delay_penalty = _money(Decimal(work_penalty_days) * Decimal("10"))
     total_other_deductions = _money(manual_penalty + work_delay_penalty)
-    net = _money(payable_base - late_penalty - half_day_deduction - absence_deduction - total_other_deductions + overtime_amount + rent_incentive + sale_incentive)
+    net = _money(
+        payable_base
+        - late_penalty
+        - half_day_deduction
+        - absence_deduction
+        - short_hours_deduction
+        - total_other_deductions
+        + overtime_amount
+        + rent_incentive
+        + sale_incentive
+    )
     return {
         "base_salary": _money(employee.salary), "payable_base": payable_base,
         "late_days": late_days, "late_penalty": late_penalty,
         "half_day_deduction": half_day_deduction, "absence_deduction": absence_deduction,
+        "short_hours": short_hours.quantize(MONEY), "short_hours_deduction": short_hours_deduction,
         "overtime_hours": overtime_hours.quantize(MONEY), "overtime_amount": overtime_amount,
         "rent_incentive": rent_incentive, "sale_incentive": sale_incentive,
         "other_deductions": total_other_deductions, "net_salary": max(Decimal("0"), net),
-        "snapshot": {"calendar_days": days_in_month, "absent_days": str(absent_days), "unpaid_leave_units": str(unpaid_leave_units), "rent_installations": rent_count, "sale_installations": sale_count, "daily_rate": str(_money(daily_rate)), "hourly_rate": str(_money(hourly_rate)), "manual_penalty_ids": penalty_ids, "manual_penalty_count": len(penalty_ids), "manual_penalty_amount": str(manual_penalty), "work_delay_penalty_days": work_penalty_days, "work_delay_penalty_amount": str(work_delay_penalty), "work_delay_penalty_rate": "10.00", "work_delay_penalty_jobs": work_penalty_jobs},
+        "snapshot": {"calendar_days": days_in_month, "absent_days": str(absent_days), "unpaid_leave_units": str(unpaid_leave_units), "rent_installations": rent_count, "sale_installations": sale_count, "daily_rate": str(_money(daily_rate)), "hourly_rate": str(_money(hourly_rate)), "short_hours": str(short_hours.quantize(MONEY)), "short_hours_deduction": str(short_hours_deduction), "manual_penalty_ids": penalty_ids, "manual_penalty_count": len(penalty_ids), "manual_penalty_amount": str(manual_penalty), "work_delay_penalty_days": work_penalty_days, "work_delay_penalty_amount": str(work_delay_penalty), "work_delay_penalty_rate": "10.00", "work_delay_penalty_jobs": work_penalty_jobs},
     }
 
 
@@ -557,7 +582,7 @@ class PayrollAPIView(APIView):
                 rows = rows.filter(payroll_month=_month(request.query_params["month"]))
         else:
             rows = rows.filter(employee__user=request.user)
-        return Response({"payroll": [{"id": r.id, "employee": r.employee.employee_id, "employee_name": r.employee.user.get_full_name(), "month": r.payroll_month, "base_salary": r.base_salary, "late_penalty": r.late_penalty, "half_day_deduction": r.half_day_deduction, "absence_deduction": r.absence_deduction, "overtime_hours": r.overtime_hours, "overtime_amount": r.overtime_amount, "rent_incentive": r.rent_incentive, "sale_incentive": r.sale_incentive, "other_earnings": r.other_earnings, "other_deductions": r.other_deductions, "net_salary": r.net_salary, "status": r.status, "snapshot": r.calculation_snapshot} for r in rows[:1000]]})
+        return Response({"payroll": [{"id": r.id, "employee": r.employee.employee_id, "employee_name": r.employee.user.get_full_name(), "month": r.payroll_month, "base_salary": r.base_salary, "late_penalty": r.late_penalty, "half_day_deduction": r.half_day_deduction, "absence_deduction": r.absence_deduction, "short_hours": r.short_hours, "short_hours_deduction": r.short_hours_deduction, "overtime_hours": r.overtime_hours, "overtime_amount": r.overtime_amount, "rent_incentive": r.rent_incentive, "sale_incentive": r.sale_incentive, "other_earnings": r.other_earnings, "other_deductions": r.other_deductions, "net_salary": r.net_salary, "status": r.status, "snapshot": r.calculation_snapshot} for r in rows[:1000]]})
 
     @transaction.atomic
     def post(self, request):
@@ -578,7 +603,7 @@ class PayrollAPIView(APIView):
             result = calculate_payroll(employee, month)
             PayrollRecord.objects.update_or_create(employee=employee, payroll_month=month, defaults={
                 "base_salary": result["base_salary"], "payable_base": result["payable_base"], "late_days": result["late_days"], "late_penalty": result["late_penalty"],
-                "half_day_deduction": result["half_day_deduction"], "absence_deduction": result["absence_deduction"], "overtime_hours": result["overtime_hours"], "overtime_amount": result["overtime_amount"],
+                "half_day_deduction": result["half_day_deduction"], "absence_deduction": result["absence_deduction"], "short_hours": result["short_hours"], "short_hours_deduction": result["short_hours_deduction"], "overtime_hours": result["overtime_hours"], "overtime_amount": result["overtime_amount"],
                 "rent_incentive": result["rent_incentive"], "sale_incentive": result["sale_incentive"], "other_deductions": result["other_deductions"], "net_salary": result["net_salary"], "calculation_snapshot": result["snapshot"],
             })
             generated += 1
@@ -706,7 +731,7 @@ class PayrollExcelReportAPIView(APIView):
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Salary Register"
-        headers = ["Employee ID", "Employee", "Base Salary", "Payable Base", "Late Days", "Late Penalty", "Half-day Deduction", "Absence Deduction", "OT Hours", "OT Amount", "Rent Incentive", "Sale Incentive", "Other Earnings", "Other Deductions", "Net Salary", "Status"]
+        headers = ["Employee ID", "Employee", "Base Salary", "Payable Base", "Late Days", "Late Penalty", "Half-day Deduction", "Absence Deduction", "Short Hours", "Short-hours Deduction", "Approved OT Hours", "Approved OT Amount", "Rent Incentive", "Sale Incentive", "Other Earnings", "Other Deductions", "Net Salary", "Status"]
         sheet.append([f"ARI SMART RO — Salary Register {month:%B %Y}"])
         sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
         sheet["A1"].font = Font(size=16, bold=True, color="FFFFFF")
@@ -717,9 +742,9 @@ class PayrollExcelReportAPIView(APIView):
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor="0868D7")
         for row in rows:
-            sheet.append([row.employee.employee_id, row.employee.user.get_full_name(), row.base_salary, row.payable_base, row.late_days, row.late_penalty, row.half_day_deduction, row.absence_deduction, row.overtime_hours, row.overtime_amount, row.rent_incentive, row.sale_incentive, row.other_earnings, row.other_deductions, row.net_salary, row.status])
+            sheet.append([row.employee.employee_id, row.employee.user.get_full_name(), row.base_salary, row.payable_base, row.late_days, row.late_penalty, row.half_day_deduction, row.absence_deduction, row.short_hours, row.short_hours_deduction, row.overtime_hours, row.overtime_amount, row.rent_incentive, row.sale_incentive, row.other_earnings, row.other_deductions, row.net_salary, row.status])
         sheet.freeze_panes = "A3"
-        sheet.auto_filter.ref = f"A2:P{max(2, sheet.max_row)}"
+        sheet.auto_filter.ref = f"A2:R{max(2, sheet.max_row)}"
         for column_index in range(1, sheet.max_column + 1):
             letter = get_column_letter(column_index)
             values = (

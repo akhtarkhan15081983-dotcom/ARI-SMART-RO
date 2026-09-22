@@ -15,8 +15,14 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminOrManager
 from attendance.models import Attendance
+from attendance.work_hours import reconcile_open_attendance
 from complaints.models import Complaint
-from customers.models import Customer, CustomerRentHistory, CustomerRentPayment
+from customers.models import (
+    CallingActivity,
+    Customer,
+    CustomerRentHistory,
+    CustomerRentPayment,
+)
 from installation.models import Installation
 from inventory.models import EngineerBagItem, InventoryItem, PartRequest
 from jobs.models import Job, JobPartUsed
@@ -343,6 +349,190 @@ def build_attendance_report(period):
     }
 
 
+def build_employee_activity_report(period):
+    reconcile_open_attendance()
+
+    employees = {
+        row.id: {
+            "employee_id": row.employee_id,
+            "employee_name": row.user.get_full_name() or row.user.phone,
+            "designation": row.get_designation_display(),
+            "regular_hours": Decimal("0"),
+            "overtime_hours": Decimal("0"),
+            "jobs_completed": 0,
+            "complaints_resolved": 0,
+            "services_completed": 0,
+            "installations_completed": 0,
+            "calls_logged": 0,
+            "rent_payments": 0,
+            "rent_collected": Decimal("0"),
+            "activities": [],
+        }
+        for row in EmployeeProfile.objects.filter(is_active=True).select_related("user")
+    }
+
+    for row in Attendance.objects.filter(
+        date__range=(period.start, period.end)
+    ).select_related("employee"):
+        target = employees.get(row.employee_id)
+        if not target:
+            continue
+        target["regular_hours"] += _decimal(row.regular_working_hours)
+        target["overtime_hours"] += _decimal(row.overtime_working_hours)
+        target["activities"].append({
+            "type": "ATTENDANCE",
+            "time": row.check_in,
+            "reference": str(row.date),
+            "detail": (
+                f"Regular {row.regular_working_hours}h"
+                + (f" + OT {row.overtime_working_hours}h" if row.overtime_working_hours else "")
+            ),
+        })
+
+    for row in Job.objects.filter(
+        completed_at__isnull=False,
+        **_datetime_filter(period, "completed_at"),
+    ).select_related("engineer", "customer"):
+        target = employees.get(row.engineer_id)
+        if not target:
+            continue
+        target["jobs_completed"] += 1
+        target["activities"].append({
+            "type": "JOB_COMPLETED",
+            "time": row.completed_at,
+            "reference": row.job_id,
+            "detail": f"{row.get_job_type_display()} • {row.customer.name}",
+        })
+
+    for row in Complaint.objects.filter(
+        resolved_date__isnull=False,
+        **_datetime_filter(period, "resolved_date"),
+    ).select_related("engineer", "customer"):
+        if not row.engineer_id:
+            continue
+        target = employees.get(row.engineer_id)
+        if not target:
+            continue
+        target["complaints_resolved"] += 1
+        target["activities"].append({
+            "type": "COMPLAINT_RESOLVED",
+            "time": row.resolved_date,
+            "reference": row.complaint_id,
+            "detail": row.customer.name,
+        })
+
+    for row in Service.objects.filter(
+        completed_date__isnull=False,
+        **_datetime_filter(period, "completed_date"),
+    ).select_related("engineer", "customer"):
+        target = employees.get(row.engineer_id)
+        if not target:
+            continue
+        target["services_completed"] += 1
+        target["activities"].append({
+            "type": "SERVICE_COMPLETED",
+            "time": row.completed_date,
+            "reference": row.service_id,
+            "detail": row.customer.name,
+        })
+
+    for row in Installation.objects.filter(
+        completed_date__isnull=False,
+        **_datetime_filter(period, "completed_date"),
+    ).select_related("engineer", "customer"):
+        target = employees.get(row.engineer_id)
+        if not target:
+            continue
+        target["installations_completed"] += 1
+        target["activities"].append({
+            "type": "INSTALLATION_COMPLETED",
+            "time": row.completed_date,
+            "reference": row.installation_id,
+            "detail": f"{row.get_business_type_display()} • {row.customer.name}",
+        })
+
+    for row in CallingActivity.objects.filter(
+        **_datetime_filter(period, "called_at")
+    ).select_related("caller", "customer", "lead"):
+        if not row.caller_id:
+            continue
+        target = employees.get(row.caller_id)
+        if not target:
+            continue
+        target["calls_logged"] += 1
+        subject = row.customer.name if row.customer else row.lead.customer_name
+        target["activities"].append({
+            "type": "CALL",
+            "time": row.called_at,
+            "reference": row.lead.request_number,
+            "detail": f"{row.get_outcome_display()} • {subject}",
+        })
+
+    for row in CustomerRentPayment.objects.filter(
+        payment_date__range=(period.start, period.end)
+    ).select_related("collected_by", "customer"):
+        if not row.collected_by_id:
+            continue
+        target = employees.get(row.collected_by_id)
+        if not target:
+            continue
+        target["rent_payments"] += 1
+        target["rent_collected"] += _decimal(row.amount)
+        target["activities"].append({
+            "type": "RENT_COLLECTION",
+            "time": row.created_at,
+            "reference": row.customer.customer_id,
+            "detail": f"₹{row.amount} • {row.customer.name}",
+        })
+
+    rows = []
+    for target in employees.values():
+        target["activities"].sort(
+            key=lambda item: item["time"] or period.start_datetime,
+            reverse=True,
+        )
+        rows.append({
+            "employee_id": target["employee_id"],
+            "employee_name": target["employee_name"],
+            "designation": target["designation"],
+            "regular_hours": _money(target["regular_hours"]),
+            "overtime_hours": _money(target["overtime_hours"]),
+            "jobs_completed": target["jobs_completed"],
+            "complaints_resolved": target["complaints_resolved"],
+            "services_completed": target["services_completed"],
+            "installations_completed": target["installations_completed"],
+            "calls_logged": target["calls_logged"],
+            "rent_payments": target["rent_payments"],
+            "rent_collected": _money(target["rent_collected"]),
+            "total_actions": (
+                target["jobs_completed"]
+                + target["complaints_resolved"]
+                + target["services_completed"]
+                + target["installations_completed"]
+                + target["calls_logged"]
+                + target["rent_payments"]
+            ),
+            "activities": target["activities"][:100],
+        })
+
+    rows.sort(
+        key=lambda row: (
+            -row["total_actions"],
+            row["employee_name"],
+        )
+    )
+    return {
+        "employees": rows,
+        "active_employee_count": len(rows),
+        "employees_with_activity": sum(
+            1 for row in rows
+            if row["total_actions"] > 0
+            or Decimal(row["regular_hours"]) > 0
+            or Decimal(row["overtime_hours"]) > 0
+        ),
+    }
+
+
 def build_operations_report(period):
     jobs_created = Job.objects.filter(**_datetime_filter(period, "created_at"))
     jobs_completed = Job.objects.filter(
@@ -665,6 +855,7 @@ def build_reports(period):
     rent = build_rent_report(period)
     attendance = build_attendance_report(period)
     operations = build_operations_report(period)
+    employee_activity = build_employee_activity_report(period)
     customers = build_customer_report(period)
     management = build_management_report(period, parts, rent, attendance, operations)
     hrms = build_hrms_report(period)
@@ -684,6 +875,7 @@ def build_reports(period):
         "rent": rent,
         "attendance": attendance,
         "operations": operations,
+        "employee_activity": employee_activity,
         "customers": customers,
         "management": management,
         "hrms": hrms,
@@ -823,6 +1015,8 @@ def build_hrms_report(period):
         "late_penalty": row.late_penalty,
         "half_day_deduction": row.half_day_deduction,
         "absence_deduction": row.absence_deduction,
+        "short_hours": row.short_hours,
+        "short_hours_deduction": row.short_hours_deduction,
         "overtime_hours": row.overtime_hours,
         "overtime_amount": row.overtime_amount,
         "rent_incentive": row.rent_incentive,
@@ -886,7 +1080,8 @@ def _excel_value(value, field=""):
         "expected", "paid", "outstanding", "purchase_value", "working_hours",
         "current", "31_60_days", "61_90_days", "over_90_days",
         "monthly_salary", "base_salary", "payable_base", "late_penalty",
-        "half_day_deduction", "absence_deduction", "overtime_amount",
+        "half_day_deduction", "absence_deduction", "short_hours",
+        "short_hours_deduction", "overtime_amount",
         "rent_incentive", "sale_incentive", "other_earnings",
         "other_deductions", "net_salary", "payroll_net", "incentives",
     }
@@ -954,6 +1149,26 @@ def build_workbook(data):
     employee_productivity_sheet = workbook.create_sheet("Employee Productivity")
     _append_rows(employee_productivity_sheet, data["management"]["employee_productivity"])
 
+    employee_activity_sheet = workbook.create_sheet("Employee Daily Activity")
+    employee_activity_rows = []
+    for row in data["employee_activity"]["employees"]:
+        summary = dict(row)
+        summary.pop("activities", None)
+        employee_activity_rows.append(summary)
+    _append_rows(employee_activity_sheet, employee_activity_rows)
+
+    employee_activity_detail_sheet = workbook.create_sheet("Employee Activity Detail")
+    activity_rows = []
+    for employee in data["employee_activity"]["employees"]:
+        for activity in employee["activities"]:
+            activity_rows.append({
+                "employee_id": employee["employee_id"],
+                "employee_name": employee["employee_name"],
+                "designation": employee["designation"],
+                **activity,
+            })
+    _append_rows(employee_activity_detail_sheet, activity_rows)
+
     rent_ageing_sheet = workbook.create_sheet("Rent Ageing")
     _append_rows(rent_ageing_sheet, [data["management"]["rent_ageing"]])
 
@@ -989,6 +1204,8 @@ def build_workbook(data):
         ("Service Register", "Service history, TDS readings and next service", len(data["ledgers"]["services"])),
         ("Installation Register", "Rental, sale and AMC installation history", len(data["ledgers"]["installations"])),
         ("Attendance", "Employee attendance and working-hours summary", len(data["attendance"]["by_employee"])),
+        ("Employee Daily Activity", "Employee-wise working hours and completed business activity", len(data["employee_activity"]["employees"])),
+        ("Employee Activity Detail", "Detailed employee action timeline for the selected period", sum(len(row["activities"]) for row in data["employee_activity"]["employees"])),
         ("HR Employee Master", "Safe employee master without Aadhaar/PAN", len(data["hrms"]["employees"])),
         ("HR Leave Register", "Leave requests, approvals and review notes", len(data["hrms"]["leaves"])),
         ("HR Payroll Register", "Salary, penalties, overtime and incentives", len(data["hrms"]["payroll"])),
