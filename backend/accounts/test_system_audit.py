@@ -58,7 +58,7 @@ class SystemAuditEventTests(TestCase):
         self.assertEqual(row.after_state, {"value": 2})
         self.assertEqual(row.metadata["source"], "unit-test")
 
-    def test_event_is_append_only_by_usage(self):
+    def test_event_is_immutable_after_creation(self):
         request = self.factory.post("/api/example/", {}, format="json")
         force_authenticate(request, user=self.user)
         request.user = self.user
@@ -80,3 +80,12 @@ class SystemAuditEventTests(TestCase):
 
         self.assertNotEqual(first.id, second.id)
         self.assertEqual(SystemAuditEvent.objects.count(), 2)
+
+        first.reason = "tampered"
+        with self.assertRaises(ValueError):
+            first.save()
+        with self.assertRaises(ValueError):
+            first.delete()
+
+        persisted = SystemAuditEvent.objects.get(pk=first.pk)
+        self.assertEqual(persisted.reason, "")
