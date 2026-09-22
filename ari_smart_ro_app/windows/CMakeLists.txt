@@ -54,9 +54,11 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 add_subdirectory("runner")
 
 
-# Generated plugin build rules, which manage building the plugins and adding
-# them to the application.
-include(flutter/generated_plugins.cmake)
+# ARI Windows Safe Build:
+# Do not load third-party Flutter plugin DLLs at process startup. Windows Smart
+# App Control can block unsigned plugin DLLs before Flutter renders its first
+# frame. Mobile platforms still use their normal generated plugin registration.
+set(PLUGIN_BUNDLED_LIBRARIES)
 
 
 # === Installation ===
@@ -88,11 +90,9 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     COMPONENT Runtime)
 endif()
 
-# Copy the native assets provided by the build.dart from all packages.
-set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
-install(DIRECTORY "${NATIVE_ASSETS_DIR}"
-   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-   COMPONENT Runtime)
+# Windows Safe Build intentionally does not copy optional package native assets.
+# Core Flutter runtime and app AOT assets are sufficient for the desktop
+# management experience; mobile-only native capabilities remain on Android/iOS.
 
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.

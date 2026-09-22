@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -17,6 +19,18 @@ class _CustomerBulkImportScreenState extends State<CustomerBulkImportScreen> {
   bool busy = false;
 
   Future<void> _pickFile() async {
+    if (Platform.isWindows) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Windows Safe Build: Excel file picker is temporarily disabled. '
+            'Use Android for bulk import while the signed Windows installer is prepared.',
+          ),
+        ),
+      );
+      return;
+    }
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['xlsx', 'csv'],
