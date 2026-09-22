@@ -10,6 +10,7 @@ import '../../services/live_location_service.dart';
 import '../../services/saas_admin_service.dart';
 import '../../services/role_permission_service.dart';
 import '../../services/notification_center_service.dart';
+import '../../services/device_health_service.dart';
 import '../../utils/search_utils.dart';
 import '../admin/face_security_admin_screen.dart';
 import '../admin/attendance_security_test_screen.dart';
@@ -19,6 +20,7 @@ import '../admin/saas_super_admin_screen.dart';
 import '../admin/password_reset_approval_screen.dart';
 import '../admin/role_access_control_screen.dart';
 import '../admin/notification_offer_admin_screen.dart';
+import '../admin/device_health_admin_screen.dart';
 import '../notifications/notification_center_screen.dart';
 import '../attendance/attendance_screen.dart';
 import '../assigned_customers/assigned_customers_screen.dart';
@@ -66,6 +68,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       const RolePermissionService();
   final NotificationCenterService _notificationCenterService =
       const NotificationCenterService();
+  final DeviceHealthService _deviceHealthService = const DeviceHealthService();
   static const List<DashboardItem> _customerItems = [
     DashboardItems.andy,
     DashboardItem(title: 'My RO', icon: Icons.water_drop, route: 'my_ro'),
@@ -140,6 +143,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
     }
     if (_role != 'CUSTOMER') {
+      unawaited(_deviceHealthService.report());
       await _loadAttendance();
     } else if (mounted) {
       setState(() => _isLoadingAttendance = false);
@@ -442,6 +446,13 @@ class _DashboardScreenState extends State<DashboardScreen>
           _push(const AttendanceSecurityTestScreen());
         } else {
           _showComingSoon('Restricted');
+        }
+        return;
+      case 'device_health_admin':
+        if (_role == 'ADMIN') {
+          _push(const DeviceHealthAdminScreen());
+        } else {
+          _showComingSoon('Only admin can view device health.');
         }
         return;
       case 'attendance':
