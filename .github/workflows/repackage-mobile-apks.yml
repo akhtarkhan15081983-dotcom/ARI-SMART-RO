@@ -1,0 +1,57 @@
+name: Repackage Mobile APKs
+
+permissions:
+  contents: read
+  actions: read
+
+on:
+  push:
+    branches:
+      - fix/android-v1.0.31-universal-and-split-apks
+
+jobs:
+  repackage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download existing all-phone artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p apk-family
+          gh run download 35734533383 \
+            --repo ${{ github.repository }} \
+            --name ARI-SMART-RO-Mobile-v1.0.31-All-Phones \
+            --dir apk-family
+          ls -lh apk-family
+
+      - name: Upload Universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-v1.0.31-UNIVERSAL
+          path: apk-family/ARI-SMART-RO-v1.0.31-UNIVERSAL.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload ARM64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-v1.0.31-ARM64
+          path: apk-family/ARI-SMART-RO-v1.0.31-ARM64.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload ARMv7 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-v1.0.31-ARMv7
+          path: apk-family/ARI-SMART-RO-v1.0.31-ARMv7.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload x86_64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-v1.0.31-x86_64
+          path: apk-family/ARI-SMART-RO-v1.0.31-x86_64.apk
+          if-no-files-found: error
+          retention-days: 30

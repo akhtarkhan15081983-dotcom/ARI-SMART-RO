@@ -87,17 +87,30 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
-      - name: Compile Android debug APK
+      - name: Compile Android universal debug APK
         run: >-
           flutter build apk --debug
           --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
-      - name: Prepare shareable APK
-        run: cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.27-latest.apk
-      - name: Upload latest Android APK
+      - name: Prepare universal APK
+        run: |
+          mkdir -p build/share
+          cp build/app/outputs/flutter-apk/app-debug.apk build/share/ARI-SMART-RO-v1.0.31-UNIVERSAL.apk
+      - name: Compile Android split APKs
+        run: >-
+          flutter build apk --debug --split-per-abi
+          --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+      - name: Prepare phone-specific APKs
+        run: |
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk build/share/ARI-SMART-RO-v1.0.31-ARM64.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk build/share/ARI-SMART-RO-v1.0.31-ARMv7.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-debug.apk build/share/ARI-SMART-RO-v1.0.31-x86_64.apk
+          cd build/share
+          sha256sum *.apk > SHA256SUMS.txt
+      - name: Upload Android APK family
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-v1.0.27-latest
-          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.27-latest.apk
+          name: ARI-SMART-RO-Mobile-v1.0.31-All-Phones
+          path: ari_smart_ro_app/build/share/*
           if-no-files-found: error
           retention-days: 30
 
