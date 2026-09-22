@@ -1,14 +1,11 @@
 import 'dart:convert';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/bag_item_model.dart';
 import 'api_service.dart';
 
 class BagService {
-  final storage = const FlutterSecureStorage();
-
   Future<List<BagItemModel>> getMyBag() async {
     final token = await ApiService.getAccessToken();
 
@@ -49,7 +46,7 @@ class BagService {
 
   Future<Map<String, dynamic>> verifyQRCode(String serialNumber) async {
     final token = await ApiService.getAccessToken();
-    final engineerId = await storage.read(key: "user_id");
+    final engineerId = await ApiService.getUserId();
 
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/inventory/verify/"),
