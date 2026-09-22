@@ -96,6 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Timer? _dashboardRefreshTimer;
   final _toolSearchController = TextEditingController();
   String _toolQuery = '';
+  String? _locationComplianceError;
 
   @override
   void initState() {
@@ -190,8 +191,20 @@ class _DashboardScreenState extends State<DashboardScreen>
       } else {
         await _liveLocationService.stopTracking();
       }
+      if (mounted && _locationComplianceError != null) {
+        setState(() => _locationComplianceError = null);
+      }
+    } on LiveLocationException catch (e) {
+      debugPrint('LIVE LOCATION ATTENDANCE SYNC ERROR: $e');
+      if (mounted) setState(() => _locationComplianceError = e.message);
     } catch (e) {
       debugPrint('LIVE LOCATION ATTENDANCE SYNC ERROR: $e');
+      if (mounted) {
+        setState(() {
+          _locationComplianceError =
+              'Live location could not start. Turn on GPS and allow location all the time.';
+        });
+      }
     }
   }
 
@@ -269,14 +282,26 @@ class _DashboardScreenState extends State<DashboardScreen>
       _role == 'ENGINEER' &&
       !_isLoadingAttendance &&
       _todayAttendance?.checkOut != null;
+  bool get _engineerLocationBlocked =>
+      _role == 'ENGINEER' &&
+      !_isLoadingAttendance &&
+      _todayAttendance?.checkIn != null &&
+      _todayAttendance?.checkOut == null &&
+      _locationComplianceError != null;
   bool get _engineerWorkLocked =>
-      _engineerMissingCheckIn || _engineerReviewRejected || _engineerCheckedOut;
+      _engineerMissingCheckIn ||
+      _engineerReviewRejected ||
+      _engineerCheckedOut ||
+      _engineerLocationBlocked;
   bool _allowedWhenLocked(String route) =>
       route == 'attendance' ||
       route == 'profile' ||
       route == 'training' ||
       route == 'andy';
   String get _engineerLockMessage {
+    if (_engineerLocationBlocked) {
+      return '${_locationComplianceError!} Work modules stay locked until live location is restored.';
+    }
     if (_engineerReviewRejected) {
       final n = _todayAttendance?.identityReviewNote?.trim();
       return n == null || n.isEmpty
