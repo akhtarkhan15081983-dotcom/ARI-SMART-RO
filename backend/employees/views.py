@@ -15,6 +15,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 
 from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator, can_edit_customers
 from accounts.models import AuthSecurityEvent, User
+from accounts.audit import write_audit_event
 from tenancy.models import CompanyMembership
 from tenancy.access import HasRequiredFeature, has_feature_access
 
@@ -274,6 +275,16 @@ class EmployeeLoginDeviceResetAPIView(APIView):
                 "had_bound_device": bool(previous_device_id),
             },
         )
+        write_audit_event(
+            request=request,
+            action="EMPLOYEE_LOGIN_DEVICE_RESET",
+            entity_type="EmployeeProfile",
+            entity_id=employee.id,
+            company=company,
+            before_state={"login_device_bound": bool(previous_device_id)},
+            after_state={"login_device_bound": False},
+            metadata={"employee_id": employee.employee_id},
+        )
         return Response(
             {
                 "success": True,
@@ -310,10 +321,22 @@ class EmployeeCustomerEditPermissionAPIView(APIView):
         if permission is None:
             return Response({"detail": "Customer edit permission is unavailable."}, status=500)
 
+        before_allowed = can_edit_customers(employee.user)
         if allowed:
             employee.user.user_permissions.add(permission)
         else:
             employee.user.user_permissions.remove(permission)
+        after_allowed = can_edit_customers(employee.user)
+        write_audit_event(
+            request=request,
+            action="CUSTOMER_EDIT_PERMISSION_CHANGED",
+            entity_type="EmployeeProfile",
+            entity_id=employee.id,
+            company=company,
+            before_state={"can_edit_customer": before_allowed},
+            after_state={"can_edit_customer": after_allowed},
+            metadata={"employee_id": employee.employee_id},
+        )
 
         return Response({
             "success": True,
