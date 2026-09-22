@@ -627,6 +627,7 @@ class EmployeeAPITests(TestCase):
         )
 
         self.engineer.is_online = True
+        self.engineer.last_location_updated = timezone.now()
 
         self.engineer.save()
 
