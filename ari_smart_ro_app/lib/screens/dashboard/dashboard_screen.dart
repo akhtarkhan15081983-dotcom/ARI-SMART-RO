@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/attendance_model.dart';
@@ -704,12 +705,194 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.dispose();
   }
 
+  Widget _buildWindowsDashboard({
+    required List<DashboardItem> items,
+    required bool isCustomer,
+  }) {
+    final groups = _dashboardGroups(items);
+    return ColoredBox(
+      color: const Color(0xFFF3F6FA),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(32, 28, 32, 40),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1440),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0C4467), Color(0xFF176B8F)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x260C4467),
+                        blurRadius: 24,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isCustomer
+                                  ? 'Welcome to ARI SMART RO'
+                                  : 'Business Command Center',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Everything you need, organised for faster daily work.',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: .82),
+                                fontSize: 15,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _WindowsMetric(
+                        value: '${groups.length}',
+                        label: 'Workspaces',
+                      ),
+                      const SizedBox(width: 14),
+                      _WindowsMetric(
+                        value: '${items.length}',
+                        label: 'Tools',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                if (_role == 'ENGINEER' && _engineerWorkLocked) ...[
+                  Card(
+                    color: const Color(0xFFFFF4E5),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: Color(0xFFB45309)),
+                          const SizedBox(width: 12),
+                          Expanded(child: Text(_engineerLockMessage)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                Row(
+                  children: [
+                    if (!isCustomer)
+                      Expanded(
+                        child: Card(
+                          margin: EdgeInsets.zero,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 17,
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.fact_check_outlined,
+                                    color: Color(0xFF176B8F)),
+                                const SizedBox(width: 12),
+                                Text(
+                                  _isLoadingAttendance
+                                      ? 'Loading attendance...'
+                                      : _todayAttendance == null
+                                      ? 'Attendance not marked today'
+                                      : _todayAttendance!.isReviewRejected
+                                      ? 'Attendance review: REJECTED'
+                                      : _todayAttendance!.isReviewApproved
+                                      ? 'Attendance review: APPROVED'
+                                      : 'Attendance review: PENDING',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (!isCustomer) const SizedBox(width: 18),
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: _toolSearchController,
+                        textInputAction: TextInputAction.search,
+                        onChanged: (value) =>
+                            setState(() => _toolQuery = value),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: Colors.white,
+                          hintText:
+                              'Search tools, reports, rent, parts, employees...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _toolQuery.isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () {
+                                    _toolSearchController.clear();
+                                    setState(() => _toolQuery = '');
+                                  },
+                                  icon: const Icon(Icons.clear),
+                                ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 26),
+                if (items.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(28),
+                      child:
+                          Center(child: Text('No matching dashboard tool found')),
+                    ),
+                  )
+                else
+                  _CommandGrid(
+                    role: _role,
+                    groups: groups,
+                    onOpen: _openDashboardGroup,
+                    isDesktop: true,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingRole) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final allItems = _dashboardItems, isCustomer = _role == 'CUSTOMER';
+    final isWindows = defaultTargetPlatform == TargetPlatform.windows;
     final items = allItems
         .where((item) => matchesAllSearchTerms(_toolQuery, [item.title, item.route]))
         .toList();
@@ -764,7 +947,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             IconButton(onPressed: _logout, icon: const Icon(Icons.logout)),
           ],
         ),
-        body: RefreshIndicator(
+        body: isWindows
+            ? _buildWindowsDashboard(items: items, isCustomer: isCustomer)
+            : RefreshIndicator(
           onRefresh: _loadDashboard,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -856,10 +1041,12 @@ class _CommandGrid extends StatelessWidget {
     required this.role,
     required this.groups,
     required this.onOpen,
+    this.isDesktop = false,
   });
   final String role;
   final List<_DashboardGroup> groups;
   final ValueChanged<_DashboardGroup> onOpen;
+  final bool isDesktop;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -878,12 +1065,19 @@ class _CommandGrid extends StatelessWidget {
       GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 1.55,
-        ),
+        gridDelegate: isDesktop
+            ? const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 350,
+                mainAxisExtent: 112,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+              )
+            : const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.55,
+              ),
         itemCount: groups.length,
         itemBuilder: (_, index) {
           final group = groups[index];
@@ -933,5 +1127,45 @@ class _CommandGrid extends StatelessWidget {
         },
       ),
     ],
+  );
+}
+
+
+class _WindowsMetric extends StatelessWidget {
+  const _WindowsMetric({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 112,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.white.withValues(alpha: .16)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 23,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: .76),
+            fontSize: 12,
+          ),
+        ),
+      ],
+    ),
   );
 }
