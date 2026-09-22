@@ -31,7 +31,10 @@ class LiveLocationException implements Exception {
 class LiveLocationService {
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
 
+  static bool get isSupportedPlatform => Platform.isAndroid || Platform.isIOS;
+
   static Future<void> initialize() async {
+    if (!isSupportedPlatform) return;
     final service = FlutterBackgroundService();
 
     if (Platform.isAndroid) {
@@ -71,6 +74,7 @@ class LiveLocationService {
   }
 
   Future<void> startTracking({bool requestPermissions = true}) async {
+    if (!isSupportedPlatform) return;
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw const LiveLocationException(
         'GPS is turned off. Turn on Location to start work tracking.',
@@ -127,6 +131,7 @@ class LiveLocationService {
   }
 
   Future<void> stopTracking() async {
+    if (!isSupportedPlatform) return;
     await _storage.write(key: _trackingEnabledKey, value: 'false');
     await _markOffline();
     final service = FlutterBackgroundService();
@@ -136,12 +141,14 @@ class LiveLocationService {
   }
 
   Future<bool> isTracking() async {
+    if (!isSupportedPlatform) return false;
     final enabled = await _storage.read(key: _trackingEnabledKey) == 'true';
     if (!enabled) return false;
     return FlutterBackgroundService().isRunning();
   }
 
   Future<void> sendCurrentLocation() async {
+    if (!isSupportedPlatform) return;
     await _flushPendingLocations();
     final point = await _capturePoint();
     if (point == null) return;
