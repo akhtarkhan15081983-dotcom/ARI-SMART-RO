@@ -346,7 +346,7 @@ class WorkScheduleOverride(models.Model):
 class ClientActionReceipt(models.Model):
     """Stores completed client actions so offline retries are idempotent."""
 
-    action_id = models.CharField(max_length=160, unique=True)
+    action_id = models.CharField(max_length=160)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -367,6 +367,12 @@ class ClientActionReceipt(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "action_id"],
+                name="unique_client_action_per_user",
+            ),
+        ]
         indexes = [
             models.Index(fields=["user", "action_type", "created_at"]),
         ]
