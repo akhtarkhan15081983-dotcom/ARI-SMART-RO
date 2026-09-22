@@ -454,5 +454,13 @@ class SystemAuditEvent(models.Model):
             models.Index(fields=["entity_type", "entity_id", "created_at"], name="audit_entity_time_idx"),
         ]
 
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ValueError("SystemAuditEvent records are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("SystemAuditEvent records are immutable.")
+
     def __str__(self):
         return f"{self.action} {self.entity_type}:{self.entity_id}"
