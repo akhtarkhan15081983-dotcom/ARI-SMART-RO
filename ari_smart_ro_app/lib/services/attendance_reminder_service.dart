@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -7,6 +8,7 @@ class AttendanceReminderService {
   static final _plugin = FlutterLocalNotificationsPlugin();
 
   static Future<void> initialize() async {
+    if (!Platform.isAndroid) return;
     tz.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -21,6 +23,7 @@ class AttendanceReminderService {
   }
 
   static Future<void> scheduleCheckout(DateTime reminderAt) async {
+    if (!Platform.isAndroid) return;
     await cancelCheckout();
     final at = tz.TZDateTime.from(reminderAt, tz.local);
     if (!at.isAfter(tz.TZDateTime.now(tz.local))) return;
@@ -43,5 +46,8 @@ class AttendanceReminderService {
     );
   }
 
-  static Future<void> cancelCheckout() => _plugin.cancel(_notificationId);
+  static Future<void> cancelCheckout() async {
+    if (!Platform.isAndroid) return;
+    await _plugin.cancel(_notificationId);
+  }
 }
