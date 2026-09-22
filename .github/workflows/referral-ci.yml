@@ -85,6 +85,16 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Resolve app version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION="$(awk '/^version:/ {print $2}' pubspec.yaml | cut -d+ -f1)"
+          BUILD="$(awk '/^version:/ {print $2}' pubspec.yaml | cut -d+ -f2)"
+          test -n "$VERSION"
+          test -n "$BUILD"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
       - name: Compile Android debug APK
@@ -92,12 +102,13 @@ jobs:
           flutter build apk --debug
           --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
       - name: Prepare shareable APK
-        run: cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.27-latest.apk
+        shell: bash
+        run: cp build/app/outputs/flutter-apk/app-debug.apk "build/app/outputs/flutter-apk/ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest.apk"
       - name: Upload latest Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-v1.0.27-latest
-          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.27-latest.apk
+          name: ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest
+          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -129,6 +140,16 @@ jobs:
         run: flutter config --enable-windows-desktop
       - name: Install Flutter dependencies
         run: flutter pub get
+      - name: Resolve Windows package version
+        shell: pwsh
+        run: |
+          $line = (Select-String -Path "pubspec.yaml" -Pattern "^version:").Line
+          if (-not $line) { throw "pubspec version not found" }
+          $raw = ($line -split "\\s+")[1]
+          $parts = $raw -split "\\+"
+          if ($parts.Count -ne 2) { throw "pubspec version must include +build" }
+          "ARI_APP_VERSION=$($parts[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ARI_APP_BUILD=$($parts[1])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Build Windows release
         run: >-
           flutter build windows --release
@@ -210,7 +231,7 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found." }
-          & $iscc "installer\ari_smart_ro.iss"
+          & $iscc "/DMyAppVersion=$env:ARI_APP_VERSION" "/DMyAppBuild=$env:ARI_APP_BUILD" "installer\ari_smart_ro.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
 
       - name: Sign Setup.exe installer
@@ -222,7 +243,7 @@ jobs:
             Sort-Object FullName -Descending |
             Select-Object -First 1).FullName
           if (-not $signtool) { throw "signtool.exe not found" }
-          $setup = "build\windows\installer\ARI-SMART-RO-Setup-v1.0.33.exe"
+          $setup = "build\windows\installer\ARI-SMART-RO-Setup-v$env:ARI_APP_VERSION.exe"
           & $signtool sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $env:ARI_CODESIGN_PFX /p $env:WINDOWS_CODESIGN_PASSWORD $setup
           if ($LASTEXITCODE -ne 0) { throw "Installer signing failed." }
           $signature = Get-AuthenticodeSignature $setup
@@ -236,10 +257,10 @@ jobs:
           if (!(Test-Path "$release\ARI_SMART_RO.exe")) {
             throw "ARI_SMART_RO.exe not found after Windows build."
           }
-          $package = "build\windows\ARI-SMART-RO-Windows-v1.0.33"
+          $package = "build\windows\ARI-SMART-RO-Windows-v$env:ARI_APP_VERSION"
           New-Item -ItemType Directory -Force -Path $package | Out-Null
           Copy-Item "$release\*" $package -Recurse -Force
-          Compress-Archive -Path "$package\*" -DestinationPath "build\windows\ARI-SMART-RO-Windows-v1.0.33.zip" -Force
+          Compress-Archive -Path "$package\*" -DestinationPath "build\windows\ARI-SMART-RO-Windows-v$env:ARI_APP_VERSION.zip" -Force
 
       - name: Write signing status
         shell: pwsh
@@ -254,9 +275,9 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-Setup-v1.0.33
+          name: ARI-SMART-RO-Setup-v${{ env.ARI_APP_VERSION }}
           path: |
-            ari_smart_ro_app/build/windows/installer/ARI-SMART-RO-Setup-v1.0.33.exe
+            ari_smart_ro_app/build/windows/installer/ARI-SMART-RO-Setup-v${{ env.ARI_APP_VERSION }}.exe
             ari_smart_ro_app/build/windows/SIGNING_STATUS.txt
           if-no-files-found: error
           retention-days: 30
@@ -264,7 +285,7 @@ jobs:
       - name: Upload portable Windows app
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-Windows-v1.0.33
-          path: ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v1.0.33.zip
+          name: ARI-SMART-RO-Windows-v${{ env.ARI_APP_VERSION }}
+          path: ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v${{ env.ARI_APP_VERSION }}.zip
           if-no-files-found: error
           retention-days: 30
