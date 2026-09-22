@@ -374,7 +374,7 @@ class ClientActionReceipt(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=["user", "action_type", "created_at"]),
+            models.Index(fields=["user", "action_type", "created_at"], name="jobs_client_user_id_73f6ff_idx"),
         ]
 
     def __str__(self):
