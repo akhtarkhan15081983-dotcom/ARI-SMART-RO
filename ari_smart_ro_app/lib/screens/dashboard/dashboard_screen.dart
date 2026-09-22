@@ -102,7 +102,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadDashboard();
-    _startLiveLocationIfRequired();
     _dashboardRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted) _refreshSessionAndDashboard();
     });
@@ -118,16 +117,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _refreshSessionAndDashboard() async {
     await ApiService.ensureValidSession();
     if (mounted) await _loadDashboard();
-  }
-
-  Future<void> _startLiveLocationIfRequired() async {
-    try {
-      if (_normaliseRole(await ApiService.getRole()) == 'ENGINEER') {
-        _liveLocationService.startTracking();
-      }
-    } catch (e) {
-      debugPrint('LIVE LOCATION START ERROR: $e');
-    }
   }
 
   Future<void> _loadDashboard() async {
@@ -169,6 +158,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           _isLoadingAttendance = false;
         });
       }
+      await _syncLiveLocationWithAttendance(a);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -176,6 +166,32 @@ class _DashboardScreenState extends State<DashboardScreen>
           _isLoadingAttendance = false;
         });
       }
+      await _liveLocationService.stopTracking();
+    }
+  }
+
+  bool _hasActiveOvertime(AttendanceModel attendance) {
+    final overtime = attendance.overtime;
+    if (overtime == null) return false;
+    return (overtime['status'] ?? '').toString().toUpperCase() == 'APPROVED' &&
+        overtime['started_at'] != null &&
+        overtime['ended_at'] == null;
+  }
+
+  Future<void> _syncLiveLocationWithAttendance(
+    AttendanceModel? attendance,
+  ) async {
+    final shouldTrack = attendance != null &&
+        attendance.checkIn != null &&
+        (attendance.checkOut == null || _hasActiveOvertime(attendance));
+    try {
+      if (shouldTrack) {
+        await _liveLocationService.startTracking(requestPermissions: false);
+      } else {
+        await _liveLocationService.stopTracking();
+      }
+    } catch (e) {
+      debugPrint('LIVE LOCATION ATTENDANCE SYNC ERROR: $e');
     }
   }
 
@@ -298,6 +314,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     );
     if (ok != true) return;
+    await _liveLocationService.stopTracking();
     await ApiService.logout();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
