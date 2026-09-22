@@ -301,19 +301,25 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
 
       await LiveLocationService._flushPendingLocations();
       final point = await LiveLocationService._capturePoint();
+      var locationSent = false;
       if (point != null) {
-        final sent = await LiveLocationService._sendPoint(point);
-        if (!sent) {
+        locationSent = await LiveLocationService._sendPoint(point);
+        if (!locationSent) {
           await LiveLocationService._queuePoint(point);
         }
       }
 
       if (service is AndroidServiceInstance &&
           await service.isForegroundService()) {
+        final time =
+            '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}';
         await service.setForegroundNotificationInfo(
-          title: 'ARI SMART RO • Live location ON',
-          content:
-              'Work shift tracking active • updated ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+          title: locationSent
+              ? 'ARI SMART RO • Live location ON'
+              : 'ARI SMART RO • Location required',
+          content: locationSent
+              ? 'Work shift tracking active • updated $time'
+              : 'GPS/permission is off or network failed. Open the app now.',
         );
       }
 
