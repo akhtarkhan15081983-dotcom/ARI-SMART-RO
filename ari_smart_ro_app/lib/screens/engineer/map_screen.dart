@@ -360,29 +360,56 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
         onPressed: _showMyLocation,
         child: const Icon(Icons.my_location),
       ),
-      body: Stack(
+      body: Column(
         children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: _fallbackCenter,
-              initialZoom: 12,
+          Expanded(
+            child: Stack(
+              children: [
+                FlutterMap(
+                  mapController: _mapController,
+                  options: const MapOptions(
+                    initialCenter: _fallbackCenter,
+                    initialZoom: 12,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.arismartro.app',
+                      maxZoom: 19,
+                    ),
+                    MarkerLayer(markers: markers),
+                    RichAttributionWidget(
+                      attributions: const [
+                        TextSourceAttribution('OpenStreetMap contributors'),
+                      ],
+                    ),
+                  ],
+                ),
+                if (_isLoading)
+                  const Center(child: CircularProgressIndicator()),
+                if (!_isLoading && _errorMessage != null)
+                  _ErrorBanner(message: _errorMessage!, onRetry: _loadEngineers),
+                if (!_isLoading &&
+                    _errorMessage == null &&
+                    markers.isEmpty)
+                  const Center(child: _EmptyState()),
+              ],
             ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
-                userAgentPackageName: 'com.arismartro.app',
-              ),
-              MarkerLayer(markers: markers),
-            ],
           ),
-          if (_isLoading) const Center(child: CircularProgressIndicator()),
-          if (!_isLoading && _errorMessage != null)
-            _ErrorBanner(message: _errorMessage!, onRetry: _loadEngineers),
-          if (!_isLoading && _errorMessage == null && markers.isEmpty)
-            const Center(child: _EmptyState()),
+          if (!_isLoading && _errorMessage == null)
+            _EmployeeLocationSummary(
+              employees: _engineers,
+              onTap: (employee) {
+                final location = _locationOf(employee);
+                if (location != null) {
+                  _showEngineerDetails(employee, location);
+                } else {
+                  _showMessage(
+                    '${_value(employee, 'name', fallback: 'Employee')} has not shared a location yet.',
+                  );
+                }
+              },
+            ),
         ],
       ),
     );
@@ -461,6 +488,139 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
+  }
+}
+
+class _EmployeeLocationSummary extends StatelessWidget {
+  const _EmployeeLocationSummary({
+    required this.employees,
+    required this.onTap,
+  });
+
+  final List<dynamic> employees;
+  final ValueChanged<dynamic> onTap;
+
+  String _status(dynamic employee) {
+    if (employee is! Map) return 'MISSING';
+    return (employee['location_status'] ?? 'MISSING')
+        .toString()
+        .toUpperCase();
+  }
+
+  String _name(dynamic employee) {
+    if (employee is! Map) return 'Employee';
+    final value = employee['name']?.toString().trim();
+    return value == null || value.isEmpty ? 'Employee' : value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final live = employees.where((e) => _status(e) == 'LIVE').length;
+    final stale = employees.where((e) => _status(e) == 'STALE').length;
+    final missing = employees.where((e) => _status(e) == 'MISSING').length;
+
+    return Material(
+      elevation: 8,
+      color: Theme.of(context).colorScheme.surface,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 154,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Employees: ${employees.length}  •  Live $live  •  Stale $stale  •  Missing $missing',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: employees.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final employee = employees[index];
+                    final status = _status(employee);
+                    final isLive = status == 'LIVE';
+                    final isMissing = status == 'MISSING';
+                    final color = isLive
+                        ? Colors.green
+                        : isMissing
+                            ? Colors.orange
+                            : Colors.red;
+                    return InkWell(
+                      onTap: () => onTap(employee),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: 150,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: .08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: color.withValues(alpha: .25),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _name(employee),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              status == 'LIVE'
+                                  ? 'Live location'
+                                  : status == 'STALE'
+                                      ? 'Location stale'
+                                      : 'Location missing',
+                              style: TextStyle(
+                                color: color,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              employee is Map
+                                  ? (employee['designation'] ?? 'EMPLOYEE')
+                                      .toString()
+                                  : 'EMPLOYEE',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

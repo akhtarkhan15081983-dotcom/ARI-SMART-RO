@@ -646,10 +646,13 @@ class EmployeeAPITests(TestCase):
 
         self.assertEqual(
             len(response.data),
-            1,
+            3,
         )
 
-        engineer_data = response.data[0]
+        engineer_data = next(
+            item for item in response.data
+            if item["id"] == self.engineer.id
+        )
 
         self.assertEqual(
             engineer_data["id"],
@@ -689,7 +692,7 @@ class EmployeeAPITests(TestCase):
     # LIVE MAP EXCLUDES ENGINEERS WITHOUT LOCATION
     # ========================================================
 
-    def test_live_map_excludes_engineer_without_location(
+    def test_live_map_includes_engineer_without_location(
         self
     ):
 
@@ -708,8 +711,15 @@ class EmployeeAPITests(TestCase):
 
         self.assertEqual(
             len(response.data),
-            0,
+            3,
         )
+        engineer_data = next(
+            item for item in response.data
+            if item["id"] == self.engineer.id
+        )
+        self.assertFalse(engineer_data["location_received"])
+        self.assertEqual(engineer_data["location_status"], "MISSING")
+        self.assertFalse(engineer_data["online"])
 
     # ========================================================
     # LIVE MAP EXCLUDES INACTIVE ENGINEER
@@ -744,7 +754,11 @@ class EmployeeAPITests(TestCase):
 
         self.assertEqual(
             len(response.data),
-            0,
+            2,
+        )
+        self.assertNotIn(
+            self.engineer.id,
+            [item["id"] for item in response.data],
         )
 
     # ========================================================
