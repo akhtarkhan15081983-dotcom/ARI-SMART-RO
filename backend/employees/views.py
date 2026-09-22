@@ -471,20 +471,54 @@ class EngineerLiveMapAPIView(APIView):
 
     def get(self, request):
         engineers = EmployeeProfile.objects.filter(
-            designation="ENGINEER", is_active=True,
-            last_latitude__isnull=False, last_longitude__isnull=False,
+            designation="ENGINEER",
+            is_active=True,
+            user__is_active=True,
         ).select_related("user")
-        return Response([{
-            "id": e.id,
-            "employee_id": e.employee_id,
-            "name": e.user.get_full_name(),
-            "phone": e.user.phone,
-            "photo": request.build_absolute_uri(e.photo.url) if e.photo else None,
-            "latitude": e.last_latitude,
-            "longitude": e.last_longitude,
-            "updated_at": e.last_location_updated,
-            "online": e.is_online,
-        } for e in engineers])
+
+        company = _request_company(request)
+        if company is not None:
+            engineers = engineers.filter(company=company)
+
+        now = timezone.now()
+        stale_after = timedelta(seconds=90)
+        payload = []
+
+        for employee in engineers.order_by("user__first_name", "employee_id"):
+            has_location = (
+                employee.last_latitude is not None
+                and employee.last_longitude is not None
+            )
+            is_fresh = bool(
+                has_location
+                and employee.last_location_updated
+                and now - employee.last_location_updated <= stale_after
+            )
+            online = bool(employee.is_online and is_fresh)
+
+            if not has_location:
+                location_status = "MISSING"
+            elif online:
+                location_status = "LIVE"
+            else:
+                location_status = "STALE"
+
+            payload.append({
+                "id": employee.id,
+                "employee_id": employee.employee_id,
+                "name": employee.user.get_full_name() or employee.user.phone,
+                "phone": employee.user.phone,
+                "designation": employee.designation,
+                "photo": request.build_absolute_uri(employee.photo.url) if employee.photo else None,
+                "latitude": employee.last_latitude,
+                "longitude": employee.last_longitude,
+                "updated_at": employee.last_location_updated,
+                "location_received": has_location,
+                "location_status": location_status,
+                "online": online,
+            })
+
+        return Response(payload)
 
 
 class EmployeeProfileAPIView(APIView):
