@@ -112,10 +112,13 @@ jobs:
 
   windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: ari_smart_ro_app
+    env:
+      WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+      WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -130,6 +133,7 @@ jobs:
         run: >-
           flutter build windows --release
           --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+
       - name: Verify Windows Safe Build
         shell: pwsh
         run: |
@@ -152,6 +156,39 @@ jobs:
           }
           Write-Host "Windows Safe Build contains no third-party plugin DLLs."
 
+      - name: Install trusted code-signing certificate
+        if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "ari-smart-ro-codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX_BASE64))
+          "ARI_CODESIGN_PFX=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Sign Windows application binaries
+        if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1).FullName
+          if (-not $signtool) { throw "signtool.exe not found" }
+          $release = "build\windows\x64\runner\Release"
+          $targets = Get-ChildItem $release -Recurse -File | Where-Object { $_.Extension -in ".exe", ".dll" }
+          foreach ($target in $targets) {
+            & $signtool sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $env:ARI_CODESIGN_PFX /p $env:WINDOWS_CODESIGN_PASSWORD $target.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed: $($target.FullName)" }
+          }
+
+      - name: Verify application signature
+        if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $exe = "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          $signature = Get-AuthenticodeSignature $exe
+          Write-Host "ARI_SMART_RO.exe signature status: $($signature.Status)"
+          if ($signature.Status -ne "Valid") { throw "Application Authenticode signature is not valid." }
+
       - name: Smoke test Windows app startup
         shell: pwsh
         run: |
@@ -164,21 +201,70 @@ jobs:
           Stop-Process -Id $process.Id -Force
           Write-Host "ARI_SMART_RO.exe remained running for the startup smoke test."
 
-      - name: Prepare Windows package
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Setup.exe installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found." }
+          & $iscc "installer\ari_smart_ro.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
+
+      - name: Sign Setup.exe installer
+        if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1).FullName
+          if (-not $signtool) { throw "signtool.exe not found" }
+          $setup = "build\windows\installer\ARI-SMART-RO-Setup-v1.0.33.exe"
+          & $signtool sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $env:ARI_CODESIGN_PFX /p $env:WINDOWS_CODESIGN_PASSWORD $setup
+          if ($LASTEXITCODE -ne 0) { throw "Installer signing failed." }
+          $signature = Get-AuthenticodeSignature $setup
+          Write-Host "Setup signature status: $($signature.Status)"
+          if ($signature.Status -ne "Valid") { throw "Installer Authenticode signature is not valid." }
+
+      - name: Prepare portable Windows package
         shell: pwsh
         run: |
           $release = "build\windows\x64\runner\Release"
           if (!(Test-Path "$release\ARI_SMART_RO.exe")) {
             throw "ARI_SMART_RO.exe not found after Windows build."
           }
-          $package = "build\windows\ARI-SMART-RO-Windows-v1.0.32"
+          $package = "build\windows\ARI-SMART-RO-Windows-v1.0.33"
           New-Item -ItemType Directory -Force -Path $package | Out-Null
           Copy-Item "$release\*" $package -Recurse -Force
-          Compress-Archive -Path "$package\*" -DestinationPath "build\windows\ARI-SMART-RO-Windows-v1.0.32.zip" -Force
-      - name: Upload Windows desktop app
+          Compress-Archive -Path "$package\*" -DestinationPath "build\windows\ARI-SMART-RO-Windows-v1.0.33.zip" -Force
+
+      - name: Write signing status
+        shell: pwsh
+        run: |
+          if ($env:WINDOWS_CODESIGN_PFX_BASE64) {
+            "SIGNED_WITH_TRUSTED_CERTIFICATE=true" | Out-File "build\windows\SIGNING_STATUS.txt" -Encoding utf8
+          } else {
+            "SIGNED_WITH_TRUSTED_CERTIFICATE=false" | Out-File "build\windows\SIGNING_STATUS.txt" -Encoding utf8
+            "A trusted code-signing PFX is required to avoid Smart App Control reputation warnings." | Out-File "build\windows\SIGNING_STATUS.txt" -Append -Encoding utf8
+          }
+
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-Windows-v1.0.32
-          path: ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v1.0.32.zip
+          name: ARI-SMART-RO-Setup-v1.0.33
+          path: |
+            ari_smart_ro_app/build/windows/installer/ARI-SMART-RO-Setup-v1.0.33.exe
+            ari_smart_ro_app/build/windows/SIGNING_STATUS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload portable Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Windows-v1.0.33
+          path: ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v1.0.33.zip
           if-no-files-found: error
           retention-days: 30
