@@ -25,6 +25,7 @@ from .security import (
     is_inside_office_geofence,
 )
 from employees.models import EmployeeProfile, HRPolicy
+from accounts.audit import write_audit_event
 from tenancy.access import request_company
 
 
