@@ -689,7 +689,7 @@ class EmployeeAPITests(TestCase):
     # LIVE MAP EXCLUDES ENGINEERS WITHOUT LOCATION
     # ========================================================
 
-    def test_live_map_excludes_engineer_without_location(
+    def test_live_map_includes_engineer_without_location(
         self
     ):
 
@@ -708,8 +708,11 @@ class EmployeeAPITests(TestCase):
 
         self.assertEqual(
             len(response.data),
-            0,
+            1,
         )
+        self.assertFalse(response.data[0]["location_received"])
+        self.assertEqual(response.data[0]["location_status"], "MISSING")
+        self.assertFalse(response.data[0]["online"])
 
     # ========================================================
     # LIVE MAP EXCLUDES INACTIVE ENGINEER
