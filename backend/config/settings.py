@@ -218,6 +218,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "login": os.getenv("DJANGO_LOGIN_THROTTLE", "10/min"),
         "otp": os.getenv("DJANGO_OTP_THROTTLE", "5/min"),
+        "client_errors": os.getenv("DJANGO_CLIENT_ERROR_THROTTLE", "30/min"),
         "sim_start": os.getenv("DJANGO_SIM_START_THROTTLE", "3/min"),
         "sim_poll": os.getenv("DJANGO_SIM_POLL_THROTTLE", "30/min"),
         "sms_gateway": os.getenv("DJANGO_SMS_GATEWAY_THROTTLE", "120/min"),
