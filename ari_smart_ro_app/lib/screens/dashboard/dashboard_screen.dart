@@ -186,7 +186,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         (attendance.checkOut == null || _hasActiveOvertime(attendance));
     try {
       if (shouldTrack) {
-        await _liveLocationService.startTracking(requestPermissions: false);
+        await _liveLocationService.startTracking(requestPermissions: true);
       } else {
         await _liveLocationService.stopTracking();
       }
