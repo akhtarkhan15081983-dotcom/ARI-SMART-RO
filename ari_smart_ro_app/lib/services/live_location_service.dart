@@ -36,7 +36,17 @@ class LiveLocationService {
 
   static Future<void> initialize() {
     if (!isSupportedPlatform) return Future<void>.value();
-    return _initialization ??= _configure();
+    final existing = _initialization;
+    if (existing != null) return existing;
+
+    final operation = _configure();
+    _initialization = operation;
+    return operation.catchError((Object error, StackTrace stackTrace) {
+      if (identical(_initialization, operation)) {
+        _initialization = null;
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    });
   }
 
   static Future<void> _configure() async {
