@@ -2382,3 +2382,26 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 409)
+
+
+    def test_same_action_id_cannot_cross_action_types(self):
+        headers = {"HTTP_X_ARI_ACTION_ID": "cross-type-action-001"}
+
+        first = self.client.post(
+            f"/api/jobs/{self.job.id}/gps/",
+            {
+                "latitude": "27.1767000",
+                "longitude": "78.0081000",
+            },
+            format="json",
+            **headers,
+        )
+        second = self.client.post(
+            f"/api/jobs/{self.job.id}/change-status/",
+            {"status": "COMPLETED"},
+            format="json",
+            **headers,
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 409)
