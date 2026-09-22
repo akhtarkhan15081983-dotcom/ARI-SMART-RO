@@ -1,3 +1,4 @@
+import re
 import calendar
 from datetime import date, datetime
 from decimal import Decimal
@@ -11,6 +12,7 @@ from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.throttling import UserRateThrottle
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -37,6 +39,24 @@ from .models import ClientErrorEvent
 
 
 ZERO = Decimal("0.00")
+
+_CLIENT_SECRET_PATTERNS = [
+    re.compile(r"Bearer\s+[A-Za-z0-9._-]+", re.IGNORECASE),
+    re.compile(r"password\s*[:=]\s*\S+", re.IGNORECASE),
+    re.compile(r"token\s*[:=]\s*\S+", re.IGNORECASE),
+]
+
+
+def _redact_client_text(value, limit):
+    text = str(value or "")
+    for pattern in _CLIENT_SECRET_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text[:limit]
+
+
+class ClientErrorRateThrottle(UserRateThrottle):
+    scope = "client_errors"
+
 
 
 def _decimal(value):
@@ -1406,13 +1426,14 @@ class ReportsExportAPIView(APIView):
 
 class ClientErrorEventAPIView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ClientErrorRateThrottle]
 
     _CONTEXT_KEYS = {"screen", "operation", "phase"}
 
     def post(self, request):
         company = request_company(request)
         payload = request.data if isinstance(request.data, dict) else {}
-        message = str(payload.get("message") or "").strip()[:1000]
+        message = _redact_client_text(payload.get("message"), 1000).strip()
         if not message:
             return Response({"detail": "Error message is required."}, status=400)
 
@@ -1434,7 +1455,7 @@ class ClientErrorEventAPIView(APIView):
             app_build=str(payload.get("app_build") or "")[:24],
             error_type=str(payload.get("error_type") or "")[:120],
             message=message,
-            stack=str(payload.get("stack") or "")[:8000],
+            stack=_redact_client_text(payload.get("stack"), 8000),
             context=context,
         )
         return Response({"accepted": True, "event_id": row.id}, status=201)
