@@ -1,3 +1,4 @@
+import base64
 from datetime import date
 from decimal import Decimal
 import threading
@@ -1048,7 +1049,10 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             {
                 "signature": SimpleUploadedFile(
                     "fraud.png",
-                    b"fake-signature",
+                    base64.b64decode(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
+                        "AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                    ),
                     content_type="image/png",
                 ),
                 "customer_name": "Fake Customer",
@@ -2339,7 +2343,10 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
             {
                 "signature": SimpleUploadedFile(
                     "signature-again.png",
-                    b"fake-signature-again",
+                    base64.b64decode(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
+                        "AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                    ),
                     content_type="image/png",
                 ),
                 "customer_name": "Retry Customer",
