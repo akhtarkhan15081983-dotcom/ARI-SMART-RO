@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.models import User
+from accounts.models import SystemAuditEvent, User
 
 from .models import Company, CompanyMembership, CompanySubscription, RoleFeaturePermission, SubscriptionPlan
 
@@ -261,6 +261,15 @@ class RoleFeaturePermissionTests(TestCase):
                 feature_key="hrms",
             ).is_allowed
         )
+        audit = SystemAuditEvent.objects.filter(
+            action="ROLE_FEATURE_PERMISSION_CHANGED",
+            company_id=self.company.id,
+        ).first()
+        self.assertIsNotNone(audit)
+        self.assertEqual(audit.actor, self.admin)
+        self.assertEqual(audit.metadata["role"], "ENGINEER")
+        self.assertEqual(audit.metadata["feature_key"], "hrms")
+        self.assertEqual(audit.after_state["is_allowed"], False)
 
         self.client.force_authenticate(self.engineer)
         matrix = self.client.get("/api/saas/role-permissions/?role=ENGINEER")
