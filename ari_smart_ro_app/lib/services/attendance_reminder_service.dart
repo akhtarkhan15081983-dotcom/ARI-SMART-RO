@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -6,25 +8,36 @@ import 'package:timezone/timezone.dart' as tz;
 class AttendanceReminderService {
   static const _notificationId = 19019;
   static final _plugin = FlutterLocalNotificationsPlugin();
+  static Future<void>? _initialization;
+  static bool _permissionRequested = false;
 
-  static Future<void> initialize() async {
+  static Future<void> initialize({bool requestPermission = false}) async {
     if (!Platform.isAndroid) return;
+    _initialization ??= _initializePlugin();
+    await _initialization;
+    if (requestPermission && !_permissionRequested) {
+      _permissionRequested = true;
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.requestNotificationsPermission();
+    }
+  }
+
+  static Future<void> _initializePlugin() async {
     tz.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     await _plugin.initialize(
       const InitializationSettings(android: android),
     );
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
   }
 
   static Future<void> scheduleCheckout(DateTime reminderAt) async {
     if (!Platform.isAndroid) return;
-    await cancelCheckout();
+    await initialize(requestPermission: true);
+    await _plugin.cancel(_notificationId);
     final at = tz.TZDateTime.from(reminderAt, tz.local);
     if (!at.isAfter(tz.TZDateTime.now(tz.local))) return;
     await _plugin.zonedSchedule(
@@ -48,6 +61,7 @@ class AttendanceReminderService {
 
   static Future<void> cancelCheckout() async {
     if (!Platform.isAndroid) return;
+    await initialize();
     await _plugin.cancel(_notificationId);
   }
 }
