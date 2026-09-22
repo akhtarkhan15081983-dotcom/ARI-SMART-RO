@@ -39,13 +39,24 @@ def replay_response(
         ClientActionReceipt.objects.filter(
             user=request.user,
             action_id=action_id,
-            action_type=action_type,
         )
         .select_related("job")
         .first()
     )
     if receipt is None:
         return IdempotencyReplay(action_id=action_id, response=None)
+
+    if receipt.action_type != action_type:
+        return IdempotencyReplay(
+            action_id=action_id,
+            response=Response(
+                {
+                    "detail": "This action ID was already used for another action type.",
+                    "action_id": action_id,
+                },
+                status=409,
+            ),
+        )
 
     if job is not None and receipt.job_id not in (None, job.id):
         return IdempotencyReplay(
