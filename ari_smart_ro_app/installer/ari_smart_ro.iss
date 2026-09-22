@@ -15,9 +15,9 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\ARI SMART RO
 DefaultGroupName=ARI SMART RO
 DisableProgramGroupPage=yes
-OutputDir=build\windows\installer
+OutputDir=..\build\windows\installer
 OutputBaseFilename=ARI-SMART-RO-Setup-v1.0.33
-SetupIconFile=windows\runner\resources\app_icon.ico
+SetupIconFile=..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/max
 SolidCompression=yes
@@ -39,7 +39,7 @@ SetupLogging=yes
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\ARI SMART RO"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"
