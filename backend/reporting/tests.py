@@ -70,6 +70,7 @@ class ReportingAPITests(TestCase):
             employee=self.engineer,
             date=date(2026, 8, 25),
             status="PRESENT",
+            regular_working_hours=Decimal("8.00"),
             working_hours=Decimal("8.00"),
         )
 
@@ -96,6 +97,14 @@ class ReportingAPITests(TestCase):
         self.assertEqual(response.data["rent"]["summary"]["outstanding"], "300.00")
         self.assertEqual(response.data["attendance"]["summary"]["present"], 1)
         self.assertEqual(response.data["attendance"]["summary"]["working_hours"], "8.00")
+        employee_rows = response.data["employee_activity"]["employees"]
+        employee_row = next(
+            row for row in employee_rows
+            if row["employee_id"] == self.engineer.employee_id
+        )
+        self.assertEqual(employee_row["regular_hours"], "8.00")
+        self.assertEqual(employee_row["rent_collected"], "700.00")
+        self.assertEqual(employee_row["rent_payments"], 1)
 
     def test_all_standard_periods_are_supported(self):
         self.client.force_authenticate(self.admin)
@@ -148,6 +157,8 @@ class ReportingAPITests(TestCase):
             "HR Leave Register",
             "HR Payroll Register",
             "HR Holiday Calendar",
+            "Employee Daily Activity",
+            "Employee Activity Detail",
         }.issubset(set(workbook.sheetnames)))
 
     def test_invalid_period_is_rejected(self):
