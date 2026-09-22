@@ -108,3 +108,43 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build production container
         run: docker build -t ari-smart-ro:${{ github.sha }} .
+
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ari_smart_ro_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+      - name: Install Flutter dependencies
+        run: flutter pub get
+      - name: Build Windows release
+        run: >-
+          flutter build windows --release
+          --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+      - name: Prepare Windows package
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          if (!(Test-Path "$release\ARI_SMART_RO.exe")) {
+            throw "ARI_SMART_RO.exe not found after Windows build."
+          }
+          $package = "build\windows\ARI-SMART-RO-Windows-v1.0.30"
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item "$release\*" $package -Recurse -Force
+          Compress-Archive -Path "$package\*" -DestinationPath "build\windows\ARI-SMART-RO-Windows-v1.0.30.zip" -Force
+      - name: Upload Windows desktop app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Windows-v1.0.30
+          path: ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v1.0.30.zip
+          if-no-files-found: error
+          retention-days: 30
