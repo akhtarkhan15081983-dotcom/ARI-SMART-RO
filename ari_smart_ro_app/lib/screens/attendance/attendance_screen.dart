@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../services/attendance_service.dart';
 import '../../services/attendance_reminder_service.dart';
+import '../../services/live_location_service.dart';
 import '../../services/selfie_quality_service.dart';
 
 class AttendanceScreen extends StatefulWidget {
@@ -22,6 +23,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   static const double _officeRadiusMeters = 50.0;
 
   final AttendanceService _attendanceService = AttendanceService();
+  final LiveLocationService _liveLocationService = LiveLocationService();
   final ImagePicker _imagePicker = ImagePicker();
 
   Position? _position;
@@ -79,6 +81,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _overtime = attendance.overtime;
       });
       _scheduleShiftRefresh();
+      await _syncLiveLocationForCurrentState();
       if (_isCheckedIn && !_isCheckedOut && _checkoutReminderAt != null) {
         await AttendanceReminderService.scheduleCheckout(_checkoutReminderAt!);
       } else {
@@ -86,6 +89,34 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       }
     } catch (e) {
       debugPrint('LOAD ATTENDANCE ERROR: $e');
+    }
+  }
+
+  bool get _hasActiveOvertime {
+    final overtime = _overtime;
+    return overtime != null &&
+        (overtime['status'] ?? '').toString().toUpperCase() == 'APPROVED' &&
+        overtime['started_at'] != null &&
+        overtime['ended_at'] == null;
+  }
+
+  Future<void> _syncLiveLocationForCurrentState({
+    bool requestPermissions = false,
+  }) async {
+    final shouldTrack =
+        _isCheckedIn && (!_isCheckedOut || _hasActiveOvertime);
+    try {
+      if (shouldTrack) {
+        await _liveLocationService.startTracking(
+          requestPermissions: requestPermissions,
+        );
+      } else {
+        await _liveLocationService.stopTracking();
+      }
+    } on LiveLocationException catch (e) {
+      if (requestPermissions && mounted) _showSnackBar(e.message);
+    } catch (e) {
+      debugPrint('LIVE LOCATION SYNC ERROR: $e');
     }
   }
 
@@ -309,6 +340,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _isCheckedIn = true;
         _checkInTime = DateTime.now();
       });
+      await _syncLiveLocationForCurrentState(requestPermissions: true);
       _showSnackBar(result.message, isSuccess: true);
       await _loadTodayAttendance();
     } catch (error) {
@@ -336,6 +368,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _isCheckedOut = true;
         _checkOutTime = DateTime.now();
       });
+      await _liveLocationService.stopTracking();
       _showSnackBar('Checked out successfully.', isSuccess: true);
       await AttendanceReminderService.cancelCheckout();
       await _loadTodayAttendance();
@@ -415,8 +448,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     setState(() => _isSubmitting = true);
     try {
       final message = await _attendanceService.startOvertime();
-      _showSnackBar(message, isSuccess: true);
       await _loadTodayAttendance();
+      await _syncLiveLocationForCurrentState(requestPermissions: true);
+      _showSnackBar(message, isSuccess: true);
     } catch (e) {
       _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -434,8 +468,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     setState(() => _isSubmitting = true);
     try {
       final message = await _attendanceService.stopOvertime();
-      _showSnackBar(message, isSuccess: true);
       await _loadTodayAttendance();
+      await _liveLocationService.stopTracking();
+      _showSnackBar(message, isSuccess: true);
     } catch (e) {
       _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
     } finally {

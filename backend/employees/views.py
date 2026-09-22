@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.db import transaction
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.models import Permission
@@ -513,10 +514,46 @@ class UpdateLiveLocationAPIView(APIView):
         except Exception:
             return Response({"error": "Employee profile not found."}, status=404)
 
+        if not employee.is_active or not request.user.is_active:
+            return Response({"error": "Inactive employee cannot share location."}, status=403)
+
+        if request.data.get("tracking_active") is False:
+            if employee.is_online:
+                employee.is_online = False
+                employee.save(update_fields=["is_online"])
+            return Response({"message": "Live location tracking stopped.", "online": False})
+
+        captured_at_raw = str(request.data.get("captured_at") or "").strip()
+        captured_at = parse_datetime(captured_at_raw) if captured_at_raw else None
+        if captured_at is None:
+            captured_at = timezone.now()
+        elif timezone.is_naive(captured_at):
+            captured_at = timezone.make_aware(captured_at, timezone.get_current_timezone())
+
+        now = timezone.now()
+        if captured_at > now + timedelta(minutes=5):
+            captured_at = now
+
+        # Never let a delayed/retried offline point move an employee backwards
+        # after a newer point has already reached the server.
+        if (
+            employee.last_location_updated is not None
+            and captured_at < employee.last_location_updated
+        ):
+            return Response({
+                "message": "Older queued location ignored.",
+                "updated_at": employee.last_location_updated,
+                "online": employee.is_online,
+            })
+
         serializer = EmployeeLocationSerializer(employee, data=request.data, partial=True)
         if serializer.is_valid():
-            serializer.save(last_location_updated=timezone.now(), is_online=True)
-            return Response({"message": "Location Updated Successfully"})
+            serializer.save(last_location_updated=captured_at, is_online=True)
+            return Response({
+                "message": "Location Updated Successfully",
+                "updated_at": captured_at,
+                "online": True,
+            })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -524,21 +561,36 @@ class EngineerLiveMapAPIView(APIView):
     permission_classes = [IsOperationsUser]
 
     def get(self, request):
-        engineers = EmployeeProfile.objects.filter(
-            designation="ENGINEER", is_active=True,
-            last_latitude__isnull=False, last_longitude__isnull=False,
+        employees = EmployeeProfile.objects.filter(
+            is_active=True,
+            user__is_active=True,
+            last_latitude__isnull=False,
+            last_longitude__isnull=False,
         ).select_related("user")
+
+        company = _request_company(request)
+        if company is not None:
+            employees = employees.filter(company=company)
+
+        now = timezone.now()
+        stale_after = timedelta(seconds=90)
+
         return Response([{
-            "id": e.id,
-            "employee_id": e.employee_id,
-            "name": e.user.get_full_name(),
-            "phone": e.user.phone,
-            "photo": request.build_absolute_uri(e.photo.url) if e.photo else None,
-            "latitude": e.last_latitude,
-            "longitude": e.last_longitude,
-            "updated_at": e.last_location_updated,
-            "online": e.is_online,
-        } for e in engineers])
+            "id": employee.id,
+            "employee_id": employee.employee_id,
+            "name": employee.user.get_full_name() or employee.user.phone,
+            "phone": employee.user.phone,
+            "designation": employee.designation,
+            "photo": request.build_absolute_uri(employee.photo.url) if employee.photo else None,
+            "latitude": employee.last_latitude,
+            "longitude": employee.last_longitude,
+            "updated_at": employee.last_location_updated,
+            "online": bool(
+                employee.is_online
+                and employee.last_location_updated
+                and now - employee.last_location_updated <= stale_after
+            ),
+        } for employee in employees.order_by("designation", "user__first_name", "employee_id")])
 
 
 class EmployeeProfileAPIView(APIView):

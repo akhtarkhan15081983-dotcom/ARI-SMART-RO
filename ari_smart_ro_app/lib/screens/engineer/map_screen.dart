@@ -59,7 +59,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
 
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Unable to load engineer locations. Please try again.';
+        _errorMessage = 'Unable to load employee locations. Please try again.';
       });
     } finally {
       _isRefreshing = false;
@@ -240,6 +240,10 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                           name,
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
+                        Text(
+                          _value(engineer, 'designation', fallback: 'EMPLOYEE'),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                         const SizedBox(height: 6),
                         _StatusBadge(online: online),
                       ],
@@ -342,7 +346,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Engineer Live Location'),
+        title: const Text('Employee Live Location'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -583,7 +587,7 @@ class _EmptyState extends StatelessWidget {
       children: [
         Icon(Icons.location_off_outlined, size: 40, color: Colors.grey),
         SizedBox(height: 8),
-        Text('No engineer locations available.'),
+        Text('No employee locations available.'),
       ],
     ),
   );
