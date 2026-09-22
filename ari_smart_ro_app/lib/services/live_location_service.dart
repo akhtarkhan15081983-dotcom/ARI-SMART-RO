@@ -147,6 +147,11 @@ class LiveLocationService {
     return FlutterBackgroundService().isRunning();
   }
 
+  Future<int> pendingLocationCount() async {
+    if (!isSupportedPlatform) return 0;
+    return (await _readQueue()).length;
+  }
+
   Future<void> sendCurrentLocation() async {
     if (!isSupportedPlatform) return;
     await _flushPendingLocations();

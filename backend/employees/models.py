@@ -634,3 +634,43 @@ class EmployeeDocument(models.Model):
     expiry_date = models.DateField(null=True, blank=True)
     verified = models.BooleanField(default=False)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+
+class EmployeeDeviceHealth(models.Model):
+    """Latest health snapshot reported by an employee's active app installation."""
+
+    employee = models.OneToOneField(
+        EmployeeProfile,
+        on_delete=models.CASCADE,
+        related_name="device_health",
+    )
+    device_id = models.CharField(max_length=64, blank=True, default="")
+    platform = models.CharField(max_length=20, default="ANDROID")
+    app_version = models.CharField(max_length=32, blank=True, default="")
+    app_build = models.CharField(max_length=24, blank=True, default="")
+    os_version = models.CharField(max_length=80, blank=True, default="")
+    android_sdk = models.PositiveSmallIntegerField(null=True, blank=True)
+    manufacturer = models.CharField(max_length=80, blank=True, default="")
+    model = models.CharField(max_length=120, blank=True, default="")
+    low_memory_device = models.BooleanField(default=False)
+    memory_class_mb = models.PositiveIntegerField(null=True, blank=True)
+    total_memory_mb = models.PositiveIntegerField(null=True, blank=True)
+    location_service_enabled = models.BooleanField(default=False)
+    location_permission = models.CharField(max_length=24, blank=True, default="")
+    background_location_granted = models.BooleanField(default=False)
+    notification_permission_granted = models.BooleanField(default=False)
+    battery_optimization_ignored = models.BooleanField(default=False)
+    live_location_tracking = models.BooleanField(default=False)
+    pending_job_actions = models.PositiveIntegerField(default=0)
+    pending_location_points = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=500, blank=True, default="")
+    reported_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-reported_at"]
+        indexes = [
+            models.Index(fields=["reported_at"], name="emp_devhealth_seen_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.employee.employee_id} @ {self.reported_at}"

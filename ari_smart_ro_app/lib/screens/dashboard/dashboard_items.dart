@@ -163,6 +163,11 @@ class DashboardItems {
       icon: Icons.verified_user,
       route: "attendance_security_test",
     ),
+    const DashboardItem(
+      title: "Device Health Center",
+      icon: Icons.health_and_safety_outlined,
+      route: "device_health_admin",
+    ),
     ...engineer.where(
       (item) =>
           item.route != "andy" &&
