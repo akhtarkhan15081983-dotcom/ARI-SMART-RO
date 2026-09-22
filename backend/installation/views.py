@@ -19,6 +19,7 @@ from jobs.models import (
     JobActivityLog,
 )
 from jobs.services import change_job_status
+from jobs.idempotency import replay_response, remember_response
 
 from referrals.models import Referral
 from referrals.services import qualify_referral
@@ -159,6 +160,14 @@ class CompleteInstallationAPIView(
             engineer__user=request.user,
         )
 
+        replay = replay_response(
+            request=request,
+            action_type="INSTALLATION_COMPLETE",
+            job=job,
+        )
+        if replay.response is not None:
+            return replay.response
+
         # ====================================================
         # SERIALIZE INSTALLATION DATA
         # ====================================================
@@ -289,12 +298,9 @@ class CompleteInstallationAPIView(
 
             except ValueError as e:
 
-                # --------------------------------------------
-                # TRANSACTION ROLLBACK
-                #
-                # Installation and copied parts will also
-                # rollback if completion requirements fail.
-                # --------------------------------------------
+                # The exception is translated to an API response here, so mark
+                # the atomic block explicitly for rollback before returning.
+                transaction.set_rollback(True)
 
                 return Response(
                     {
@@ -409,7 +415,7 @@ class CompleteInstallationAPIView(
         # FINAL RESPONSE
         # ====================================================
 
-        return Response(
+        response = Response(
             {
                 "success": True,
 
@@ -429,6 +435,13 @@ class CompleteInstallationAPIView(
                     "Installation completed successfully.",
             },
             status=status.HTTP_201_CREATED,
+        )
+        return remember_response(
+            request=request,
+            action_id=replay.action_id,
+            action_type="INSTALLATION_COMPLETE",
+            response=response,
+            job=job,
         )
 
 
