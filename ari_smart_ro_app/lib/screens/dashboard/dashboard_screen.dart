@@ -715,20 +715,46 @@ class _DashboardScreenState extends State<DashboardScreen>
         ? null
         : groups.where((group) => group.title == _windowsWorkspace).firstOrNull ??
             groups.first;
+    const toolPalette = <Color>[
+      Color(0xFF2563EB),
+      Color(0xFF7C3AED),
+      Color(0xFF0891B2),
+      Color(0xFF059669),
+      Color(0xFFEA580C),
+      Color(0xFFDB2777),
+    ];
 
-    return ColoredBox(
-      color: const Color(0xFFF4F7FB),
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFF8FAFF),
+            Color(0xFFF1F5FF),
+            Color(0xFFF8F4FF),
+          ],
+        ),
+      ),
       child: Row(
         children: [
           Container(
-            width: 264,
+            width: 280,
             decoration: const BoxDecoration(
-              color: Color(0xFF0B2940),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFF071B33),
+                  Color(0xFF102A56),
+                  Color(0xFF0B3A47),
+                ],
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Color(0x22000000),
-                  blurRadius: 18,
-                  offset: Offset(6, 0),
+                  color: Color(0x2607182B),
+                  blurRadius: 28,
+                  offset: Offset(8, 0),
                 ),
               ],
             ),
@@ -739,18 +765,34 @@ class _DashboardScreenState extends State<DashboardScreen>
                   child: Row(
                     children: [
                       Container(
-                        width: 44,
-                        height: 44,
+                        width: 48,
+                        height: 48,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF19A7A0),
-                          borderRadius: BorderRadius.circular(13),
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFF18B8D9),
+                              Color(0xFF2563EB),
+                              Color(0xFF7C3AED),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x552563EB),
+                              blurRadius: 18,
+                              offset: Offset(0, 8),
+                            ),
+                          ],
                         ),
                         child: const Icon(
                           Icons.water_drop_rounded,
                           color: Colors.white,
+                          size: 26,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 13),
                       const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -760,15 +802,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,
-                                fontSize: 16,
+                                fontSize: 17,
+                                letterSpacing: .2,
                               ),
                             ),
-                            SizedBox(height: 2),
+                            SizedBox(height: 3),
                             Text(
-                              'Business Suite',
+                              'Enterprise Business Suite',
                               style: TextStyle(
-                                color: Color(0xFFA9BED0),
+                                color: Color(0xFFB8CAE0),
                                 fontSize: 11,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
@@ -777,88 +821,150 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                 ),
-                const Divider(color: Color(0xFF25445B), height: 1),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 18, 14, 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'WORKSPACES',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: .48),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.1,
-                      ),
+                Container(
+                  height: 1,
+                  margin: const EdgeInsets.symmetric(horizontal: 18),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0),
+                        Colors.white.withValues(alpha: .18),
+                        Colors.white.withValues(alpha: 0),
+                      ],
                     ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+                  child: Row(
+                    children: [
+                      Text(
+                        'WORKSPACES',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: .50),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.3,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .08),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${groups.length}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: .72),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Expanded(
                   child: ListView.separated(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: groups.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 6),
+                    separatorBuilder: (_, __) => const SizedBox(height: 7),
                     itemBuilder: (_, index) {
                       final group = groups[index];
                       final active = selected?.title == group.title;
-                      return Material(
-                        color: active
-                            ? Colors.white.withValues(alpha: .12)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () =>
-                              setState(() => _windowsWorkspace = group.title),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 13,
-                              vertical: 12,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  group.icon,
-                                  color: active
-                                      ? Colors.white
-                                      : const Color(0xFFA9BED0),
-                                  size: 21,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    group.title,
-                                    style: TextStyle(
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        decoration: BoxDecoration(
+                          gradient: active
+                              ? LinearGradient(
+                                  colors: [
+                                    group.color.withValues(alpha: .34),
+                                    Colors.white.withValues(alpha: .08),
+                                  ],
+                                )
+                              : null,
+                          color: active
+                              ? null
+                              : Colors.white.withValues(alpha: .015),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: active
+                                ? group.color.withValues(alpha: .55)
+                                : Colors.transparent,
+                          ),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () =>
+                                setState(() => _windowsWorkspace = group.title),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 11,
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: active
+                                          ? group.color.withValues(alpha: .26)
+                                          : Colors.white.withValues(alpha: .06),
+                                      borderRadius: BorderRadius.circular(11),
+                                    ),
+                                    child: Icon(
+                                      group.icon,
                                       color: active
                                           ? Colors.white
-                                          : const Color(0xFFC5D3DF),
-                                      fontWeight: active
-                                          ? FontWeight.w800
-                                          : FontWeight.w600,
+                                          : const Color(0xFFB7CAE0),
+                                      size: 20,
                                     ),
                                   ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 7,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: active
-                                        ? group.color
-                                        : Colors.white.withValues(alpha: .07),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    '${group.items.length}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
+                                  const SizedBox(width: 11),
+                                  Expanded(
+                                    child: Text(
+                                      group.title,
+                                      style: TextStyle(
+                                        color: active
+                                            ? Colors.white
+                                            : const Color(0xFFD3DEEA),
+                                        fontWeight: active
+                                            ? FontWeight.w900
+                                            : FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: active
+                                          ? group.color
+                                          : Colors.white.withValues(alpha: .07),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '${group.items.length}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -871,24 +977,90 @@ class _DashboardScreenState extends State<DashboardScreen>
                   child: Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: .06),
-                      borderRadius: BorderRadius.circular(13),
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withValues(alpha: .10),
+                          Colors.white.withValues(alpha: .045),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .09),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        const CircleAvatar(
-                          radius: 17,
-                          backgroundColor: Color(0xFF19A7A0),
-                          child: Icon(Icons.person, color: Colors.white, size: 19),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _role,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF10B981),
+                                    Color(0xFF06B6D4),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.person_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                             ),
+                            const Positioned(
+                              right: -2,
+                              bottom: -2,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: Color(0xFF22C55E),
+                                  shape: BoxShape.circle,
+                                  border: Border.fromBorderSide(
+                                    BorderSide(
+                                      color: Color(0xFF102A56),
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                                child: SizedBox(width: 11, height: 11),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _role,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Secure active session',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: .58),
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Logout',
+                          onPressed: _logout,
+                          icon: const Icon(
+                            Icons.logout_rounded,
+                            color: Color(0xFFD8E4F2),
+                            size: 20,
                           ),
                         ),
                       ],
@@ -900,123 +1072,332 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(34, 28, 34, 44),
+              padding: const EdgeInsets.fromLTRB(32, 28, 32, 44),
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1420),
+                  constraints: const BoxConstraints(maxWidth: 1460),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(26),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFF0B5FFF),
+                              Color(0xFF5B35D5),
+                              Color(0xFF0B9E9B),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(28),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x2E315EDB),
+                              blurRadius: 34,
+                              offset: Offset(0, 16),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          clipBehavior: Clip.hardEdge,
+                          children: [
+                            Positioned(
+                              right: -70,
+                              top: -100,
+                              child: Container(
+                                width: 250,
+                                height: 250,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: .08),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              right: 190,
+                              bottom: -120,
+                              child: Container(
+                                width: 220,
+                                height: 220,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: .055),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                            Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  isCustomer
-                                      ? 'Welcome to ARI SMART RO'
-                                      : 'Business Command Center',
-                                  style: const TextStyle(
-                                    color: Color(0xFF102A43),
-                                    fontSize: 29,
-                                    fontWeight: FontWeight.w900,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white
+                                                  .withValues(alpha: .14),
+                                              borderRadius:
+                                                  BorderRadius.circular(18),
+                                              border: Border.all(
+                                                color: Colors.white
+                                                    .withValues(alpha: .16),
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              'ENTERPRISE DESKTOP',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: 1.1,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Container(
+                                            width: 8,
+                                            height: 8,
+                                            decoration: const BoxDecoration(
+                                              color: Color(0xFF86EFAC),
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'System online',
+                                            style: TextStyle(
+                                              color: Colors.white
+                                                  .withValues(alpha: .78),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 15),
+                                      Text(
+                                        isCustomer
+                                            ? 'Welcome to ARI SMART RO'
+                                            : 'Business Command Center',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 31,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: -.7,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 7),
+                                      Text(
+                                        'One intelligent workspace for customers, operations, finance, employees and inventory.',
+                                        style: TextStyle(
+                                          color:
+                                              Colors.white.withValues(alpha: .80),
+                                          fontSize: 14,
+                                          height: 1.45,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      Wrap(
+                                        spacing: 10,
+                                        runSpacing: 10,
+                                        children: [
+                                          _WindowsMetric(
+                                            value: '${groups.length}',
+                                            label: 'Workspaces',
+                                          ),
+                                          _WindowsMetric(
+                                            value: '${items.length}',
+                                            label: 'Available tools',
+                                          ),
+                                          _WindowsMetric(
+                                            value: _role,
+                                            label: 'Active role',
+                                            compact: true,
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Manage your complete RO business from one desktop workspace.',
-                                  style: TextStyle(
-                                    color: const Color(0xFF486581)
-                                        .withValues(alpha: .88),
-                                    fontSize: 14,
+                                const SizedBox(width: 24),
+                                SizedBox(
+                                  width: 430,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
+                                        children: [
+                                          _WindowsHeaderAction(
+                                            tooltip: 'Notifications',
+                                            icon: Icons.notifications_none_rounded,
+                                            badge: _notificationUnread,
+                                            onTap: () async {
+                                              await Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      const NotificationCenterScreen(),
+                                                ),
+                                              );
+                                              if (mounted) _loadDashboard();
+                                            },
+                                          ),
+                                          const SizedBox(width: 10),
+                                          _WindowsHeaderAction(
+                                            tooltip: 'Logout',
+                                            icon: Icons.logout_rounded,
+                                            onTap: _logout,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 28),
+                                      TextField(
+                                        controller: _toolSearchController,
+                                        textInputAction:
+                                            TextInputAction.search,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        onChanged: (value) =>
+                                            setState(() => _toolQuery = value),
+                                        decoration: InputDecoration(
+                                          filled: true,
+                                          fillColor: Colors.white
+                                              .withValues(alpha: .14),
+                                          hintText:
+                                              'Search tools, reports, customers...',
+                                          hintStyle: TextStyle(
+                                            color: Colors.white
+                                                .withValues(alpha: .70),
+                                          ),
+                                          prefixIcon: const Icon(
+                                            Icons.search_rounded,
+                                            color: Colors.white,
+                                          ),
+                                          suffixIcon: _toolQuery.isEmpty
+                                              ? null
+                                              : IconButton(
+                                                  onPressed: () {
+                                                    _toolSearchController
+                                                        .clear();
+                                                    setState(
+                                                      () => _toolQuery = '',
+                                                    );
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.close_rounded,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                            borderSide: BorderSide(
+                                              color: Colors.white
+                                                  .withValues(alpha: .18),
+                                            ),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                            borderSide: BorderSide(
+                                              color: Colors.white
+                                                  .withValues(alpha: .18),
+                                            ),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                            borderSide: const BorderSide(
+                                              color: Colors.white,
+                                              width: 1.4,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                          SizedBox(
-                            width: 430,
-                            child: TextField(
-                              controller: _toolSearchController,
-                              textInputAction: TextInputAction.search,
-                              onChanged: (value) =>
-                                  setState(() => _toolQuery = value),
-                              decoration: InputDecoration(
-                                filled: true,
-                                fillColor: Colors.white,
-                                hintText: 'Search tools and reports',
-                                prefixIcon: const Icon(Icons.search),
-                                suffixIcon: _toolQuery.isEmpty
-                                    ? null
-                                    : IconButton(
-                                        onPressed: () {
-                                          _toolSearchController.clear();
-                                          setState(() => _toolQuery = '');
-                                        },
-                                        icon: const Icon(Icons.clear),
-                                      ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFD9E2EC),
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFD9E2EC),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 26),
-                      Row(
+                      const SizedBox(height: 24),
+                      Wrap(
+                        spacing: 14,
+                        runSpacing: 14,
                         children: [
                           _WindowsOverviewCard(
                             icon: Icons.grid_view_rounded,
                             color: const Color(0xFF2563EB),
                             value: '${groups.length}',
-                            label: 'Workspaces',
+                            label: 'Business workspaces',
+                            caption: 'Organised command areas',
                           ),
-                          const SizedBox(width: 14),
                           _WindowsOverviewCard(
                             icon: Icons.apps_rounded,
                             color: const Color(0xFF7C3AED),
                             value: '${items.length}',
                             label: 'Available tools',
+                            caption: 'Based on your access',
                           ),
-                          if (!isCustomer) ...[
-                            const SizedBox(width: 14),
-                            Expanded(
+                          if (!isCustomer)
+                            SizedBox(
+                              width: 360,
                               child: _WindowsAttendanceCard(
                                 isLoading: _isLoadingAttendance,
                                 attendance: _todayAttendance,
                               ),
                             ),
-                          ],
                         ],
                       ),
                       if (_role == 'ENGINEER' && _engineerWorkLocked) ...[
                         const SizedBox(height: 18),
-                        Card(
-                          color: const Color(0xFFFFF4E5),
-                          child: Padding(
-                            padding: const EdgeInsets.all(18),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: Color(0xFFB45309),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(child: Text(_engineerLockMessage)),
+                        Container(
+                          padding: const EdgeInsets.all(17),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFFFFF7ED),
+                                Color(0xFFFFFBEB),
                               ],
                             ),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color(0xFFF59E0B)
+                                  .withValues(alpha: .30),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Color(0xFFD97706),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _engineerLockMessage,
+                                  style: const TextStyle(
+                                    color: Color(0xFF92400E),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -1027,37 +1408,78 @@ class _DashboardScreenState extends State<DashboardScreen>
                         Row(
                           children: [
                             Container(
-                              width: 48,
-                              height: 48,
+                              width: 52,
+                              height: 52,
                               decoration: BoxDecoration(
-                                color: selected.color.withValues(alpha: .11),
-                                borderRadius: BorderRadius.circular(14),
+                                gradient: LinearGradient(
+                                  colors: [
+                                    selected.color,
+                                    selected.color.withValues(alpha: .72),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color:
+                                        selected.color.withValues(alpha: .22),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 7),
+                                  ),
+                                ],
                               ),
                               child: Icon(
                                 selected.icon,
-                                color: selected.color,
-                                size: 25,
+                                color: Colors.white,
+                                size: 26,
                               ),
                             ),
-                            const SizedBox(width: 13),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  selected.title,
-                                  style: const TextStyle(
-                                    color: Color(0xFF102A43),
-                                    fontSize: 21,
-                                    fontWeight: FontWeight.w900,
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    selected.title,
+                                    style: const TextStyle(
+                                      color: Color(0xFF102A43),
+                                      fontSize: 23,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -.35,
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  '${selected.items.length} business tools',
-                                  style: const TextStyle(
-                                    color: Color(0xFF627D98),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    '${selected.items.length} professional business tools ready to use',
+                                    style: const TextStyle(
+                                      color: Color(0xFF627D98),
+                                      fontSize: 13,
+                                    ),
                                   ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                color: selected.color.withValues(alpha: .09),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color:
+                                      selected.color.withValues(alpha: .16),
                                 ),
-                              ],
+                              ),
+                              child: Text(
+                                'ACTIVE WORKSPACE',
+                                style: TextStyle(
+                                  color: selected.color,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: .9,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -1067,8 +1489,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                           physics: const NeverScrollableScrollPhysics(),
                           gridDelegate:
                               const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 310,
-                            mainAxisExtent: 126,
+                            maxCrossAxisExtent: 330,
+                            mainAxisExtent: 136,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                           ),
@@ -1077,7 +1499,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             final item = selected.items[index];
                             return _WindowsToolCard(
                               item: item,
-                              color: selected.color,
+                              color: toolPalette[index % toolPalette.length],
                               onTap: () => _handleItemTap(item),
                             );
                           },
@@ -1110,7 +1532,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (!didPop) _handleDashboardBack();
       },
       child: Scaffold(
-        appBar: AppBar(
+        appBar: isWindows ? null : AppBar(
           title: Text(isCustomer ? 'ARI Smart RO' : '$_role Dashboard'),
           actions: [
             Stack(
@@ -1340,17 +1762,27 @@ class _CommandGrid extends StatelessWidget {
 
 
 class _WindowsMetric extends StatelessWidget {
-  const _WindowsMetric({required this.value, required this.label});
+  const _WindowsMetric({
+    required this.value,
+    required this.label,
+    this.compact = false,
+  });
 
   final String value;
   final String label;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Container(
-    width: 112,
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+    constraints: BoxConstraints(minWidth: compact ? 118 : 126),
+    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .12),
+      gradient: LinearGradient(
+        colors: [
+          Colors.white.withValues(alpha: .16),
+          Colors.white.withValues(alpha: .09),
+        ],
+      ),
       borderRadius: BorderRadius.circular(16),
       border: Border.all(color: Colors.white.withValues(alpha: .16)),
     ),
@@ -1359,18 +1791,21 @@ class _WindowsMetric extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
             color: Colors.white,
-            fontSize: 23,
+            fontSize: compact ? 14 : 22,
             fontWeight: FontWeight.w900,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: .76),
-            fontSize: 12,
+            color: Colors.white.withValues(alpha: .72),
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -1378,6 +1813,71 @@ class _WindowsMetric extends StatelessWidget {
   );
 }
 
+class _WindowsHeaderAction extends StatelessWidget {
+  const _WindowsHeaderAction({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+    this.badge = 0,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onTap;
+  final int badge;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.white.withValues(alpha: .14),
+          borderRadius: BorderRadius.circular(13),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(13),
+            onTap: onTap,
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: .16),
+                ),
+              ),
+              child: Icon(icon, color: Colors.white, size: 21),
+            ),
+          ),
+        ),
+        if (badge > 0)
+          Positioned(
+            right: -5,
+            top: -5,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 19, minHeight: 19),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF4D6D),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                badge > 99 ? '99+' : '$badge',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+}
 
 class _WindowsOverviewCard extends StatelessWidget {
   const _WindowsOverviewCard({
@@ -1385,53 +1885,101 @@ class _WindowsOverviewCard extends StatelessWidget {
     required this.color,
     required this.value,
     required this.label,
+    required this.caption,
   });
 
   final IconData icon;
   final Color color;
   final String value;
   final String label;
+  final String caption;
 
   @override
   Widget build(BuildContext context) => Container(
-    width: 190,
-    padding: const EdgeInsets.all(17),
+    width: 250,
+    padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: const Color(0xFFE3EAF2)),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          color.withValues(alpha: .115),
+          Colors.white,
+        ],
+      ),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: color.withValues(alpha: .16)),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x10102A43),
+          blurRadius: 18,
+          offset: Offset(0, 8),
+        ),
+      ],
     ),
     child: Row(
       children: [
         Container(
-          width: 42,
-          height: 42,
+          width: 48,
+          height: 48,
           decoration: BoxDecoration(
-            color: color.withValues(alpha: .10),
-            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              colors: [
+                color,
+                color.withValues(alpha: .74),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: .22),
+                blurRadius: 14,
+                offset: const Offset(0, 7),
+              ),
+            ],
           ),
-          child: Icon(icon, color: color, size: 22),
+          child: Icon(icon, color: Colors.white, size: 23),
         ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: const TextStyle(
-                color: Color(0xFF102A43),
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
+        const SizedBox(width: 13),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      color: Color(0xFF102A43),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
               ),
-            ),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF627D98),
-                fontSize: 12,
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF334E68),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                caption,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF829AB1),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     ),
@@ -1449,57 +1997,107 @@ class _WindowsAttendanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rejected = attendance?.isReviewRejected == true;
+    final approved = attendance?.isReviewApproved == true;
+    final color = isLoading
+        ? const Color(0xFF2563EB)
+        : attendance == null
+        ? const Color(0xFFF59E0B)
+        : rejected
+        ? const Color(0xFFDC2626)
+        : approved
+        ? const Color(0xFF059669)
+        : const Color(0xFF7C3AED);
     final text = isLoading
         ? 'Loading attendance...'
         : attendance == null
         ? 'Attendance not marked today'
-        : attendance!.isReviewRejected
-        ? 'Attendance review: Rejected'
-        : attendance!.isReviewApproved
-        ? 'Attendance review: Approved'
-        : 'Attendance review: Pending';
+        : rejected
+        ? 'Attendance review rejected'
+        : approved
+        ? 'Attendance review approved'
+        : 'Attendance review pending';
+
     return Container(
-      padding: const EdgeInsets.all(17),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE3EAF2)),
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: .115),
+            Colors.white,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: .16)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x10102A43),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
-              color: const Color(0xFF059669).withValues(alpha: .10),
-              borderRadius: BorderRadius.circular(12),
+              gradient: LinearGradient(
+                colors: [
+                  color,
+                  color.withValues(alpha: .72),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: .20),
+                  blurRadius: 14,
+                  offset: const Offset(0, 7),
+                ),
+              ],
             ),
-            child: const Icon(
-              Icons.fact_check_outlined,
-              color: Color(0xFF059669),
-              size: 22,
+            child: Icon(
+              rejected
+                  ? Icons.error_outline_rounded
+                  : approved
+                  ? Icons.verified_rounded
+                  : Icons.fact_check_outlined,
+              color: Colors.white,
+              size: 23,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 13),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Today',
+                  'Today’s attendance',
                   style: TextStyle(
-                    color: Color(0xFF102A43),
+                    color: Color(0xFF334E68),
                     fontWeight: FontWeight.w900,
+                    fontSize: 12,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF627D98),
-                    fontSize: 12,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  'Live workforce compliance',
+                  style: TextStyle(
+                    color: Color(0xFF829AB1),
+                    fontSize: 10,
                   ),
                 ),
               ],
@@ -1511,7 +2109,7 @@ class _WindowsAttendanceCard extends StatelessWidget {
   }
 }
 
-class _WindowsToolCard extends StatelessWidget {
+class _WindowsToolCard extends StatefulWidget {
   const _WindowsToolCard({
     required this.item,
     required this.color,
@@ -1523,57 +2121,129 @@ class _WindowsToolCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(17),
-    child: InkWell(
-      borderRadius: BorderRadius.circular(17),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(17),
-          border: Border.all(color: const Color(0xFFE3EAF2)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0C102A43),
-              blurRadius: 12,
-              offset: Offset(0, 4),
+  State<_WindowsToolCard> createState() => _WindowsToolCardState();
+}
+
+class _WindowsToolCardState extends State<_WindowsToolCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.color;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 160),
+        scale: _hovered ? 1.018 : 1,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                _hovered
+                    ? color.withValues(alpha: .15)
+                    : color.withValues(alpha: .075),
+                Colors.white,
+              ],
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: .10),
-                borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: _hovered
+                  ? color.withValues(alpha: .36)
+                  : const Color(0xFFE3EAF2),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: _hovered
+                    ? color.withValues(alpha: .16)
+                    : const Color(0x0D102A43),
+                blurRadius: _hovered ? 22 : 14,
+                offset: Offset(0, _hovered ? 10 : 5),
               ),
-              child: Icon(item.icon, color: color, size: 25),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                item.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF243B53),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: widget.onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            color,
+                            color.withValues(alpha: .72),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withValues(alpha: .20),
+                            blurRadius: 13,
+                            offset: const Offset(0, 7),
+                          ),
+                        ],
+                      ),
+                      child: Icon(widget.item.icon, color: Colors.white, size: 25),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.item.title.replaceAll('\n', ' '),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF243B53),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Row(
+                            children: [
+                              Text(
+                                'OPEN MODULE',
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: .7,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.arrow_forward_rounded,
+                                color: color,
+                                size: 14,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const Icon(
-              Icons.arrow_forward_rounded,
-              color: Color(0xFF9FB3C8),
-              size: 19,
-            ),
-          ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
+
