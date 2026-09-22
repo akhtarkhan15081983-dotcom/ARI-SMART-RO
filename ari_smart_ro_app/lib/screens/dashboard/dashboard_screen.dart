@@ -98,6 +98,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   final _toolSearchController = TextEditingController();
   String _toolQuery = '';
   String? _locationComplianceError;
+  String? _windowsWorkspace;
 
   @override
   void initState() {
@@ -710,178 +711,385 @@ class _DashboardScreenState extends State<DashboardScreen>
     required bool isCustomer,
   }) {
     final groups = _dashboardGroups(items);
+    final selected = groups.isEmpty
+        ? null
+        : groups.where((group) => group.title == _windowsWorkspace).firstOrNull ??
+            groups.first;
+
     return ColoredBox(
-      color: const Color(0xFFF3F6FA),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(32, 28, 32, 40),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1440),
+      color: const Color(0xFFF4F7FB),
+      child: Row(
+        children: [
+          Container(
+            width: 264,
+            decoration: const BoxDecoration(
+              color: Color(0xFF0B2940),
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x22000000),
+                  blurRadius: 18,
+                  offset: Offset(6, 0),
+                ),
+              ],
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF0C4467), Color(0xFF176B8F)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x260C4467),
-                        blurRadius: 24,
-                        offset: Offset(0, 10),
-                      ),
-                    ],
-                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
                   child: Row(
                     children: [
-                      Expanded(
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF19A7A0),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: const Icon(
+                          Icons.water_drop_rounded,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              isCustomer
-                                  ? 'Welcome to ARI SMART RO'
-                                  : 'Business Command Center',
-                              style: const TextStyle(
+                              'ARI SMART RO',
+                              style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 28,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            SizedBox(height: 2),
                             Text(
-                              'Everything you need, organised for faster daily work.',
+                              'Business Suite',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: .82),
-                                fontSize: 15,
+                                color: Color(0xFFA9BED0),
+                                fontSize: 11,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      _WindowsMetric(
-                        value: '${groups.length}',
-                        label: 'Workspaces',
-                      ),
-                      const SizedBox(width: 14),
-                      _WindowsMetric(
-                        value: '${items.length}',
-                        label: 'Tools',
-                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                if (_role == 'ENGINEER' && _engineerWorkLocked) ...[
-                  Card(
-                    color: const Color(0xFFFFF4E5),
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.warning_amber_rounded,
-                              color: Color(0xFFB45309)),
-                          const SizedBox(width: 12),
-                          Expanded(child: Text(_engineerLockMessage)),
-                        ],
+                const Divider(color: Color(0xFF25445B), height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 18, 14, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'WORKSPACES',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: .48),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.1,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                ],
-                Row(
-                  children: [
-                    if (!isCustomer)
-                      Expanded(
-                        child: Card(
-                          margin: EdgeInsets.zero,
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: groups.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 6),
+                    itemBuilder: (_, index) {
+                      final group = groups[index];
+                      final active = selected?.title == group.title;
+                      return Material(
+                        color: active
+                            ? Colors.white.withValues(alpha: .12)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () =>
+                              setState(() => _windowsWorkspace = group.title),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 17,
+                              horizontal: 13,
+                              vertical: 12,
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.fact_check_outlined,
-                                    color: Color(0xFF176B8F)),
+                                Icon(
+                                  group.icon,
+                                  color: active
+                                      ? Colors.white
+                                      : const Color(0xFFA9BED0),
+                                  size: 21,
+                                ),
                                 const SizedBox(width: 12),
-                                Text(
-                                  _isLoadingAttendance
-                                      ? 'Loading attendance...'
-                                      : _todayAttendance == null
-                                      ? 'Attendance not marked today'
-                                      : _todayAttendance!.isReviewRejected
-                                      ? 'Attendance review: REJECTED'
-                                      : _todayAttendance!.isReviewApproved
-                                      ? 'Attendance review: APPROVED'
-                                      : 'Attendance review: PENDING',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
+                                Expanded(
+                                  child: Text(
+                                    group.title,
+                                    style: TextStyle(
+                                      color: active
+                                          ? Colors.white
+                                          : const Color(0xFFC5D3DF),
+                                      fontWeight: active
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: active
+                                        ? group.color
+                                        : Colors.white.withValues(alpha: .07),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '${group.items.length}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ),
-                    if (!isCustomer) const SizedBox(width: 18),
-                    Expanded(
-                      flex: 2,
-                      child: TextField(
-                        controller: _toolSearchController,
-                        textInputAction: TextInputAction.search,
-                        onChanged: (value) =>
-                            setState(() => _toolQuery = value),
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white,
-                          hintText:
-                              'Search tools, reports, rent, parts, employees...',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _toolQuery.isEmpty
-                              ? null
-                              : IconButton(
-                                  onPressed: () {
-                                    _toolSearchController.clear();
-                                    setState(() => _toolQuery = '');
-                                  },
-                                  icon: const Icon(Icons.clear),
-                                ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
+                      );
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .06),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 17,
+                          backgroundColor: Color(0xFF19A7A0),
+                          child: Icon(Icons.person, color: Colors.white, size: 19),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _role,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 26),
-                if (items.isEmpty)
-                  const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(28),
-                      child:
-                          Center(child: Text('No matching dashboard tool found')),
-                    ),
-                  )
-                else
-                  _CommandGrid(
-                    role: _role,
-                    groups: groups,
-                    onOpen: _openDashboardGroup,
-                    isDesktop: true,
                   ),
+                ),
               ],
             ),
           ),
-        ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(34, 28, 34, 44),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1420),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isCustomer
+                                      ? 'Welcome to ARI SMART RO'
+                                      : 'Business Command Center',
+                                  style: const TextStyle(
+                                    color: Color(0xFF102A43),
+                                    fontSize: 29,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Manage your complete RO business from one desktop workspace.',
+                                  style: TextStyle(
+                                    color: const Color(0xFF486581)
+                                        .withValues(alpha: .88),
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(
+                            width: 430,
+                            child: TextField(
+                              controller: _toolSearchController,
+                              textInputAction: TextInputAction.search,
+                              onChanged: (value) =>
+                                  setState(() => _toolQuery = value),
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: Colors.white,
+                                hintText: 'Search tools and reports',
+                                prefixIcon: const Icon(Icons.search),
+                                suffixIcon: _toolQuery.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        onPressed: () {
+                                          _toolSearchController.clear();
+                                          setState(() => _toolQuery = '');
+                                        },
+                                        icon: const Icon(Icons.clear),
+                                      ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFD9E2EC),
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFD9E2EC),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 26),
+                      Row(
+                        children: [
+                          _WindowsOverviewCard(
+                            icon: Icons.grid_view_rounded,
+                            color: const Color(0xFF2563EB),
+                            value: '${groups.length}',
+                            label: 'Workspaces',
+                          ),
+                          const SizedBox(width: 14),
+                          _WindowsOverviewCard(
+                            icon: Icons.apps_rounded,
+                            color: const Color(0xFF7C3AED),
+                            value: '${items.length}',
+                            label: 'Available tools',
+                          ),
+                          if (!isCustomer) ...[
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: _WindowsAttendanceCard(
+                                isLoading: _isLoadingAttendance,
+                                attendance: _todayAttendance,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (_role == 'ENGINEER' && _engineerWorkLocked) ...[
+                        const SizedBox(height: 18),
+                        Card(
+                          color: const Color(0xFFFFF4E5),
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Color(0xFFB45309),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(child: Text(_engineerLockMessage)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 30),
+                      if (selected == null)
+                        const Center(child: Text('No workspace available'))
+                      else ...[
+                        Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: selected.color.withValues(alpha: .11),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(
+                                selected.icon,
+                                color: selected.color,
+                                size: 25,
+                              ),
+                            ),
+                            const SizedBox(width: 13),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  selected.title,
+                                  style: const TextStyle(
+                                    color: Color(0xFF102A43),
+                                    fontSize: 21,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  '${selected.items.length} business tools',
+                                  style: const TextStyle(
+                                    color: Color(0xFF627D98),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 310,
+                            mainAxisExtent: 126,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                          ),
+                          itemCount: selected.items.length,
+                          itemBuilder: (_, index) {
+                            final item = selected.items[index];
+                            return _WindowsToolCard(
+                              item: item,
+                              color: selected.color,
+                              onTap: () => _handleItemTap(item),
+                            );
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1166,6 +1374,206 @@ class _WindowsMetric extends StatelessWidget {
           ),
         ),
       ],
+    ),
+  );
+}
+
+
+class _WindowsOverviewCard extends StatelessWidget {
+  const _WindowsOverviewCard({
+    required this.icon,
+    required this.color,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 190,
+    padding: const EdgeInsets.all(17),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: const Color(0xFFE3EAF2)),
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: .10),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF102A43),
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF627D98),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _WindowsAttendanceCard extends StatelessWidget {
+  const _WindowsAttendanceCard({
+    required this.isLoading,
+    required this.attendance,
+  });
+
+  final bool isLoading;
+  final AttendanceModel? attendance;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = isLoading
+        ? 'Loading attendance...'
+        : attendance == null
+        ? 'Attendance not marked today'
+        : attendance!.isReviewRejected
+        ? 'Attendance review: Rejected'
+        : attendance!.isReviewApproved
+        ? 'Attendance review: Approved'
+        : 'Attendance review: Pending';
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE3EAF2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFF059669).withValues(alpha: .10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.fact_check_outlined,
+              color: Color(0xFF059669),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Today',
+                  style: TextStyle(
+                    color: Color(0xFF102A43),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF627D98),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WindowsToolCard extends StatelessWidget {
+  const _WindowsToolCard({
+    required this.item,
+    required this.color,
+    required this.onTap,
+  });
+
+  final DashboardItem item;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(17),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(17),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(color: const Color(0xFFE3EAF2)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0C102A43),
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: .10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(item.icon, color: color, size: 25),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                item.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF243B53),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_rounded,
+              color: Color(0xFF9FB3C8),
+              size: 19,
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }
