@@ -2330,7 +2330,10 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
             {
                 "signature": SimpleUploadedFile(
                     "signature.png",
-                    b"fake-signature",
+                    base64.b64decode(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
+                        "AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                    ),
                     content_type="image/png",
                 ),
                 "customer_name": "Retry Customer",
