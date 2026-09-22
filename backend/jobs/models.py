@@ -341,3 +341,35 @@ class WorkScheduleOverride(models.Model):
     def __str__(self):
         return f"{self.event_key} - {self.scheduled_date}"
 
+
+
+class ClientActionReceipt(models.Model):
+    """Stores completed client actions so offline retries are idempotent."""
+
+    action_id = models.CharField(max_length=160, unique=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="client_action_receipts",
+    )
+    action_type = models.CharField(max_length=40)
+    job = models.ForeignKey(
+        Job,
+        on_delete=models.CASCADE,
+        related_name="client_action_receipts",
+        null=True,
+        blank=True,
+    )
+    response_status = models.PositiveSmallIntegerField(default=200)
+    response_payload = models.JSONField(default=dict, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "action_type", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.action_type}:{self.action_id}"
