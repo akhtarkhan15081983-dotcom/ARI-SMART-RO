@@ -21,30 +21,19 @@ def _active_asset_for_customer(customer):
     )
 
 
-def _sync_job_status(job, target):
-    if not target or job.status == target:
-        return job
-
-    now = timezone.now()
-    updates = {"status": target, "updated_at": now}
-    timestamp_field = {
-        "ACCEPTED": "accepted_at",
-        "ON_THE_WAY": "on_the_way_at",
-        "ARRIVED": "arrived_at",
-        "IN_PROGRESS": "in_progress_at",
-        "COMPLETED": "completed_at",
-    }.get(target)
-    if timestamp_field:
-        updates[timestamp_field] = now
-
-    Job.objects.filter(pk=job.pk).update(**updates)
-    for field, value in updates.items():
-        setattr(job, field, value)
+def _update_job_metadata(job, values):
+    changed = []
+    for field, value in values.items():
+        if getattr(job, field) != value:
+            setattr(job, field, value)
+            changed.append(field)
+    if changed:
+        job.save(update_fields=changed + ["updated_at"])
     return job
 
 
 def ensure_complaint_job(complaint):
-    """Create/update the execution Job for an assigned complaint."""
+    """Ensure an assigned complaint has one Job; source status never advances Job status."""
     if complaint.engineer_id is None:
         return None
 
@@ -52,52 +41,34 @@ def ensure_complaint_job(complaint):
     if asset is None:
         return None
 
-    scheduled = complaint.scheduled_date or timezone.now()
-    defaults = {
+    values = {
         "customer": complaint.customer,
         "ro_asset": asset,
         "engineer": complaint.engineer,
         "job_type": "COMPLAINT",
         "priority": COMPLAINT_PRIORITY_TO_JOB.get(complaint.priority, "MEDIUM"),
-        "scheduled_date": scheduled,
+        "scheduled_date": complaint.scheduled_date or timezone.now(),
         "remarks": complaint.description or complaint.complaint_id,
     }
-    target_status = {
-        "NEW": "ASSIGNED",
-        "ASSIGNED": "ASSIGNED",
-        "IN_PROGRESS": "IN_PROGRESS",
-        "RESOLVED": "COMPLETED",
-        "CLOSED": "COMPLETED",
-        "CANCELLED": "CANCELLED",
-    }.get(complaint.status)
 
     with transaction.atomic():
         if complaint.job_id:
             job = Job.objects.select_for_update().filter(pk=complaint.job_id).first()
-            if job is None:
-                complaint.job_id = None
-            else:
-                changed = []
-                for field, value in defaults.items():
-                    if getattr(job, field) != value:
-                        setattr(job, field, value)
-                        changed.append(field)
-                if changed:
-                    job.save(update_fields=changed + ["updated_at"])
-                return _sync_job_status(job, target_status)
+            if job is not None:
+                return _update_job_metadata(job, values)
 
-        job = Job.objects.create(**defaults)
+        job = Job.objects.create(**values, status="ASSIGNED")
         type(complaint).objects.filter(pk=complaint.pk).update(job=job)
         complaint.job_id = job.id
-        return _sync_job_status(job, target_status)
+        return job
 
 
 def ensure_service_job(service):
-    """Create/update the execution Job for a service record."""
+    """Ensure a service has one Job; source status never advances Job status."""
     if service.engineer_id is None or service.ro_asset_id is None:
         return None
 
-    defaults = {
+    values = {
         "customer": service.customer,
         "ro_asset": service.ro_asset,
         "engineer": service.engineer,
@@ -106,36 +77,21 @@ def ensure_service_job(service):
         "scheduled_date": service.scheduled_date,
         "remarks": service.remarks or service.service_id,
     }
-    target_status = {
-        "PENDING": "ASSIGNED",
-        "IN_PROGRESS": "IN_PROGRESS",
-        "COMPLETED": "COMPLETED",
-        "CANCELLED": "CANCELLED",
-    }.get(service.status)
 
     with transaction.atomic():
         if service.job_id:
             job = Job.objects.select_for_update().filter(pk=service.job_id).first()
-            if job is None:
-                service.job_id = None
-            else:
-                changed = []
-                for field, value in defaults.items():
-                    if getattr(job, field) != value:
-                        setattr(job, field, value)
-                        changed.append(field)
-                if changed:
-                    job.save(update_fields=changed + ["updated_at"])
-                return _sync_job_status(job, target_status)
+            if job is not None:
+                return _update_job_metadata(job, values)
 
-        job = Job.objects.create(**defaults)
+        job = Job.objects.create(**values, status="ASSIGNED")
         type(service).objects.filter(pk=service.pk).update(job=job)
         service.job_id = job.id
-        return _sync_job_status(job, target_status)
+        return job
 
 
 def sync_sources_from_job(job):
-    """Keep Complaint/Service source records aligned with field execution."""
+    """Keep source records aligned with the secure Job execution lifecycle."""
     now = timezone.now()
 
     if job.job_type == "COMPLAINT":
