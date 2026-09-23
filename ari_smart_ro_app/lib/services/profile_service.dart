@@ -8,28 +8,30 @@ import 'api_service.dart';
 
 class ProfileService {
   Future<ProfileModel> getProfile() async {
-    final token = await ApiService.getAccessToken();
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/employees/profile/"),
-      headers: {"Authorization": "Bearer $token"},
+      headers: await ApiService.authHeaders(),
     );
 
     if (response.statusCode == 200) {
       return ProfileModel.fromJson(jsonDecode(response.body));
     }
-    throw Exception("Unable to load profile");
+    throw Exception(_errorMessage(response.body, "Unable to load profile"));
   }
 
   Future<void> enrollFace({
     required String photoPath,
     required String deviceId,
   }) async {
-    final token = await ApiService.getAccessToken();
     final request = http.MultipartRequest(
       "POST",
       Uri.parse("${ApiService.baseUrl}/employees/face-enrollment/"),
     );
-    request.headers["Authorization"] = "Bearer $token";
+
+    final headers = await ApiService.authHeaders();
+    headers.remove("Content-Type");
+    request.headers.addAll(headers);
+
     request.fields["device_id"] = deviceId;
     request.files.add(
       await http.MultipartFile.fromPath(
@@ -43,27 +45,18 @@ class ProfileService {
     final response = await request.send();
     final body = await response.stream.bytesToString();
     if (response.statusCode != 200 && response.statusCode != 201) {
-      String message = "Unable to enroll face";
-      try {
-        final data = jsonDecode(body);
-        message = data["message"]?.toString() ?? message;
-      } catch (_) {}
-      throw Exception(message);
+      throw Exception(_errorMessage(body, "Unable to enroll face"));
     }
   }
 
   Future<void> updateProfile(Map<String, dynamic> data) async {
-    final token = await ApiService.getAccessToken();
     final response = await http.put(
       Uri.parse("${ApiService.baseUrl}/employees/profile/"),
-      headers: {
-        "Authorization": "Bearer $token",
-        "Content-Type": "application/json",
-      },
+      headers: await ApiService.authHeaders(),
       body: jsonEncode(data),
     );
     if (response.statusCode != 200) {
-      throw Exception("Unable to update profile");
+      throw Exception(_errorMessage(response.body, "Unable to update profile"));
     }
   }
 
@@ -71,13 +64,9 @@ class ProfileService {
     required String oldPassword,
     required String newPassword,
   }) async {
-    final token = await ApiService.getAccessToken();
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/auth/change-password/"),
-      headers: {
-        "Authorization": "Bearer $token",
-        "Content-Type": "application/json",
-      },
+      headers: await ApiService.authHeaders(),
       body: jsonEncode({
         "old_password": oldPassword,
         "new_password": newPassword,
@@ -90,6 +79,18 @@ class ProfileService {
       await ApiService.storage.write(key: "refresh", value: data["refresh"]);
       return;
     }
-    throw Exception("Unable to change password");
+    throw Exception(_errorMessage(response.body, "Unable to change password"));
+  }
+
+  String _errorMessage(String body, String fallback) {
+    try {
+      final data = jsonDecode(body);
+      if (data is Map<String, dynamic>) {
+        return data["message"]?.toString() ??
+            data["detail"]?.toString() ??
+            fallback;
+      }
+    } catch (_) {}
+    return fallback;
   }
 }
