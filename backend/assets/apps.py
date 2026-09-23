@@ -6,4 +6,5 @@ class AssetsConfig(AppConfig):
     name = "assets"
 
     def ready(self):
-        import assets.admin
+        import assets.admin  # noqa: F401
+        import assets.signals  # noqa: F401

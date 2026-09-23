@@ -1,5 +1,11 @@
 from django.urls import path
 
+from .audit_views import (
+    PartStockAuditAPIView,
+    PartStockAuditCompleteAPIView,
+    PartStockAuditCountAPIView,
+    PartStockAuditScanAPIView,
+)
 from .views import (
     EngineerBagIssueAPIView,
     OCRVerifyAPIView,
@@ -31,4 +37,8 @@ urlpatterns = [
     path("inventory/workflow/qr-labels.pdf", InventoryQrLabelsPdfAPIView.as_view(), name="inventory-qr-labels"),
     path("inventory/workflow/summary/", InventorySummaryAPIView.as_view(), name="inventory-summary"),
     path("inventory/workflow/reports/inventory.xlsx", InventoryExcelReportAPIView.as_view(), name="inventory-excel-report"),
+    path("inventory/workflow/audits/", PartStockAuditAPIView.as_view(), name="part-stock-audits"),
+    path("inventory/workflow/audits/<int:audit_id>/scan/", PartStockAuditScanAPIView.as_view(), name="part-stock-audit-scan"),
+    path("inventory/workflow/audits/<int:audit_id>/lines/<int:line_id>/count/", PartStockAuditCountAPIView.as_view(), name="part-stock-audit-count"),
+    path("inventory/workflow/audits/<int:audit_id>/complete/", PartStockAuditCompleteAPIView.as_view(), name="part-stock-audit-complete"),
 ]

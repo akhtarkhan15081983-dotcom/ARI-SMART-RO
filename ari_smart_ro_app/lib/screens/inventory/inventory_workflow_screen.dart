@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../services/api_service.dart';
 import '../../services/inventory_workflow_service.dart';
 import '../../utils/search_utils.dart';
+import 'ro_stock_workflow_screen.dart';
 
 class InventoryWorkflowScreen extends StatefulWidget {
   const InventoryWorkflowScreen({super.key});
@@ -143,6 +144,14 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
     context,
     MaterialPageRoute(builder: (_) => _InventoryCodeScanner(title: title)),
   );
+
+  Future<void> _openRoStock() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => const RoStockWorkflowScreen()),
+    );
+    if (mounted) await _load();
+  }
 
   Future<void> _addSupplier() async {
     final name = TextEditingController(), contact = TextEditingController();
@@ -658,6 +667,11 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
       appBar: AppBar(
         title: const Text('Inventory Control'),
         actions: [
+          IconButton(
+            tooltip: 'RO Stock • Sale • Rent',
+            onPressed: _openRoStock,
+            icon: const Icon(Icons.water_drop_outlined),
+          ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
         ],
         bottom: const TabBar(

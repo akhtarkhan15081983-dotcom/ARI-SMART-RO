@@ -1,8 +1,5 @@
 from django.db import models
 
-# Create your models here.
-from django.db import models
-
 
 class PartCategory(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -31,15 +28,22 @@ class PartMaster(models.Model):
     category = models.ForeignKey(
         PartCategory,
         on_delete=models.PROTECT,
-        related_name="parts"
+        related_name="parts",
     )
     brand = models.CharField(max_length=100, blank=True)
     unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default="PCS")
     is_serialized = models.BooleanField(
         default=False,
-        help_text="Enable for parts that require serial number tracking."
+        help_text="Enable for parts that require serial number tracking.",
     )
     warranty_months = models.PositiveIntegerField(default=0)
+    replacement_interval_days = models.PositiveIntegerField(
+        default=0,
+        help_text=(
+            "Recommended replacement interval in days. Use 0 when the part has "
+            "no scheduled replacement cycle."
+        ),
+    )
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
