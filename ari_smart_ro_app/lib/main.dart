@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'app.dart';
-import 'services/attendance_reminder_service.dart';
 import 'services/client_observability_service.dart';
 import 'services/live_location_service.dart';
 
@@ -34,8 +33,9 @@ Future<void> main() async {
     return false;
   };
 
-  await AttendanceReminderService.initialize();
-  await LiveLocationService.initialize();
-
   runApp(const AriSmartROApp());
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(LiveLocationService.initialize());
+  });
 }
