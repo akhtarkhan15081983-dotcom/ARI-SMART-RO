@@ -2,8 +2,10 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 from assets.models import ROAsset
 from complaints.models import Complaint
@@ -11,7 +13,8 @@ from customers.models import Customer
 from employees.models import EmployeeProfile
 from products.models import ProductCategory, ROModel
 from service.models import Service
-from jobs.models import Job
+from jobs.models import JobActivityLog, JobMedia, JobSignature
+from jobs.services import NO_PARTS_ACTIVITY, change_job_status
 
 
 class OperationalWorkflowSyncTests(TestCase):
@@ -58,7 +61,7 @@ class OperationalWorkflowSyncTests(TestCase):
             current_customer=self.customer,
         )
 
-    def test_assigned_complaint_creates_linked_complaint_job(self):
+    def _complaint(self):
         complaint = Complaint.objects.create(
             customer=self.customer,
             engineer=self.engineer,
@@ -68,57 +71,9 @@ class OperationalWorkflowSyncTests(TestCase):
             status="ASSIGNED",
         )
         complaint.refresh_from_db()
-        self.assertIsNotNone(complaint.job_id)
-        self.assertEqual(complaint.job.job_type, "COMPLAINT")
-        self.assertEqual(complaint.job.engineer_id, self.engineer.id)
-        self.assertEqual(complaint.job.ro_asset_id, self.asset.id)
-        self.assertEqual(complaint.job.status, "ASSIGNED")
+        return complaint
 
-    def test_complaint_card_status_updates_linked_job(self):
-        complaint = Complaint.objects.create(
-            customer=self.customer,
-            engineer=self.engineer,
-            complaint_type="RO_NOT_WORKING",
-            scheduled_date=timezone.now(),
-            status="ASSIGNED",
-        )
-        complaint.refresh_from_db()
-        complaint.status = "IN_PROGRESS"
-        complaint.save()
-        complaint.job.refresh_from_db()
-        self.assertEqual(complaint.job.status, "IN_PROGRESS")
-
-        complaint.status = "RESOLVED"
-        complaint.resolution = "Issue fixed"
-        complaint.save()
-        complaint.job.refresh_from_db()
-        self.assertEqual(complaint.job.status, "COMPLETED")
-        self.assertIsNotNone(complaint.job.completed_at)
-
-    def test_job_status_updates_complaint(self):
-        complaint = Complaint.objects.create(
-            customer=self.customer,
-            engineer=self.engineer,
-            complaint_type="OTHER",
-            scheduled_date=timezone.now(),
-            status="ASSIGNED",
-        )
-        complaint.refresh_from_db()
-        job = complaint.job
-        job.status = "IN_PROGRESS"
-        job.in_progress_at = timezone.now()
-        job.save()
-        complaint.refresh_from_db()
-        self.assertEqual(complaint.status, "IN_PROGRESS")
-
-        job.status = "COMPLETED"
-        job.completed_at = timezone.now()
-        job.save()
-        complaint.refresh_from_db()
-        self.assertEqual(complaint.status, "RESOLVED")
-        self.assertIsNotNone(complaint.resolved_date)
-
-    def test_service_creates_job_and_stays_in_sync(self):
+    def _service(self):
         service = Service.objects.create(
             customer=self.customer,
             engineer=self.engineer,
@@ -128,23 +83,145 @@ class OperationalWorkflowSyncTests(TestCase):
             status="PENDING",
         )
         service.refresh_from_db()
-        self.assertIsNotNone(service.job_id)
-        self.assertEqual(service.job.job_type, "SERVICE")
+        return service
+
+    def _photo(self, job, description):
+        return JobMedia.objects.create(
+            job=job,
+            media_type="PHOTO",
+            description=description,
+            file=SimpleUploadedFile(
+                f"{description.replace(' ', '-').lower()}.jpg",
+                b"proof-photo",
+                content_type="image/jpeg",
+            ),
+        )
+
+    def _signature(self, job):
+        return JobSignature.objects.create(
+            job=job,
+            customer_name="Workflow Customer",
+            signature=SimpleUploadedFile(
+                "signature.png",
+                b"signature-proof",
+                content_type="image/png",
+            ),
+        )
+
+    def _advance_to_arrived(self, job):
+        change_job_status(job, "ACCEPTED")
+        change_job_status(job, "ON_THE_WAY")
+        change_job_status(job, "ARRIVED")
+
+    def test_assigned_complaint_creates_linked_complaint_job(self):
+        complaint = self._complaint()
+        self.assertIsNotNone(complaint.job_id)
+        self.assertEqual(complaint.job.job_type, "COMPLAINT")
+        self.assertEqual(complaint.job.engineer_id, self.engineer.id)
+        self.assertEqual(complaint.job.ro_asset_id, self.asset.id)
+        self.assertEqual(complaint.job.status, "ASSIGNED")
+
+    def test_source_complaint_cannot_start_or_resolve_job(self):
+        complaint = self._complaint()
+        complaint.status = "IN_PROGRESS"
+        with self.assertRaises(ValidationError):
+            complaint.save()
+        complaint.refresh_from_db()
+        complaint.job.refresh_from_db()
+        self.assertEqual(complaint.status, "ASSIGNED")
+        self.assertEqual(complaint.job.status, "ASSIGNED")
+
+        complaint.status = "RESOLVED"
+        complaint.resolution = "Attempted bypass"
+        with self.assertRaises(ValidationError):
+            complaint.save()
+        complaint.job.refresh_from_db()
+        self.assertEqual(complaint.job.status, "ASSIGNED")
+
+    def test_source_service_cannot_start_or_complete_job(self):
+        service = self._service()
+        service.status = "IN_PROGRESS"
+        with self.assertRaises(ValidationError):
+            service.save()
+        service.refresh_from_db()
+        service.job.refresh_from_db()
+        self.assertEqual(service.status, "PENDING")
         self.assertEqual(service.job.status, "ASSIGNED")
 
-        service.status = "IN_PROGRESS"
-        service.save()
-        service.job.refresh_from_db()
-        self.assertEqual(service.job.status, "IN_PROGRESS")
-
         service.status = "COMPLETED"
-        service.completed_date = timezone.now()
-        service.save()
+        with self.assertRaises(ValidationError):
+            service.save()
         service.job.refresh_from_db()
-        self.assertEqual(service.job.status, "COMPLETED")
-        self.assertIsNotNone(service.job.completed_at)
+        self.assertEqual(service.job.status, "ASSIGNED")
 
-        service.job.status = "CANCELLED"
-        service.job.save()
+    def test_field_work_cannot_start_without_before_photo(self):
+        service = self._service()
+        job = service.job
+        self._advance_to_arrived(job)
+        with self.assertRaisesMessage(
+            ValueError,
+            "Cannot start work: before photo is missing.",
+        ):
+            change_job_status(job, "IN_PROGRESS")
+
+    def test_field_work_completion_requires_parts_or_no_parts_declaration(self):
+        service = self._service()
+        job = service.job
+        self._advance_to_arrived(job)
+        self._photo(job, "Before Photo")
+        change_job_status(job, "IN_PROGRESS")
+        self._photo(job, "After Photo")
+        job.otp_verified = True
+        job.save(update_fields=["otp_verified"])
+        self._signature(job)
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "Cannot complete job: scan every used part or confirm that no part was used.",
+        ):
+            change_job_status(job, "COMPLETED")
+
+    def test_valid_no_parts_proof_completes_service_and_syncs_source(self):
+        service = self._service()
+        job = service.job
+        self._advance_to_arrived(job)
+        self._photo(job, "Before Photo")
+        change_job_status(job, "IN_PROGRESS")
+        JobActivityLog.objects.create(
+            job=job,
+            engineer=self.engineer,
+            activity=NO_PARTS_ACTIVITY,
+            remarks="No replacement part required.",
+        )
+        self._photo(job, "After Photo")
+        job.otp_verified = True
+        job.save(update_fields=["otp_verified"])
+        self._signature(job)
+
+        change_job_status(job, "COMPLETED")
+        job.refresh_from_db()
         service.refresh_from_db()
-        self.assertEqual(service.status, "CANCELLED")
+        self.assertEqual(job.status, "COMPLETED")
+        self.assertEqual(service.status, "COMPLETED")
+        self.assertIsNotNone(service.completed_date)
+
+    def test_valid_no_parts_proof_resolves_complaint(self):
+        complaint = self._complaint()
+        job = complaint.job
+        self._advance_to_arrived(job)
+        self._photo(job, "Before Photo")
+        change_job_status(job, "IN_PROGRESS")
+        JobActivityLog.objects.create(
+            job=job,
+            engineer=self.engineer,
+            activity=NO_PARTS_ACTIVITY,
+        )
+        self._photo(job, "After Photo")
+        job.otp_verified = True
+        job.save(update_fields=["otp_verified"])
+        self._signature(job)
+
+        change_job_status(job, "COMPLETED")
+        complaint.refresh_from_db()
+        self.assertEqual(complaint.status, "RESOLVED")
+        self.assertIsNotNone(complaint.resolved_date)
