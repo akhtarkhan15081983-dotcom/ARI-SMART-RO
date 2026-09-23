@@ -1,1 +1,6 @@
-from .asset import ROAsset, ROAssetMovement
+from .asset import (
+    ROAsset,
+    ROAssetMovement,
+    ROAssetComponent,
+    ROAssetComponentEvent,
+)
