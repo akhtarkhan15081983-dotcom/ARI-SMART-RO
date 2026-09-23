@@ -3,6 +3,10 @@ from django.utils import timezone
 from .models import JobActivityLog
 
 
+FIELD_WORK_TYPES = {"SERVICE", "COMPLAINT"}
+NO_PARTS_ACTIVITY = "No Parts Used Confirmed"
+
+
 def accept_job(job):
 
     if job.status != "ASSIGNED":
@@ -21,6 +25,7 @@ def accept_job(job):
     )
 
     return job
+
 
 STATUS_CONFIG = {
     "ACCEPTED": {
@@ -49,7 +54,21 @@ STATUS_CONFIG = {
         "activity": "Job Completed",
     },
 }
-    
+
+
+def _has_photo(job, description):
+    return job.media.filter(
+        media_type="PHOTO",
+        description=description,
+    ).exists()
+
+
+def _has_parts_declaration(job):
+    return (
+        job.parts_used.exists()
+        or job.activity_logs.filter(activity=NO_PARTS_ACTIVITY).exists()
+    )
+
 
 def change_job_status(job, new_status):
 
@@ -57,6 +76,13 @@ def change_job_status(job, new_status):
         raise ValueError("Invalid status.")
 
     config = STATUS_CONFIG[new_status]
+
+    # A modified client must not be able to skip the arrival evidence gate.
+    if new_status == "IN_PROGRESS" and job.job_type in FIELD_WORK_TYPES:
+        if not _has_photo(job, "Before Photo"):
+            raise ValueError(
+                "Cannot start work: before photo is missing."
+            )
 
     if new_status == "COMPLETED" and job.job_type == "INSTALLATION":
 
@@ -70,10 +96,31 @@ def change_job_status(job, new_status):
                 "Cannot complete job: installation details are missing."
             )
 
-        if not job.media.filter(
-            media_type="PHOTO",
-            description="After Photo",
-        ).exists():
+        if not _has_photo(job, "After Photo"):
+            raise ValueError(
+                "Cannot complete job: after photo is missing."
+            )
+
+        if not job.otp_verified:
+            raise ValueError(
+                "Cannot complete job: customer OTP is not verified."
+            )
+
+        if not hasattr(job, "signature"):
+            raise ValueError(
+                "Cannot complete job: customer signature is missing."
+            )
+
+    # Service/complaint jobs use the same anti-fraud proof chain. Parts are
+    # either individually scanned from the engineer's issued bag or the
+    # engineer must explicitly declare that no replacement part was used.
+    if new_status == "COMPLETED" and job.job_type in FIELD_WORK_TYPES:
+        if not _has_parts_declaration(job):
+            raise ValueError(
+                "Cannot complete job: scan used parts or declare that no part was used."
+            )
+
+        if not _has_photo(job, "After Photo"):
             raise ValueError(
                 "Cannot complete job: after photo is missing."
             )
