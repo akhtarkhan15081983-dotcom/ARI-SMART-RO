@@ -18,31 +18,47 @@ dependencies:
   geolocator: ^14.0.2
   permission_handler: ^12.0.1
   geocoding: ^4.0.0
-  http: ^1.6.0
-  shared_preferences: ^2.5.4
-  flutter_secure_storage: ^9.2.4
-  mobile_scanner: ^7.1.4
-  qr_flutter: ^4.1.0
-  url_launcher: ^6.3.2
-  flutter_local_notifications: ^19.5.0
-  timezone: ^0.10.1
-  intl: ^0.20.2
-  path_provider: ^2.1.5
-  package_info_plus: ^8.3.1
-  device_info_plus: ^11.5.0
-  connectivity_plus: ^7.0.0
-  record: ^6.1.2
-  audioplayers: ^6.5.1
-  mime: ^2.0.0
+  http: ^1.5.0
   http_parser: ^4.1.2
-  crypto: ^3.0.7
+  flutter_secure_storage: ^9.2.4
+  provider: ^6.1.5
+  mobile_scanner: ^5.2.3
+  signature: ^5.5.0
+  path_provider: ^2.1.5
+  google_maps_flutter: ^2.12.3
+  flutter_map: ^8.2.1
+  latlong2: ^0.9.1
+  intl: ^0.20.2
+  qr_flutter: ^4.1.0
+  url_launcher: ^6.3.0
+  video_player: ^2.14.0
+  google_mlkit_face_detection: ^0.15.1
+  google_mlkit_text_recognition: ^0.17.0
+  record: ^6.1.2
+  just_audio: ^0.10.5
+  flutter_local_notifications: ^19.4.2
+  flutter_background_service: ^5.1.0
+  timezone: ^0.10.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
   assets:
-    - assets/
+    - assets/images/ari_smart_ro_icon.png
+    - assets/images/ari_launcher_icon.png
+    - assets/images/premium_store_hero_v2.png
+    - assets/videos/ari_water_fill.mp4
+    - assets/training/
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/ari_launcher_icon.png"
+  min_sdk_android: 21
