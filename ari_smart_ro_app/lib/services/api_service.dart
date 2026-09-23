@@ -73,7 +73,7 @@ class ApiService {
   }
 
   static Future<Map<String, String>> deviceHeaders() async {
-    final deviceId = await _deviceId();
+    final deviceId = await canonicalDeviceId();
     return <String, String>{
       "Content-Type": "application/json",
       "X-ARI-Device-ID": deviceId,
@@ -91,10 +91,14 @@ class ApiService {
     return headers;
   }
 
-  static Future<String> _deviceId() async {
+  /// Stable app-installation identity used by login, attendance, health and audit.
+  /// Logout intentionally preserves this value.
+  static Future<String> canonicalDeviceId() async {
     const key = "ari_device_id";
     final existing = await storage.read(key: key);
-    if (existing != null && existing.isNotEmpty) return existing;
+    if (existing != null && existing.trim().isNotEmpty) {
+      return existing.trim();
+    }
     final random = Random.secure();
     final value = List<int>.generate(
       24,
@@ -237,7 +241,7 @@ class ApiService {
   static Future<bool> restoreSession() => ensureValidSession();
 
   static Future<void> logout() async {
-    // Preserve device identity and optional Keystore-backed remembered login.
+    // Preserve canonical device identity and optional Keystore-backed remembered login.
     await storage.delete(key: "access");
     await storage.delete(key: "refresh");
     await storage.delete(key: "role");
