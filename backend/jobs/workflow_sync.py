@@ -21,6 +21,28 @@ def _active_asset_for_customer(customer):
     )
 
 
+def _sync_job_status(job, target):
+    if not target or job.status == target:
+        return job
+
+    now = timezone.now()
+    updates = {"status": target, "updated_at": now}
+    timestamp_field = {
+        "ACCEPTED": "accepted_at",
+        "ON_THE_WAY": "on_the_way_at",
+        "ARRIVED": "arrived_at",
+        "IN_PROGRESS": "in_progress_at",
+        "COMPLETED": "completed_at",
+    }.get(target)
+    if timestamp_field:
+        updates[timestamp_field] = now
+
+    Job.objects.filter(pk=job.pk).update(**updates)
+    for field, value in updates.items():
+        setattr(job, field, value)
+    return job
+
+
 def ensure_complaint_job(complaint):
     """Create/update the execution Job for an assigned complaint."""
     if complaint.engineer_id is None:
@@ -40,6 +62,14 @@ def ensure_complaint_job(complaint):
         "scheduled_date": scheduled,
         "remarks": complaint.description or complaint.complaint_id,
     }
+    target_status = {
+        "NEW": "ASSIGNED",
+        "ASSIGNED": "ASSIGNED",
+        "IN_PROGRESS": "IN_PROGRESS",
+        "RESOLVED": "COMPLETED",
+        "CLOSED": "COMPLETED",
+        "CANCELLED": "CANCELLED",
+    }.get(complaint.status)
 
     with transaction.atomic():
         if complaint.job_id:
@@ -54,12 +84,12 @@ def ensure_complaint_job(complaint):
                         changed.append(field)
                 if changed:
                     job.save(update_fields=changed + ["updated_at"])
-                return job
+                return _sync_job_status(job, target_status)
 
         job = Job.objects.create(**defaults)
         type(complaint).objects.filter(pk=complaint.pk).update(job=job)
         complaint.job_id = job.id
-        return job
+        return _sync_job_status(job, target_status)
 
 
 def ensure_service_job(service):
@@ -76,6 +106,12 @@ def ensure_service_job(service):
         "scheduled_date": service.scheduled_date,
         "remarks": service.remarks or service.service_id,
     }
+    target_status = {
+        "PENDING": "ASSIGNED",
+        "IN_PROGRESS": "IN_PROGRESS",
+        "COMPLETED": "COMPLETED",
+        "CANCELLED": "CANCELLED",
+    }.get(service.status)
 
     with transaction.atomic():
         if service.job_id:
@@ -90,12 +126,12 @@ def ensure_service_job(service):
                         changed.append(field)
                 if changed:
                     job.save(update_fields=changed + ["updated_at"])
-                return job
+                return _sync_job_status(job, target_status)
 
         job = Job.objects.create(**defaults)
         type(service).objects.filter(pk=service.pk).update(job=job)
         service.job_id = job.id
-        return job
+        return _sync_job_status(job, target_status)
 
 
 def sync_sources_from_job(job):
@@ -112,7 +148,7 @@ def sync_sources_from_job(job):
             elif job.status == "IN_PROGRESS":
                 target = "IN_PROGRESS"
             elif job.status == "COMPLETED":
-                target = "RESOLVED"
+                target = "RESOLVED" if complaint.status != "CLOSED" else "CLOSED"
             elif job.status == "CANCELLED":
                 target = "CANCELLED"
             else:
