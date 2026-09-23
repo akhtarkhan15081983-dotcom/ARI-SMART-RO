@@ -267,12 +267,7 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
         self.other_job.job_type = "INSTALLATION"
         self.other_job.save(update_fields=["job_type"])
 
-    # =========================================================
-    # 1. CORRECT ENGINEER CAN USE OWN BAG PART
-    # =========================================================
-
     def test_correct_engineer_can_use_own_bag_part(self):
-
         response = self.client.post(
             self.parts_url(self.job),
             {
@@ -282,457 +277,154 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             },
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            201,
-        )
-
-        self.assertTrue(
-            JobPartUsed.objects.filter(
-                job=self.job,
-                inventory_item=self.inventory_item,
-            ).exists()
-        )
-
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(JobPartUsed.objects.filter(job=self.job, inventory_item=self.inventory_item).exists())
         self.inventory_item.refresh_from_db()
-
-        self.assertEqual(
-            self.inventory_item.status,
-            "INSTALLED",
-        )
-
+        self.assertEqual(self.inventory_item.status, "INSTALLED")
         self.bag_item.refresh_from_db()
-
-        self.assertEqual(
-            self.bag_item.status,
-            "INSTALLED",
-        )
-
-    # =========================================================
-    # 2. OTHER ENGINEER CANNOT USE THIS ENGINEER'S JOB
-    # =========================================================
+        self.assertEqual(self.bag_item.status, "INSTALLED")
 
     def test_other_engineer_cannot_use_another_engineers_job(self):
-
         response = self.other_client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": self.inventory_item.id,
-                "quantity": 1,
-            },
+            {"inventory_item": self.inventory_item.id, "quantity": 1},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
-        self.assertFalse(
-            JobPartUsed.objects.filter(
-                job=self.job,
-                inventory_item=self.inventory_item,
-            ).exists()
-        )
-
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(JobPartUsed.objects.filter(job=self.job, inventory_item=self.inventory_item).exists())
         self.inventory_item.refresh_from_db()
-
-        self.assertEqual(
-            self.inventory_item.status,
-            "ISSUED",
-        )
-
-    # =========================================================
-    # 3. ENGINEER CANNOT USE PART FROM ANOTHER ENGINEER'S BAG
-    # =========================================================
+        self.assertEqual(self.inventory_item.status, "ISSUED")
 
     def test_engineer_cannot_use_other_engineers_part(self):
-
         other_inventory = InventoryItem.objects.create(
             purchase_item=self.purchase_item,
             part=self.part,
             serial_number="JOB-TEST-SERIAL-002",
             status="ISSUED",
         )
-
         EngineerBagItem.objects.create(
             engineer=self.other_engineer,
             inventory_item=other_inventory,
             status="ISSUED",
         )
-
         response = self.client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": other_inventory.id,
-                "quantity": 1,
-            },
+            {"inventory_item": other_inventory.id, "quantity": 1},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            400,
-        )
-
-        self.assertFalse(
-            JobPartUsed.objects.filter(
-                job=self.job,
-                inventory_item=other_inventory,
-            ).exists()
-        )
-
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(JobPartUsed.objects.filter(job=self.job, inventory_item=other_inventory).exists())
         other_inventory.refresh_from_db()
-
-        self.assertEqual(
-            other_inventory.status,
-            "ISSUED",
-        )
-
-    # =========================================================
-    # 4. IN-STOCK PART CANNOT BE USED DIRECTLY
-    # =========================================================
+        self.assertEqual(other_inventory.status, "ISSUED")
 
     def test_in_stock_part_cannot_be_used(self):
-
         stock_item = InventoryItem.objects.create(
             purchase_item=self.purchase_item,
             part=self.part,
             serial_number="JOB-TEST-STOCK-001",
             status="IN_STOCK",
         )
-
         response = self.client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": stock_item.id,
-                "quantity": 1,
-            },
+            {"inventory_item": stock_item.id, "quantity": 1},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            400,
-        )
-
-        self.assertFalse(
-            JobPartUsed.objects.filter(
-                job=self.job,
-                inventory_item=stock_item,
-            ).exists()
-        )
-
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(JobPartUsed.objects.filter(job=self.job, inventory_item=stock_item).exists())
         stock_item.refresh_from_db()
-
-        self.assertEqual(
-            stock_item.status,
-            "IN_STOCK",
-        )
-
-    # =========================================================
-    # 5. SERIALIZED PART CANNOT BE USED WITH QUANTITY > 1
-    # =========================================================
+        self.assertEqual(stock_item.status, "IN_STOCK")
 
     def test_serialized_part_quantity_cannot_exceed_one(self):
-
         response = self.client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": self.inventory_item.id,
-                "quantity": 2,
-            },
+            {"inventory_item": self.inventory_item.id, "quantity": 2},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            400,
-        )
-
-        self.assertFalse(
-            JobPartUsed.objects.filter(
-                job=self.job,
-                inventory_item=self.inventory_item,
-            ).exists()
-        )
-
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(JobPartUsed.objects.filter(job=self.job, inventory_item=self.inventory_item).exists())
         self.inventory_item.refresh_from_db()
-
-        self.assertEqual(
-            self.inventory_item.status,
-            "ISSUED",
-        )
-
-    # =========================================================
-    # 6. SAME PHYSICAL PART CANNOT BE USED TWICE
-    # =========================================================
+        self.assertEqual(self.inventory_item.status, "ISSUED")
 
     def test_same_physical_part_cannot_be_used_twice(self):
-
         first_response = self.client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": self.inventory_item.id,
-                "quantity": 1,
-            },
+            {"inventory_item": self.inventory_item.id, "quantity": 1},
             format="json",
         )
-
-        self.assertEqual(
-            first_response.status_code,
-            201,
-        )
-
+        self.assertEqual(first_response.status_code, 201)
         second_response = self.client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": self.inventory_item.id,
-                "quantity": 1,
-            },
+            {"inventory_item": self.inventory_item.id, "quantity": 1},
             format="json",
         )
-
-        self.assertEqual(
-            second_response.status_code,
-            400,
-        )
-
-        self.assertEqual(
-            JobPartUsed.objects.filter(
-                inventory_item=self.inventory_item,
-            ).count(),
-            1,
-        )
-
-    # =========================================================
-    # 7. PART ALREADY USED BY ANOTHER JOB CANNOT BE REUSED
-    # =========================================================
+        self.assertEqual(second_response.status_code, 400)
+        self.assertEqual(JobPartUsed.objects.filter(inventory_item=self.inventory_item).count(), 1)
 
     def test_part_used_by_another_job_cannot_be_reused(self):
-
-        JobPartUsed.objects.create(
-            job=self.other_job,
-            inventory_item=self.inventory_item,
-            quantity=1,
-        )
-
+        JobPartUsed.objects.create(job=self.other_job, inventory_item=self.inventory_item, quantity=1)
         self.inventory_item.status = "INSTALLED"
-
-        self.inventory_item.save(
-            update_fields=["status"]
-        )
-
+        self.inventory_item.save(update_fields=["status"])
         self.bag_item.status = "INSTALLED"
-
-        self.bag_item.save(
-            update_fields=["status"]
-        )
-
+        self.bag_item.save(update_fields=["status"])
         response = self.client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": self.inventory_item.id,
-                "quantity": 1,
-            },
+            {"inventory_item": self.inventory_item.id, "quantity": 1},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            400,
-        )
-
-        self.assertEqual(
-            JobPartUsed.objects.filter(
-                inventory_item=self.inventory_item,
-            ).count(),
-            1,
-        )
-
-    # =========================================================
-    # 8. SUCCESSFUL USE CREATES ACTIVITY LOG
-    # =========================================================
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(JobPartUsed.objects.filter(inventory_item=self.inventory_item).count(), 1)
 
     def test_successful_use_creates_activity_log(self):
-
         response = self.client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": self.inventory_item.id,
-                "quantity": 1,
-                "remarks": "Security audit test",
-            },
+            {"inventory_item": self.inventory_item.id, "quantity": 1, "remarks": "Security audit test"},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            201,
-        )
-
-        self.assertTrue(
-            JobActivityLog.objects.filter(
-                job=self.job,
-                engineer=self.engineer,
-                activity="Part Installed",
-            ).exists()
-        )
-
-    # =========================================================
-    # 9. SUCCESSFUL USE CREATES INVENTORY AUDIT
-    # =========================================================
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(JobActivityLog.objects.filter(job=self.job, engineer=self.engineer, activity="Part Installed").exists())
 
     def test_successful_use_creates_inventory_audit(self):
-
         response = self.client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": self.inventory_item.id,
-                "quantity": 1,
-            },
+            {"inventory_item": self.inventory_item.id, "quantity": 1},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            201,
-        )
-
-        audit = InventoryAuditLog.objects.filter(
-            inventory_item=self.inventory_item,
-            job=self.job,
-            action="INSTALLED",
-        ).first()
-
-        self.assertIsNotNone(
-            audit
-        )
-
-        self.assertEqual(
-            audit.engineer,
-            self.engineer,
-        )
-
-        self.assertEqual(
-            audit.performed_by,
-            self.engineer_user,
-        )
-
-        self.assertEqual(
-            audit.old_status,
-            "ISSUED",
-        )
-
-        self.assertEqual(
-            audit.new_status,
-            "INSTALLED",
-        )
-
-    # =========================================================
-    # 10. FAILED SECURITY ATTEMPT DOES NOT CHANGE INVENTORY
-    # =========================================================
+        self.assertEqual(response.status_code, 201)
+        audit = InventoryAuditLog.objects.filter(inventory_item=self.inventory_item, job=self.job, action="INSTALLED").first()
+        self.assertIsNotNone(audit)
+        self.assertEqual(audit.engineer, self.engineer)
+        self.assertEqual(audit.performed_by, self.engineer_user)
+        self.assertEqual(audit.old_status, "ISSUED")
+        self.assertEqual(audit.new_status, "INSTALLED")
 
     def test_failed_security_attempt_does_not_change_inventory(self):
-
         response = self.other_client.post(
             self.parts_url(self.job),
-            {
-                "inventory_item": self.inventory_item.id,
-                "quantity": 1,
-            },
+            {"inventory_item": self.inventory_item.id, "quantity": 1},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
+        self.assertEqual(response.status_code, 404)
         self.inventory_item.refresh_from_db()
-
-        self.assertEqual(
-            self.inventory_item.status,
-            "ISSUED",
-        )
-
+        self.assertEqual(self.inventory_item.status, "ISSUED")
         self.bag_item.refresh_from_db()
-
-        self.assertEqual(
-            self.bag_item.status,
-            "ISSUED",
-        )
-
-        self.assertFalse(
-            JobPartUsed.objects.filter(
-                job=self.job,
-                inventory_item=self.inventory_item,
-            ).exists()
-        )
-
-    # =========================================================
-    # 12. JOB CANNOT COMPLETE WITHOUT PARTS
-    # =========================================================
+        self.assertEqual(self.bag_item.status, "ISSUED")
+        self.assertFalse(JobPartUsed.objects.filter(job=self.job, inventory_item=self.inventory_item).exists())
 
     def test_job_cannot_complete_without_parts(self):
-
-        with self.assertRaisesMessage(
-            ValueError,
-            "Cannot complete job: parts have not been scanned.",
-        ):
-            change_job_status(
-                self.job,
-                "COMPLETED",
-            )
-
+        with self.assertRaisesMessage(ValueError, "Cannot complete job: parts have not been scanned."):
+            change_job_status(self.job, "COMPLETED")
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "IN_PROGRESS",
-        )
-
-    # =========================================================
-    # 13. JOB CANNOT COMPLETE WITHOUT INSTALLATION
-    # =========================================================
+        self.assertEqual(self.job.status, "IN_PROGRESS")
 
     def test_job_cannot_complete_without_installation(self):
-
-        JobPartUsed.objects.create(
-            job=self.job,
-            inventory_item=self.inventory_item,
-            quantity=1,
-        )
-
-        with self.assertRaisesMessage(
-            ValueError,
-            "Cannot complete job: installation details are missing.",
-        ):
-            change_job_status(
-                self.job,
-                "COMPLETED",
-            )
-
+        JobPartUsed.objects.create(job=self.job, inventory_item=self.inventory_item, quantity=1)
+        with self.assertRaisesMessage(ValueError, "Cannot complete job: installation details are missing."):
+            change_job_status(self.job, "COMPLETED")
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "IN_PROGRESS",
-        )
-
-    # =========================================================
-    # 14. JOB CANNOT COMPLETE WITHOUT AFTER PHOTO
-    # =========================================================
+        self.assertEqual(self.job.status, "IN_PROGRESS")
 
     def test_job_cannot_complete_without_after_photo(self):
-
-        JobPartUsed.objects.create(
-            job=self.job,
-            inventory_item=self.inventory_item,
-            quantity=1,
-        )
-
+        JobPartUsed.objects.create(job=self.job, inventory_item=self.inventory_item, quantity=1)
         Installation.objects.create(
             job=self.job,
             customer=self.customer,
@@ -742,35 +434,13 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             scheduled_date=self.job.scheduled_date,
             status="IN_PROGRESS",
         )
-
-        with self.assertRaisesMessage(
-            ValueError,
-            "Cannot complete job: after photo is missing.",
-        ):
-            change_job_status(
-                self.job,
-                "COMPLETED",
-            )
-
+        with self.assertRaisesMessage(ValueError, "Cannot complete job: after photo is missing."):
+            change_job_status(self.job, "COMPLETED")
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "IN_PROGRESS",
-        )
-
-    # =========================================================
-    # 15. JOB CANNOT COMPLETE WITHOUT OTP
-    # =========================================================
+        self.assertEqual(self.job.status, "IN_PROGRESS")
 
     def test_job_cannot_complete_without_otp(self):
-
-        JobPartUsed.objects.create(
-            job=self.job,
-            inventory_item=self.inventory_item,
-            quantity=1,
-        )
-
+        JobPartUsed.objects.create(job=self.job, inventory_item=self.inventory_item, quantity=1)
         Installation.objects.create(
             job=self.job,
             customer=self.customer,
@@ -780,46 +450,19 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             scheduled_date=self.job.scheduled_date,
             status="IN_PROGRESS",
         )
-
         JobMedia.objects.create(
             job=self.job,
             media_type="PHOTO",
-            file=SimpleUploadedFile(
-                "after.jpg",
-                b"fake-image",
-                content_type="image/jpeg",
-            ),
+            file=SimpleUploadedFile("after.jpg", b"fake-image", content_type="image/jpeg"),
             description="After Photo",
         )
-
-        with self.assertRaisesMessage(
-            ValueError,
-            "Cannot complete job: customer OTP is not verified.",
-        ):
-            change_job_status(
-                self.job,
-                "COMPLETED",
-            )
-
+        with self.assertRaisesMessage(ValueError, "Cannot complete job: customer OTP is not verified."):
+            change_job_status(self.job, "COMPLETED")
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "IN_PROGRESS",
-        )
-
-    # =========================================================
-    # 16. JOB CANNOT COMPLETE WITHOUT SIGNATURE
-    # =========================================================
+        self.assertEqual(self.job.status, "IN_PROGRESS")
 
     def test_job_cannot_complete_without_signature(self):
-
-        JobPartUsed.objects.create(
-            job=self.job,
-            inventory_item=self.inventory_item,
-            quantity=1,
-        )
-
+        JobPartUsed.objects.create(job=self.job, inventory_item=self.inventory_item, quantity=1)
         Installation.objects.create(
             job=self.job,
             customer=self.customer,
@@ -829,60 +472,21 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             scheduled_date=self.job.scheduled_date,
             status="IN_PROGRESS",
         )
-
         JobMedia.objects.create(
             job=self.job,
             media_type="PHOTO",
-            file=SimpleUploadedFile(
-                "after.jpg",
-                b"fake-image",
-                content_type="image/jpeg",
-            ),
+            file=SimpleUploadedFile("after.jpg", b"fake-image", content_type="image/jpeg"),
             description="After Photo",
         )
-
         self.job.otp_verified = True
-
-        self.job.save(
-            update_fields=["otp_verified"]
-        )
-
-        with self.assertRaisesMessage(
-            ValueError,
-            "Cannot complete job: customer signature is missing.",
-        ):
-            change_job_status(
-                self.job,
-                "COMPLETED",
-            )
-
+        self.job.save(update_fields=["otp_verified"])
+        with self.assertRaisesMessage(ValueError, "Cannot complete job: customer signature is missing."):
+            change_job_status(self.job, "COMPLETED")
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "IN_PROGRESS",
-        )
-
-    # =========================================================
-    # 17. JOB COMPLETES ONLY WHEN ALL REQUIREMENTS ARE MET
-    # =========================================================
+        self.assertEqual(self.job.status, "IN_PROGRESS")
 
     def test_job_completes_only_when_all_requirements_are_met(self):
-
-        # -----------------------------------------------------
-        # 1. Part scanned
-        # -----------------------------------------------------
-
-        JobPartUsed.objects.create(
-            job=self.job,
-            inventory_item=self.inventory_item,
-            quantity=1,
-        )
-
-        # -----------------------------------------------------
-        # 2. Installation details
-        # -----------------------------------------------------
-
+        JobPartUsed.objects.create(job=self.job, inventory_item=self.inventory_item, quantity=1)
         Installation.objects.create(
             job=self.job,
             customer=self.customer,
@@ -892,158 +496,51 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             scheduled_date=self.job.scheduled_date,
             status="IN_PROGRESS",
         )
-
-        # -----------------------------------------------------
-        # 3. After Photo
-        # -----------------------------------------------------
-
         JobMedia.objects.create(
             job=self.job,
             media_type="PHOTO",
-            file=SimpleUploadedFile(
-                "after.jpg",
-                b"fake-image",
-                content_type="image/jpeg",
-            ),
+            file=SimpleUploadedFile("after.jpg", b"fake-image", content_type="image/jpeg"),
             description="After Photo",
         )
-
-        # -----------------------------------------------------
-        # 4. Customer OTP verified
-        # -----------------------------------------------------
-
         self.job.otp_verified = True
-
-        self.job.save(
-            update_fields=["otp_verified"]
-        )
-
-        # -----------------------------------------------------
-        # 5. Customer Signature
-        # -----------------------------------------------------
-
+        self.job.save(update_fields=["otp_verified"])
         JobSignature.objects.create(
             job=self.job,
-            signature=SimpleUploadedFile(
-                "signature.png",
-                b"fake-signature",
-                content_type="image/png",
-            ),
+            signature=SimpleUploadedFile("signature.png", b"fake-signature", content_type="image/png"),
             customer_name="Security Test Customer",
         )
-
-        # -----------------------------------------------------
-        # 6. Completion should now succeed
-        # -----------------------------------------------------
-
-        completed_job = change_job_status(
-            self.job,
-            "COMPLETED",
-        )
-
-        self.assertEqual(
-            completed_job.status,
-            "COMPLETED",
-        )
-
-        self.assertIsNotNone(
-            completed_job.completed_at,
-        )
-
-        self.assertTrue(
-            JobActivityLog.objects.filter(
-                job=self.job,
-                engineer=self.engineer,
-                activity="Job Completed",
-            ).exists()
-        )
-
-    # =========================================================
-    # 18. INVALID COMPLETION STATUS TRANSITION
-    # =========================================================
+        completed_job = change_job_status(self.job, "COMPLETED")
+        self.assertEqual(completed_job.status, "COMPLETED")
+        self.assertIsNotNone(completed_job.completed_at)
+        self.assertTrue(JobActivityLog.objects.filter(job=self.job, engineer=self.engineer, activity="Job Completed").exists())
 
     def test_invalid_completion_status_transition_is_rejected(self):
-
         self.job.status = "ASSIGNED"
-        self.job.save(
-            update_fields=["status"]
-        )
-
-        with self.assertRaisesMessage(
-            ValueError,
-            "Cannot complete job: parts have not been scanned.",
-        ):
-            change_job_status(
-                self.job,
-                "COMPLETED",
-            )
-
+        self.job.save(update_fields=["status"])
+        with self.assertRaisesMessage(ValueError, "Cannot complete job: parts have not been scanned."):
+            change_job_status(self.job, "COMPLETED")
         self.job.refresh_from_db()
+        self.assertEqual(self.job.status, "ASSIGNED")
 
-        self.assertEqual(
-            self.job.status,
-            "ASSIGNED",
-        )
     def test_other_engineer_cannot_generate_otp_for_my_job(self):
-
         url = f"/api/jobs/{self.job.id}/generate-otp/"
-
-        response = self.other_client.post(
-            url,
-            {},
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
+        response = self.other_client.post(url, {}, format="json")
+        self.assertEqual(response.status_code, 404)
         self.job.refresh_from_db()
-
-        self.assertIsNone(
-            self.job.customer_otp,
-        )
-
+        self.assertIsNone(self.job.customer_otp)
 
     def test_other_engineer_cannot_verify_otp_for_my_job(self):
-
         self.job.customer_otp = "123456"
         self.job.otp_verified = False
-
-        self.job.save(
-            update_fields=[
-                "customer_otp",
-                "otp_verified",
-            ]
-        )
-
+        self.job.save(update_fields=["customer_otp", "otp_verified"])
         url = f"/api/jobs/{self.job.id}/verify-otp/"
-
-        response = self.other_client.post(
-            url,
-            {
-                "otp": "123456",
-            },
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
+        response = self.other_client.post(url, {"otp": "123456"}, format="json")
+        self.assertEqual(response.status_code, 404)
         self.job.refresh_from_db()
-
-        self.assertFalse(
-            self.job.otp_verified,
-        )
-
+        self.assertFalse(self.job.otp_verified)
 
     def test_other_engineer_cannot_upload_signature_for_my_job(self):
-
         url = f"/api/jobs/{self.job.id}/signature/"
-
         response = self.other_client.post(
             url,
             {
@@ -1059,973 +556,314 @@ class JobPartSecurityTests(JobPartSecurityFixtures, TestCase):
             },
             format="multipart",
         )
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
-        self.assertFalse(
-            JobSignature.objects.filter(
-                job=self.job,
-            ).exists()
-        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(JobSignature.objects.filter(job=self.job).exists())
 
     def test_correct_engineer_can_verify_correct_otp(self):
-
         self.job.customer_otp = "123456"
         self.job.otp_verified = False
         self.job.otp_created_at = timezone.now()
         self.job.otp_attempts = 0
-
-        self.job.save(
-            update_fields=[
-                "customer_otp",
-                "otp_verified",
-                "otp_created_at",
-                "otp_attempts",
-            ]
-        )
-
+        self.job.save(update_fields=["customer_otp", "otp_verified", "otp_created_at", "otp_attempts"])
         url = f"/api/jobs/{self.job.id}/verify-otp/"
-
-        response = self.client.post(
-            url,
-            {
-                "otp": "123456",
-            },
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            200,
-            msg=getattr(response, "data", None),
-        )
-
+        response = self.client.post(url, {"otp": "123456"}, format="json")
+        self.assertEqual(response.status_code, 200, msg=getattr(response, "data", None))
         self.job.refresh_from_db()
+        self.assertTrue(self.job.otp_verified)
 
-        self.assertTrue(
-            self.job.otp_verified,
-        )
-    
     def test_expired_otp_is_rejected(self):
-
         self.job.customer_otp = "123456"
         self.job.otp_verified = False
-        self.job.otp_created_at = (
-            timezone.now() - timedelta(minutes=6)
-        )
+        self.job.otp_created_at = timezone.now() - timedelta(minutes=6)
         self.job.otp_attempts = 0
-
-        self.job.save(
-            update_fields=[
-                "customer_otp",
-                "otp_verified",
-                "otp_created_at",
-                "otp_attempts",
-            ]
-        )
-
+        self.job.save(update_fields=["customer_otp", "otp_verified", "otp_created_at", "otp_attempts"])
         url = f"/api/jobs/{self.job.id}/verify-otp/"
-
-        response = self.client.post(
-            url,
-            {
-                "otp": "123456",
-            },
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            400,
-            msg=getattr(response, "data", None),
-        )
-
-        self.assertFalse(
-            response.data["success"]
-        )
-
-        self.assertEqual(
-            response.data["message"],
-            "OTP has expired. Please generate a new OTP.",
-        )
-
+        response = self.client.post(url, {"otp": "123456"}, format="json")
+        self.assertEqual(response.status_code, 400, msg=getattr(response, "data", None))
+        self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["message"], "OTP has expired. Please generate a new OTP.")
         self.job.refresh_from_db()
-
-        self.assertIsNone(
-            self.job.customer_otp
-        )
-
-        self.assertIsNone(
-            self.job.otp_created_at
-        )
-
-        self.assertEqual(
-            self.job.otp_attempts,
-            0,
-        )
+        self.assertIsNone(self.job.customer_otp)
+        self.assertIsNone(self.job.otp_created_at)
+        self.assertEqual(self.job.otp_attempts, 0)
 
     def test_otp_is_invalidated_after_max_failed_attempts(self):
-
         self.job.customer_otp = "123456"
         self.job.otp_verified = False
         self.job.otp_created_at = timezone.now()
         self.job.otp_attempts = 0
-
-        self.job.save(
-            update_fields=[
-                "customer_otp",
-                "otp_verified",
-                "otp_created_at",
-                "otp_attempts",
-            ]
-        )
-
+        self.job.save(update_fields=["customer_otp", "otp_verified", "otp_created_at", "otp_attempts"])
         url = f"/api/jobs/{self.job.id}/verify-otp/"
-
-        for attempt in range(5):
-
-            response = self.client.post(
-                url,
-                {
-                    "otp": "999999",
-                },
-                format="json",
-            )
-
-            self.assertEqual(
-                response.status_code,
-                400,
-                msg=getattr(response, "data", None),
-            )
-
+        for _attempt in range(5):
+            response = self.client.post(url, {"otp": "999999"}, format="json")
+            self.assertEqual(response.status_code, 400, msg=getattr(response, "data", None))
         self.job.refresh_from_db()
-
-        self.assertIsNone(
-            self.job.customer_otp
-        )
-
-        self.assertIsNone(
-            self.job.otp_created_at
-        )
-
-        self.assertEqual(
-            self.job.otp_attempts,
-            5,
-        )
-
-        self.assertFalse(
-            self.job.otp_verified
-        )
+        self.assertIsNone(self.job.customer_otp)
+        self.assertIsNone(self.job.otp_created_at)
+        self.assertEqual(self.job.otp_attempts, 5)
+        self.assertFalse(self.job.otp_verified)
 
     def test_verified_otp_cannot_be_reused(self):
-
         self.job.customer_otp = "123456"
         self.job.otp_verified = False
         self.job.otp_created_at = timezone.now()
         self.job.otp_attempts = 0
-
-        self.job.save(
-            update_fields=[
-                "customer_otp",
-                "otp_verified",
-                "otp_created_at",
-                "otp_attempts",
-            ]
-        )
-
+        self.job.save(update_fields=["customer_otp", "otp_verified", "otp_created_at", "otp_attempts"])
         url = f"/api/jobs/{self.job.id}/verify-otp/"
-
-        # First verification
-        response = self.client.post(
-            url,
-            {
-                "otp": "123456",
-            },
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            200,
-            msg=getattr(response, "data", None),
-        )
-
+        response = self.client.post(url, {"otp": "123456"}, format="json")
+        self.assertEqual(response.status_code, 200, msg=getattr(response, "data", None))
         self.job.refresh_from_db()
-
-        self.assertTrue(
-            self.job.otp_verified
-        )
-
-        # Same OTP must not work again
-        response = self.client.post(
-            url,
-            {
-                "otp": "123456",
-            },
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            400,
-            msg=getattr(response, "data", None),
-        )
-
-        self.assertFalse(
-            response.data["success"]
-        )
+        self.assertTrue(self.job.otp_verified)
+        response = self.client.post(url, {"otp": "123456"}, format="json")
+        self.assertEqual(response.status_code, 400, msg=getattr(response, "data", None))
+        self.assertFalse(response.data["success"])
 
     def test_generate_otp_never_returns_otp(self):
-
         url = f"/api/jobs/{self.job.id}/generate-otp/"
-
-        response = self.client.post(
-            url,
-            {},
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            200,
-        )
-
-        self.assertNotIn(
-            "otp",
-            response.data,
-        )
-
-        self.assertTrue(
-            response.data.get("success"),
-        )
-
+        response = self.client.post(url, {}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("otp", response.data)
+        self.assertTrue(response.data.get("success"))
         self.assertIn(
             response.data.get("message"),
-            {
-                "Customer OTP sent successfully.",
-                "OTP generated and available in the customer app.",
-            },
+            {"Customer OTP sent successfully.", "OTP generated and available in the customer app."},
         )
-
         self.job.refresh_from_db()
-
-        self.assertIsNotNone(
-            self.job.customer_otp,
-        )
-
-        self.assertEqual(
-            len(self.job.customer_otp),
-            6,
-        )
-
-        self.assertFalse(
-            self.job.otp_verified,
-        )
+        self.assertIsNotNone(self.job.customer_otp)
+        self.assertEqual(len(self.job.customer_otp), 6)
+        self.assertFalse(self.job.otp_verified)
 
     def test_other_engineer_cannot_change_my_job_status(self):
-
         url = f"/api/jobs/{self.job.id}/change-status/"
-
-        response = self.other_client.post(
-            url,
-            {
-                "status": "ACCEPTED",
-            },
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
+        response = self.other_client.post(url, {"status": "ACCEPTED"}, format="json")
+        self.assertEqual(response.status_code, 404)
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "IN_PROGRESS",
-        )
-
+        self.assertEqual(self.job.status, "IN_PROGRESS")
 
     def test_engineer_cannot_skip_job_status(self):
-
         self.job.status = "ASSIGNED"
-
-        self.job.save(
-            update_fields=["status"]
-        )
-
+        self.job.save(update_fields=["status"])
         url = f"/api/jobs/{self.job.id}/change-status/"
-
-        response = self.client.post(
-            url,
-            {
-                "status": "ARRIVED",
-            },
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            400,
-        )
-
+        response = self.client.post(url, {"status": "ARRIVED"}, format="json")
+        self.assertEqual(response.status_code, 400)
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "ASSIGNED",
-        )
-
+        self.assertEqual(self.job.status, "ASSIGNED")
 
     def test_engineer_cannot_move_completed_job_back(self):
-
         self.job.status = "COMPLETED"
-
-        self.job.save(
-            update_fields=["status"]
-        )
-
+        self.job.save(update_fields=["status"])
         url = f"/api/jobs/{self.job.id}/change-status/"
-
-        response = self.client.post(
-            url,
-            {
-                "status": "ACCEPTED",
-            },
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            400,
-        )
-
+        response = self.client.post(url, {"status": "ACCEPTED"}, format="json")
+        self.assertEqual(response.status_code, 400)
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "COMPLETED",
-        )
-
+        self.assertEqual(self.job.status, "COMPLETED")
 
     def test_engineer_can_follow_valid_status_sequence(self):
-
         self.job.status = "ASSIGNED"
-
-        self.job.save(
-            update_fields=["status"]
-        )
-
+        self.job.save(update_fields=["status"])
         url = f"/api/jobs/{self.job.id}/change-status/"
-
-        valid_sequence = [
-            "ACCEPTED",
-            "ON_THE_WAY",
-            "ARRIVED",
-            "IN_PROGRESS",
-        ]
-
+        valid_sequence = ["ACCEPTED", "ON_THE_WAY", "ARRIVED", "IN_PROGRESS"]
         for new_status in valid_sequence:
-
-            response = self.client.post(
-                url,
-                {
-                    "status": new_status,
-                },
-                format="json",
-            )
-
+            response = self.client.post(url, {"status": new_status}, format="json")
             self.assertEqual(
                 response.status_code,
                 200,
-                msg=(
-                    f"Expected 200 for "
-                    f"status {new_status}, "
-                    f"got {response.status_code}: "
-                    f"{getattr(response, 'data', None)}"
-                ),
+                msg=f"Expected 200 for status {new_status}, got {response.status_code}: {getattr(response, 'data', None)}",
             )
-
             self.job.refresh_from_db()
-
-            self.assertEqual(
-                self.job.status,
-                new_status,
-            )
+            self.assertEqual(self.job.status, new_status)
 
     def test_other_engineer_cannot_upload_media_to_my_job(self):
-
         url = f"/api/jobs/{self.job.id}/media/"
-
         response = self.other_client.post(
             url,
             {
                 "media_type": "PHOTO",
-                "file": SimpleUploadedFile(
-                    "fraud.jpg",
-                    b"fake-photo",
-                    content_type="image/jpeg",
-                ),
+                "file": SimpleUploadedFile("fraud.jpg", b"fake-photo", content_type="image/jpeg"),
                 "description": "Fraud attempt",
             },
             format="multipart",
         )
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
-        self.assertFalse(
-            JobMedia.objects.filter(
-                job=self.job,
-            ).exists()
-        )
-
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(JobMedia.objects.filter(job=self.job).exists())
 
     def test_correct_engineer_can_upload_media_to_own_job(self):
-
         url = f"/api/jobs/{self.job.id}/media/"
-
         response = self.client.post(
             url,
             {
                 "media_type": "PHOTO",
-                "file": SimpleUploadedFile(
-                    "after.jpg",
-                    b"fake-photo",
-                    content_type="image/jpeg",
-                ),
+                "file": SimpleUploadedFile("after.jpg", b"fake-photo", content_type="image/jpeg"),
                 "description": "After Photo",
             },
             format="multipart",
         )
-
-        self.assertEqual(
-            response.status_code,
-            201,
-        )
-
-        self.assertTrue(
-            JobMedia.objects.filter(
-                job=self.job,
-                media_type="PHOTO",
-                description="After Photo",
-            ).exists()
-        )
-
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(JobMedia.objects.filter(job=self.job, media_type="PHOTO", description="After Photo").exists())
 
     def test_other_engineer_cannot_upload_gps_to_my_job(self):
-
         url = f"/api/jobs/{self.job.id}/gps/"
-
         response = self.other_client.post(
             url,
-            {
-                "latitude": "28.6139390",
-                "longitude": "77.2090210",
-                "accuracy": "5.00",
-            },
+            {"latitude": "28.6139390", "longitude": "77.2090210", "accuracy": "5.00"},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
-        self.assertEqual(
-            self.job.gps_logs.count(),
-            0,
-        )
-
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.job.gps_logs.count(), 0)
 
     def test_correct_engineer_can_upload_gps_to_own_job(self):
-
         url = f"/api/jobs/{self.job.id}/gps/"
-
         response = self.client.post(
             url,
-            {
-                "latitude": "28.6139390",
-                "longitude": "77.2090210",
-                "accuracy": "5.00",
-            },
+            {"latitude": "28.6139390", "longitude": "77.2090210", "accuracy": "5.00"},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            201,
-        )
-
+        self.assertEqual(response.status_code, 201)
         gps = self.job.gps_logs.first()
-
-        self.assertIsNotNone(
-            gps,
-        )
-
-        self.assertEqual(
-            gps.latitude,
-            Decimal("28.6139390"),
-        )
-
-        self.assertEqual(
-            gps.longitude,
-            Decimal("77.2090210"),
-        )
+        self.assertIsNotNone(gps)
+        self.assertEqual(gps.latitude, Decimal("28.6139390"))
+        self.assertEqual(gps.longitude, Decimal("77.2090210"))
 
     def test_other_engineer_cannot_view_my_job_detail(self):
-
-        url = f"/api/jobs/{self.job.id}/"
-
-        response = self.other_client.get(url)
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
+        response = self.other_client.get(f"/api/jobs/{self.job.id}/")
+        self.assertEqual(response.status_code, 404)
 
     def test_my_jobs_does_not_expose_other_engineers_jobs(self):
-
-        url = "/api/jobs/my-jobs/"
-
-        response = self.client.get(url)
-
-        self.assertEqual(
-            response.status_code,
-            200,
-        )
-
-        job_ids = [
-            item["id"]
-            for item in response.data
-        ]
-
-        self.assertIn(
-            self.job.id,
-            job_ids,
-        )
-
+        response = self.client.get("/api/jobs/my-jobs/")
+        self.assertEqual(response.status_code, 200)
+        job_ids = [item["id"] for item in response.data]
+        self.assertIn(self.job.id, job_ids)
         if hasattr(self, "other_job"):
-            self.assertNotIn(
-                self.other_job.id,
-                job_ids,
-            )
-
+            self.assertNotIn(self.other_job.id, job_ids)
 
     def test_viewset_does_not_expose_other_engineers_job(self):
-
-        url = f"/api/jobs/{self.job.id}/"
-
-        response = self.other_client.get(url)
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
+        response = self.other_client.get(f"/api/jobs/{self.job.id}/")
+        self.assertEqual(response.status_code, 404)
 
     def test_other_engineer_cannot_search_my_job(self):
-
-        url = "/api/jobs/search/"
-
-        response = self.other_client.get(
-            url,
-            {
-                "q": self.job.job_id,
-            },
-        )
-
-        self.assertEqual(
-            response.status_code,
-            200,
-        )
-
-        returned_ids = [
-            item["id"]
-            for item in response.data
-        ]
-
-        self.assertNotIn(
-            self.job.id,
-            returned_ids,
-        )
-
+        response = self.other_client.get("/api/jobs/search/", {"q": self.job.job_id})
+        self.assertEqual(response.status_code, 200)
+        returned_ids = [item["id"] for item in response.data]
+        self.assertNotIn(self.job.id, returned_ids)
 
     def test_engineer_can_search_own_job(self):
-
-        url = "/api/jobs/search/"
-
-        response = self.client.get(
-            url,
-            {
-                "q": self.job.job_id,
-            },
-        )
-
-        self.assertEqual(
-            response.status_code,
-            200,
-        )
-
-        returned_ids = [
-            item["id"]
-            for item in response.data
-        ]
-
-        self.assertIn(
-            self.job.id,
-            returned_ids,
-        )
+        response = self.client.get("/api/jobs/search/", {"q": self.job.job_id})
+        self.assertEqual(response.status_code, 200)
+        returned_ids = [item["id"] for item in response.data]
+        self.assertIn(self.job.id, returned_ids)
 
     def test_other_engineer_cannot_accept_my_job(self):
-
         self.job.status = "ASSIGNED"
         self.job.save(update_fields=["status"])
-
-        url = f"/api/jobs/{self.job.id}/accept/"
-
-        response = self.other_client.post(
-            url,
-            {},
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            404,
-        )
-
+        response = self.other_client.post(f"/api/jobs/{self.job.id}/accept/", {}, format="json")
+        self.assertEqual(response.status_code, 404)
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "ASSIGNED",
-        )
-
-        self.assertIsNone(
-            self.job.accepted_at,
-        )
-
+        self.assertEqual(self.job.status, "ASSIGNED")
+        self.assertIsNone(self.job.accepted_at)
 
     def test_correct_engineer_can_accept_assigned_job(self):
-
-        # This test is specifically for accepting
-        # an ASSIGNED job.
-
         self.job.status = "ASSIGNED"
         self.job.accepted_at = None
-
-        self.job.save(
-            update_fields=[
-                "status",
-                "accepted_at",
-            ]
-        )
-
-        url = f"/api/jobs/{self.job.id}/accept/"
-
-        response = self.client.post(
-            url,
-            {},
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            200,
-            msg=getattr(response, "data", None),
-        )
-
+        self.job.save(update_fields=["status", "accepted_at"])
+        response = self.client.post(f"/api/jobs/{self.job.id}/accept/", {}, format="json")
+        self.assertEqual(response.status_code, 200, msg=getattr(response, "data", None))
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "ACCEPTED",
-        )
-
-        self.assertIsNotNone(
-            self.job.accepted_at,
-        )
-
+        self.assertEqual(self.job.status, "ACCEPTED")
+        self.assertIsNotNone(self.job.accepted_at)
 
     def test_accepting_job_creates_activity_log(self):
-
         self.job.status = "ASSIGNED"
         self.job.accepted_at = None
-
-        self.job.save(
-            update_fields=[
-                "status",
-                "accepted_at",
-            ]
-        )
-
-        JobActivityLog.objects.filter(
-            job=self.job,
-            activity="Job Accepted",
-        ).delete()
-
-        url = f"/api/jobs/{self.job.id}/accept/"
-
-        response = self.client.post(
-            url,
-            {},
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            200,
-        )
-
-        self.assertTrue(
-            JobActivityLog.objects.filter(
-                job=self.job,
-                engineer=self.job.engineer,
-                activity="Job Accepted",
-            ).exists()
-        )
-
+        self.job.save(update_fields=["status", "accepted_at"])
+        JobActivityLog.objects.filter(job=self.job, activity="Job Accepted").delete()
+        response = self.client.post(f"/api/jobs/{self.job.id}/accept/", {}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(JobActivityLog.objects.filter(job=self.job, engineer=self.job.engineer, activity="Job Accepted").exists())
 
     def test_cannot_accept_already_accepted_job(self):
-
         self.job.status = "ACCEPTED"
-
-        self.job.save(
-            update_fields=["status"]
-        )
-
-        url = f"/api/jobs/{self.job.id}/accept/"
-
-        response = self.client.post(
-            url,
-            {},
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            400,
-        )
-
+        self.job.save(update_fields=["status"])
+        response = self.client.post(f"/api/jobs/{self.job.id}/accept/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
         self.job.refresh_from_db()
-
-        self.assertEqual(
-            self.job.status,
-            "ACCEPTED",
-        )
+        self.assertEqual(self.job.status, "ACCEPTED")
 
     def test_unauthenticated_user_cannot_access_job_apis(self):
-
         client = APIClient()
-
         endpoints = [
-            (
-                "GET",
-                f"/api/jobs/{self.job.id}/",
-                None,
-            ),
-            (
-                "GET",
-                "/api/jobs/my-jobs/",
-                None,
-            ),
-            (
-                "GET",
-                "/api/jobs/search/?q=JOB",
-                None,
-            ),
-            (
-                "POST",
-                f"/api/jobs/{self.job.id}/accept/",
-                {},
-            ),
-            (
-                "POST",
-                f"/api/jobs/{self.job.id}/change-status/",
-                {
-                    "status": "ACCEPTED",
-                },
-            ),
-            (
-                "POST",
-                f"/api/jobs/{self.job.id}/gps/",
-                {
-                    "latitude": "28.6139390",
-                    "longitude": "77.2090210",
-                    "accuracy": "5.00",
-                },
-            ),
-            (
-                "POST",
-                f"/api/jobs/{self.job.id}/generate-otp/",
-                {},
-            ),
-            (
-                "POST",
-                f"/api/jobs/{self.job.id}/verify-otp/",
-                {
-                    "otp": "123456",
-                },
-            ),
+            ("GET", f"/api/jobs/{self.job.id}/", None),
+            ("GET", "/api/jobs/my-jobs/", None),
+            ("GET", "/api/jobs/search/?q=JOB", None),
+            ("POST", f"/api/jobs/{self.job.id}/accept/", {}),
+            ("POST", f"/api/jobs/{self.job.id}/change-status/", {"status": "ACCEPTED"}),
+            ("POST", f"/api/jobs/{self.job.id}/gps/", {"latitude": "28.6139390", "longitude": "77.2090210", "accuracy": "5.00"}),
+            ("POST", f"/api/jobs/{self.job.id}/generate-otp/", {}),
+            ("POST", f"/api/jobs/{self.job.id}/verify-otp/", {"otp": "123456"}),
         ]
-
         for method, url, data in endpoints:
-
             if method == "GET":
                 response = client.get(url)
             else:
-                response = client.post(
-                    url,
-                    data or {},
-                    format="json",
-                )
-
+                response = client.post(url, data or {}, format="json")
             self.assertEqual(
                 response.status_code,
                 401,
-                msg=(
-                    f"{method} {url} returned "
-                    f"{response.status_code} instead of 401. "
-                    f"Response: {getattr(response, 'data', None)}"
-                ),
+                msg=f"{method} {url} returned {response.status_code} instead of 401. Response: {getattr(response, 'data', None)}",
             )
 
     def test_successful_part_install_updates_inventory_and_bag(self):
-
         self.job.status = "IN_PROGRESS"
-        self.job.save(
-            update_fields=["status"]
-        )
-
+        self.job.save(update_fields=["status"])
         inventory_item = self.inventory_item
-
         bag_item = EngineerBagItem.objects.get(
             inventory_item=inventory_item,
             engineer=self.engineer,
             status="ISSUED",
         )
-
-        url = f"/api/jobs/{self.job.id}/parts/"
-
         response = self.client.post(
-            url,
-            {
-                "inventory_item": inventory_item.id,
-                "quantity": 1,
-                "remarks": "Installed during job",
-            },
+            f"/api/jobs/{self.job.id}/parts/",
+            {"inventory_item": inventory_item.id, "quantity": 1, "remarks": "Installed during job"},
             format="json",
         )
-
-        self.assertEqual(
-            response.status_code,
-            201,
-        )
-
+        self.assertEqual(response.status_code, 201)
         inventory_item.refresh_from_db()
         bag_item.refresh_from_db()
-
-        self.assertEqual(
-            inventory_item.status,
-            "INSTALLED",
-        )
-
-        self.assertEqual(
-            bag_item.status,
-            "INSTALLED",
-        )
-
-        self.assertIsNotNone(
-            bag_item.install_date,
-        )
-
-        self.assertTrue(
-            JobPartUsed.objects.filter(
-                job=self.job,
-                inventory_item=inventory_item,
-                quantity=1,
-            ).exists()
-        )
-
-        self.assertTrue(
-            InventoryAuditLog.objects.filter(
-                inventory_item=inventory_item,
-                job=self.job,
-                action="INSTALLED",
-                old_status="ISSUED",
-                new_status="INSTALLED",
-            ).exists()
-        )
-
-        self.assertTrue(
-            JobActivityLog.objects.filter(
-                job=self.job,
-                engineer=self.engineer,
-                activity="Part Installed",
-            ).exists()
-        )
+        self.assertEqual(inventory_item.status, "INSTALLED")
+        self.assertEqual(bag_item.status, "INSTALLED")
+        self.assertIsNotNone(bag_item.install_date)
+        self.assertTrue(JobPartUsed.objects.filter(job=self.job, inventory_item=inventory_item, quantity=1).exists())
+        self.assertTrue(InventoryAuditLog.objects.filter(
+            inventory_item=inventory_item,
+            job=self.job,
+            action="INSTALLED",
+            old_status="ISSUED",
+            new_status="INSTALLED",
+        ).exists())
+        self.assertTrue(JobActivityLog.objects.filter(job=self.job, engineer=self.engineer, activity="Part Installed").exists())
 
     def test_search_does_not_expose_other_engineers_job(self):
-
-        url = "/api/jobs/search/?q=" + self.job.job_id
-
-        response = self.other_client.get(url)
-
-        self.assertEqual(
-            response.status_code,
-            200,
-        )
-
+        response = self.other_client.get("/api/jobs/search/?q=" + self.job.job_id)
+        self.assertEqual(response.status_code, 200)
         results = response.data
-
         if isinstance(results, dict):
-            results = results.get(
-                "results",
-                []
-            )
-
-        returned_job_ids = [
-            item["job_id"]
-            for item in results
-        ]
-
-        self.assertNotIn(
-            self.job.job_id,
-            returned_job_ids,
-        )
+            results = results.get("results", [])
+        returned_job_ids = [item["job_id"] for item in results]
+        self.assertNotIn(self.job.job_id, returned_job_ids)
 
 
-class JobPartConcurrencyTests(
-    JobPartSecurityFixtures,
-    TransactionTestCase,
-):
+class JobPartConcurrencyTests(JobPartSecurityFixtures, TransactionTestCase):
 
     @skipIf(
-        settings.DATABASES["default"]["ENGINE"]
-        == "django.db.backends.sqlite3",
+        settings.DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3",
         "SQLite does not support this concurrency test reliably.",
     )
     def test_concurrent_install_same_part_only_one_succeeds(self):
-
         results = []
 
         def install_part():
-
             close_old_connections()
-
             client = APIClient()
-
-            client.force_authenticate(
-                user=self.engineer_user
-            )
-
+            client.force_authenticate(user=self.engineer_user)
             response = client.post(
                 self.parts_url(self.job),
                 {
@@ -2035,82 +873,40 @@ class JobPartConcurrencyTests(
                 },
                 format="json",
             )
-
-            results.append(
-                response.status_code
-            )
-
+            results.append(response.status_code)
             close_old_connections()
 
-        thread1 = threading.Thread(
-            target=install_part
-        )
-
-        thread2 = threading.Thread(
-            target=install_part
-        )
-
+        thread1 = threading.Thread(target=install_part)
+        thread2 = threading.Thread(target=install_part)
         thread1.start()
         thread2.start()
-
         thread1.join()
         thread2.join()
-
-        self.assertEqual(
-            len(results),
-            2,
-        )
-
-        # Exactly one request must succeed.
-        self.assertEqual(
-            results.count(201),
-            1,
-        )
-
-        # The second request must be rejected.
-        self.assertEqual(
-            results.count(400),
-            1,
-        )
-
-        # Only one physical usage record may exist.
-        self.assertEqual(
-            JobPartUsed.objects.filter(
-                inventory_item=self.inventory_item,
-            ).count(),
-            1,
-        )
-
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results.count(201), 1)
+        self.assertEqual(results.count(400), 1)
+        self.assertEqual(JobPartUsed.objects.filter(inventory_item=self.inventory_item).count(), 1)
         self.inventory_item.refresh_from_db()
-
-        self.assertEqual(
-            self.inventory_item.status,
-            "INSTALLED",
-        )
-
+        self.assertEqual(self.inventory_item.status, "INSTALLED")
         self.bag_item.refresh_from_db()
-
-        self.assertEqual(
-            self.bag_item.status,
-            "INSTALLED",
-        )
-
+        self.assertEqual(self.bag_item.status, "INSTALLED")
 
 
 class NonInstallationJobCompletionTests(JobPartSecurityFixtures, TestCase):
 
-    def test_service_job_can_complete_without_installation_artifacts(self):
+    def test_service_job_requires_field_work_proof(self):
         self.assertEqual(self.job.job_type, "SERVICE")
-        change_job_status(self.job, "COMPLETED")
+        with self.assertRaisesMessage(
+            ValueError,
+            "Cannot complete job: before photo is missing.",
+        ):
+            change_job_status(self.job, "COMPLETED")
         self.job.refresh_from_db()
-        self.assertEqual(self.job.status, "COMPLETED")
+        self.assertEqual(self.job.status, "IN_PROGRESS")
 
     def test_other_engineers_job_remains_private(self):
-        response = self.client.get(
-            reverse("job-detail", kwargs={"pk": self.other_job.pk})
-        )
+        response = self.client.get(reverse("job-detail", kwargs={"pk": self.other_job.pk}))
         self.assertEqual(response.status_code, 404)
-
 
 
 class JobOTPVisibilityTests(JobPartSecurityFixtures, TestCase):
@@ -2118,10 +914,8 @@ class JobOTPVisibilityTests(JobPartSecurityFixtures, TestCase):
     def setUp(self):
         super().setUp()
         User = get_user_model()
-
         self.engineer_user.role = "ENGINEER"
         self.engineer_user.save(update_fields=["role"])
-
         self.customer_user = User.objects.create_user(
             phone="7777700001",
             password="TestPassword123!",
@@ -2130,7 +924,6 @@ class JobOTPVisibilityTests(JobPartSecurityFixtures, TestCase):
         )
         self.customer.user = self.customer_user
         self.customer.save(update_fields=["user"])
-
         self.admin_user = User.objects.create_user(
             phone="9999900001",
             password="TestPassword123!",
@@ -2153,27 +946,16 @@ class JobOTPVisibilityTests(JobPartSecurityFixtures, TestCase):
             pincode="123456",
             ro_model="Security Test RO",
         )
-
         self.job.customer_otp = "654321"
         self.job.otp_created_at = timezone.now()
         self.job.otp_verified = False
         self.job.status = "IN_PROGRESS"
-        self.job.save(
-            update_fields=[
-                "customer_otp",
-                "otp_created_at",
-                "otp_verified",
-                "status",
-                "updated_at",
-            ]
-        )
+        self.job.save(update_fields=["customer_otp", "otp_created_at", "otp_verified", "status", "updated_at"])
 
     def test_customer_can_read_only_own_active_job_otp(self):
         client = APIClient()
         client.force_authenticate(self.customer_user)
-
         response = client.get(reverse("customer-active-job-otp"))
-
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["available"])
         self.assertEqual(response.data["otp"], "654321")
@@ -2182,52 +964,38 @@ class JobOTPVisibilityTests(JobPartSecurityFixtures, TestCase):
     def test_other_customer_cannot_read_this_job_otp(self):
         client = APIClient()
         client.force_authenticate(self.other_customer_user)
-
         response = client.get(reverse("customer-active-job-otp"))
-
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.data["available"])
 
     def test_admin_can_reveal_same_job_otp_and_event_is_audited(self):
         client = APIClient()
         client.force_authenticate(self.admin_user)
-
-        response = client.get(
-            reverse("admin-job-otp", kwargs={"pk": self.job.pk})
-        )
-
+        response = client.get(reverse("admin-job-otp", kwargs={"pk": self.job.pk}))
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["available"])
         self.assertEqual(response.data["otp"], "654321")
-        self.assertTrue(
-            AuthSecurityEvent.objects.filter(
-                user=self.admin_user,
-                event_type="JOB_OTP_ADMIN_VIEWED",
-                details__job_id=self.job.id,
-            ).exists()
-        )
+        self.assertTrue(AuthSecurityEvent.objects.filter(
+            user=self.admin_user,
+            event_type="JOB_OTP_ADMIN_VIEWED",
+            details__job_id=self.job.id,
+        ).exists())
 
     def test_engineer_cannot_use_admin_otp_endpoint(self):
-        response = self.client.get(
-            reverse("admin-job-otp", kwargs={"pk": self.job.pk})
-        )
+        response = self.client.get(reverse("admin-job-otp", kwargs={"pk": self.job.pk}))
         self.assertEqual(response.status_code, 403)
 
     def test_verified_or_expired_otp_is_not_shown(self):
         client = APIClient()
         client.force_authenticate(self.customer_user)
-
         self.job.otp_verified = True
         self.job.save(update_fields=["otp_verified", "updated_at"])
         verified = client.get(reverse("customer-active-job-otp"))
         self.assertEqual(verified.status_code, 200)
         self.assertFalse(verified.data["available"])
-
         self.job.otp_verified = False
         self.job.otp_created_at = timezone.now() - timedelta(minutes=6)
-        self.job.save(
-            update_fields=["otp_verified", "otp_created_at", "updated_at"]
-        )
+        self.job.save(update_fields=["otp_verified", "otp_created_at", "updated_at"])
         expired = client.get(reverse("customer-active-job-otp"))
         self.assertEqual(expired.status_code, 200)
         self.assertFalse(expired.data["available"])
@@ -2243,43 +1011,23 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
         self.job.save(update_fields=["status"])
         url = f"/api/jobs/{self.job.id}/change-status/"
         headers = {"HTTP_X_ARI_ACTION_ID": "status-retry-001"}
-
-        first = self.client.post(
-            url,
-            {"status": "ACCEPTED"},
-            format="json",
-            **headers,
-        )
-        second = self.client.post(
-            url,
-            {"status": "ACCEPTED"},
-            format="json",
-            **headers,
-        )
-
+        first = self.client.post(url, {"status": "ACCEPTED"}, format="json", **headers)
+        second = self.client.post(url, {"status": "ACCEPTED"}, format="json", **headers)
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, "ACCEPTED")
-        self.assertEqual(
-            ClientActionReceipt.objects.filter(
-                user=self.engineer_user,
-                action_id="status-retry-001",
-            ).count(),
-            1,
-        )
+        self.assertEqual(ClientActionReceipt.objects.filter(
+            user=self.engineer_user,
+            action_id="status-retry-001",
+        ).count(), 1)
 
     def test_gps_retry_with_same_action_id_creates_one_log(self):
         url = f"/api/jobs/{self.job.id}/gps/"
         headers = {"HTTP_X_ARI_ACTION_ID": "gps-retry-001"}
-        payload = {
-            "latitude": "27.1767000",
-            "longitude": "78.0081000",
-        }
-
+        payload = {"latitude": "27.1767000", "longitude": "78.0081000"}
         first = self.client.post(url, payload, format="json", **headers)
         second = self.client.post(url, payload, format="json", **headers)
-
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 201)
         self.assertEqual(JobGPSLog.objects.filter(job=self.job).count(), 1)
@@ -2287,17 +1035,12 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
     def test_media_retry_with_same_action_id_creates_one_row(self):
         url = f"/api/jobs/{self.job.id}/media/"
         headers = {"HTTP_X_ARI_ACTION_ID": "media-retry-001"}
-
         first = self.client.post(
             url,
             {
                 "media_type": "PHOTO",
                 "description": "After Photo",
-                "file": SimpleUploadedFile(
-                    "after.jpg",
-                    b"fake-image",
-                    content_type="image/jpeg",
-                ),
+                "file": SimpleUploadedFile("after.jpg", b"fake-image", content_type="image/jpeg"),
             },
             format="multipart",
             **headers,
@@ -2307,16 +1050,11 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
             {
                 "media_type": "PHOTO",
                 "description": "After Photo",
-                "file": SimpleUploadedFile(
-                    "after-again.jpg",
-                    b"fake-image-again",
-                    content_type="image/jpeg",
-                ),
+                "file": SimpleUploadedFile("after-again.jpg", b"fake-image-again", content_type="image/jpeg"),
             },
             format="multipart",
             **headers,
         )
-
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 201)
         self.assertEqual(JobMedia.objects.filter(job=self.job).count(), 1)
@@ -2324,7 +1062,6 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
     def test_signature_retry_with_same_action_id_creates_one_row(self):
         url = f"/api/jobs/{self.job.id}/signature/"
         headers = {"HTTP_X_ARI_ACTION_ID": "signature-retry-001"}
-
         first = self.client.post(
             url,
             {
@@ -2357,7 +1094,6 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
             format="multipart",
             **headers,
         )
-
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 201)
         self.assertEqual(JobSignature.objects.filter(job=self.job).count(), 1)
@@ -2368,7 +1104,6 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
         self.other_job.status = "ASSIGNED"
         self.other_job.engineer = self.engineer
         self.other_job.save(update_fields=["status", "engineer"])
-
         headers = {"HTTP_X_ARI_ACTION_ID": "shared-action-001"}
         first = self.client.post(
             f"/api/jobs/{self.job.id}/change-status/",
@@ -2382,20 +1117,14 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
             format="json",
             **headers,
         )
-
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 409)
 
-
     def test_same_action_id_cannot_cross_action_types(self):
         headers = {"HTTP_X_ARI_ACTION_ID": "cross-type-action-001"}
-
         first = self.client.post(
             f"/api/jobs/{self.job.id}/gps/",
-            {
-                "latitude": "27.1767000",
-                "longitude": "78.0081000",
-            },
+            {"latitude": "27.1767000", "longitude": "78.0081000"},
             format="json",
             **headers,
         )
@@ -2405,6 +1134,5 @@ class OfflineIdempotencyTests(JobPartSecurityFixtures, TestCase):
             format="json",
             **headers,
         )
-
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 409)
