@@ -103,11 +103,20 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
         ).exclude(status__in=["COMPLETED", "CANCELLED"]) | Job.objects.select_related(
             "customer", "engineer__user"
         ).filter(id__in=moved_jobs).exclude(status__in=["COMPLETED", "CANCELLED"])
+
+        # Once a complaint has a linked Job, the Job is the single execution
+        # event shown in the planner. Keeping the source complaint as another
+        # event would duplicate the same field visit and route stop.
         complaints = Complaint.objects.select_related("customer", "engineer__user").filter(
-            scheduled_date__date__range=(first, last), engineer__isnull=False
+            scheduled_date__date__range=(first, last),
+            engineer__isnull=False,
+            job__isnull=True,
         ).exclude(status__in=["RESOLVED", "CLOSED", "CANCELLED"]) | Complaint.objects.select_related(
             "customer", "engineer__user"
-        ).filter(id__in=moved_complaints).exclude(
+        ).filter(
+            id__in=moved_complaints,
+            job__isnull=True,
+        ).exclude(
             status__in=["RESOLVED", "CLOSED", "CANCELLED"]
         )
         customers = Customer.objects.select_related("assigned_engineer__user").filter(
