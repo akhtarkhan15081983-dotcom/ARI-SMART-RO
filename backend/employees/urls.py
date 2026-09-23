@@ -20,6 +20,7 @@ from .views import (
     EmployeeDeviceHealthAPIView,
     AdminDeviceHealthAPIView,
 )
+from .device_identity import EmployeeDeviceIdentityMigrationAPIView
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
 from .training import (
     TrainingDetailAPIView,
@@ -42,6 +43,7 @@ from .training import (
 
 urlpatterns = [
     path("employees/device-health/", EmployeeDeviceHealthAPIView.as_view(), name="employee-device-health"),
+    path("employees/device-identity/migrate/", EmployeeDeviceIdentityMigrationAPIView.as_view(), name="employee-device-identity-migrate"),
     path("employees/admin/device-health/", AdminDeviceHealthAPIView.as_view(), name="admin-device-health"),
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
     path(
@@ -81,7 +83,7 @@ urlpatterns = [
     path("employees/hrms/penalties/", EmployeePenaltyAPIView.as_view(), name="hrms-penalties"),
     path("employees/hrms/penalties/<int:penalty_id>/action/", EmployeePenaltyActionAPIView.as_view(), name="hrms-penalty-action"),
     path("employees/hrms/performance/", PerformanceReviewAPIView.as_view(), name="hrms-performance"),
-    path("employees/hrms/performance/<int:review_id>/action/", PerformanceReviewActionAPIView.as_view(), name="hrms-performance-action"),
+    path("employees/hrms/performance/<int:performance_id>/action/", PerformanceReviewActionAPIView.as_view(), name="hrms-performance-action"),
     path("employees/hrms/documents/", EmployeeDocumentComplianceAPIView.as_view(), name="hrms-documents"),
     path("employees/hrms/training/", TrainingListAPIView.as_view(), name="hrms-training"),
     path("employees/hrms/training/admin/courses/", AdminTrainingCourseAPIView.as_view(), name="hrms-training-admin-courses"),
