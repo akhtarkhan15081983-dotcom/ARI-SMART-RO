@@ -26,10 +26,9 @@ class InventoryWorkflowService {
       _rawList(await _getRaw('/products/models/'));
   Future<List<Map<String, dynamic>>> customers() async =>
       _rawList(await _getRaw('/customers/'));
-  Future<List<Map<String, dynamic>>> roAssets({String? status}) async {
-    final query = status == null || status.trim().isEmpty
-        ? ''
-        : '?status=${Uri.encodeQueryComponent(status.trim())}';
+  Future<List<Map<String, dynamic>>> roAssets({String status = 'ALL'}) async {
+    final value = status.trim().isEmpty ? 'ALL' : status.trim();
+    final query = '?status=${Uri.encodeQueryComponent(value)}';
     return _rawList(await _getRaw('/assets/$query'));
   }
   Future<Map<String, dynamic>> roSummary() async => Map<String, dynamic>.from(
