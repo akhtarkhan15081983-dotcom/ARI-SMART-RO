@@ -24,40 +24,64 @@ def _event(component, action, *, source_reference="", actor=None, remarks="", me
 
 
 def ensure_factory_bom(asset):
-    """Create the digital factory BOM once for a physical RO asset.
-
-    Serialized parts are created as scan-pending placeholders. Non-serialized
-    parts are immediately represented by quantity so every machine has a full
-    digital parts list even where there is no QR/serial on the physical part.
-    """
+    """Create a part-by-part Digital RO Passport from the model BOM."""
     standard_parts = asset.ro_model.standard_parts.select_related("part").all()
     for line in standard_parts:
         part = line.part
-        existing = ROAssetComponent.objects.filter(
-            asset=asset,
-            part=part,
-            source="FACTORY_BOM",
-            source_reference=f"MODEL:{asset.ro_model_id}",
-            status="ACTIVE",
-        ).exists()
-        if existing:
-            continue
-        component = ROAssetComponent.objects.create(
-            asset=asset,
-            part=part,
-            quantity=line.quantity,
-            source="FACTORY_BOM",
-            source_reference=f"MODEL:{asset.ro_model_id}",
-            scan_status="PENDING" if part.is_serialized else "NOT_REQUIRED",
-            notes=line.remarks,
-        )
-        _event(
-            component,
-            "CREATED",
-            source_reference=component.source_reference,
-            remarks="Created from RO model standard BOM.",
-            metadata={"mandatory": line.is_mandatory},
-        )
+        base_ref = f"MODEL:{asset.ro_model_id}:PART:{part.id}"
+        if part.is_serialized:
+            # Every serialized physical unit gets its own scan-pending passport row.
+            existing_count = ROAssetComponent.objects.filter(
+                asset=asset,
+                part=part,
+                source="FACTORY_BOM",
+                source_reference__startswith=base_ref,
+                status="ACTIVE",
+            ).count()
+            for position in range(existing_count + 1, line.quantity + 1):
+                source_reference = f"{base_ref}:UNIT:{position}"
+                component = ROAssetComponent.objects.create(
+                    asset=asset,
+                    part=part,
+                    quantity=1,
+                    source="FACTORY_BOM",
+                    source_reference=source_reference,
+                    scan_status="PENDING",
+                    notes=line.remarks,
+                )
+                _event(
+                    component,
+                    "CREATED",
+                    source_reference=source_reference,
+                    remarks="Serialized factory BOM unit created; QR/serial verification pending.",
+                    metadata={"mandatory": line.is_mandatory, "bom_unit": position},
+                )
+        else:
+            source_reference = base_ref
+            if ROAssetComponent.objects.filter(
+                asset=asset,
+                part=part,
+                source="FACTORY_BOM",
+                source_reference=source_reference,
+                status="ACTIVE",
+            ).exists():
+                continue
+            component = ROAssetComponent.objects.create(
+                asset=asset,
+                part=part,
+                quantity=line.quantity,
+                source="FACTORY_BOM",
+                source_reference=source_reference,
+                scan_status="NOT_REQUIRED",
+                notes=line.remarks,
+            )
+            _event(
+                component,
+                "CREATED",
+                source_reference=source_reference,
+                remarks="Non-scannable factory BOM quantity registered.",
+                metadata={"mandatory": line.is_mandatory},
+            )
 
 
 def _sync_used_part(*, asset, part, inventory_item, quantity, source, source_reference, actor=None, remarks=""):
@@ -68,8 +92,6 @@ def _sync_used_part(*, asset, part, inventory_item, quantity, source, source_ref
     if inventory_item is not None:
         serial = str(inventory_item.serial_number or "").strip()
 
-    # A service/install record with the same part represents the new current
-    # fitment. Preserve old rows as history instead of deleting them.
     previous = list(
         ROAssetComponent.objects.select_for_update().filter(
             asset=asset,
@@ -90,32 +112,37 @@ def _sync_used_part(*, asset, part, inventory_item, quantity, source, source_ref
             remarks=f"Superseded by {source.lower()} component record.",
         )
 
-    component = ROAssetComponent.objects.create(
-        asset=asset,
-        part=part,
-        inventory_item=inventory_item,
-        quantity=max(int(quantity or 1), 1),
-        serial_number=serial,
-        source=source,
-        source_reference=source_reference,
-        status="ACTIVE",
-        scan_status=(
-            "VERIFIED"
-            if part.is_serialized and serial
-            else "PENDING"
-            if part.is_serialized
-            else "NOT_REQUIRED"
-        ),
-        installed_by=actor,
-        notes=str(remarks or "")[:300],
-    )
-    _event(
-        component,
-        "SCAN_VERIFIED" if component.scan_status == "VERIFIED" else "CREATED",
-        source_reference=source_reference,
-        actor=actor,
-        remarks=remarks,
-    )
+    unit_count = max(int(quantity or 1), 1)
+    rows_to_create = unit_count if part.is_serialized else 1
+    for position in range(1, rows_to_create + 1):
+        component = ROAssetComponent.objects.create(
+            asset=asset,
+            part=part,
+            inventory_item=inventory_item if rows_to_create == 1 else None,
+            quantity=1 if part.is_serialized else unit_count,
+            serial_number=serial if rows_to_create == 1 else "",
+            source=source,
+            source_reference=(
+                source_reference if rows_to_create == 1 else f"{source_reference}:UNIT:{position}"
+            ),
+            status="ACTIVE",
+            scan_status=(
+                "VERIFIED"
+                if part.is_serialized and serial and rows_to_create == 1
+                else "PENDING"
+                if part.is_serialized
+                else "NOT_REQUIRED"
+            ),
+            installed_by=actor,
+            notes=str(remarks or "")[:300],
+        )
+        _event(
+            component,
+            "SCAN_VERIFIED" if component.scan_status == "VERIFIED" else "CREATED",
+            source_reference=component.source_reference,
+            actor=actor,
+            remarks=remarks,
+        )
 
 
 @receiver(post_save, sender=ROAsset)
