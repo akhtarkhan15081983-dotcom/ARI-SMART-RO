@@ -1,1 +1,1 @@
-from .asset import ROAsset
+from .asset import ROAsset, ROAssetMovement
