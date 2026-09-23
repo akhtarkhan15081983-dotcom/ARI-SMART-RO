@@ -8,10 +8,9 @@ import 'api_service.dart';
 
 class ProfileService {
   Future<ProfileModel> getProfile() async {
-    final token = await ApiService.getAccessToken();
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/employees/profile/"),
-      headers: {"Authorization": "Bearer $token"},
+      headers: await ApiService.authHeaders(),
     );
 
     if (response.statusCode == 200) {
@@ -24,12 +23,13 @@ class ProfileService {
     required String photoPath,
     required String deviceId,
   }) async {
-    final token = await ApiService.getAccessToken();
     final request = http.MultipartRequest(
       "POST",
       Uri.parse("${ApiService.baseUrl}/employees/face-enrollment/"),
     );
-    request.headers["Authorization"] = "Bearer $token";
+    final headers = await ApiService.authHeaders();
+    headers.removeWhere((key, _) => key.toLowerCase() == "content-type");
+    request.headers.addAll(headers);
     request.fields["device_id"] = deviceId;
     request.files.add(
       await http.MultipartFile.fromPath(
@@ -53,13 +53,9 @@ class ProfileService {
   }
 
   Future<void> updateProfile(Map<String, dynamic> data) async {
-    final token = await ApiService.getAccessToken();
     final response = await http.put(
       Uri.parse("${ApiService.baseUrl}/employees/profile/"),
-      headers: {
-        "Authorization": "Bearer $token",
-        "Content-Type": "application/json",
-      },
+      headers: await ApiService.authHeaders(),
       body: jsonEncode(data),
     );
     if (response.statusCode != 200) {
@@ -71,13 +67,9 @@ class ProfileService {
     required String oldPassword,
     required String newPassword,
   }) async {
-    final token = await ApiService.getAccessToken();
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/auth/change-password/"),
-      headers: {
-        "Authorization": "Bearer $token",
-        "Content-Type": "application/json",
-      },
+      headers: await ApiService.authHeaders(),
       body: jsonEncode({
         "old_password": oldPassword,
         "new_password": newPassword,
