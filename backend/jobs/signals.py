@@ -11,10 +11,12 @@ from .workflow_sync import ensure_complaint_job, ensure_service_job, sync_source
 
 @receiver(pre_save, sender=Complaint)
 def protect_complaint_completion(sender, instance, **kwargs):
-    if not instance.pk or instance.status not in {"RESOLVED", "CLOSED"}:
+    if instance.status not in {"RESOLVED", "CLOSED"}:
         return
+    if instance.pk is None:
+        raise ValidationError("Complaint cannot be created as resolved/closed; complete its secure Job workflow.")
     previous = Complaint.objects.filter(pk=instance.pk).only("status").first()
-    if previous is None or previous.status in {"RESOLVED", "CLOSED"}:
+    if previous is not None and previous.status in {"RESOLVED", "CLOSED"}:
         return
     if not instance.job_id:
         raise ValidationError("Complaint must be completed through its secure Job workflow.")
@@ -25,10 +27,12 @@ def protect_complaint_completion(sender, instance, **kwargs):
 
 @receiver(pre_save, sender=Service)
 def protect_service_completion(sender, instance, **kwargs):
-    if not instance.pk or instance.status != "COMPLETED":
+    if instance.status != "COMPLETED":
         return
+    if instance.pk is None:
+        raise ValidationError("Service cannot be created as completed; complete its secure Job workflow.")
     previous = Service.objects.filter(pk=instance.pk).only("status").first()
-    if previous is None or previous.status == "COMPLETED":
+    if previous is not None and previous.status == "COMPLETED":
         return
     if not instance.job_id:
         raise ValidationError("Service must be completed through its secure Job workflow.")
@@ -55,7 +59,4 @@ def job_saved(sender, instance, **kwargs):
 @receiver(post_save, sender=JobPartUsed)
 def invalidate_no_parts_declaration(sender, instance, created, **kwargs):
     if created:
-        JobActivityLog.objects.filter(
-            job=instance.job,
-            activity=NO_PARTS_ACTIVITY,
-        ).delete()
+        JobActivityLog.objects.filter(job=instance.job, activity=NO_PARTS_ACTIVITY).delete()
