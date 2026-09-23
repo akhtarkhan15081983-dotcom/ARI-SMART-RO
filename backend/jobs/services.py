@@ -41,6 +41,8 @@ def _has_no_parts_declaration(job):
 
 
 def _validate_field_work_completion(job):
+    if not _has_photo(job, "Before Photo"):
+        raise ValueError("Cannot complete job: before photo is missing.")
     if not (job.parts_used.exists() or _has_no_parts_declaration(job)):
         raise ValueError(
             "Cannot complete job: scan every used part or confirm that no part was used."
