@@ -1,62 +1,62 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_service.dart';
 
 class LiveLocationService {
-  final storage = const FlutterSecureStorage();
-
-  Timer? _timer;
-
-  bool _running = false;
+  static const Duration _trackingInterval = Duration(seconds: 30);
+  static Timer? _timer;
+  static bool _running = false;
+  static bool _sending = false;
 
   void startTracking() {
     if (_running) return;
 
     _running = true;
+    unawaited(sendCurrentLocation());
 
-    _timer = Timer.periodic(const Duration(seconds: 10), (_) async {
-      await sendCurrentLocation();
+    _timer?.cancel();
+    _timer = Timer.periodic(_trackingInterval, (_) {
+      unawaited(sendCurrentLocation());
     });
   }
 
   void stopTracking() {
     _timer?.cancel();
-
+    _timer = null;
     _running = false;
   }
 
   Future<void> sendCurrentLocation() async {
+    if (_sending) return;
+    _sending = true;
+
     try {
-      Position position = await Geolocator.getCurrentPosition(
+      final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-      );
+      ).timeout(const Duration(seconds: 15));
 
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/employees/live-location/"),
-
-        headers: await ApiService.authHeaders(),
-
-        body: jsonEncode({
-          "live_latitude": position.latitude,
-
-          "live_longitude": position.longitude,
-        }),
-      );
-
-      print("LIVE LOCATION : ${response.statusCode}");
-
-      print(response.body);
+      final response = await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/employees/live-location/'),
+            headers: await ApiService.authHeaders(),
+            body: jsonEncode({
+              'live_latitude': position.latitude,
+              'live_longitude': position.longitude,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 401) {
         stopTracking();
       }
-    } catch (e) {
-      print(e);
+    } catch (_) {
+      // Tracking is best-effort. The next scheduled update will retry.
+    } finally {
+      _sending = false;
     }
   }
 }
