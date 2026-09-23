@@ -123,3 +123,123 @@ class ROAssetMovement(models.Model):
 
     def __str__(self):
         return f"{self.asset.asset_id} - {self.action}"
+
+
+class ROAssetComponent(models.Model):
+    STATUS_CHOICES = [
+        ("ACTIVE", "Active / Installed"),
+        ("REPLACED", "Replaced"),
+        ("REMOVED", "Removed"),
+    ]
+    SOURCE_CHOICES = [
+        ("FACTORY_BOM", "Factory / Model BOM"),
+        ("INSTALLATION", "Installation"),
+        ("SERVICE", "Service Replacement"),
+        ("MANUAL", "Manual Correction"),
+    ]
+    SCAN_STATUS_CHOICES = [
+        ("NOT_REQUIRED", "Scan not required"),
+        ("PENDING", "Scan / serial verification pending"),
+        ("VERIFIED", "Serial / QR verified"),
+    ]
+
+    asset = models.ForeignKey(
+        ROAsset,
+        on_delete=models.CASCADE,
+        related_name="components",
+    )
+    part = models.ForeignKey(
+        "partmaster.PartMaster",
+        on_delete=models.PROTECT,
+        related_name="ro_asset_components",
+    )
+    inventory_item = models.OneToOneField(
+        "inventory.InventoryItem",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ro_asset_component",
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    serial_number = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    batch_number = models.CharField(max_length=100, blank=True, default="")
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="FACTORY_BOM")
+    source_reference = models.CharField(max_length=80, blank=True, default="", db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="ACTIVE")
+    scan_status = models.CharField(
+        max_length=20,
+        choices=SCAN_STATUS_CHOICES,
+        default="NOT_REQUIRED",
+    )
+    installed_at = models.DateTimeField(default=timezone.now)
+    removed_at = models.DateTimeField(null=True, blank=True)
+    installed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="installed_ro_components",
+    )
+    notes = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["part__name", "id"]
+        indexes = [
+            models.Index(fields=["asset", "status"]),
+            models.Index(fields=["asset", "scan_status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.asset.asset_id} - {self.part.code} - {self.status}"
+
+
+class ROAssetComponentEvent(models.Model):
+    ACTION_CHOICES = [
+        ("CREATED", "Component created"),
+        ("SCAN_VERIFIED", "Serial / QR verified"),
+        ("INSTALLATION_VERIFIED", "Verified at installation"),
+        ("REPLACED", "Component replaced"),
+        ("REMOVED", "Component removed"),
+        ("QUANTITY_CHANGED", "Quantity changed"),
+        ("NOTE", "Note"),
+    ]
+
+    asset = models.ForeignKey(
+        ROAsset,
+        on_delete=models.CASCADE,
+        related_name="component_events",
+    )
+    component = models.ForeignKey(
+        ROAssetComponent,
+        on_delete=models.PROTECT,
+        related_name="events",
+    )
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES)
+    part = models.ForeignKey(
+        "partmaster.PartMaster",
+        on_delete=models.PROTECT,
+        related_name="ro_component_events",
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    serial_number = models.CharField(max_length=100, blank=True, default="")
+    from_status = models.CharField(max_length=20, blank=True, default="")
+    to_status = models.CharField(max_length=20, blank=True, default="")
+    source_reference = models.CharField(max_length=80, blank=True, default="", db_index=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ro_component_events",
+    )
+    remarks = models.CharField(max_length=500, blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.asset.asset_id} - {self.part.code} - {self.action}"
