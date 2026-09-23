@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db import models
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
@@ -135,7 +137,7 @@ class AdminDeviceHealthAPIView(APIView):
                     "MISSING"
                     if employee.last_location_updated is None
                     else "LIVE"
-                    if now - employee.last_location_updated <= timezone.timedelta(seconds=90)
+                    if now - employee.last_location_updated <= timedelta(seconds=90)
                     else "STALE"
                 ),
                 "last_location_updated": employee.last_location_updated,
