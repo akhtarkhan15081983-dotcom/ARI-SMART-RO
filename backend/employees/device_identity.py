@@ -25,9 +25,11 @@ class EmployeeDeviceIdentityMigrationAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
+        # Lock only the employee row. Company is nullable, so joining it under
+        # SELECT ... FOR UPDATE would create an outer join that PostgreSQL rejects.
         employee = (
             EmployeeProfile.objects.select_for_update()
-            .select_related("user", "company")
+            .select_related("user")
             .filter(user=request.user)
             .first()
         )
