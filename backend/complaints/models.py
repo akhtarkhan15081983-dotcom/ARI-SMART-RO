@@ -8,11 +8,19 @@ from service.models import Service
 
 class Complaint(models.Model):
 
+    # ============================================================
+    # PRIORITY
+    # ============================================================
+
     PRIORITY_CHOICES = [
         ("NORMAL", "Normal"),
         ("URGENT", "Urgent"),
         ("EMERGENCY", "Emergency"),
     ]
+
+    # ============================================================
+    # STATUS
+    # ============================================================
 
     STATUS_CHOICES = [
         ("NEW", "New"),
@@ -22,6 +30,10 @@ class Complaint(models.Model):
         ("CLOSED", "Closed"),
         ("CANCELLED", "Cancelled"),
     ]
+
+    # ============================================================
+    # COMPLAINT TYPE
+    # ============================================================
 
     COMPLAINT_TYPE_CHOICES = [
         ("RO_NOT_WORKING", "RO Not Working"),
@@ -39,17 +51,29 @@ class Complaint(models.Model):
         ("OTHER", "Other"),
     ]
 
+    # ============================================================
+    # COMPLAINT ID
+    # ============================================================
+
     complaint_id = models.CharField(
         max_length=30,
         unique=True,
         blank=True,
     )
 
+    # ============================================================
+    # CUSTOMER
+    # ============================================================
+
     customer = models.ForeignKey(
         Customer,
         on_delete=models.PROTECT,
         related_name="complaints",
     )
+
+    # ============================================================
+    # ENGINEER
+    # ============================================================
 
     engineer = models.ForeignKey(
         EmployeeProfile,
@@ -59,13 +83,23 @@ class Complaint(models.Model):
         blank=True,
     )
 
+    # ============================================================
+    # COMPLAINT DETAILS
+    # ============================================================
+
     complaint_type = models.CharField(
         max_length=30,
         choices=COMPLAINT_TYPE_CHOICES,
         default="OTHER",
     )
 
-    description = models.TextField(blank=True)
+    description = models.TextField(
+        blank=True,
+    )
+
+    # ============================================================
+    # PRIORITY
+    # ============================================================
 
     priority = models.CharField(
         max_length=15,
@@ -73,13 +107,23 @@ class Complaint(models.Model):
         default="NORMAL",
     )
 
+    # ============================================================
+    # STATUS
+    # ============================================================
+
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default="NEW",
     )
 
-    complaint_date = models.DateTimeField(default=timezone.now)
+    # ============================================================
+    # DATES
+    # ============================================================
+
+    complaint_date = models.DateTimeField(
+        default=timezone.now,
+    )
 
     scheduled_date = models.DateTimeField(
         null=True,
@@ -91,8 +135,21 @@ class Complaint(models.Model):
         blank=True,
     )
 
-    engineer_remarks = models.TextField(blank=True)
-    resolution = models.TextField(blank=True)
+    # ============================================================
+    # ENGINEER WORK
+    # ============================================================
+
+    engineer_remarks = models.TextField(
+        blank=True,
+    )
+
+    resolution = models.TextField(
+        blank=True,
+    )
+
+    # ============================================================
+    # LOCATION
+    # ============================================================
 
     latitude = models.DecimalField(
         max_digits=10,
@@ -108,6 +165,10 @@ class Complaint(models.Model):
         blank=True,
     )
 
+    # ============================================================
+    # LINKED SERVICE
+    # ============================================================
+
     linked_service = models.ForeignKey(
         Service,
         on_delete=models.SET_NULL,
@@ -115,6 +176,10 @@ class Complaint(models.Model):
         null=True,
         blank=True,
     )
+
+    # ============================================================
+    # FIELD JOB
+    # ============================================================
 
     job = models.OneToOneField(
         "jobs.Job",
@@ -124,31 +189,77 @@ class Complaint(models.Model):
         blank=True,
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # ============================================================
+    # SYSTEM DATES
+    # ============================================================
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    # ============================================================
+    # AUTO COMPLAINT ID
+    # ============================================================
 
     def save(self, *args, **kwargs):
+
         if not self.complaint_id:
+
             year = timezone.now().year
+
             last = (
                 Complaint.objects
-                .filter(complaint_id__startswith=f"CMP-{year}")
+                .filter(
+                    complaint_id__startswith=
+                    f"CMP-{year}"
+                )
                 .order_by("id")
                 .last()
             )
+
             if last:
                 try:
-                    number = int(last.complaint_id.split("-")[-1]) + 1
-                except (ValueError, IndexError):
+                    number = (
+                        int(
+                            last.complaint_id
+                            .split("-")[-1]
+                        )
+                        + 1
+                    )
+                except (
+                    ValueError,
+                    IndexError,
+                ):
                     number = 1
             else:
                 number = 1
-            self.complaint_id = f"CMP-{year}-{number:06d}"
 
-        if self.status == "RESOLVED" and self.resolved_date is None:
+            self.complaint_id = (
+                f"CMP-{year}-{number:06d}"
+            )
+
+        # ========================================================
+        # AUTO RESOLVED DATE
+        # ========================================================
+
+        if (
+            self.status == "RESOLVED"
+            and self.resolved_date is None
+        ):
             self.resolved_date = timezone.now()
 
-        if self.status not in ["RESOLVED", "CLOSED"]:
+        # ========================================================
+        # CLEAR RESOLVED DATE IF REOPENED
+        # ========================================================
+
+        if self.status not in [
+            "RESOLVED",
+            "CLOSED",
+        ]:
             self.resolved_date = None
 
         super().save(*args, **kwargs)
