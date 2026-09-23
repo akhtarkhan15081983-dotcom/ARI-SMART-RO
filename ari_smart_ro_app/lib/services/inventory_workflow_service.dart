@@ -22,6 +22,24 @@ class InventoryWorkflowService {
   Future<List<Map<String, dynamic>>> parts() async =>
       _rawList(await _getRaw('/inventory/parts/'));
 
+  Future<List<Map<String, dynamic>>> roModels() async =>
+      _rawList(await _getRaw('/products/models/'));
+  Future<List<Map<String, dynamic>>> customers() async =>
+      _rawList(await _getRaw('/customers/'));
+  Future<List<Map<String, dynamic>>> roAssets({String? status}) async {
+    final query = status == null || status.trim().isEmpty
+        ? ''
+        : '?status=${Uri.encodeQueryComponent(status.trim())}';
+    return _rawList(await _getRaw('/assets/$query'));
+  }
+  Future<Map<String, dynamic>> roSummary() async => Map<String, dynamic>.from(
+    (await _get('/assets/workflow/summary/'))['summary'] as Map? ?? const {},
+  );
+  Future<List<Map<String, dynamic>>> roMovements({int? assetId}) async {
+    final query = assetId == null ? '' : '?asset_id=$assetId';
+    return _rawList(await _getRaw('/assets/workflow/movements/$query'));
+  }
+
   Future<void> review(int requestId, String action, String remarks) => _post(
     '/inventory/workflow/requests/$requestId/review/',
     {'action': action, 'remarks': remarks},
@@ -42,6 +60,57 @@ class InventoryWorkflowService {
   Future<void> createPurchase(Map<String, dynamic> payload) =>
       _post('/purchases/', payload, expected: const {201});
 
+  Future<int> receiveRoStock({
+    required int roModelId,
+    required List<String> serialNumbers,
+    String purchaseInvoice = '',
+    String? purchaseDate,
+    double purchasePrice = 0,
+  }) async {
+    final data = await _postData(
+      '/assets/workflow/receive/',
+      {
+        'ro_model': roModelId,
+        'serial_numbers': serialNumbers,
+        'purchase_invoice': purchaseInvoice,
+        if (purchaseDate != null && purchaseDate.isNotEmpty)
+          'purchase_date': purchaseDate,
+        'purchase_price': purchasePrice,
+      },
+      expected: const {201},
+    );
+    return (data['received'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<void> allocateRo({
+    required int assetId,
+    required int customerId,
+    required String deploymentType,
+    int? requestId,
+    String remarks = '',
+  }) => _post(
+    '/assets/workflow/$assetId/allocate/',
+    {
+      'customer_id': customerId,
+      'deployment_type': deploymentType,
+      if (requestId != null) 'request_id': requestId,
+      'remarks': remarks,
+    },
+    expected: const {200},
+  );
+
+  Future<void> returnRentalRo(int assetId, {String remarks = ''}) => _post(
+    '/assets/workflow/$assetId/return/',
+    {'remarks': remarks},
+    expected: const {200},
+  );
+
+  Future<void> restockRo(int assetId, {String remarks = ''}) => _post(
+    '/assets/workflow/$assetId/restock/',
+    {'remarks': remarks},
+    expected: const {200},
+  );
+
   Future<Map<String, dynamic>> analyzeInvoice(
     String imagePath,
     String ocrText,
@@ -51,6 +120,7 @@ class InventoryWorkflowService {
       Uri.parse('${ApiService.baseUrl}/purchases/invoice-scan/analyze/'),
     );
     request.headers.addAll(await ApiService.authHeaders());
+    request.headers.remove('Content-Type');
     request.fields['ocr_text'] = ocrText;
     request.files.add(
       await http.MultipartFile.fromPath('invoice_image', imagePath),
@@ -73,6 +143,7 @@ class InventoryWorkflowService {
       Uri.parse('${ApiService.baseUrl}/purchases/invoice-scan/confirm/'),
     );
     request.headers.addAll(await ApiService.authHeaders());
+    request.headers.remove('Content-Type');
     request.fields['ocr_text'] = ocrText;
     request.fields['payload'] = jsonEncode(payload);
     request.files.add(
@@ -183,7 +254,7 @@ class InventoryWorkflowService {
   List<Map<String, dynamic>> _rawList(dynamic data) {
     final rows = data is List
         ? data
-        : (data is Map ? data['results'] ?? const [] : const []);
+        : (data is Map ? data['results'] ?? data['items'] ?? const [] : const []);
     return (rows as List)
         .map((row) => Map<String, dynamic>.from(row as Map))
         .toList();
