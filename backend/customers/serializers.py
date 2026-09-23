@@ -79,344 +79,100 @@ class PublicCustomerRequestSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-# ============================================================
-# CUSTOMER SERIALIZER
-# ============================================================
-
 class CustomerSerializer(serializers.ModelSerializer):
-
-    # ----------------------------------------------------------
-    # RO MODEL NAME
-    # ----------------------------------------------------------
-    #
-    # Customer model me ro_model abhi CharField hai.
-    # Isliye kisi model_name relation ko access nahi karenge.
-    #
-
-    ro_model_name = serializers.CharField(
-        source="ro_model",
-        read_only=True,
-    )
-
-    # ----------------------------------------------------------
-    # ENGINEER NAME
-    # ----------------------------------------------------------
-
+    ro_model_name = serializers.CharField(source="ro_model", read_only=True)
     engineer_name = serializers.CharField(
         source="assigned_engineer.user.get_full_name",
         read_only=True,
         default="",
     )
-
     qr_payload = serializers.SerializerMethodField()
 
     def get_qr_payload(self, obj):
         return f"ARI-SMART-RO:CUSTOMER:{obj.customer_id}"
 
     class Meta:
-
         model = Customer
-
         fields = [
-
-            "id",
-
-            "customer_id",
-
-            "card_number",
-
-            "old_card_number",
-
-            "name",
-
-            "phone",
-
-            "alternate_phone",
-
-            "email",
-
-            "gender",
-
-            "address",
-
-            "area",
-
-            "city",
-
-            "state",
-
-            "pincode",
-
-            "latitude",
-
-            "longitude",
-
-            "ro_model",
-
-            "ro_model_name",
-
-            "installation_charge",
-
-            "monthly_rent",
-
-            "security_deposit",
-
-            "ownership_type",
-            "rent_to_purchase_date",
-            "rent_to_purchase_amount",
-            "rent_at_conversion",
-            "security_adjusted_at_conversion",
-            "rent_to_purchase_notes",
-            "deactivated_at",
-            "deactivation_reason",
-
-            "installation_date",
-
-            "assigned_engineer",
-
-            "engineer_name",
-
-            "qr_payload",
-
-            "is_active",
+            "id", "customer_id", "card_number", "old_card_number", "name", "phone",
+            "alternate_phone", "email", "gender", "address", "area", "city", "state",
+            "pincode", "latitude", "longitude", "ro_model", "ro_model_name",
+            "installation_charge", "monthly_rent", "security_deposit", "ownership_type",
+            "rent_to_purchase_date", "rent_to_purchase_amount", "rent_at_conversion",
+            "security_adjusted_at_conversion", "rent_to_purchase_notes", "deactivated_at",
+            "deactivation_reason", "installation_date", "assigned_engineer", "engineer_name",
+            "qr_payload", "is_active",
         ]
-
         read_only_fields = [
-            "id",
-            "customer_id",
-            "card_number",
-            "assigned_engineer",
-            "engineer_name",
-            "qr_payload",
-            "is_active",
-            "deactivated_at",
-            "deactivation_reason",
-            "ownership_type",
-            "rent_to_purchase_date",
-            "rent_to_purchase_amount",
-            "rent_at_conversion",
-            "security_adjusted_at_conversion",
-            "rent_to_purchase_notes",
+            "id", "customer_id", "card_number", "assigned_engineer", "engineer_name",
+            "qr_payload", "is_active", "deactivated_at", "deactivation_reason",
+            "ownership_type", "rent_to_purchase_date", "rent_to_purchase_amount",
+            "rent_at_conversion", "security_adjusted_at_conversion", "rent_to_purchase_notes",
         ]
 
 
-# ============================================================
-# WALK-IN CUSTOMER SERIALIZER
-# ============================================================
+class WalkInCustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = [
+            "id", "customer_id", "card_number", "name", "phone", "alternate_phone",
+            "address", "area", "city", "state", "pincode", "latitude", "longitude",
+            "ro_model", "installation_charge", "monthly_rent", "security_deposit",
+        ]
+        read_only_fields = ["id", "customer_id", "card_number"]
 
-class WalkInCustomerSerializer(
-    serializers.ModelSerializer
-):
+
+class CustomerProfileSerializer(serializers.ModelSerializer):
+    customer_id = serializers.CharField(read_only=True)
+    card_number = serializers.CharField(read_only=True)
+    phone = serializers.CharField(read_only=True)
+    installation_charge = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    monthly_rent = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    security_deposit = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    installation_date = serializers.DateField(read_only=True)
+    assigned_engineer = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
-
         model = Customer
-
         fields = [
-
-            "id",
-
-            "customer_id",
-
-            "card_number",
-
-            "name",
-
-            "phone",
-
-            "alternate_phone",
-
-            "address",
-
-            "area",
-
-            "city",
-
-            "state",
-
-            "pincode",
-
-            "latitude",
-
-            "longitude",
-
-            "ro_model",
-
-            "installation_charge",
-
-            "monthly_rent",
-
-            "security_deposit",
+            "id", "customer_id", "card_number", "name", "phone", "alternate_phone",
+            "email", "gender", "address", "area", "city", "state", "pincode",
+            "latitude", "longitude", "ro_model", "installation_charge", "monthly_rent",
+            "security_deposit", "installation_date", "assigned_engineer", "is_active",
         ]
-
         read_only_fields = [
-
-            "id",
-
-            "customer_id",
-
-            "card_number",
+            "id", "customer_id", "card_number", "phone", "installation_charge",
+            "monthly_rent", "security_deposit", "installation_date", "assigned_engineer",
         ]
 
-# ============================================================
-# CUSTOMER APP PROFILE SERIALIZER
-# ============================================================
-
-class CustomerProfileSerializer(
-    serializers.ModelSerializer
-):
-
-    customer_id = serializers.CharField(
-        read_only=True
-    )
-
-    card_number = serializers.CharField(
-        read_only=True
-    )
-
-    phone = serializers.CharField(
-        read_only=True
-    )
-
-    installation_charge = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
-    )
-
-    monthly_rent = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
-    )
-
-    security_deposit = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
-    )
-
-    installation_date = serializers.DateField(
-        read_only=True
-    )
-
-    assigned_engineer = serializers.PrimaryKeyRelatedField(
-        read_only=True
-    )
-
-    class Meta:
-
-        model = Customer
-
-        fields = [
-
-            "id",
-
-            "customer_id",
-
-            "card_number",
-
-            "name",
-
-            "phone",
-
-            "alternate_phone",
-
-            "email",
-
-            "gender",
-
-            "address",
-
-            "area",
-
-            "city",
-
-            "state",
-
-            "pincode",
-
-            "latitude",
-
-            "longitude",
-
-            "ro_model",
-
-            "installation_charge",
-
-            "monthly_rent",
-
-            "security_deposit",
-
-            "installation_date",
-
-            "assigned_engineer",
-
-            "is_active",
-        ]
-
-        read_only_fields = [
-
-            "id",
-
-            "customer_id",
-
-            "card_number",
-
-            "phone",
-
-            "installation_charge",
-
-            "monthly_rent",
-
-            "security_deposit",
-
-            "installation_date",
-
-            "assigned_engineer",
-        ]
-
-# ============================================================
-# CUSTOMER APP - MY RO SERIALIZER
-# ============================================================
 
 from assets.models.asset import ROAsset
+from assets.serializers import ROAssetComponentSerializer
 
 
 class MyROSerializer(serializers.ModelSerializer):
-
-    ro_model_name = serializers.CharField(
-        source="ro_model.model_name",
-        read_only=True,
-    )
-
-    ro_model_id = serializers.IntegerField(
-        source="ro_model.id",
-        read_only=True,
-    )
+    ro_model_name = serializers.CharField(source="ro_model.model_name", read_only=True)
+    ro_model_id = serializers.IntegerField(source="ro_model.id", read_only=True)
+    components = ROAssetComponentSerializer(many=True, read_only=True)
+    component_summary = serializers.SerializerMethodField()
 
     class Meta:
-
         model = ROAsset
-
         fields = [
-
-            "id",
-
-            "asset_id",
-
-            "serial_number",
-
-            "qr_code",
-
-            "status",
-
-            "ro_model_id",
-
-            "ro_model_name",
-
-            "purchase_date",
-
+            "id", "asset_id", "serial_number", "qr_code", "status", "deployment_type",
+            "ro_model_id", "ro_model_name", "purchase_date", "assigned_at",
+            "component_summary", "components",
         ]
-
         read_only_fields = fields
+
+    def get_component_summary(self, obj):
+        rows = list(obj.components.all())
+        active = [row for row in rows if row.status == "ACTIVE"]
+        return {
+            "active_parts": len(active),
+            "scan_required": sum(1 for row in active if row.scan_status in {"PENDING", "VERIFIED"}),
+            "scan_pending": sum(1 for row in active if row.scan_status == "PENDING"),
+            "scan_verified": sum(1 for row in active if row.scan_status == "VERIFIED"),
+            "non_scan": sum(1 for row in active if row.scan_status == "NOT_REQUIRED"),
+            "history_records": len(rows) - len(active),
+        }
