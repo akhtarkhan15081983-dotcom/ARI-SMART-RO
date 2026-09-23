@@ -6,6 +6,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
     dependencies = [
         ("assets", "0002_alter_roasset_status"),
+        ("customers", "0018_professional_calling_desk"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
