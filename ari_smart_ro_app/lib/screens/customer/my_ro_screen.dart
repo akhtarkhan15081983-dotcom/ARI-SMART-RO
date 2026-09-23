@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/customer_model.dart';
-import '../../services/customer_service.dart';
+import '../../services/digital_ro_service.dart';
 import '../../services/job_service.dart';
 
 class MyROScreen extends StatefulWidget {
@@ -12,690 +11,266 @@ class MyROScreen extends StatefulWidget {
 }
 
 class _MyROScreenState extends State<MyROScreen> {
-  final CustomerService _customerService = CustomerService();
-  final JobService _jobService = JobService();
+  final _digitalRo = const DigitalRoService();
+  final _jobService = JobService();
 
-  late Future<CustomerModel?> _customerFuture;
+  late Future<Map<String, dynamic>> _passportFuture;
+  late Future<Map<String, dynamic>> _profileFuture;
   late Future<Map<String, dynamic>> _otpFuture;
   late Future<Map<String, dynamic>> _engineerFuture;
 
   @override
   void initState() {
     super.initState();
+    _reload();
+  }
 
-    _customerFuture = _loadMyRO();
+  void _reload() {
+    _passportFuture = _digitalRo.getMyRoPassport();
+    _profileFuture = _digitalRo.getCustomerProfile();
     _otpFuture = _jobService.getCustomerActiveOTP();
     _engineerFuture = _jobService.getCustomerAssignedEngineer();
   }
 
-  // ============================================================
-  // LOAD CUSTOMER RO
-  // ============================================================
-
-  Future<CustomerModel?> _loadMyRO() async {
-    final customers = await _customerService.getCustomers();
-
-    if (customers.isEmpty) {
-      return null;
-    }
-
-    return customers.first;
-  }
-
-  // ============================================================
-  // REFRESH
-  // ============================================================
-
   Future<void> _refresh() async {
-    setState(() {
-      _customerFuture = _loadMyRO();
-      _otpFuture = _jobService.getCustomerActiveOTP();
-      _engineerFuture = _jobService.getCustomerAssignedEngineer();
-    });
-
-    await _customerFuture;
+    setState(_reload);
+    await Future.wait([_passportFuture, _profileFuture]);
   }
-
-  // ============================================================
-  // BUILD
-  // ============================================================
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("My RO"), centerTitle: true),
-
-      body: FutureBuilder<CustomerModel?>(
-        future: _customerFuture,
-
-        builder: (context, snapshot) {
-          // ======================================================
-          // LOADING
-          // ======================================================
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          // ======================================================
-          // ERROR
-          // ======================================================
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          title: const Text('My RO • Digital Passport'),
+          centerTitle: true,
+          actions: [
+            IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh_rounded)),
+          ],
+        ),
+        body: RefreshIndicator(
+          onRefresh: _refresh,
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: Future.wait([_profileFuture, _passportFuture]),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const ListView(
+                  physics: AlwaysScrollableScrollPhysics(),
+                  children: [SizedBox(height: 260), Center(child: CircularProgressIndicator())],
+                );
+              }
+              if (snapshot.hasError) {
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(24),
                   children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 60,
-                      color: Colors.red,
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    const Text(
-                      "Unable to load your RO details.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    Text(
-                      snapshot.error.toString(),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    ElevatedButton.icon(
-                      onPressed: _refresh,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text("Retry"),
-                    ),
+                    const SizedBox(height: 100),
+                    const Icon(Icons.error_outline_rounded, size: 64),
+                    const SizedBox(height: 16),
+                    const Text('Unable to load Digital RO Passport.', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    Text(snapshot.error.toString().replaceFirst('Exception: ', ''), textAlign: TextAlign.center),
                   ],
-                ),
-              ),
-            );
-          }
+                );
+              }
 
-          // ======================================================
-          // NO CUSTOMER
-          // ======================================================
-
-          final customer = snapshot.data;
-
-          if (customer == null) {
-            return RefreshIndicator(
-              onRefresh: _refresh,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 180),
-
-                  Icon(Icons.water_drop_outlined, size: 70, color: Colors.blue),
-
-                  SizedBox(height: 20),
-
-                  Center(
-                    child: Text(
-                      "No RO assigned to your account.",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(height: 10),
-
-                  Center(
-                    child: Text(
-                      "Pull down to refresh.",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          // ======================================================
-          // CUSTOMER DATA
-          // ======================================================
-
-          return RefreshIndicator(
-            onRefresh: _refresh,
-
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-
-              children: [
-                FutureBuilder<Map<String, dynamic>>(
-                  future: _engineerFuture,
-                  builder: (context, engineerSnapshot) {
-                    final data = engineerSnapshot.data;
-                    if (data == null || data['available'] != true) {
-                      return const SizedBox.shrink();
-                    }
-                    final engineer = Map<String, dynamic>.from(
-                      data['engineer'] as Map? ?? const {},
-                    );
-                    final photo = (engineer['photo'] ?? '').toString();
-                    final identityVerified =
-                        engineer['identity_verified'] == true &&
-                        engineer['active'] == true;
-                    return Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 18),
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: identityVerified
-                              ? Colors.green.withValues(alpha: .45)
-                              : Colors.orange.withValues(alpha: .45),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: .07),
-                            blurRadius: 12,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 34,
-                                backgroundImage:
-                                    photo.isNotEmpty ? NetworkImage(photo) : null,
-                                child: photo.isEmpty
-                                    ? const Icon(Icons.engineering, size: 32)
-                                    : null,
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'YOUR ARI ENGINEER',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.blue,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      (engineer['name'] ?? '').toString(),
-                                      style: const TextStyle(
-                                        fontSize: 19,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                    Text(
-                                      (engineer['job_title']
-                                                  ?.toString()
-                                                  .trim()
-                                                  .isNotEmpty ==
-                                              true
-                                          ? engineer['job_title']
-                                          : engineer['designation'])
-                                      .toString(),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Icon(
-                                identityVerified
-                                    ? Icons.verified_user_rounded
-                                    : Icons.warning_amber_rounded,
-                                color: identityVerified
-                                    ? Colors.green
-                                    : Colors.orange,
-                                size: 30,
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 28),
-                          _infoRow(
-                            'Employee ID',
-                            (engineer['employee_id'] ?? '').toString(),
-                            Icons.badge_outlined,
-                          ),
-                          _infoRow(
-                            'Job',
-                            "${data['job_number'] ?? ''} • ${data['job_type'] ?? ''}",
-                            Icons.work_outline,
-                          ),
-                          _infoRow(
-                            'Visit status',
-                            (data['job_status'] ?? '').toString().replaceAll('_', ' '),
-                            Icons.route_outlined,
-                          ),
-                          _infoRow(
-                            'Verification code',
-                            (engineer['verification_code'] ?? '').toString(),
-                            Icons.verified_outlined,
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: identityVerified
-                                  ? Colors.green.withValues(alpha: .08)
-                                  : Colors.orange.withValues(alpha: .08),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              identityVerified
-                                  ? 'Official ARI employee identity verified. Match the photo and Employee ID before sharing the service OTP.'
-                                  : 'Employee is assigned to your job, but identity verification is pending. Contact ARI Admin before sharing OTP if you are unsure.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: identityVerified
-                                    ? Colors.green.shade800
-                                    : Colors.orange.shade900,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-
-                FutureBuilder<Map<String, dynamic>>(
-                  future: _otpFuture,
-                  builder: (context, otpSnapshot) {
-                    final data = otpSnapshot.data;
-                    if (data == null || data['available'] != true) {
-                      return const SizedBox.shrink();
-                    }
-                    return Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 18),
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'SERVICE OTP',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            data['otp']?.toString() ?? '',
-                            style: const TextStyle(
-                              fontSize: 34,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 8,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            "Job ${data['job_number'] ?? ''} • Share this OTP only with your ARI engineer.",
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-
-                // ==================================================
-                // RO HEADER
-                // ==================================================
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF2196F3), Color(0xFF42A5F5)],
-
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-
-                    borderRadius: BorderRadius.circular(18),
-
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.water_drop,
-                        size: 70,
-                        color: Colors.white,
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      const Text(
-                        "MY RO SYSTEM",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-
-                      const SizedBox(height: 5),
-
-                      Text(
-                        customer.cardNumber,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // ==================================================
-                // CUSTOMER INFORMATION
-                // ==================================================
-                _sectionTitle("Customer Information", Icons.person),
-
-                _infoCard(
-                  children: [
-                    _infoRow(
-                      "Customer Name",
-                      customer.customerName,
-                      Icons.person_outline,
-                    ),
-
-                    _infoRow(
-                      "Customer ID",
-                      customer.customerId,
-                      Icons.badge_outlined,
-                    ),
-
-                    _infoRow("Phone", customer.phone, Icons.phone_outlined),
-                  ],
-                ),
-
-                const SizedBox(height: 18),
-
-                // ==================================================
-                // RO INFORMATION
-                // ==================================================
-                _sectionTitle("RO Information", Icons.water_drop_outlined),
-
-                _infoCard(
-                  children: [
-                    _infoRow(
-                      "Card Number",
-                      customer.cardNumber,
-                      Icons.credit_card,
-                    ),
-
-                    _infoRow(
-                      "RO Model",
-                      customer.roModel.isEmpty
-                          ? "Not Available"
-                          : customer.roModel,
-                      Icons.water,
-                    ),
-
-                    _infoRow(
-                      "Installation Charge",
-                      "₹${customer.installationCharge}",
-                      Icons.payments_outlined,
-                    ),
-
-                    _infoRow(
-                      "Monthly Rent",
-                      "₹${customer.monthlyRent}",
-                      Icons.currency_rupee,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 18),
-
-                // ==================================================
-                // ASSIGNED ENGINEER
-                // ==================================================
-                _sectionTitle("Service Engineer", Icons.engineering),
-
-                FutureBuilder<Map<String, dynamic>>(
-                  future: _engineerFuture,
-                  builder: (context, engineerSnapshot) {
-                    final data = engineerSnapshot.data;
-                    final available = data != null && data['available'] == true;
-                    return _infoCard(
-                      children: [
-                        _infoRow(
-                          "Engineer Assignment",
-                          available
-                              ? "Assigned • Verify using the official card above"
-                              : "No active engineer visit assigned",
-                          Icons.engineering,
-                        ),
-                      ],
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 18),
-
-                // ==================================================
-                // ADDRESS
-                // ==================================================
-                _sectionTitle("RO Location", Icons.location_on),
-
-                _infoCard(
-                  children: [
-                    _infoRow("Address", customer.address, Icons.home_outlined),
-
-                    _infoRow(
-                      "Area",
-                      customer.area.isEmpty ? "Not Available" : customer.area,
-                      Icons.location_city,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 18),
-
-                // ==================================================
-                // STATUS
-                // ==================================================
-                _sectionTitle("RO Status", Icons.check_circle),
-
-                Container(
-                  padding: const EdgeInsets.all(18),
-
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.08),
-
-                    borderRadius: BorderRadius.circular(14),
-
-                    border: Border.all(
-                      color: Colors.green.withValues(alpha: 0.3),
-                    ),
-                  ),
-
-                  child: const Row(
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green, size: 32),
-
-                      SizedBox(width: 12),
-
-                      Expanded(
+              final profile = snapshot.data![0];
+              final passport = snapshot.data![1];
+              final ros = (passport['ros'] as List<dynamic>? ?? const [])
+                  .map((e) => Map<String, dynamic>.from(e as Map))
+                  .toList();
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 36),
+                children: [
+                  _hero(profile, ros),
+                  const SizedBox(height: 14),
+                  _serviceSecurityCards(),
+                  const SizedBox(height: 18),
+                  if (ros.isEmpty)
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              "RO ACTIVE",
-                              style: TextStyle(
-                                color: Colors.green,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-
-                            SizedBox(height: 4),
-
-                            Text(
-                              "Your RO rental system is active.",
-                              style: TextStyle(color: Colors.grey),
-                            ),
+                            Icon(Icons.water_drop_outlined, size: 48),
+                            SizedBox(height: 10),
+                            Text('No physical RO asset is assigned yet.', textAlign: TextAlign.center),
                           ],
                         ),
                       ),
+                    )
+                  else
+                    ...ros.map(_roPassport),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+
+  Widget _hero(Map<String, dynamic> profile, List<Map<String, dynamic>> ros) {
+    final name = (profile['name'] ?? 'Customer').toString();
+    final card = (profile['card_number'] ?? '').toString();
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0C3B5D), Color(0xFF0891B2)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.water_drop_rounded, size: 62, color: Colors.white),
+          const SizedBox(height: 8),
+          const Text('ARI DIGITAL RO PASSPORT', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900, letterSpacing: .4)),
+          const SizedBox(height: 6),
+          Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          if (card.isNotEmpty) Text('Card $card', style: const TextStyle(color: Color(0xFFD5E6F0))),
+          const SizedBox(height: 8),
+          Text('${ros.length} physical RO ${ros.length == 1 ? 'unit' : 'units'} linked', style: const TextStyle(color: Colors.white70)),
+        ],
+      ),
+    );
+  }
+
+  Widget _serviceSecurityCards() => Column(
+        children: [
+          FutureBuilder<Map<String, dynamic>>(
+            future: _engineerFuture,
+            builder: (context, snapshot) {
+              final data = snapshot.data;
+              if (data == null || data['available'] != true) return const SizedBox.shrink();
+              final engineer = Map<String, dynamic>.from(data['engineer'] as Map? ?? const {});
+              final verified = engineer['identity_verified'] == true && engineer['active'] == true;
+              return Card(
+                child: ListTile(
+                  leading: CircleAvatar(child: Icon(verified ? Icons.verified_user_rounded : Icons.engineering_outlined)),
+                  title: Text((engineer['name'] ?? 'ARI Engineer').toString(), style: const TextStyle(fontWeight: FontWeight.w900)),
+                  subtitle: Text('${engineer['employee_id'] ?? ''} • ${data['job_status'] ?? ''}'),
+                  trailing: Icon(verified ? Icons.verified_rounded : Icons.warning_amber_rounded),
+                ),
+              );
+            },
+          ),
+          FutureBuilder<Map<String, dynamic>>(
+            future: _otpFuture,
+            builder: (context, snapshot) {
+              final data = snapshot.data;
+              if (data == null || data['available'] != true) return const SizedBox.shrink();
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.password_rounded, size: 32),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text('Service OTP • Job ${data['job_number'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                      Text((data['otp'] ?? '').toString(), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 4)),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 30),
-
-                // ==================================================
-                // REFRESH BUTTON
-                // ==================================================
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-
-                  child: ElevatedButton.icon(
-                    onPressed: _refresh,
-
-                    icon: const Icon(Icons.refresh),
-
-                    label: const Text("Refresh RO Details"),
-
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-
-                      foregroundColor: Colors.white,
-
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // ============================================================
-  // SECTION TITLE
-  // ============================================================
-
-  Widget _sectionTitle(String title, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.blue),
-
-          const SizedBox(width: 8),
-
-          Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              );
+            },
           ),
         ],
-      ),
-    );
-  }
+      );
 
-  // ============================================================
-  // INFO CARD
-  // ============================================================
+  Widget _roPassport(Map<String, dynamic> ro) {
+    final components = (ro['components'] as List<dynamic>? ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final active = components.where((e) => e['status'] == 'ACTIVE').toList();
+    final history = components.where((e) => e['status'] != 'ACTIVE').toList();
+    final summary = Map<String, dynamic>.from(ro['component_summary'] as Map? ?? const {});
 
-  Widget _infoCard({required List<Widget> children}) {
     return Card(
-      elevation: 3,
-
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-
+      margin: const EdgeInsets.only(bottom: 18),
       child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(children: children),
-      ),
-    );
-  }
-
-  // ============================================================
-  // INFO ROW
-  // ============================================================
-
-  Widget _infoRow(String title, String value, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
-
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-
-        children: [
-          Icon(icon, color: Colors.blue, size: 23),
-
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Column(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(color: Colors.grey, fontSize: 13),
-                ),
-
-                const SizedBox(height: 2),
-
-                Text(
-                  value.isEmpty ? "Not Available" : value,
-
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                const CircleAvatar(radius: 25, child: Icon(Icons.water_drop_outlined)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text((ro['ro_model_name'] ?? 'ARI RO').toString(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                      Text('${ro['asset_id'] ?? ''} • Serial ${ro['serial_number'] ?? ''}'),
+                      Text('${ro['deployment_type'] ?? ''} • ${ro['status'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+            const Divider(height: 28),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _chip('Active ${summary['active_parts'] ?? summary['active_records'] ?? active.length}', Icons.settings_outlined),
+                _chip('Scan pending ${summary['scan_pending'] ?? 0}', Icons.qr_code_scanner_rounded),
+                _chip('Verified ${summary['scan_verified'] ?? 0}', Icons.verified_outlined),
+                _chip('Non-scan ${summary['non_scan'] ?? 0}', Icons.format_list_numbered_rounded),
+              ],
+            ),
+            const SizedBox(height: 18),
+            const Text('CURRENT COMPONENTS', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: .5)),
+            const SizedBox(height: 8),
+            if (active.isEmpty)
+              const Text('Component passport is being prepared.')
+            else
+              ...active.map(_componentTile),
+            if (history.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text('Replacement / removal history (${history.length})', style: const TextStyle(fontWeight: FontWeight.w900)),
+                children: history.map(_componentTile).toList(),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
+
+  Widget _componentTile(Map<String, dynamic> part) {
+    final serialized = part['is_serialized'] == true;
+    final scan = (part['scan_status'] ?? '').toString();
+    final warranty = (part['warranty_status'] ?? '').toString();
+    final replacement = (part['replacement_status'] ?? '').toString();
+    final serial = (part['serial_number'] ?? part['inventory_serial'] ?? '').toString();
+    final quantity = part['quantity'] ?? 1;
+    final warning = scan == 'PENDING' || replacement == 'OVERDUE';
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        child: Icon(serialized ? Icons.qr_code_2_rounded : Icons.tune_rounded),
+      ),
+      title: Text((part['part_name'] ?? 'RO Part').toString(), style: const TextStyle(fontWeight: FontWeight.w800)),
+      subtitle: Text([
+        (part['part_code'] ?? '').toString(),
+        serialized ? (serial.isEmpty ? 'Serial pending' : 'Serial $serial') : 'Qty $quantity • no scan required',
+        if (warranty == 'IN_WARRANTY') 'Warranty till ${part['warranty_end_date']}',
+        if (warranty == 'EXPIRED') 'Warranty expired',
+        if (replacement == 'DUE_SOON') 'Replacement due ${part['replacement_due_date']}',
+        if (replacement == 'OVERDUE') 'Replacement overdue',
+      ].where((e) => e.isNotEmpty).join('\n')),
+      trailing: Icon(
+        warning ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded,
+        color: warning ? Colors.orange : Colors.green,
+      ),
+    );
+  }
+
+  Widget _chip(String label, IconData icon) => Chip(
+        avatar: Icon(icon, size: 17),
+        label: Text(label),
+      );
 }
