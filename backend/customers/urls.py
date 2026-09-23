@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .bulk_import import CustomerBulkImportAPIView, CustomerQRCodeAPIView
+from .rent_management_optimized import RentManagementAPIView
 from .views import (
     CustomerListAPIView,
     MyCustomersAPIView,
@@ -12,7 +13,6 @@ from .views import (
     WalkInCustomerAPIView,
     AssignCustomerAPIView,
     CustomerRentAPIView,
-    RentManagementAPIView,
     RentPaymentCreateAPIView,
     RentPaymentHistoryAPIView,
     CustomerProfileAPIView,
@@ -67,19 +67,11 @@ urlpatterns = [
         name="my-ro",
     ),
 
-    # ========================================================
-    # ENGINEER CUSTOMERS
-    # ========================================================
-
     path(
         "my-customers/",
         MyCustomersAPIView.as_view(),
         name="my-customers",
     ),
-
-    # ========================================================
-    # BULK CUSTOMER IMPORT
-    # ========================================================
 
     path(
         "bulk-import/",
@@ -87,19 +79,11 @@ urlpatterns = [
         name="customer-bulk-import",
     ),
 
-    # ========================================================
-    # CUSTOMER LIST
-    # ========================================================
-
     path(
         "",
         CustomerListAPIView.as_view(),
         name="customer-list",
     ),
-
-    # ========================================================
-    # CREATE CUSTOMER
-    # ========================================================
 
     path(
         "create/",
@@ -107,19 +91,11 @@ urlpatterns = [
         name="customer-create",
     ),
 
-    # ========================================================
-    # CUSTOMER QR
-    # ========================================================
-
     path(
         "<int:pk>/qr/",
         CustomerQRCodeAPIView.as_view(),
         name="customer-qr",
     ),
-
-    # ========================================================
-    # CUSTOMER DETAIL
-    # ========================================================
 
     path(
         "<int:pk>/",
@@ -127,19 +103,11 @@ urlpatterns = [
         name="customer-detail",
     ),
 
-    # ========================================================
-    # CUSTOMER SERVICE & PARTS HISTORY
-    # ========================================================
-
     path(
         "<int:pk>/service-history/",
         CustomerServiceHistoryAPIView.as_view(),
         name="customer-service-history",
     ),
-
-    # ========================================================
-    # CUSTOMER SEARCH
-    # ========================================================
 
     path(
         "search/",
@@ -147,19 +115,11 @@ urlpatterns = [
         name="customer-search",
     ),
 
-    # ========================================================
-    # CUSTOMER UPDATE
-    # ========================================================
-
     path(
         "<int:pk>/update/",
         CustomerUpdateAPIView.as_view(),
         name="customer-update",
     ),
-
-    # ========================================================
-    # WALK-IN CUSTOMER
-    # ========================================================
 
     path(
         "walk-in/",
@@ -167,19 +127,11 @@ urlpatterns = [
         name="walk_in_customer",
     ),
 
-    # ========================================================
-    # ASSIGN ENGINEER
-    # ========================================================
-
     path(
         "<int:pk>/assign/",
         AssignCustomerAPIView.as_view(),
         name="customer-assign",
     ),
-
-    # ========================================================
-    # CUSTOMER RENT & PAYMENT
-    # ========================================================
 
     path(
         "rent/",
@@ -187,20 +139,11 @@ urlpatterns = [
         name="customer-rent",
     ),
 
-    # ========================================================
-    # ADMIN / MANAGER / OFFICE
-    # RENT MANAGEMENT
-    # ========================================================
-
     path(
         "rent-management/",
         RentManagementAPIView.as_view(),
         name="rent-management",
     ),
-
-    # ========================================================
-    # OFFICE / ADMIN RENT PAYMENT
-    # ========================================================
 
     path(
         "rent-management/payment/",
