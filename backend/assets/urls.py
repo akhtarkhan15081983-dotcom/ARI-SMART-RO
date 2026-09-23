@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .passport_views import ROAssetPassportLookupAPIView
 from .views import (
     ROAssetAllocateAPIView,
     ROAssetListAPIView,
@@ -17,6 +18,7 @@ from .views import (
 
 urlpatterns = [
     path("", ROAssetListAPIView.as_view(), name="asset-list"),
+    path("passport/lookup/", ROAssetPassportLookupAPIView.as_view(), name="asset-passport-lookup"),
     path("workflow/summary/", ROAssetWorkflowSummaryAPIView.as_view(), name="asset-workflow-summary"),
     path("workflow/receive/", ROAssetReceiveAPIView.as_view(), name="asset-receive"),
     path("workflow/<int:asset_id>/qc/", ROAssetQCAPIView.as_view(), name="asset-qc"),
