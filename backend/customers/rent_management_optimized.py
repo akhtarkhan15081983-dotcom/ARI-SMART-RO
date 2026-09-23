@@ -16,6 +16,32 @@ from .rent_policy import RENT_GRACE_DAYS, rent_penalty
 from .views import _sync_current_rent_offer
 
 
+class InspectableStreamingHttpResponse(StreamingHttpResponse):
+    """Streaming response with lazy DRF-style ``data`` introspection.
+
+    Normal HTTP delivery remains streaming and memory bounded. The payload is
+    materialized only when in-process code (primarily tests) explicitly reads
+    ``response.data``; consumed chunks are then restored so the response can
+    still be iterated normally.
+    """
+
+    _data_cache = None
+
+    @property
+    def data(self):
+        if self._data_cache is None:
+            chunks = list(self.streaming_content)
+            self.streaming_content = iter(chunks)
+            payload = b"".join(
+                chunk
+                if isinstance(chunk, bytes)
+                else str(chunk).encode(self.charset or "utf-8")
+                for chunk in chunks
+            )
+            self._data_cache = json.loads(payload.decode(self.charset or "utf-8"))
+        return self._data_cache
+
+
 class RentManagementAPIView(APIView):
     """Memory-bounded rent management response preserving the existing API shape."""
 
@@ -169,7 +195,7 @@ class RentManagementAPIView(APIView):
                 )
             yield "]}"
 
-        response = StreamingHttpResponse(
+        response = InspectableStreamingHttpResponse(
             stream_json(),
             content_type="application/json; charset=utf-8",
         )
