@@ -3,4 +3,6 @@ from .asset import (
     ROAssetMovement,
     ROAssetComponent,
     ROAssetComponentEvent,
+    ROStockAudit,
+    ROStockAuditItem,
 )
