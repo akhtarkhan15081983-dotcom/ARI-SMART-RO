@@ -39,8 +39,11 @@ class ROAssetListAPIView(generics.ListAPIView):
 
     def get_queryset(self):
         queryset = ROAsset.objects.select_related("ro_model", "current_customer")
-        status_value = str(self.request.GET.get("status", "") or "").strip().upper()
-        if status_value:
+        # Backward compatibility: existing installation screens expect /assets/
+        # to return only currently available machines. The new stock console
+        # explicitly requests status=ALL when it needs the full lifecycle list.
+        status_value = str(self.request.GET.get("status", "WAREHOUSE") or "WAREHOUSE").strip().upper()
+        if status_value != "ALL":
             queryset = queryset.filter(status=status_value)
         keyword = str(self.request.GET.get("q", "") or "").strip()
         if keyword:
