@@ -178,6 +178,18 @@ class Complaint(models.Model):
     )
 
     # ============================================================
+    # FIELD JOB
+    # ============================================================
+
+    job = models.OneToOneField(
+        "jobs.Job",
+        on_delete=models.SET_NULL,
+        related_name="complaint_source",
+        null=True,
+        blank=True,
+    )
+
+    # ============================================================
     # SYSTEM DATES
     # ============================================================
 

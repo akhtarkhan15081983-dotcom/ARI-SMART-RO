@@ -1,27 +1,27 @@
 class JobModel {
   final int id;
   final String jobId;
-
   final String customerName;
   final String customerPhone;
   final String customerAddress;
-
   final String phone;
   final String address;
   final String area;
   final String city;
-
   final String assetId;
   final String engineerName;
-
   final double latitude;
   final double longitude;
-
   final String jobType;
   final String priority;
   final String status;
   final String scheduledDate;
   final String remarks;
+  final String partsDecision;
+  final bool beforePhotoUploaded;
+  final bool afterPhotoUploaded;
+  final bool otpVerified;
+  final bool signatureUploaded;
 
   JobModel({
     required this.id,
@@ -42,6 +42,11 @@ class JobModel {
     required this.status,
     required this.scheduledDate,
     required this.remarks,
+    required this.partsDecision,
+    required this.beforePhotoUploaded,
+    required this.afterPhotoUploaded,
+    required this.otpVerified,
+    required this.signatureUploaded,
   });
 
   factory JobModel.fromJson(Map<String, dynamic> json) {
@@ -64,6 +69,11 @@ class JobModel {
       status: json["status"] ?? "",
       scheduledDate: json["scheduled_date"] ?? "",
       remarks: json["remarks"] ?? "",
+      partsDecision: json["parts_decision"] ?? "PENDING",
+      beforePhotoUploaded: json["before_photo_uploaded"] == true,
+      afterPhotoUploaded: json["after_photo_uploaded"] == true,
+      otpVerified: json["otp_verified"] == true,
+      signatureUploaded: json["signature_uploaded"] == true,
     );
   }
 
@@ -86,5 +96,10 @@ class JobModel {
         "status": status,
         "scheduled_date": scheduledDate,
         "remarks": remarks,
+        "parts_decision": partsDecision,
+        "before_photo_uploaded": beforePhotoUploaded,
+        "after_photo_uploaded": afterPhotoUploaded,
+        "otp_verified": otpVerified,
+        "signature_uploaded": signatureUploaded,
       };
 }
