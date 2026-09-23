@@ -20,6 +20,7 @@ from .views import (
     EmployeeDeviceHealthAPIView,
     AdminDeviceHealthAPIView,
 )
+from .device_identity import EmployeeDeviceIdentityMigrationAPIView
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
 from .training import (
     TrainingDetailAPIView,
@@ -42,6 +43,7 @@ from .training import (
 
 urlpatterns = [
     path("employees/device-health/", EmployeeDeviceHealthAPIView.as_view(), name="employee-device-health"),
+    path("employees/device-identity/migrate/", EmployeeDeviceIdentityMigrationAPIView.as_view(), name="employee-device-identity-migrate"),
     path("employees/admin/device-health/", AdminDeviceHealthAPIView.as_view(), name="admin-device-health"),
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
     path(
