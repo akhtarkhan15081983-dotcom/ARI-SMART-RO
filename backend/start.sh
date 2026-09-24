@@ -3,7 +3,6 @@ set -eu
 
 python manage.py migrate --noinput
 python manage.py bootstrap_admin
-python manage.py reset_face_device_data
 python manage.py collectstatic --noinput
 
 exec gunicorn config.wsgi:application \

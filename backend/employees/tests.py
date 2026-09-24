@@ -449,6 +449,72 @@ class EmployeeAPITests(TestCase):
             self.engineer.last_location_updated
         )
 
+    def test_non_engineer_employee_can_update_live_location(self):
+        self.client.force_authenticate(user=self.office_user)
+
+        response = self.client.post(
+            "/api/employees/live-location/",
+            {
+                "live_latitude": "28.6200000",
+                "live_longitude": "77.2100000",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.office.refresh_from_db()
+        self.assertEqual(self.office.last_latitude, Decimal("28.6200000"))
+        self.assertEqual(self.office.last_longitude, Decimal("77.2100000"))
+        self.assertTrue(self.office.is_online)
+
+    def test_employee_can_mark_live_location_offline(self):
+        self.engineer.is_online = True
+        self.engineer.last_location_updated = timezone.now()
+        self.engineer.save(update_fields=["is_online", "last_location_updated"])
+        self.authenticate_engineer()
+
+        response = self.client.post(
+            "/api/employees/live-location/",
+            {"tracking_active": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.engineer.refresh_from_db()
+        self.assertFalse(self.engineer.is_online)
+        self.assertFalse(response.data["online"])
+
+    def test_older_queued_location_does_not_replace_newer_point(self):
+        latest = timezone.now()
+        self.engineer.last_latitude = Decimal("28.7000000")
+        self.engineer.last_longitude = Decimal("77.3000000")
+        self.engineer.last_location_updated = latest
+        self.engineer.is_online = True
+        self.engineer.save(update_fields=[
+            "last_latitude",
+            "last_longitude",
+            "last_location_updated",
+            "is_online",
+        ])
+        self.authenticate_engineer()
+
+        response = self.client.post(
+            "/api/employees/live-location/",
+            {
+                "live_latitude": "28.1000000",
+                "live_longitude": "77.1000000",
+                "captured_at": (latest - timedelta(minutes=10)).isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["message"], "Older queued location ignored.")
+        self.engineer.refresh_from_db()
+        self.assertEqual(self.engineer.last_latitude, Decimal("28.7000000"))
+        self.assertEqual(self.engineer.last_longitude, Decimal("77.3000000"))
+        self.assertEqual(self.engineer.last_location_updated, latest)
+
     # ========================================================
     # LIVE LOCATION AUTH
     # ========================================================
@@ -561,6 +627,7 @@ class EmployeeAPITests(TestCase):
         )
 
         self.engineer.is_online = True
+        self.engineer.last_location_updated = timezone.now()
 
         self.engineer.save()
 
@@ -579,10 +646,13 @@ class EmployeeAPITests(TestCase):
 
         self.assertEqual(
             len(response.data),
-            1,
+            3,
         )
 
-        engineer_data = response.data[0]
+        engineer_data = next(
+            item for item in response.data
+            if item["id"] == self.engineer.id
+        )
 
         self.assertEqual(
             engineer_data["id"],
@@ -622,7 +692,7 @@ class EmployeeAPITests(TestCase):
     # LIVE MAP EXCLUDES ENGINEERS WITHOUT LOCATION
     # ========================================================
 
-    def test_live_map_excludes_engineer_without_location(
+    def test_live_map_includes_engineer_without_location(
         self
     ):
 
@@ -641,8 +711,15 @@ class EmployeeAPITests(TestCase):
 
         self.assertEqual(
             len(response.data),
-            0,
+            3,
         )
+        engineer_data = next(
+            item for item in response.data
+            if item["id"] == self.engineer.id
+        )
+        self.assertFalse(engineer_data["location_received"])
+        self.assertEqual(engineer_data["location_status"], "MISSING")
+        self.assertFalse(engineer_data["online"])
 
     # ========================================================
     # LIVE MAP EXCLUDES INACTIVE ENGINEER
@@ -677,7 +754,11 @@ class EmployeeAPITests(TestCase):
 
         self.assertEqual(
             len(response.data),
-            0,
+            2,
+        )
+        self.assertNotIn(
+            self.engineer.id,
+            [item["id"] for item in response.data],
         )
 
     # ========================================================

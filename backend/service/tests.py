@@ -76,13 +76,16 @@ class ServiceAssignmentTests(TestCase):
             current_customer=self.customer,
         )
 
+        # Field execution starts from PENDING and is advanced only by the
+        # linked secure Job workflow. Creating records directly IN_PROGRESS
+        # is intentionally rejected by the anti-fraud signal.
         self.service = Service.objects.create(
             customer=self.customer,
             engineer=self.engineer,
             ro_asset=self.asset,
             service_type="REGULAR",
             scheduled_date=timezone.now(),
-            status="IN_PROGRESS",
+            status="PENDING",
         )
         self.other_service = Service.objects.create(
             customer=self.customer,
@@ -90,7 +93,7 @@ class ServiceAssignmentTests(TestCase):
             ro_asset=self.asset,
             service_type="REGULAR",
             scheduled_date=timezone.now(),
-            status="IN_PROGRESS",
+            status="PENDING",
         )
 
         self.client = APIClient()
@@ -102,16 +105,18 @@ class ServiceAssignmentTests(TestCase):
         ids = {row["id"] for row in response.data}
         self.assertEqual(ids, {self.service.id})
 
-    def test_assigned_engineer_can_complete_service_using_post(self):
+    def test_assigned_engineer_cannot_bypass_secure_job_completion(self):
         response = self.client.post(
             reverse("service-complete", kwargs={"pk": self.service.pk}),
             {},
             format="json",
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         self.service.refresh_from_db()
-        self.assertEqual(self.service.status, "COMPLETED")
-        self.assertIsNotNone(self.service.completed_date)
+        self.service.job.refresh_from_db()
+        self.assertEqual(self.service.status, "PENDING")
+        self.assertEqual(self.service.job.status, "ASSIGNED")
+        self.assertIsNone(self.service.completed_date)
 
     def test_engineer_cannot_complete_another_engineers_service(self):
         response = self.client.post(
@@ -121,4 +126,4 @@ class ServiceAssignmentTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
         self.other_service.refresh_from_db()
-        self.assertEqual(self.other_service.status, "IN_PROGRESS")
+        self.assertEqual(self.other_service.status, "PENDING")

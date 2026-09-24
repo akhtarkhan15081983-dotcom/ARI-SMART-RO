@@ -14,7 +14,7 @@ class LoginController {
       final response = await http
           .post(
             Uri.parse("${ApiService.baseUrl}/auth/login/"),
-            headers: await ApiService.authHeaders(),
+            headers: await ApiService.deviceHeaders(),
             body: jsonEncode({"phone": phone, "password": password}),
           )
           .timeout(const Duration(seconds: 20));

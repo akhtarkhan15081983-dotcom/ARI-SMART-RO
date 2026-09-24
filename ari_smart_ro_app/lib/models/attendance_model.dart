@@ -5,6 +5,12 @@ class AttendanceModel {
   final String? checkIn;
   final String? checkOut;
   final double workingHours;
+  final double regularWorkingHours;
+  final double overtimeWorkingHours;
+  final String? regularShiftEndAt;
+  final bool autoCheckedOut;
+  final String checkoutReason;
+  final Map<String, dynamic>? overtime;
   final String status;
   final double? latitude;
   final double? longitude;
@@ -12,6 +18,8 @@ class AttendanceModel {
   final String? remarks;
   final String identityReviewStatus;
   final String? identityReviewNote;
+  final String? serverTime;
+  final String? checkoutReminderAt;
 
   AttendanceModel({
     required this.id,
@@ -20,6 +28,12 @@ class AttendanceModel {
     this.checkIn,
     this.checkOut,
     required this.workingHours,
+    this.regularWorkingHours = 0,
+    this.overtimeWorkingHours = 0,
+    this.regularShiftEndAt,
+    this.autoCheckedOut = false,
+    this.checkoutReason = '',
+    this.overtime,
     required this.status,
     this.latitude,
     this.longitude,
@@ -27,6 +41,8 @@ class AttendanceModel {
     this.remarks,
     this.identityReviewStatus = 'PENDING',
     this.identityReviewNote,
+    this.serverTime,
+    this.checkoutReminderAt,
   });
 
   bool get isReviewRejected => identityReviewStatus.toUpperCase() == 'REJECTED';
@@ -41,6 +57,16 @@ class AttendanceModel {
       checkIn: json['check_in'],
       checkOut: json['check_out'],
       workingHours: double.tryParse(json['working_hours'].toString()) ?? 0.0,
+      regularWorkingHours:
+          double.tryParse(json['regular_working_hours'].toString()) ?? 0.0,
+      overtimeWorkingHours:
+          double.tryParse(json['overtime_working_hours'].toString()) ?? 0.0,
+      regularShiftEndAt: json['regular_shift_end_at']?.toString(),
+      autoCheckedOut: json['auto_checked_out'] == true,
+      checkoutReason: (json['checkout_reason'] ?? '').toString(),
+      overtime: json['overtime'] is Map
+          ? Map<String, dynamic>.from(json['overtime'] as Map)
+          : null,
       status: json['status'] ?? '',
       latitude: json['latitude'] == null
           ? null
@@ -54,6 +80,8 @@ class AttendanceModel {
           .toString()
           .toUpperCase(),
       identityReviewNote: json['identity_review_note']?.toString(),
+      serverTime: json['server_time']?.toString(),
+      checkoutReminderAt: json['checkout_reminder_at']?.toString(),
     );
   }
 }

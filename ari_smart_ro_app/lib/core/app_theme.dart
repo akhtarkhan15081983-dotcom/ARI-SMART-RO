@@ -54,6 +54,20 @@ class AppTheme {
         color: AppColors.white,
       ),
     ),
+    tabBarTheme: const TabBarThemeData(
+      labelColor: AppColors.white,
+      unselectedLabelColor: Color(0xFFD5E6F0),
+      indicatorColor: AppColors.secondary,
+      dividerColor: Colors.transparent,
+      labelStyle: TextStyle(
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.2,
+      ),
+      unselectedLabelStyle: TextStyle(
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.2,
+      ),
+    ),
     cardTheme: CardThemeData(
       color: AppColors.surface,
       surfaceTintColor: Colors.transparent,

@@ -50,6 +50,13 @@ class User(AbstractUser):
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
 
+    # Staff accounts are bound to one app installation at a time.
+    # Customers and admins are intentionally excluded from this restriction.
+    active_login_device_id = models.CharField(max_length=64, blank=True, default="")
+    previous_login_device_id = models.CharField(max_length=64, blank=True, default="")
+    login_device_bound_at = models.DateTimeField(null=True, blank=True)
+    login_device_reset_at = models.DateTimeField(null=True, blank=True)
+
     objects = UserManager()
 
     USERNAME_FIELD = "phone"
@@ -107,6 +114,8 @@ class AuthSecurityEvent(models.Model):
     EVENT_CHOICES = [
         ("LOGIN_SUCCESS", "Login Success"),
         ("LOGIN_FAILED", "Login Failed"),
+        ("LOGIN_DEVICE_BLOCKED", "Login Device Blocked"),
+        ("LOGIN_DEVICE_RESET", "Login Device Reset"),
         ("ACCOUNT_LOCKED", "Account Locked"),
         ("OTP_VERIFIED", "OTP Verified"),
         ("JOB_OTP_ADMIN_VIEWED", "Job OTP Admin Viewed"),
@@ -412,3 +421,46 @@ class SmsGatewaySubmission(models.Model):
 
     class Meta:
         ordering = ["-received_at"]
+
+
+class SystemAuditEvent(models.Model):
+    """Append-only audit record for high-risk business and admin actions."""
+
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="system_audit_events",
+    )
+    action = models.CharField(max_length=80)
+    entity_type = models.CharField(max_length=80)
+    entity_id = models.CharField(max_length=120, blank=True, default="")
+    company_id = models.PositiveBigIntegerField(null=True, blank=True)
+    company_name = models.CharField(max_length=180, blank=True, default="")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    device_id = models.CharField(max_length=128, blank=True, default="")
+    reason = models.CharField(max_length=500, blank=True, default="")
+    before_state = models.JSONField(default=dict, blank=True)
+    after_state = models.JSONField(default=dict, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["company_id", "created_at"], name="audit_company_time_idx"),
+            models.Index(fields=["action", "created_at"], name="audit_action_time_idx"),
+            models.Index(fields=["entity_type", "entity_id", "created_at"], name="audit_entity_time_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ValueError("SystemAuditEvent records are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("SystemAuditEvent records are immutable.")
+
+    def __str__(self):
+        return f"{self.action} {self.entity_type}:{self.entity_id}"

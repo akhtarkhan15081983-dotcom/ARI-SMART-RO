@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/admin_attendance_review_service.dart';
 import '../../utils/search_utils.dart';
+import 'overtime_approval_admin_screen.dart';
 
 class AttendanceReviewAdminScreen extends StatefulWidget {
   const AttendanceReviewAdminScreen({super.key});
@@ -156,7 +157,23 @@ class _AttendanceReviewAdminScreenState
       (item['distance_note'] ?? '').toString(),
     ])).toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('Attendance Selfie Review')),
+      appBar: AppBar(
+        title: const Text('Attendance Selfie Review'),
+        actions: [
+          IconButton(
+            tooltip: 'Overtime Approvals',
+            icon: const Icon(Icons.more_time_rounded),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const OvertimeApprovalAdminScreen(),
+                ),
+              );
+              await _load();
+            },
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(

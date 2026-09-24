@@ -1,6 +1,7 @@
 class ServiceModel {
   final int id;
   final String serviceId;
+  final int? job;
   final int? customer;
   final int? engineer;
   final int? roAsset;
@@ -18,6 +19,7 @@ class ServiceModel {
   ServiceModel({
     required this.id,
     required this.serviceId,
+    this.job,
     this.customer,
     this.engineer,
     this.roAsset,
@@ -34,35 +36,30 @@ class ServiceModel {
   });
 
   factory ServiceModel.fromJson(Map<String, dynamic> json) {
+    int? asInt(dynamic value) => value is int
+        ? value
+        : int.tryParse(value?.toString() ?? '');
+
     return ServiceModel(
-      id: json["id"] ?? 0,
-      serviceId: json["service_id"] ?? "",
-      customer: json["customer"] is int
-          ? json["customer"]
-          : int.tryParse(json["customer"]?.toString() ?? ""),
-      engineer: json["engineer"] is int
-          ? json["engineer"]
-          : int.tryParse(json["engineer"]?.toString() ?? ""),
-      roAsset: json["ro_asset"] is int
-          ? json["ro_asset"]
-          : int.tryParse(json["ro_asset"]?.toString() ?? ""),
-      serviceType: json["service_type"] ?? "",
-      status: json["status"] ?? "",
-      scheduledDate: json["scheduled_date"] ?? "",
-      completedDate: json["completed_date"],
-      nextServiceDate: json["next_service_date"],
-      inputTds: json["input_tds"] is int
-          ? json["input_tds"]
-          : int.tryParse(json["input_tds"]?.toString() ?? ""),
-      outputTds: json["output_tds"] is int
-          ? json["output_tds"]
-          : int.tryParse(json["output_tds"]?.toString() ?? ""),
-      remarks: json["remarks"] ?? "",
-      latitude: json["latitude"] != null
-          ? double.tryParse(json["latitude"].toString())
+      id: asInt(json['id']) ?? 0,
+      serviceId: json['service_id']?.toString() ?? '',
+      job: asInt(json['job']),
+      customer: asInt(json['customer']),
+      engineer: asInt(json['engineer']),
+      roAsset: asInt(json['ro_asset']),
+      serviceType: json['service_type']?.toString() ?? '',
+      status: json['status']?.toString() ?? '',
+      scheduledDate: json['scheduled_date']?.toString() ?? '',
+      completedDate: json['completed_date']?.toString(),
+      nextServiceDate: json['next_service_date']?.toString(),
+      inputTds: asInt(json['input_tds']),
+      outputTds: asInt(json['output_tds']),
+      remarks: json['remarks']?.toString() ?? '',
+      latitude: json['latitude'] != null
+          ? double.tryParse(json['latitude'].toString())
           : null,
-      longitude: json["longitude"] != null
-          ? double.tryParse(json["longitude"].toString())
+      longitude: json['longitude'] != null
+          ? double.tryParse(json['longitude'].toString())
           : null,
     );
   }

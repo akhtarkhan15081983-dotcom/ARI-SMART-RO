@@ -66,7 +66,7 @@ jobs:
       - name: Backend tests
         env:
           DJANGO_DISABLE_AUTH_THROTTLING: "1"
-        run: python manage.py test -v 1
+        run: python manage.py test -v 1 --keepdb
 
   flutter:
     runs-on: ubuntu-latest
@@ -85,6 +85,16 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Resolve app version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION="$(awk '/^version:/ {print $2}' pubspec.yaml | cut -d+ -f1)"
+          BUILD="$(awk '/^version:/ {print $2}' pubspec.yaml | cut -d+ -f2)"
+          test -n "$VERSION"
+          test -n "$BUILD"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
       - name: Compile Android debug APK
@@ -92,12 +102,13 @@ jobs:
           flutter build apk --debug
           --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
       - name: Prepare shareable APK
-        run: cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.18-latest.apk
+        shell: bash
+        run: cp build/app/outputs/flutter-apk/app-debug.apk "build/app/outputs/flutter-apk/ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest.apk"
       - name: Upload latest Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-v1.0.18-latest
-          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v1.0.18-latest.apk
+          name: ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest
+          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -108,3 +119,173 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build production container
         run: docker build -t ari-smart-ro:${{ github.sha }} .
+
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ari_smart_ro_app
+    env:
+      WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+      WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+      - name: Install Flutter dependencies
+        run: flutter pub get
+      - name: Resolve Windows package version
+        shell: pwsh
+        run: |
+          $line = (Select-String -Path "pubspec.yaml" -Pattern "^version:").Line
+          if (-not $line) { throw "pubspec version not found" }
+          $raw = ($line -split '\s+')[1]
+          $parts = $raw -split '\+'
+          if ($parts.Count -ne 2) { throw "pubspec version must include +build" }
+          "ARI_APP_VERSION=$($parts[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ARI_APP_BUILD=$($parts[1])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build Windows release
+        run: >-
+          flutter build windows --release
+          --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+
+      - name: Verify Windows Safe Build
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          $blockedPatterns = @(
+            "*file_selector*",
+            "*flutter_secure_storage*",
+            "*geolocator*",
+            "*permission_handler*",
+            "*record_windows*",
+            "*url_launcher*",
+            "*local_notifications*",
+            "dartjni.dll"
+          )
+          foreach ($pattern in $blockedPatterns) {
+            $found = Get-ChildItem $release -Filter $pattern -ErrorAction SilentlyContinue
+            if ($found) {
+              throw "Unsafe native plugin present in Windows Safe Build: $($found.Name -join ', ')"
+            }
+          }
+          Write-Host "Windows Safe Build contains no third-party plugin DLLs."
+
+      - name: Install trusted code-signing certificate
+        if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "ari-smart-ro-codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX_BASE64))
+          "ARI_CODESIGN_PFX=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Sign Windows application binaries
+        if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1).FullName
+          if (-not $signtool) { throw "signtool.exe not found" }
+          $release = "build\windows\x64\runner\Release"
+          $targets = Get-ChildItem $release -Recurse -File | Where-Object { $_.Extension -in ".exe", ".dll" }
+          foreach ($target in $targets) {
+            & $signtool sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $env:ARI_CODESIGN_PFX /p $env:WINDOWS_CODESIGN_PASSWORD $target.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed: $($target.FullName)" }
+          }
+
+      - name: Verify application signature
+        if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $exe = "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          $signature = Get-AuthenticodeSignature $exe
+          Write-Host "ARI_SMART_RO.exe signature status: $($signature.Status)"
+          if ($signature.Status -ne "Valid") { throw "Application Authenticode signature is not valid." }
+
+      - name: Smoke test Windows app startup
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) {
+            throw "ARI_SMART_RO.exe exited during startup smoke test with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+          Write-Host "ARI_SMART_RO.exe remained running for the startup smoke test."
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Setup.exe installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found." }
+          & $iscc "/DMyAppVersion=$env:ARI_APP_VERSION" "/DMyAppBuild=$env:ARI_APP_BUILD" "installer\ari_smart_ro.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
+
+      - name: Sign Setup.exe installer
+        if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1).FullName
+          if (-not $signtool) { throw "signtool.exe not found" }
+          $setup = "build\windows\installer\ARI-SMART-RO-Setup-v$env:ARI_APP_VERSION.exe"
+          & $signtool sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $env:ARI_CODESIGN_PFX /p $env:WINDOWS_CODESIGN_PASSWORD $setup
+          if ($LASTEXITCODE -ne 0) { throw "Installer signing failed." }
+          $signature = Get-AuthenticodeSignature $setup
+          Write-Host "Setup signature status: $($signature.Status)"
+          if ($signature.Status -ne "Valid") { throw "Installer Authenticode signature is not valid." }
+
+      - name: Prepare portable Windows package
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          if (!(Test-Path "$release\ARI_SMART_RO.exe")) {
+            throw "ARI_SMART_RO.exe not found after Windows build."
+          }
+          $package = "build\windows\ARI-SMART-RO-Windows-v$env:ARI_APP_VERSION"
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item "$release\*" $package -Recurse -Force
+          Compress-Archive -Path "$package\*" -DestinationPath "build\windows\ARI-SMART-RO-Windows-v$env:ARI_APP_VERSION.zip" -Force
+
+      - name: Write signing status
+        shell: pwsh
+        run: |
+          if ($env:WINDOWS_CODESIGN_PFX_BASE64) {
+            "SIGNED_WITH_TRUSTED_CERTIFICATE=true" | Out-File "build\windows\SIGNING_STATUS.txt" -Encoding utf8
+          } else {
+            "SIGNED_WITH_TRUSTED_CERTIFICATE=false" | Out-File "build\windows\SIGNING_STATUS.txt" -Encoding utf8
+            "A trusted code-signing PFX is required to avoid Smart App Control reputation warnings." | Out-File "build\windows\SIGNING_STATUS.txt" -Append -Encoding utf8
+          }
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Setup-v${{ env.ARI_APP_VERSION }}
+          path: |
+            ari_smart_ro_app/build/windows/installer/ARI-SMART-RO-Setup-v${{ env.ARI_APP_VERSION }}.exe
+            ari_smart_ro_app/build/windows/SIGNING_STATUS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload portable Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Windows-v${{ env.ARI_APP_VERSION }}
+          path: ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v${{ env.ARI_APP_VERSION }}.zip
+          if-no-files-found: error
+          retention-days: 30

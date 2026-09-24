@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
+from accounts.audit import write_audit_event
 
 from .models import Branch, Company, CompanyLifecycleEvent, CompanyMembership, CompanySubscription, RoleFeaturePermission, SubscriptionPlan
 from .access import ROLE_FEATURE_CATALOG, effective_role_features, request_company
@@ -61,6 +62,12 @@ class RoleFeaturePermissionAPIView(APIView):
             return Response({"detail": "Invalid feature key."}, status=400)
 
         is_allowed = bool(request.data.get("is_allowed", False))
+        existing = RoleFeaturePermission.objects.filter(
+            company=company,
+            role=role,
+            feature_key=feature_key,
+        ).first()
+        before_allowed = None if existing is None else existing.is_allowed
         row, _ = RoleFeaturePermission.objects.update_or_create(
             company=company,
             role=role,
@@ -69,6 +76,16 @@ class RoleFeaturePermissionAPIView(APIView):
                 "is_allowed": is_allowed,
                 "updated_by": request.user,
             },
+        )
+        write_audit_event(
+            request=request,
+            action="ROLE_FEATURE_PERMISSION_CHANGED",
+            entity_type="RoleFeaturePermission",
+            entity_id=row.id,
+            company=company,
+            before_state={"is_allowed": before_allowed},
+            after_state={"is_allowed": row.is_allowed},
+            metadata={"role": role, "feature_key": feature_key},
         )
         return Response({
             "role": role,

@@ -290,7 +290,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
       ),
     );
 
-    for (final controller in [
+    final controllers = <TextEditingController>[
       name,
       phone,
       alternatePhone,
@@ -306,9 +306,12 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
       installationCharge,
       securityDeposit,
       installationDate,
-    ]) {
-      controller.dispose();
-    }
+    ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final controller in controllers) {
+        controller.dispose();
+      }
+    });
 
     if (values == null || !mounted) return;
 
@@ -366,7 +369,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
     ) ?? false;
 
     if (!confirmed) {
-      reason.dispose();
+      WidgetsBinding.instance.addPostFrameCallback((_) => reason.dispose());
       return;
     }
 
@@ -395,7 +398,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         );
       }
     } finally {
-      reason.dispose();
+      WidgetsBinding.instance.addPostFrameCallback((_) => reason.dispose());
       if (mounted) setState(() => _savingCustomer = false);
     }
   }

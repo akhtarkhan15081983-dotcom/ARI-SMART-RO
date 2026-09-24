@@ -23,6 +23,55 @@ class AdminAttendanceReviewService {
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
+  Future<List<Map<String, dynamic>>> getOvertimeRequests({
+    String status = '',
+  }) async {
+    final uri = Uri.parse(
+      '${ApiService.baseUrl}/attendance/admin/overtime/',
+    ).replace(
+      queryParameters: status.isEmpty ? null : {'status': status},
+    );
+    final response = await http.get(
+      uri,
+      headers: await ApiService.authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load overtime requests');
+    }
+    final data = jsonDecode(response.body) as List;
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<String> reviewOvertime({
+    required int requestId,
+    required String action,
+    double? approvedHours,
+    String note = '',
+  }) async {
+    final response = await http.post(
+      Uri.parse(
+        '${ApiService.baseUrl}/attendance/admin/overtime/$requestId/',
+      ),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode({
+        'action': action,
+        if (approvedHours != null) 'approved_hours': approvedHours,
+        'note': note,
+      }),
+    );
+    Map<String, dynamic> data = <String, dynamic>{};
+    if (response.body.isNotEmpty) {
+      data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    if (response.statusCode != 200) {
+      throw Exception(
+        (data['detail'] ?? data['message'] ?? 'Unable to review overtime')
+            .toString(),
+      );
+    }
+    return (data['message'] ?? 'Overtime updated').toString();
+  }
+
   Future<String> updateReview({
     required int attendanceId,
     required String action,

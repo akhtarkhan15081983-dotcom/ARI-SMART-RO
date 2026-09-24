@@ -16,6 +16,18 @@ class EmployeeManagementService {
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
+  Future<void> resetLoginDevice({required int employeeId}) async {
+    final response = await http
+        .post(
+          Uri.parse(
+            '${ApiService.baseUrl}/employees/manage/$employeeId/login-device/reset/',
+          ),
+          headers: await ApiService.authHeaders(),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) throw Exception(_message(response));
+  }
+
   Future<void> setCustomerEditPermission({
     required int employeeId,
     required bool isAllowed,

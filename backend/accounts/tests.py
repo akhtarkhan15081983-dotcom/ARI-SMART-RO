@@ -627,3 +627,78 @@ class LoginSecurityTests(TestCase):
         response = self.client.get("/api/customers/")
 
         self.assertEqual(response.status_code, 401)
+
+
+class StaffSingleDeviceLoginTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            phone="9000000040",
+            password="StaffStrong@123",
+            role="ENGINEER",
+            is_verified=True,
+            is_active=True,
+        )
+
+    def _login(self, device_id):
+        return self.client.post(
+            "/api/auth/login/",
+            {"phone": self.user.phone, "password": "StaffStrong@123"},
+            format="json",
+            HTTP_X_ARI_DEVICE_ID=device_id,
+        )
+
+    def test_first_staff_login_binds_phone_and_same_phone_can_login_again(self):
+        first = self._login("phone-a")
+        self.assertEqual(first.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.active_login_device_id, "phone-a")
+        self.assertIsNotNone(self.user.login_device_bound_at)
+
+        second = self._login("phone-a")
+        self.assertEqual(second.status_code, 200)
+
+    def test_second_phone_is_blocked_for_same_employee_id(self):
+        self.assertEqual(self._login("phone-a").status_code, 200)
+
+        blocked = self._login("phone-b")
+
+        self.assertEqual(blocked.status_code, 409)
+        self.assertEqual(blocked.data["code"], "EMPLOYEE_DEVICE_ALREADY_BOUND")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.active_login_device_id, "phone-a")
+
+    def test_staff_protected_api_rejects_token_from_other_phone(self):
+        login = self._login("phone-a")
+        access = login.data["access"]
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+            HTTP_X_ARI_DEVICE_ID="phone-b",
+        )
+        response = self.client.post(
+            "/api/auth/change-password/",
+            {"old_password": "StaffStrong@123", "new_password": "NewStaffStrong@123"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_reset_binding_invalidates_existing_staff_session(self):
+        login = self._login("phone-a")
+        access = login.data["access"]
+        self.user.active_login_device_id = ""
+        self.user.login_device_bound_at = None
+        self.user.save(update_fields=["active_login_device_id", "login_device_bound_at"])
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+            HTTP_X_ARI_DEVICE_ID="phone-a",
+        )
+        response = self.client.post(
+            "/api/auth/change-password/",
+            {"old_password": "StaffStrong@123", "new_password": "NewStaffStrong@123"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 401)
