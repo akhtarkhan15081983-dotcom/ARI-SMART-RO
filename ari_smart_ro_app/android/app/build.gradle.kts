@@ -45,6 +45,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Keep observability test builds installable beside the production app.
+            applicationIdSuffix = ".posthogtest"
+            versionNameSuffix = "-posthog-test"
+        }
         release {
             signingConfig = if (!isReleaseBuildRequested) {
                 signingConfigs.getByName("debug")
