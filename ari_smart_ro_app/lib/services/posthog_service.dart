@@ -26,7 +26,8 @@ class PostHogService {
         ..captureApplicationLifecycleEvents = true
         ..sessionReplay = false
         ..surveys = false
-        ..personProfiles = PostHogPersonProfiles.identifiedOnly;
+        ..personProfiles = PostHogPersonProfiles.identifiedOnly
+        ..debug = kDebugMode;
 
       config.errorTrackingConfig
         ..inAppIncludes.add('package:ari_smart_ro_app')
@@ -46,6 +47,11 @@ class PostHogService {
           'telemetry_profile': 'privacy_safe_v1',
         },
       );
+
+      // The onboarding verifier waits for a received event. Force the first
+      // privacy-safe startup event out immediately instead of waiting for the
+      // SDK's normal batch/flush interval.
+      await Posthog().flush();
     } catch (_) {
       // Analytics must never prevent the application from starting.
     }
