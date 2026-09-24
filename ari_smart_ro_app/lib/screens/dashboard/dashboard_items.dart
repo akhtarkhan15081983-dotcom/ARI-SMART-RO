@@ -201,6 +201,11 @@ class DashboardItems {
       route: "training",
     ),
     const DashboardItem(
+      title: "Assigned Customers",
+      icon: Icons.people_alt,
+      route: "assigned_customers",
+    ),
+    const DashboardItem(
       title: "Customers",
       icon: Icons.people,
       route: "customers",
