@@ -22,6 +22,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .services import change_job_status
+from .idempotency import replay_response, remember_response
 from .models import JobActivityLog
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
@@ -221,6 +222,14 @@ class JobChangeStatusAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        replay = replay_response(
+            request=request,
+            action_type="JOB_STATUS",
+            job=job,
+        )
+        if replay.response is not None:
+            return replay.response
+
         try:
 
             change_job_status(
@@ -239,7 +248,7 @@ class JobChangeStatusAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return Response(
+        response = Response(
             {
                 "message":
                     "Job status updated successfully.",
@@ -249,6 +258,13 @@ class JobChangeStatusAPIView(APIView):
                     job.status,
             },
             status=status.HTTP_200_OK,
+        )
+        return remember_response(
+            request=request,
+            action_id=replay.action_id,
+            action_type="JOB_STATUS",
+            response=response,
+            job=job,
         )
 
 
@@ -290,6 +306,14 @@ class JobMediaUploadAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        replay = replay_response(
+            request=request,
+            action_type="JOB_MEDIA",
+            job=job,
+        )
+        if replay.response is not None:
+            return replay.response
+
         serializer = JobMediaSerializer(
             data=request.data
         )
@@ -300,9 +324,16 @@ class JobMediaUploadAPIView(APIView):
                 job=job
             )
 
-            return Response(
+            response = Response(
                 serializer.data,
                 status=status.HTTP_201_CREATED,
+            )
+            return remember_response(
+                request=request,
+                action_id=replay.action_id,
+                action_type="JOB_MEDIA",
+                response=response,
+                job=job,
             )
 
         return Response(
@@ -344,6 +375,14 @@ class JobGPSUploadAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        replay = replay_response(
+            request=request,
+            action_type="JOB_GPS",
+            job=job,
+        )
+        if replay.response is not None:
+            return replay.response
+
         serializer = JobGPSLogSerializer(
             data=request.data
         )
@@ -354,9 +393,16 @@ class JobGPSUploadAPIView(APIView):
                 job=job
             )
 
-            return Response(
+            response = Response(
                 serializer.data,
                 status=status.HTTP_201_CREATED,
+            )
+            return remember_response(
+                request=request,
+                action_id=replay.action_id,
+                action_type="JOB_GPS",
+                response=response,
+                job=job,
             )
 
         return Response(
@@ -764,6 +810,14 @@ class JobSignatureUploadAPIView(APIView):
             engineer__user=request.user,
         )
 
+        replay = replay_response(
+            request=request,
+            action_type="JOB_SIGNATURE",
+            job=job,
+        )
+        if replay.response is not None:
+            return replay.response
+
         serializer = JobSignatureSerializer(
             data=request.data
         )
@@ -778,9 +832,16 @@ class JobSignatureUploadAPIView(APIView):
                 job=job
             )
 
-            return Response(
+            response = Response(
                 serializer.data,
                 status=status.HTTP_201_CREATED,
+            )
+            return remember_response(
+                request=request,
+                action_id=replay.action_id,
+                action_type="JOB_SIGNATURE",
+                response=response,
+                job=job,
             )
 
         return Response(

@@ -3,6 +3,10 @@ package com.arismartro.app
 import android.app.ActivityManager
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.os.PowerManager
+import android.provider.Settings
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -36,12 +40,60 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             deviceCapabilitiesChannel,
         ).setMethodCallHandler { call, result ->
-            if (call.method == "isLowMemoryDevice") {
-                val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
-                val lowMemory = activityManager.isLowRamDevice || activityManager.memoryClass <= 256
-                result.success(lowMemory)
-            } else {
-                result.notImplemented()
+            when (call.method) {
+                "isLowMemoryDevice" -> {
+                    val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+                    val lowMemory = activityManager.isLowRamDevice || activityManager.memoryClass <= 256
+                    result.success(lowMemory)
+                }
+                "getDeviceHealth" -> {
+                    val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+                    val memoryInfo = ActivityManager.MemoryInfo()
+                    activityManager.getMemoryInfo(memoryInfo)
+                    val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+                    val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+                    val packageInfo = packageManager.getPackageInfo(packageName, 0)
+                    val fineLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    val backgroundLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        fineLocation
+                    }
+                    val notificationGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        true
+                    }
+                    val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        packageInfo.longVersionCode.toString()
+                    } else {
+                        @Suppress("DEPRECATION")
+                        packageInfo.versionCode.toString()
+                    }
+                    result.success(
+                        mapOf(
+                            "platform" to "ANDROID",
+                            "app_version" to (packageInfo.versionName ?: ""),
+                            "app_build" to versionCode,
+                            "os_version" to Build.VERSION.RELEASE,
+                            "android_sdk" to Build.VERSION.SDK_INT,
+                            "manufacturer" to Build.MANUFACTURER,
+                            "model" to Build.MODEL,
+                            "low_memory_device" to (activityManager.isLowRamDevice || activityManager.memoryClass <= 256),
+                            "memory_class_mb" to activityManager.memoryClass,
+                            "total_memory_mb" to (memoryInfo.totalMem / (1024L * 1024L)).toInt(),
+                            "location_service_enabled" to (
+                                locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                                locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+                            ),
+                            "location_permission" to if (fineLocation) "GRANTED" else "DENIED",
+                            "background_location_granted" to backgroundLocation,
+                            "notification_permission_granted" to notificationGranted,
+                            "battery_optimization_ignored" to powerManager.isIgnoringBatteryOptimizations(packageName),
+                        )
+                    )
+                }
+                else -> result.notImplemented()
             }
         }
 

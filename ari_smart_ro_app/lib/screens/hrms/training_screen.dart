@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../services/api_service.dart';
 
 import '../../services/training_service.dart';
+import 'training_builder_screen.dart';
 
 class TrainingScreen extends StatefulWidget {
   const TrainingScreen({super.key});
@@ -42,7 +48,24 @@ class _TrainingScreenState extends State<TrainingScreen> {
       _data['assignments'] as List? ?? const [],
     );
     return Scaffold(
-      appBar: AppBar(title: const Text('Employee Training')),
+      appBar: AppBar(
+        title: const Text('Employee Training'),
+        actions: [
+          if (scope == 'ADMIN')
+            IconButton(
+              tooltip: 'Training Builder',
+              icon: const Icon(Icons.construction_rounded),
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const TrainingBuilderScreen(),
+                  ),
+                );
+                await _load();
+              },
+            ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
@@ -56,6 +79,25 @@ class _TrainingScreenState extends State<TrainingScreen> {
                         _data['summary'] as Map? ?? const {},
                       ),
                     ),
+                  if (scope == 'ADMIN')
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const TrainingBuilderScreen(),
+                              ),
+                            );
+                            await _load();
+                          },
+                          icon: const Icon(Icons.school_rounded),
+                          label: const Text('MANAGE TRAINING ACADEMY'),
+                        ),
+                      ),
+                    ),
                   if (rows.isEmpty)
                     const Padding(
                       padding: EdgeInsets.only(top: 120),
@@ -65,18 +107,17 @@ class _TrainingScreenState extends State<TrainingScreen> {
                     (row) => _AssignmentCard(
                       row: row,
                       adminView: scope == 'ADMIN',
-                      onOpen: scope == 'ADMIN'
-                          ? null
-                          : () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => TrainingCourseScreen(
-                                    assignmentId: (row['id'] as num).toInt(),
-                                  ),
-                                ),
-                              );
-                              await _load();
-                            },
+                      onOpen: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => TrainingCourseScreen(
+                              assignmentId: (row['id'] as num).toInt(),
+                              adminView: scope == 'ADMIN',
+                            ),
+                          ),
+                        );
+                        await _load();
+                      },
                     ),
                   ),
                 ],
@@ -169,8 +210,13 @@ class _AssignmentCard extends StatelessWidget {
 }
 
 class TrainingCourseScreen extends StatefulWidget {
-  const TrainingCourseScreen({super.key, required this.assignmentId});
+  const TrainingCourseScreen({
+    super.key,
+    required this.assignmentId,
+    this.adminView = false,
+  });
   final int assignmentId;
+  final bool adminView;
 
   @override
   State<TrainingCourseScreen> createState() => _TrainingCourseScreenState();
@@ -181,6 +227,7 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
   bool _loading = true;
   Map<String, dynamic> _course = {};
   final Map<int, String> _answers = {};
+  final Set<int> _watchedVideos = {};
 
   @override
   void initState() {
@@ -204,10 +251,150 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
     }
   }
 
-  Future<void> _completeLesson(int lessonId) async {
+  Future<void> _completeLesson(int lessonId, {required bool hasVideo}) async {
     try {
-      await _service.completeLesson(widget.assignmentId, lessonId);
+      await _service.completeLesson(
+        widget.assignmentId,
+        lessonId,
+        videoWatched: !hasVideo || _watchedVideos.contains(lessonId),
+      );
       await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    }
+  }
+
+  Future<void> _reviewLesson(Map<String, dynamic> lesson) async {
+    int behaviour = ((lesson['trainer_review'] as Map?)?['behaviour_score'] as num?)?.toInt() ?? 3;
+    int communication = ((lesson['trainer_review'] as Map?)?['communication_score'] as num?)?.toInt() ?? 3;
+    int knowledge = ((lesson['trainer_review'] as Map?)?['knowledge_score'] as num?)?.toInt() ?? 3;
+    final existing = Map<String, dynamic>.from(
+      lesson['trainer_review'] as Map? ?? const <String, dynamic>{},
+    );
+    final strengths = TextEditingController(text: (existing['strengths'] ?? '').toString());
+    final gaps = TextEditingController(text: (existing['gaps'] ?? '').toString());
+    final coaching = TextEditingController(text: (existing['coaching_action'] ?? '').toString());
+    final notes = TextEditingController(text: (existing['notes'] ?? '').toString());
+
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Trainer Review • Day ${lesson['day_number'] ?? lesson['order']}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  '1 = needs urgent coaching • 5 = excellent',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                _ScorePicker(
+                  label: 'Behaviour / व्यवहार',
+                  value: behaviour,
+                  onChanged: (v) => setDialogState(() => behaviour = v),
+                ),
+                _ScorePicker(
+                  label: 'Communication / संवाद',
+                  value: communication,
+                  onChanged: (v) => setDialogState(() => communication = v),
+                ),
+                _ScorePicker(
+                  label: 'Knowledge / ज्ञान',
+                  value: knowledge,
+                  onChanged: (v) => setDialogState(() => knowledge = v),
+                ),
+                TextField(
+                  controller: strengths,
+                  decoration: const InputDecoration(labelText: 'Strengths / अच्छाइयाँ'),
+                  minLines: 2,
+                  maxLines: 3,
+                ),
+                TextField(
+                  controller: gaps,
+                  decoration: const InputDecoration(labelText: 'Gaps / कमियाँ'),
+                  minLines: 2,
+                  maxLines: 3,
+                ),
+                TextField(
+                  controller: coaching,
+                  decoration: const InputDecoration(
+                    labelText: 'What Admin should teach next / सुधार कैसे करें',
+                  ),
+                  minLines: 2,
+                  maxLines: 4,
+                ),
+                TextField(
+                  controller: notes,
+                  decoration: const InputDecoration(labelText: 'Trainer notes'),
+                  minLines: 2,
+                  maxLines: 4,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Save Review'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (save == true) {
+      try {
+        await _service.saveTrainerReview(
+          widget.assignmentId,
+          (lesson['id'] as num).toInt(),
+          behaviourScore: behaviour,
+          communicationScore: communication,
+          knowledgeScore: knowledge,
+          strengths: strengths.text,
+          gaps: gaps.text,
+          coachingAction: coaching.text,
+          notes: notes.text,
+        );
+        await _load();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Trainer review saved.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+          );
+        }
+      }
+    }
+    strengths.dispose();
+    gaps.dispose();
+    coaching.dispose();
+    notes.dispose();
+  }
+
+
+  Future<void> _issueCertificate() async {
+    try {
+      await _service.issueCertificate(widget.assignmentId);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ARI certification issued successfully.')),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -292,48 +479,162 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Passing score: ' +
+                  'Training plan: ' +
+                      (_course['planned_days'] ?? 0).toString() +
+                      ' days • ' +
+                      (_course['planned_minutes'] ?? 0).toString() +
+                      ' planned minutes • 60 min/day\nPassing score: ' +
                       (_course['passing_score'] ?? 80).toString() +
                       '% • Due: ' +
                       (_course['due_date'] ?? '-').toString(),
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 16),
+                if (_course['certificate_enabled'] == true) ...[
+                  _CertificationCard(
+                    certification: Map<String, dynamic>.from(
+                      _course['certification'] as Map? ?? const <String, dynamic>{},
+                    ),
+                    adminView: widget.adminView,
+                    onIssue: _issueCertificate,
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 ...lessons.map(
-                  (lesson) => Card(
+                  (lesson) {
+                    final lessonId = (lesson['id'] as num).toInt();
+                    final videoAsset = (lesson['video_asset'] ?? '').toString();
+                    final videoUrl = (lesson['video_url'] ?? '').toString();
+                    final resourceUrl = (lesson['resource_url'] ?? '').toString();
+                    final resourceLabel =
+                        (lesson['resource_label'] ?? 'Open training resource').toString();
+                    final hasVideo = videoAsset.isNotEmpty || videoUrl.isNotEmpty;
+                    return Card(
                     child: ExpansionTile(
                       leading: Icon(
                         lesson['completed'] == true
                             ? Icons.check_circle
                             : Icons.menu_book_outlined,
                       ),
-                      title: Text(
-                        (lesson['order'] ?? '').toString() +
-                            '. ' +
-                            (lesson['title'] ?? '').toString(),
-                      ),
+                      title: Text((lesson['title'] ?? '').toString()),
                       subtitle: Text(
-                        (lesson['key_takeaway'] ?? '').toString(),
+                        'Day ' +
+                            (lesson['day_number'] ?? lesson['order'] ?? '').toString() +
+                            ' • ' +
+                            (lesson['duration_minutes'] ?? 60).toString() +
+                            ' min\n' +
+                            (lesson['key_takeaway'] ?? '').toString(),
                       ),
                       children: [
+                        if (videoAsset.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                            child: _TrainingVideo(
+                              assetPath: videoAsset,
+                              onCompleted: () => setState(
+                                () => _watchedVideos.add(lessonId),
+                              ),
+                            ),
+                          ),
+                        if (videoUrl.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                            child: FilledButton.tonalIcon(
+                              onPressed: () async {
+                                final uri = Uri.tryParse(videoUrl);
+                                if (uri == null) return;
+                                final opened = await launchUrl(
+                                  uri,
+                                  mode: LaunchMode.externalApplication,
+                                );
+                                if (opened && mounted) {
+                                  setState(() => _watchedVideos.add(lessonId));
+                                }
+                              },
+                              icon: const Icon(Icons.ondemand_video_rounded),
+                              label: const Text('OPEN TRAINING VIDEO'),
+                            ),
+                          ),
                         Padding(
                           padding: const EdgeInsets.all(16),
-                          child: Text((lesson['content'] ?? '').toString()),
+                          child: SelectableText(
+                            (lesson['content'] ?? '').toString(),
+                          ),
                         ),
-                        if (lesson['completed'] != true)
+                        if (resourceUrl.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                final uri = Uri.tryParse(resourceUrl);
+                                if (uri != null) {
+                                  await launchUrl(
+                                    uri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.link_rounded),
+                              label: Text(
+                                resourceLabel.isEmpty
+                                    ? 'OPEN TRAINING RESOURCE'
+                                    : resourceLabel,
+                              ),
+                            ),
+                          ),
+                        if ((lesson['practice_task'] ?? '').toString().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: Text(
+                              'Practice / अभ्यास:\n' + (lesson['practice_task'] ?? '').toString(),
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        if (widget.adminView &&
+                            (lesson['trainer_script'] ?? '').toString().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: Text(
+                              'Trainer script / Admin क्या सिखाए:\n' +
+                                  (lesson['trainer_script'] ?? '').toString(),
+                            ),
+                          ),
+                        if (widget.adminView)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: FilledButton.tonalIcon(
+                              onPressed: () => _reviewLesson(lesson),
+                              icon: const Icon(Icons.rate_review_outlined),
+                              label: Text(
+                                lesson['trainer_review'] == null
+                                    ? 'ADD TRAINER REVIEW'
+                                    : 'UPDATE TRAINER REVIEW',
+                              ),
+                            ),
+                          ),
+                        if (!widget.adminView && lesson['completed'] != true)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             child: FilledButton.icon(
-                              onPressed: () => _completeLesson(
-                                (lesson['id'] as num).toInt(),
-                              ),
+                              onPressed: hasVideo &&
+                                      !_watchedVideos.contains(lessonId)
+                                  ? null
+                                  : () => _completeLesson(
+                                        lessonId,
+                                        hasVideo: hasVideo,
+                                      ),
                               icon: const Icon(Icons.check),
-                              label: const Text('MARK LESSON COMPLETE'),
+                              label: Text(
+                                hasVideo && !_watchedVideos.contains(lessonId)
+                                    ? 'वीडियो पूरा देखें / WATCH VIDEO'
+                                    : 'पूरा हुआ / MARK COMPLETE',
+                              ),
                             ),
                           ),
                       ],
                     ),
-                  ),
+                  );
+                  },
                 ),
                 const SizedBox(height: 16),
                 if (completed)
@@ -354,7 +655,7 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
                       ),
                     ),
                   )
-                else if (allLessonsDone) ...[
+                else if (!widget.adminView && allLessonsDone) ...[
                   Text(
                     'Final Quiz',
                     style: Theme.of(context).textTheme.titleLarge,
@@ -412,4 +713,224 @@ class _TrainingCourseScreenState extends State<TrainingCourseScreen> {
             ),
     );
   }
+}
+
+class _CertificationCard extends StatelessWidget {
+  const _CertificationCard({
+    required this.certification,
+    required this.adminView,
+    required this.onIssue,
+  });
+
+  final Map<String, dynamic> certification;
+  final bool adminView;
+  final VoidCallback onIssue;
+
+  @override
+  Widget build(BuildContext context) {
+    final issued = certification['issued'] == true;
+    final eligible = certification['eligible'] == true;
+    final certificate = Map<String, dynamic>.from(
+      certification['certificate'] as Map? ?? const <String, dynamic>{},
+    );
+    final requirements = Map<String, dynamic>.from(
+      certification['requirements'] as Map? ?? const <String, dynamic>{},
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.workspace_premium_rounded, size: 30),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    issued ? 'ARI Certified Professional' : 'ARI Certification',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (issued) ...[
+              Text('Certificate: ${certificate['certificate_number'] ?? '-'}'),
+              Text('Status: ${certificate['status'] ?? '-'}'),
+              Text('Final score: ${certificate['final_score'] ?? 0}%'),
+              Text('Valid until: ${certificate['valid_until'] ?? '-'}'),
+              Text(
+                'Verification code: ${certificate['verification_code'] ?? '-'}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: QrImageView(
+                  data:
+                      '${ApiService.baseUrl}/employees/hrms/training/certificates/verify/${certificate['verification_code'] ?? ''}/',
+                  size: 150,
+                ),
+              ),
+              const Center(
+                child: Text(
+                  'Scan to verify certificate',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final code = (certificate['verification_code'] ?? '').toString();
+                    if (code.isEmpty) return;
+                    final uri = Uri.parse(
+                      '${ApiService.baseUrl}/employees/hrms/training/certificates/$code/pdf/',
+                    );
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  },
+                  icon: const Icon(Icons.picture_as_pdf),
+                  label: const Text('VIEW / SHARE PDF CERTIFICATE'),
+                ),
+              ),
+            ] else ...[
+              Text(
+                eligible
+                    ? 'All certification requirements are complete.'
+                    : 'Complete all lessons, pass the test and meet the configured Trainer review standard to qualify.',
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Trainer reviews: ${requirements['reviews_received'] ?? 0}/${requirements['required_reviews'] ?? 0} • '
+                'Average: ${requirements['trainer_average'] ?? 0}/5 • minimum 3/5',
+              ),
+              if (adminView && eligible) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: onIssue,
+                  icon: const Icon(Icons.workspace_premium),
+                  label: const Text('ISSUE ARI CERTIFICATE'),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class _TrainingVideo extends StatefulWidget {
+  const _TrainingVideo({required this.assetPath, required this.onCompleted});
+  final String assetPath;
+  final VoidCallback onCompleted;
+
+  @override
+  State<_TrainingVideo> createState() => _TrainingVideoState();
+}
+
+class _TrainingVideoState extends State<_TrainingVideo> {
+  late final VideoPlayerController _controller;
+  bool _completed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset(widget.assetPath)
+      ..initialize().then((_) {
+        if (mounted) setState(() {});
+      });
+    _controller.addListener(_listen);
+  }
+
+  void _listen() {
+    if (_completed || !_controller.value.isInitialized) return;
+    final duration = _controller.value.duration;
+    final position = _controller.value.position;
+    if (duration > Duration.zero && position >= duration - const Duration(milliseconds: 400)) {
+      _completed = true;
+      widget.onCompleted();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_listen);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_controller.value.isInitialized) {
+      return const AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: AspectRatio(
+            aspectRatio: _controller.value.aspectRatio,
+            child: VideoPlayer(_controller),
+          ),
+        ),
+        VideoProgressIndicator(_controller, allowScrubbing: false),
+        FilledButton.tonalIcon(
+          onPressed: () => setState(() {
+            _controller.value.isPlaying
+                ? _controller.pause()
+                : _controller.play();
+          }),
+          icon: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
+          label: Text(
+            _controller.value.isPlaying
+                ? 'रोकें / PAUSE'
+                : _completed
+                    ? 'दोबारा देखें / REPLAY'
+                    : 'वीडियो देखें / PLAY',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+
+class _ScorePicker extends StatelessWidget {
+  const _ScorePicker({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(child: Text(label)),
+          DropdownButton<int>(
+            value: value,
+            items: List.generate(
+              5,
+              (index) => DropdownMenuItem(
+                value: index + 1,
+                child: Text('${index + 1}/5'),
+              ),
+            ),
+            onChanged: (v) {
+              if (v != null) onChanged(v);
+            },
+          ),
+        ],
+      );
 }

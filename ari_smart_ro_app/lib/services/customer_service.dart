@@ -71,7 +71,6 @@ class CustomerService {
       Uri.parse("${ApiService.baseUrl}/customers/edit-permission/"),
       headers: await ApiService.authHeaders(),
     );
-
     if (response.statusCode != 200) return false;
     final decoded = jsonDecode(response.body);
     return decoded is Map<String, dynamic> &&

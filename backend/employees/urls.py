@@ -1,6 +1,5 @@
 from django.urls import path
 
-from .device_health import EmployeeDeviceHealthAPIView, AdminDeviceHealthAPIView
 from .views import (
     UpdateLiveLocationAPIView,
     EngineerLiveMapAPIView,
@@ -12,11 +11,14 @@ from .views import (
     AdminFaceEnrollmentListAPIView,
     EmployeeManagementAPIView,
     EmployeeCustomerEditPermissionAPIView,
+    EmployeeLoginDeviceResetAPIView,
     EmployeeLifecycleAPIView,
     EmployeeCareerMovementAPIView,
     EmployeeCareerMovementActionAPIView,
     EmployeeIdCardAPIView,
     EmployeeIdVerifyAPIView,
+    EmployeeDeviceHealthAPIView,
+    AdminDeviceHealthAPIView,
 )
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
 from .training import (
@@ -46,6 +48,11 @@ urlpatterns = [
         "employees/manage/<int:employee_id>/customer-edit-permission/",
         EmployeeCustomerEditPermissionAPIView.as_view(),
         name="employee-customer-edit-permission",
+    ),
+    path(
+        "employees/manage/<int:employee_id>/login-device/reset/",
+        EmployeeLoginDeviceResetAPIView.as_view(),
+        name="employee-login-device-reset",
     ),
     path("employees/id-card/", EmployeeIdCardAPIView.as_view(), name="employee-id-card"),
     path("employees/verify-id/<str:code>/", EmployeeIdVerifyAPIView.as_view(), name="employee-id-verify"),

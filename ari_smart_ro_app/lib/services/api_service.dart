@@ -1,10 +1,43 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../utils/jwt_utils.dart';
+
+class AriPlatformStorage {
+  const AriPlatformStorage();
+
+  static final Map<String, String> _windowsMemory = <String, String>{};
+  static const FlutterSecureStorage _secure = FlutterSecureStorage();
+
+  Future<String?> read({required String key}) {
+    if (Platform.isWindows) return Future.value(_windowsMemory[key]);
+    return _secure.read(key: key);
+  }
+
+  Future<void> write({required String key, required String? value}) async {
+    if (Platform.isWindows) {
+      if (value == null) {
+        _windowsMemory.remove(key);
+      } else {
+        _windowsMemory[key] = value;
+      }
+      return;
+    }
+    await _secure.write(key: key, value: value);
+  }
+
+  Future<void> delete({required String key}) async {
+    if (Platform.isWindows) {
+      _windowsMemory.remove(key);
+      return;
+    }
+    await _secure.delete(key: key);
+  }
+}
 
 class ApiService {
   static Future<bool>? _refreshInFlight;
@@ -24,7 +57,7 @@ class ApiService {
     return "https://ari-smart-ro-api.onrender.com/api";
   }
 
-  static const FlutterSecureStorage storage = FlutterSecureStorage();
+  static const AriPlatformStorage storage = AriPlatformStorage();
 
   static Future<String?> _readAccessToken() {
     return storage.read(key: "access");
@@ -39,13 +72,17 @@ class ApiService {
     return storage.read(key: "refresh");
   }
 
-  static Future<Map<String, String>> authHeaders() async {
-    final token = await getAccessToken();
+  static Future<Map<String, String>> deviceHeaders() async {
     final deviceId = await _deviceId();
-    final headers = <String, String>{
+    return <String, String>{
       "Content-Type": "application/json",
       "X-ARI-Device-ID": deviceId,
     };
+  }
+
+  static Future<Map<String, String>> authHeaders() async {
+    final token = await getAccessToken();
+    final headers = await deviceHeaders();
 
     if (token != null && token.isNotEmpty) {
       headers["Authorization"] = "Bearer $token";

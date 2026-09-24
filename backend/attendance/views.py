@@ -25,6 +25,7 @@ from .security import (
     is_inside_office_geofence,
 )
 from employees.models import EmployeeProfile, HRPolicy
+from accounts.audit import write_audit_event
 from tenancy.access import request_company
 
 
@@ -376,6 +377,11 @@ class AdminOvertimeAPIView(APIView):
 
         action = str(request.data.get("action") or "").upper()
         note = str(request.data.get("note") or "").strip()[:300]
+        before_state = {
+            "status": row.status,
+            "approved_hours": str(row.approved_hours),
+            "review_note": row.review_note,
+        }
         if action == "APPROVE":
             try:
                 approved_hours = Decimal(str(
@@ -407,6 +413,24 @@ class AdminOvertimeAPIView(APIView):
             "review_note",
             "updated_at",
         ])
+        write_audit_event(
+            request=request,
+            action="OVERTIME_REVIEWED",
+            entity_type="OvertimeRequest",
+            entity_id=row.id,
+            company=company,
+            reason=note,
+            before_state=before_state,
+            after_state={
+                "status": row.status,
+                "approved_hours": str(row.approved_hours),
+                "review_note": row.review_note,
+            },
+            metadata={
+                "attendance_id": row.attendance_id,
+                "employee_id": row.attendance.employee.employee_id,
+            },
+        )
         return Response({
             "message": f"Overtime request {row.status.lower()}.",
             "status": row.status,
@@ -472,16 +496,30 @@ class AdminAttendanceDeviceOverrideAPIView(APIView):
         if action not in {"allow_today", "revoke_today"}:
             return Response({"success": False, "message": "Invalid action."}, status=400)
 
-        override, _ = AttendanceDeviceOverride.objects.get_or_create(
+        override, created = AttendanceDeviceOverride.objects.get_or_create(
             employee=employee,
             date=timezone.localdate(),
             defaults={"granted_by": request.user, "is_active": True},
         )
+        before_allowed = None if created else override.is_active
         override.is_active = action == "allow_today"
         override.granted_by = request.user
         override.save(update_fields=["is_active", "granted_by"])
 
         allowed = override.is_active
+        write_audit_event(
+            request=request,
+            action="ATTENDANCE_DEVICE_OVERRIDE_CHANGED",
+            entity_type="AttendanceDeviceOverride",
+            entity_id=override.id,
+            company=getattr(employee, "company", None),
+            before_state={"is_active": before_allowed},
+            after_state={"is_active": allowed},
+            metadata={
+                "employee_id": employee.employee_id,
+                "date": str(override.date),
+            },
+        )
         return Response({
             "success": True,
             "message": (
@@ -564,6 +602,10 @@ class AdminAttendanceReviewActionAPIView(APIView):
         else:
             return Response({"success": False, "message": "Invalid review action."}, status=400)
 
+        before_state = {
+            "identity_review_status": attendance.identity_review_status,
+            "identity_review_note": attendance.identity_review_note,
+        }
         attendance.identity_review_status = new_status
         attendance.identity_reviewed_by = request.user if new_status != "PENDING" else None
         attendance.identity_reviewed_at = timezone.now() if new_status != "PENDING" else None
@@ -574,6 +616,23 @@ class AdminAttendanceReviewActionAPIView(APIView):
             "identity_reviewed_at",
             "identity_review_note",
         ])
+        write_audit_event(
+            request=request,
+            action="ATTENDANCE_IDENTITY_REVIEWED",
+            entity_type="Attendance",
+            entity_id=attendance.id,
+            company=getattr(attendance.employee, "company", None),
+            reason=note,
+            before_state=before_state,
+            after_state={
+                "identity_review_status": attendance.identity_review_status,
+                "identity_review_note": attendance.identity_review_note,
+            },
+            metadata={
+                "employee_id": attendance.employee.employee_id,
+                "date": str(attendance.date),
+            },
+        )
 
         return Response({
             "success": True,

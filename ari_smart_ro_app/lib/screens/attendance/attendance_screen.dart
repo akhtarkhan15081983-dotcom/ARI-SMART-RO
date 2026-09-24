@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/attendance_service.dart';
+import '../../services/attendance_reminder_service.dart';
+import '../../services/live_location_service.dart';
 import '../../services/selfie_quality_service.dart';
 
 class AttendanceScreen extends StatefulWidget {
@@ -20,6 +23,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   static const double _officeRadiusMeters = 50.0;
 
   final AttendanceService _attendanceService = AttendanceService();
+  final LiveLocationService _liveLocationService = LiveLocationService();
   final ImagePicker _imagePicker = ImagePicker();
 
   Position? _position;
@@ -35,6 +39,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool _isCheckedOut = false;
   DateTime? _checkInTime;
   DateTime? _checkOutTime;
+  DateTime? _checkoutReminderAt;
+  DateTime? _regularShiftEndAt;
+  double _regularWorkingHours = 0;
+  double _overtimeWorkingHours = 0;
+  bool _autoCheckedOut = false;
+  Map<String, dynamic>? _overtime;
+  Timer? _shiftTimer;
 
   @override
   void initState() {
@@ -53,15 +64,83 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _isCheckedIn = attendance.checkIn != null;
         _checkInTime = attendance.checkIn == null
             ? null
-            : DateTime.parse(attendance.checkIn!);
+            : DateTime.parse(attendance.checkIn!).toLocal();
         _isCheckedOut = attendance.checkOut != null;
         _checkOutTime = attendance.checkOut == null
             ? null
-            : DateTime.parse(attendance.checkOut!);
+            : DateTime.parse(attendance.checkOut!).toLocal();
+        _checkoutReminderAt = attendance.checkoutReminderAt == null
+            ? null
+            : DateTime.parse(attendance.checkoutReminderAt!).toLocal();
+        _regularShiftEndAt = attendance.regularShiftEndAt == null
+            ? _checkoutReminderAt
+            : DateTime.parse(attendance.regularShiftEndAt!).toLocal();
+        _regularWorkingHours = attendance.regularWorkingHours;
+        _overtimeWorkingHours = attendance.overtimeWorkingHours;
+        _autoCheckedOut = attendance.autoCheckedOut;
+        _overtime = attendance.overtime;
       });
+      _scheduleShiftRefresh();
+      await _syncLiveLocationForCurrentState();
+      if (_isCheckedIn && !_isCheckedOut && _checkoutReminderAt != null) {
+        await AttendanceReminderService.scheduleCheckout(_checkoutReminderAt!);
+      } else {
+        await AttendanceReminderService.cancelCheckout();
+      }
     } catch (e) {
       debugPrint('LOAD ATTENDANCE ERROR: $e');
     }
+  }
+
+  bool get _hasActiveOvertime {
+    final overtime = _overtime;
+    return overtime != null &&
+        (overtime['status'] ?? '').toString().toUpperCase() == 'APPROVED' &&
+        overtime['started_at'] != null &&
+        overtime['ended_at'] == null;
+  }
+
+  Future<void> _syncLiveLocationForCurrentState({
+    bool requestPermissions = false,
+  }) async {
+    final shouldTrack =
+        _isCheckedIn && (!_isCheckedOut || _hasActiveOvertime);
+    try {
+      if (shouldTrack) {
+        await _liveLocationService.startTracking(
+          requestPermissions: requestPermissions,
+        );
+      } else {
+        await _liveLocationService.stopTracking();
+      }
+    } on LiveLocationException catch (e) {
+      if (requestPermissions && mounted) _showSnackBar(e.message);
+    } catch (e) {
+      debugPrint('LIVE LOCATION SYNC ERROR: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _shiftTimer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleShiftRefresh() {
+    _shiftTimer?.cancel();
+    final end = _regularShiftEndAt;
+    if (end == null || _isCheckedOut || !end.isAfter(DateTime.now())) return;
+    final delay = end.difference(DateTime.now()) + const Duration(seconds: 2);
+    _shiftTimer = Timer(delay, () async {
+      if (!mounted) return;
+      await _loadTodayAttendance();
+      if (mounted && _autoCheckedOut) {
+        _showSnackBar(
+          'Regular 8-hour shift completed. You have been checked out automatically.',
+          isSuccess: true,
+        );
+      }
+    });
   }
 
   bool get _canCheckIn =>
@@ -261,6 +340,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _isCheckedIn = true;
         _checkInTime = DateTime.now();
       });
+      await _syncLiveLocationForCurrentState(requestPermissions: true);
       _showSnackBar(result.message, isSuccess: true);
       await _loadTodayAttendance();
     } catch (error) {
@@ -278,19 +358,209 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (!confirm || _isSubmitting || !_isCheckedIn || _isCheckedOut) return;
     setState(() => _isSubmitting = true);
     try {
-      await _attendanceService.checkOut();
+      final result = await _attendanceService.checkOut();
+      if (!result.success) {
+        _showSnackBar(result.message);
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _isCheckedOut = true;
         _checkOutTime = DateTime.now();
       });
+      await _liveLocationService.stopTracking();
       _showSnackBar('Checked out successfully.', isSuccess: true);
+      await AttendanceReminderService.cancelCheckout();
       await _loadTodayAttendance();
     } catch (_) {
       _showSnackBar('Check-out failed. Please try again.');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  Future<void> _requestOvertime() async {
+    final hoursController = TextEditingController(text: '1');
+    final reasonController = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Request Overtime'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: hoursController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Required overtime hours',
+                helperText: '15 minutes to 8 hours',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: reasonController,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Reason / work pending',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('SEND TO ADMIN'),
+          ),
+        ],
+      ),
+    );
+    if (result != true) {
+      hoursController.dispose();
+      reasonController.dispose();
+      return;
+    }
+
+    final hours = double.tryParse(hoursController.text.trim()) ?? 0;
+    final reason = reasonController.text.trim();
+    hoursController.dispose();
+    reasonController.dispose();
+
+    try {
+      final message = await _attendanceService.requestOvertime(
+        hours: hours,
+        reason: reason,
+      );
+      _showSnackBar(message, isSuccess: true);
+      await _loadTodayAttendance();
+    } catch (e) {
+      _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _startOvertime() async {
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
+    try {
+      final message = await _attendanceService.startOvertime();
+      await _loadTodayAttendance();
+      await _syncLiveLocationForCurrentState(requestPermissions: true);
+      _showSnackBar(message, isSuccess: true);
+    } catch (e) {
+      _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _stopOvertime() async {
+    if (_isSubmitting) return;
+    final confirmed = await _confirmAction(
+      title: 'Stop Overtime',
+      message: 'Stop the active overtime session now?',
+    );
+    if (!confirmed) return;
+    setState(() => _isSubmitting = true);
+    try {
+      final message = await _attendanceService.stopOvertime();
+      await _loadTodayAttendance();
+      await _liveLocationService.stopTracking();
+      _showSnackBar(message, isSuccess: true);
+    } catch (e) {
+      _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Widget _overtimeCard() {
+    final overtime = _overtime;
+    final status = (overtime?['status'] ?? '').toString().toUpperCase();
+    final started = overtime?['started_at'] != null;
+    final ended = overtime?['ended_at'] != null;
+    final approvedHours = (overtime?['approved_hours'] ?? '0').toString();
+    final requestedHours = (overtime?['requested_hours'] ?? '0').toString();
+
+    String title = 'Overtime';
+    String detail = 'After the regular 8-hour shift, overtime requires Admin approval.';
+    Widget? action;
+
+    if (overtime == null) {
+      action = FilledButton.icon(
+        onPressed: _requestOvertime,
+        icon: const Icon(Icons.more_time_rounded),
+        label: const Text('REQUEST OVERTIME'),
+      );
+    } else if (status == 'PENDING') {
+      title = 'Overtime approval pending';
+      detail = 'Requested ' + requestedHours + ' hours • waiting for Admin approval.';
+    } else if (status == 'REJECTED') {
+      title = 'Overtime request rejected';
+      detail = (overtime?['review_note'] ?? 'Admin did not approve this request.').toString();
+      action = OutlinedButton.icon(
+        onPressed: _requestOvertime,
+        icon: const Icon(Icons.refresh_rounded),
+        label: const Text('REQUEST AGAIN'),
+      );
+    } else if (status == 'APPROVED' && !started) {
+      title = 'Overtime approved';
+      detail = approvedHours + ' hours approved by Admin. Start only after regular shift ends.';
+      action = FilledButton.icon(
+        onPressed: _startOvertime,
+        icon: const Icon(Icons.play_arrow_rounded),
+        label: const Text('START APPROVED OVERTIME'),
+      );
+    } else if (status == 'APPROVED' && started && !ended) {
+      title = 'Overtime active';
+      detail = 'Approved ' + approvedHours + 'h • worked ' +
+          _overtimeWorkingHours.toStringAsFixed(2) + 'h';
+      action = FilledButton.tonalIcon(
+        onPressed: _stopOvertime,
+        icon: const Icon(Icons.stop_circle_outlined),
+        label: const Text('STOP OVERTIME'),
+      );
+    } else if (status == 'COMPLETED' || ended) {
+      title = 'Overtime completed';
+      detail = _overtimeWorkingHours.toStringAsFixed(2) +
+          ' approved overtime hours recorded for payroll.';
+    }
+
+    return Card(
+      color: status == 'APPROVED' && started && !ended
+          ? Colors.indigo.withValues(alpha: .08)
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.more_time_rounded),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(detail),
+            if (action != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(width: double.infinity, child: action),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Future<bool> _confirmAction({
@@ -375,6 +645,55 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               checkInTime: _checkInTime,
               checkOutTime: _checkOutTime,
             ),
+            const SizedBox(height: 12),
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  _autoCheckedOut
+                      ? Icons.lock_clock_rounded
+                      : Icons.access_time_rounded,
+                ),
+                title: Text(
+                  _autoCheckedOut
+                      ? 'Regular shift auto-checked out'
+                      : 'Regular working time',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: Text(
+                  'Regular: ' +
+                      _regularWorkingHours.toStringAsFixed(2) +
+                      'h • Approved OT: ' +
+                      _overtimeWorkingHours.toStringAsFixed(2) +
+                      'h' +
+                      (_regularShiftEndAt == null
+                          ? ''
+                          : ' • 8h shift ends ' +
+                              MaterialLocalizations.of(context).formatTimeOfDay(
+                                TimeOfDay.fromDateTime(_regularShiftEndAt!),
+                              )),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _overtimeCard(),
+            if (_isCheckedIn && !_isCheckedOut) ...[
+              const SizedBox(height: 12),
+              Card(
+                color: Colors.orange.withValues(alpha: 0.10),
+                child: ListTile(
+                  leading: const Icon(Icons.notifications_active_outlined),
+                  title: const Text(
+                    'Check-out बाकी है / Checkout pending',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: Text(
+                    _checkoutReminderAt == null
+                        ? 'Duty पूरी होने पर check-out करना न भूलें।'
+                        : 'Reminder ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(_checkoutReminderAt!))} पर आएगा।',
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             _VerificationCard(
               icon: Icons.location_on_outlined,

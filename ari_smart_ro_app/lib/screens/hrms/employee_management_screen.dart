@@ -919,17 +919,18 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   ) async {
     if (!_canDelegateCustomerEdit) return;
     final current = employee['can_edit_customer'] == true;
-    final allowed = !current;
+    final allow = !current;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(
-          allowed
+          allow
               ? 'Allow customer editing?'
               : 'Remove customer editing permission?',
         ),
         content: Text(
-          allowed
+          allow
               ? '${employee['name']} will be able to edit customer master details and customer status.'
               : '${employee['name']} will no longer be able to edit customer master details or customer status.',
         ),
@@ -940,7 +941,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(allowed ? 'ALLOW' : 'REMOVE'),
+            child: Text(allow ? 'ALLOW' : 'REMOVE'),
           ),
         ],
       ),
@@ -950,15 +951,64 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     try {
       await _service.setCustomerEditPermission(
         employeeId: (employee['id'] as num).toInt(),
-        isAllowed: allowed,
+        isAllowed: allow,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              allowed
+              allow
                   ? 'Customer edit permission granted.'
                   : 'Customer edit permission removed.',
+            ),
+          ),
+        );
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _resetLoginDevice(Map<String, dynamic> employee) async {
+    if (!_canDelegateCustomerEdit) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reset login device?'),
+        content: Text(
+          '${employee['name']} will be signed out from the currently registered phone. '
+          'On the next successful login, the new phone will become the only allowed device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('RESET DEVICE'),
+          ),
+        ],
+      ),
+    ) ?? false;
+    if (!confirmed) return;
+
+    try {
+      await _service.resetLoginDevice(
+        employeeId: (employee['id'] as num).toInt(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Login device reset. Old phone is blocked; next login will register the new phone.',
             ),
           ),
         );
@@ -1236,7 +1286,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                         '${employee['department']?.toString().isEmpty == false ? ' • ${employee['department']}' : ''}'
                         ' • ₹${employee['salary']}\n'
                         '${employee['location_received'] == true ? 'Location received' : 'Location missing'}'
-                        '${employee['last_location_updated'] == null ? '' : ' • last update ${employee['last_location_updated']}'}',
+                        '${employee['last_location_updated'] == null ? '' : ' • last update ${employee['last_location_updated']}'}'
+                        '${employee['login_device_bound'] == true ? '\nLogin phone: registered' : '\nLogin phone: not registered'}',
                       ),
                       isThreeLine: true,
                       trailing: PopupMenuButton<String>(
@@ -1248,6 +1299,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                             _career(employee);
                           } else if (value == 'customer_edit') {
                             _setCustomerEditPermission(employee);
+                          } else if (value == 'reset_login_device') {
+                            _resetLoginDevice(employee);
                           } else if (value == 'deactivate') {
                             _setEmployeeActive(employee, false);
                           } else if (value == 'reactivate') {
@@ -1271,6 +1324,19 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                               title: Text('Career & Promotion'),
                             ),
                           ),
+                          if (_canDelegateCustomerEdit)
+                            PopupMenuItem(
+                              value: 'reset_login_device',
+                              child: ListTile(
+                                leading: const Icon(Icons.phonelink_erase_rounded),
+                                title: const Text('Reset Login Device'),
+                                subtitle: Text(
+                                  employee['login_device_bound'] == true
+                                      ? 'A phone is currently registered'
+                                      : 'No phone is currently registered',
+                                ),
+                              ),
+                            ),
                           if (_canDelegateCustomerEdit)
                             PopupMenuItem(
                               value: 'customer_edit',

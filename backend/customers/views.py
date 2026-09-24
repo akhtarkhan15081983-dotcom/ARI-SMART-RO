@@ -3465,10 +3465,7 @@ class CustomerLifecycleAPIView(APIView):
 
         if action == "permanent_delete":
             if user_role(request.user) != "ADMIN":
-                return Response(
-                    {"detail": "Only Admin can permanently delete a customer."},
-                    status=403,
-                )
+                return Response({"detail": "Only Admin can permanently delete a customer."}, status=403)
             if str(request.data.get("confirm") or "").strip().upper() != "DELETE":
                 return Response({"detail": "Type DELETE to confirm permanent deletion."}, status=400)
             if self._has_operational_history(customer):
