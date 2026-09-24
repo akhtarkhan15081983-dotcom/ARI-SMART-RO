@@ -55,6 +55,27 @@ class ComplaintWorkflowTests(APITestCase):
         self.assertEqual(complaint.latitude, self.customer.latitude)
         self.assertEqual(complaint.longitude, self.customer.longitude)
         self.assertEqual(response.data["engineer_phone"], self.engineer_user.phone)
+        self.assertEqual(complaint.status, "ASSIGNED")
+        self.assertEqual(response.data["status"], "ASSIGNED")
+
+    def test_generic_update_cannot_leave_assigned_complaint_in_new_status(self):
+        complaint = Complaint.objects.create(
+            customer=self.customer,
+            complaint_type="OTHER",
+            description="Needs assignment",
+            status="NEW",
+        )
+        self.client.force_authenticate(self.office)
+        response = self.client.patch(
+            f"/api/complaints/{complaint.id}/update/",
+            {"engineer": self.engineer.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        complaint.refresh_from_db()
+        self.assertEqual(complaint.engineer_id, self.engineer.id)
+        self.assertEqual(complaint.status, "ASSIGNED")
+        self.assertEqual(response.data["status"], "ASSIGNED")
 
     def test_office_can_manage_all_complaints(self):
         first = Complaint.objects.create(
@@ -109,7 +130,6 @@ class ComplaintWorkflowTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         ids = {row["id"] for row in response.data}
         self.assertEqual(ids, {visible.id})
-
 
     def test_engineer_does_not_see_unassigned_complaint_for_owned_customer(self):
         engineer_customer = Customer.objects.create(
