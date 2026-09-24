@@ -1,3 +1,4 @@
+import os
 from django.db import migrations
 
 
@@ -6,7 +7,14 @@ RAJKUMAR_EMPLOYEE_ID = "hus2026"
 RAMA_EMPLOYEE_ID = "Rama2026"
 
 
+def _skip_for_ci():
+    return os.environ.get("ARI_SKIP_EXACT_EXCEL_IMPORT_FOR_TESTS", "").strip() == "1"
+
+
 def apply_change(apps, schema_editor):
+    if _skip_for_ci():
+        return
+
     Customer = apps.get_model("customers", "Customer")
     EmployeeProfile = apps.get_model("employees", "EmployeeProfile")
 
@@ -29,6 +37,9 @@ def apply_change(apps, schema_editor):
 
 
 def reverse_change(apps, schema_editor):
+    if _skip_for_ci():
+        return
+
     Customer = apps.get_model("customers", "Customer")
     EmployeeProfile = apps.get_model("employees", "EmployeeProfile")
 
