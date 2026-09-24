@@ -39,7 +39,7 @@ dependencies:
   flutter_local_notifications: ^19.4.2
   flutter_background_service: ^5.1.0
   timezone: ^0.10.1
-  posthog_flutter: ^5.24.0
+  posthog_flutter: 5.24.0
 
 dev_dependencies:
   flutter_test:
