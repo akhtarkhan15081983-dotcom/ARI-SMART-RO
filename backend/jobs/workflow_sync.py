@@ -33,13 +33,16 @@ def _update_job_metadata(job, values):
 
 
 def ensure_complaint_job(complaint):
-    """Ensure an assigned complaint has one Job; source status never advances Job status."""
+    """Ensure an assigned complaint has one secure Job.
+
+    Legacy imported customers may not yet have an ROAsset record. Complaint
+    execution still needs to use the secure Job workflow, so complaint jobs are
+    allowed to exist without an asset until that asset data is reconciled.
+    """
     if complaint.engineer_id is None:
         return None
 
     asset = _active_asset_for_customer(complaint.customer)
-    if asset is None:
-        return None
 
     values = {
         "customer": complaint.customer,
@@ -47,7 +50,7 @@ def ensure_complaint_job(complaint):
         "engineer": complaint.engineer,
         "job_type": "COMPLAINT",
         "priority": COMPLAINT_PRIORITY_TO_JOB.get(complaint.priority, "MEDIUM"),
-        "scheduled_date": complaint.scheduled_date or timezone.now(),
+        "scheduled_date": complaint.scheduled_date or complaint.complaint_date or timezone.now(),
         "remarks": complaint.description or complaint.complaint_id,
     }
 

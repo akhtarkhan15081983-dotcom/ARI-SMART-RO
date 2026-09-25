@@ -20,6 +20,7 @@ from .views import (
     EmployeeDeviceHealthAPIView,
     AdminDeviceHealthAPIView,
 )
+from .route_history import EmployeeDayRouteAPIView
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
 from .training import (
     TrainingDetailAPIView,
@@ -111,6 +112,11 @@ urlpatterns = [
         name="live-map",
     ),
     path(
+        "employees/day-route/",
+        EmployeeDayRouteAPIView.as_view(),
+        name="employee-day-route",
+    ),
+    path(
         "employees/profile/",
         EmployeeProfileAPIView.as_view(),
         name="employee-profile",
@@ -128,7 +134,7 @@ urlpatterns = [
     path(
         "employees/<int:employee_id>/face-enrollment-control/",
         AdminFaceEnrollmentControlAPIView.as_view(),
-        name="admin-face-enrollment-control",
+        name="face-enrollment-control",
     ),
     path(
         "employees/engineers/",

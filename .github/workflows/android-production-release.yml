@@ -8,6 +8,10 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - "andy-assistant"
+    paths:
+      - "ari_smart_ro_app/pubspec.yaml"
 
 jobs:
   signed-android-release:

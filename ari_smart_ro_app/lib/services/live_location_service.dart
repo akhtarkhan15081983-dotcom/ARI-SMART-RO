@@ -208,22 +208,39 @@ class LiveLocationService {
     }
   }
 
-  static Future<bool> _sendPoint(Map<String, dynamic> point) async {
-    try {
-      final response = await http
+  static Future<http.Response> _postPoint(Map<String, dynamic> point) {
+    return ApiService.authHeaders().then(
+      (headers) => http
           .post(
             Uri.parse('${ApiService.baseUrl}/employees/live-location/'),
-            headers: await ApiService.authHeaders(),
+            headers: headers,
             body: jsonEncode(point),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 15)),
+    );
+  }
 
+  static Future<bool> _sendPoint(Map<String, dynamic> point) async {
+    try {
+      var response = await _postPoint(point);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return true;
       }
+
       if (response.statusCode == 401) {
-        await _storage.write(key: _trackingEnabledKey, value: 'false');
+        // The foreground service runs in a background isolate. With rotating
+        // refresh tokens, the UI isolate may refresh at the same moment and
+        // briefly make this request use an older token. Recover once and retry
+        // instead of switching live tracking off permanently.
+        final recovered = await ApiService.recoverSessionAfterUnauthorized();
+        if (recovered) {
+          response = await _postPoint(point);
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            return true;
+          }
+        }
       }
+
       return false;
     } catch (_) {
       return false;
