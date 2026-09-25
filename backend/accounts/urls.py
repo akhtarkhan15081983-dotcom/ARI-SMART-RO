@@ -13,6 +13,11 @@ from .views import (
     CompleteAdminApprovedPasswordResetAPIView,
     AdminSystemAuditAPIView,
 )
+from .existing_customer_access import (
+    ExistingCustomerBootstrapAPIView,
+    ExistingCustomerCompleteAPIView,
+    ExistingCustomerReferenceLoginAPIView,
+)
 from .sim_verification import (
     AdminSmsGatewaySetupAPIView,
     SimVerificationPollAPIView,
@@ -37,6 +42,10 @@ urlpatterns = [
     path("sim-verification/start/", SimVerificationStartAPIView.as_view(), name="sim-verification-start"),
     path("sim-verification/poll/", SimVerificationPollAPIView.as_view(), name="sim-verification-poll"),
     path("sms-gateway/ingest/", SmsGatewayIngestAPIView.as_view(), name="sms-gateway-ingest"),
+
+    path("existing-customer/start/", ExistingCustomerBootstrapAPIView.as_view(), name="existing-customer-start"),
+    path("existing-customer/complete/", ExistingCustomerCompleteAPIView.as_view(), name="existing-customer-complete"),
+    path("existing-customer/login/", ExistingCustomerReferenceLoginAPIView.as_view(), name="existing-customer-login"),
 
     path("register/", CustomerRegisterAPIView.as_view(), name="customer-register"),
     path("send-otp/", SendOTPAPIView.as_view(), name="send-otp"),
