@@ -14,16 +14,24 @@ class LoginController {
       lastError = '';
       http.Response response;
       final looksLikePhone = RegExp(r'^\d{10}$').hasMatch(identifier);
+
       if (looksLikePhone) {
-        response = await http
+        final primary = await http
             .post(
               Uri.parse('${ApiService.baseUrl}/auth/login/'),
               headers: await ApiService.deviceHeaders(),
               body: jsonEncode({'phone': identifier, 'password': password}),
             )
             .timeout(const Duration(seconds: 20));
-        if (response.statusCode != 200) {
-          response = await _customerReferenceLogin(identifier, password);
+
+        if (primary.statusCode == 200) {
+          response = primary;
+        } else {
+          final customerFallback =
+              await _customerReferenceLogin(identifier, password);
+          response = customerFallback.statusCode == 200
+              ? customerFallback
+              : primary;
         }
       } else {
         response = await _customerReferenceLogin(identifier, password);
