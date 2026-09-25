@@ -26,6 +26,7 @@ from .models import (
     SmsGatewaySubmission,
     User,
 )
+from .permissions import IsAdmin
 from .serializers import UserSerializer
 from .views import ProductionScopedRateThrottle
 
@@ -42,6 +43,89 @@ def _phone(value):
     return digits[-10:] if len(digits) >= 10 else digits
 
 
+def _active_gateway_phone():
+    gateway = (
+        SmsGatewayDevice.objects
+        .filter(is_active=True)
+        .exclude(phone_number="")
+        .order_by("-created_at")
+        .first()
+    )
+    if gateway is not None:
+        return gateway.phone_number
+    return str(getattr(settings, "ARI_SMS_GATEWAY_NUMBER", "")).strip()
+
+
+class AdminSmsGatewaySetupAPIView(APIView):
+    """Provision one office Android phone as the no-provider SIM SMS gateway."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        gateway = (
+            SmsGatewayDevice.objects
+            .filter(is_active=True)
+            .order_by("-created_at")
+            .first()
+        )
+        if gateway is None:
+            return Response({"configured": False, "gateway": None})
+        return Response({
+            "configured": True,
+            "gateway": {
+                "device_id": gateway.device_id,
+                "name": gateway.name,
+                "phone_number": gateway.phone_number,
+                "last_seen_at": gateway.last_seen_at,
+                "created_at": gateway.created_at,
+            },
+        })
+
+    @transaction.atomic
+    def post(self, request):
+        phone_number = _phone(request.data.get("phone_number"))
+        if len(phone_number) != 10 or not phone_number.isdigit():
+            return Response(
+                {"success": False, "message": "Enter the 10-digit SIM number installed in this office Android phone."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        name = str(request.data.get("name") or "ARI Office SMS Gateway").strip()[:100]
+        if not name:
+            name = "ARI Office SMS Gateway"
+
+        # Only one receiver should be active at a time. Re-provisioning rotates
+        # credentials immediately so a lost/replaced office phone cannot submit.
+        SmsGatewayDevice.objects.filter(is_active=True).update(is_active=False)
+
+        api_key = secrets.token_urlsafe(32)
+        gateway = SmsGatewayDevice.objects.create(
+            device_id=f"ARI-GW-{secrets.token_hex(8).upper()}",
+            name=name,
+            secret_hash=_digest(api_key),
+            phone_number=phone_number,
+            is_active=True,
+        )
+        return Response(
+            {
+                "success": True,
+                "message": "This phone is now the active ARI SIM verification gateway.",
+                "gateway": {
+                    "device_id": gateway.device_id,
+                    "name": gateway.name,
+                    "phone_number": gateway.phone_number,
+                    # Returned once so the Android app can store it locally.
+                    "api_key": api_key,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    def delete(self, request):
+        updated = SmsGatewayDevice.objects.filter(is_active=True).update(is_active=False)
+        return Response({"success": True, "disabled": updated})
+
+
 class SimVerificationStartAPIView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ProductionScopedRateThrottle]
@@ -55,7 +139,7 @@ class SimVerificationStartAPIView(APIView):
             return Response({"success": False, "message": "Create your customer account first."}, status=404)
         if user.is_verified:
             return Response({"success": False, "message": "Mobile number is already verified. Please login."}, status=400)
-        office_number = str(getattr(settings, "ARI_SMS_GATEWAY_NUMBER", "")).strip()
+        office_number = _active_gateway_phone()
         if not office_number:
             return Response({"success": False, "message": "SIM verification gateway is not configured."}, status=503)
         password = str(request.data.get("new_password") or "")
