@@ -3,6 +3,7 @@ import '../dashboard/dashboard_screen.dart';
 import '../../controllers/login_controller.dart';
 import '../../services/api_service.dart';
 import 'customer_onboarding_screen.dart';
+import 'existing_customer_first_login_screen.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,11 +15,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final phoneController = TextEditingController();
-
   final passwordController = TextEditingController();
-
   final loginController = LoginController();
-
   bool isLoading = false;
   bool _hidePassword = true;
   bool _rememberMe = false;
@@ -48,68 +46,45 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
-
       appBar: AppBar(
         centerTitle: true,
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text("ARI SMART RO"),
+        title: const Text('ARI SMART RO'),
       ),
-
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [
-              // Logo
-              Image.asset("assets/images/ari_smart_ro_icon.png", height: 220),
+              Image.asset('assets/images/ari_smart_ro_icon.png', height: 220),
               const SizedBox(height: 20),
-
               const Text(
-                "ARI SMART RO",
+                'ARI SMART RO',
                 style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
               ),
-
               const SizedBox(height: 8),
-
               const Text(
-                "Sign in to continue",
+                'Sign in to continue',
                 style: TextStyle(fontSize: 18, color: Colors.grey),
               ),
-
               const SizedBox(height: 35),
-
-              // Phone Number
               TextField(
                 controller: phoneController,
-                keyboardType: TextInputType.phone,
-                autofillHints: const [AutofillHints.telephoneNumber],
+                textCapitalization: TextCapitalization.characters,
+                autofillHints: const [AutofillHints.username],
                 decoration: InputDecoration(
-                  labelText: "Phone Number",
-                  prefixIcon: const Icon(Icons.phone),
-
+                  labelText: 'Phone / Customer ID / Card No.',
+                  prefixIcon: const Icon(Icons.badge_outlined),
                   filled: true,
                   fillColor: Colors.white,
-
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.blue, width: 2),
-                  ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              // Password
               TextField(
                 controller: passwordController,
                 obscureText: _hidePassword,
@@ -118,33 +93,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 textInputAction: TextInputAction.done,
                 autofillHints: const [AutofillHints.password],
                 decoration: InputDecoration(
-                  labelText: "Password",
+                  labelText: 'Password',
                   prefixIcon: const Icon(Icons.lock),
                   suffixIcon: IconButton(
                     tooltip: _hidePassword ? 'Show password' : 'Hide password',
-                    onPressed: () =>
-                        setState(() => _hidePassword = !_hidePassword),
+                    onPressed: () => setState(() => _hidePassword = !_hidePassword),
                     icon: Icon(
                       _hidePassword
                           ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
                     ),
                   ),
-
                   filled: true,
                   fillColor: Colors.white,
-
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                  ),
-
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.blue, width: 2),
                   ),
                 ),
               ),
@@ -155,7 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 onChanged: isLoading
                     ? null
                     : (value) => setState(() => _rememberMe = value ?? false),
-                title: const Text('Remember phone and password'),
+                title: const Text('Remember login and password'),
                 subtitle: const Text('Stored securely on this device'),
               ),
               Align(
@@ -173,9 +136,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   label: const Text('FORGOT PASSWORD?'),
                 ),
               ),
-
               const SizedBox(height: 12),
-
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -183,21 +144,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: isLoading
                       ? null
                       : () async {
-                          setState(() {
-                            isLoading = true;
-                          });
-
+                          setState(() => isLoading = true);
                           final success = await loginController.login(
                             phone: phoneController.text.trim(),
                             password: passwordController.text.trim(),
                           );
-
                           if (!context.mounted) return;
-
-                          setState(() {
-                            isLoading = false;
-                          });
-
+                          setState(() => isLoading = false);
                           if (success) {
                             if (_rememberMe) {
                               await ApiService.saveRememberedCredentials(
@@ -219,23 +172,20 @@ class _LoginScreenState extends State<LoginScreen> {
                               SnackBar(
                                 content: Text(
                                   loginController.lastError.isEmpty
-                                      ? 'Invalid phone or password.'
+                                      ? 'Invalid login or password.'
                                       : loginController.lastError,
                                 ),
                               ),
                             );
                           }
                         },
-
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
-
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-
                   child: isLoading
                       ? const SizedBox(
                           width: 22,
@@ -246,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         )
                       : const Text(
-                          "LOGIN",
+                          'LOGIN',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -255,17 +205,34 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: isLoading
+                      ? null
+                      : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const ExistingCustomerFirstLoginScreen(),
+                            ),
+                          ),
+                  icon: const Icon(Icons.history_rounded),
+                  label: const Text('EXISTING CUSTOMER FIRST LOGIN'),
+                ),
+              ),
+              const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: isLoading
                     ? null
                     : () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const CustomerOnboardingScreen(),
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CustomerOnboardingScreen(),
+                          ),
                         ),
-                      ),
                 icon: const Icon(Icons.person_add_alt_1),
-                label: const Text('CREATE / ACTIVATE CUSTOMER ACCOUNT'),
+                label: const Text('CREATE NEW CUSTOMER ACCOUNT'),
               ),
             ],
           ),
