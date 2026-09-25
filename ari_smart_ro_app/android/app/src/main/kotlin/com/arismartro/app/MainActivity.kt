@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.PowerManager
-import android.provider.Settings
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -20,6 +19,7 @@ class MainActivity : FlutterActivity() {
     private val downloadsChannel = "com.arismartro.app/downloads"
     private val deviceCapabilitiesChannel = "com.arismartro.app/device_capabilities"
     private val referralChannelName = "com.arismartro.app/referral"
+    private val smsGatewayChannelName = "com.arismartro.app/sms_gateway"
     private var referralChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -36,6 +36,46 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            smsGatewayChannelName,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "configure" -> {
+                    val gatewayId = call.argument<String>("gatewayId").orEmpty()
+                    val gatewayKey = call.argument<String>("gatewayKey").orEmpty()
+                    val baseUrl = call.argument<String>("baseUrl").orEmpty().trimEnd('/')
+                    if (gatewayId.isBlank() || gatewayKey.isBlank() || baseUrl.isBlank()) {
+                        result.error("INVALID_GATEWAY", "Gateway ID, key and API URL are required.", null)
+                        return@setMethodCallHandler
+                    }
+                    getSharedPreferences(SmsVerificationReceiver.PREFS_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putString(SmsVerificationReceiver.KEY_GATEWAY_ID, gatewayId)
+                        .putString(SmsVerificationReceiver.KEY_GATEWAY_KEY, gatewayKey)
+                        .putString(SmsVerificationReceiver.KEY_BASE_URL, baseUrl)
+                        .apply()
+                    result.success(true)
+                }
+                "clear" -> {
+                    getSharedPreferences(SmsVerificationReceiver.PREFS_NAME, MODE_PRIVATE)
+                        .edit()
+                        .clear()
+                        .apply()
+                    result.success(true)
+                }
+                "isConfigured" -> {
+                    val prefs = getSharedPreferences(SmsVerificationReceiver.PREFS_NAME, MODE_PRIVATE)
+                    result.success(
+                        !prefs.getString(SmsVerificationReceiver.KEY_GATEWAY_ID, "").isNullOrBlank() &&
+                            !prefs.getString(SmsVerificationReceiver.KEY_GATEWAY_KEY, "").isNullOrBlank()
+                    )
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             deviceCapabilitiesChannel,

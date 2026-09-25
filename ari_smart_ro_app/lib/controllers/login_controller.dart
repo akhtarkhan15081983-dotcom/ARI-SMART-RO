@@ -9,15 +9,33 @@ class LoginController {
   String lastError = '';
 
   Future<bool> login({required String phone, required String password}) async {
+    final identifier = phone.trim();
     try {
       lastError = '';
-      final response = await http
-          .post(
-            Uri.parse("${ApiService.baseUrl}/auth/login/"),
-            headers: await ApiService.deviceHeaders(),
-            body: jsonEncode({"phone": phone, "password": password}),
-          )
-          .timeout(const Duration(seconds: 20));
+      http.Response response;
+      final looksLikePhone = RegExp(r'^\d{10}$').hasMatch(identifier);
+
+      if (looksLikePhone) {
+        final primary = await http
+            .post(
+              Uri.parse('${ApiService.baseUrl}/auth/login/'),
+              headers: await ApiService.deviceHeaders(),
+              body: jsonEncode({'phone': identifier, 'password': password}),
+            )
+            .timeout(const Duration(seconds: 20));
+
+        if (primary.statusCode == 200) {
+          response = primary;
+        } else {
+          final customerFallback =
+              await _customerReferenceLogin(identifier, password);
+          response = customerFallback.statusCode == 200
+              ? customerFallback
+              : primary;
+        }
+      } else {
+        response = await _customerReferenceLogin(identifier, password);
+      }
 
       if (response.statusCode != 200) {
         try {
@@ -30,19 +48,29 @@ class LoginController {
       }
 
       final data = LoginResponse.fromJson(jsonDecode(response.body));
-
       await ApiService.saveLoginData(
         accessToken: data.access,
         refreshToken: data.refresh,
         role: data.user.role,
         userId: data.user.id.toString(),
       );
-
       return true;
     } catch (_) {
-      lastError =
-          'Server connection failed. Check your internet and try again.';
+      lastError = 'Server connection failed. Check your internet and try again.';
       return false;
     }
+  }
+
+  Future<http.Response> _customerReferenceLogin(
+    String identifier,
+    String password,
+  ) async {
+    return http
+        .post(
+          Uri.parse('${ApiService.baseUrl}/auth/existing-customer/login/'),
+          headers: await ApiService.deviceHeaders(),
+          body: jsonEncode({'identifier': identifier, 'password': password}),
+        )
+        .timeout(const Duration(seconds: 20));
   }
 }

@@ -13,7 +13,17 @@ from .views import (
     CompleteAdminApprovedPasswordResetAPIView,
     AdminSystemAuditAPIView,
 )
-from .sim_verification import SimVerificationPollAPIView, SimVerificationStartAPIView, SmsGatewayIngestAPIView
+from .existing_customer_access import (
+    ExistingCustomerBootstrapAPIView,
+    ExistingCustomerCompleteAPIView,
+    ExistingCustomerReferenceLoginAPIView,
+)
+from .sim_verification import (
+    AdminSmsGatewaySetupAPIView,
+    SimVerificationPollAPIView,
+    SimVerificationStartAPIView,
+    SmsGatewayIngestAPIView,
+)
 from .engagement import CustomerEngagementAPIView
 from .notifications import (
     AdminNotificationCampaignAPIView,
@@ -27,83 +37,24 @@ urlpatterns = [
     path("notifications/", NotificationCenterAPIView.as_view(), name="notification-center"),
     path("admin/notification-campaigns/", AdminNotificationCampaignAPIView.as_view(), name="admin-notification-campaigns"),
     path("admin/offers/", AdminOfferAPIView.as_view(), name="admin-offers"),
+    path("admin/sms-gateway/", AdminSmsGatewaySetupAPIView.as_view(), name="admin-sms-gateway"),
     path("customer-engagement/", CustomerEngagementAPIView.as_view(), name="customer-engagement"),
     path("sim-verification/start/", SimVerificationStartAPIView.as_view(), name="sim-verification-start"),
     path("sim-verification/poll/", SimVerificationPollAPIView.as_view(), name="sim-verification-poll"),
     path("sms-gateway/ingest/", SmsGatewayIngestAPIView.as_view(), name="sms-gateway-ingest"),
 
-    # ========================================================
-    # CUSTOMER REGISTRATION
-    # ========================================================
+    path("existing-customer/start/", ExistingCustomerBootstrapAPIView.as_view(), name="existing-customer-start"),
+    path("existing-customer/complete/", ExistingCustomerCompleteAPIView.as_view(), name="existing-customer-complete"),
+    path("existing-customer/login/", ExistingCustomerReferenceLoginAPIView.as_view(), name="existing-customer-login"),
 
-    path(
-        "register/",
-        CustomerRegisterAPIView.as_view(),
-        name="customer-register",
-    ),
-
-    # ========================================================
-    # SEND OTP
-    # ========================================================
-
-    path(
-        "send-otp/",
-        SendOTPAPIView.as_view(),
-        name="send-otp",
-    ),
-
-    # ========================================================
-    # VERIFY OTP
-    # ========================================================
-
-    path(
-        "verify-otp/",
-        VerifyOTPAPIView.as_view(),
-        name="verify-otp",
-    ),
-
-    # ========================================================
-    # LOGIN
-    # ========================================================
-
-    path(
-        "login/",
-        LoginAPIView.as_view(),
-        name="login",
-    ),
-
-    # ========================================================
-    # CHANGE PASSWORD
-    # ========================================================
-
-    path(
-        "change-password/",
-        ChangePasswordAPIView.as_view(),
-        name="change-password",
-    ),
-    path(
-        "forgot-password/request/",
-        ForgotPasswordRequestAPIView.as_view(),
-        name="forgot-password-request",
-    ),
-    path(
-        "forgot-password/complete/",
-        CompleteAdminApprovedPasswordResetAPIView.as_view(),
-        name="forgot-password-complete",
-    ),
-    path(
-        "admin/password-reset-requests/",
-        AdminPasswordResetRequestListAPIView.as_view(),
-        name="admin-password-reset-request-list",
-    ),
-    path(
-        "admin/password-reset-requests/<int:reset_request_id>/review/",
-        AdminPasswordResetReviewAPIView.as_view(),
-        name="admin-password-reset-request-review",
-    ),
-    path(
-        "token/refresh/",
-        TokenRefreshView.as_view(),
-        name="token-refresh",
-    ),
+    path("register/", CustomerRegisterAPIView.as_view(), name="customer-register"),
+    path("send-otp/", SendOTPAPIView.as_view(), name="send-otp"),
+    path("verify-otp/", VerifyOTPAPIView.as_view(), name="verify-otp"),
+    path("login/", LoginAPIView.as_view(), name="login"),
+    path("change-password/", ChangePasswordAPIView.as_view(), name="change-password"),
+    path("forgot-password/request/", ForgotPasswordRequestAPIView.as_view(), name="forgot-password-request"),
+    path("forgot-password/complete/", CompleteAdminApprovedPasswordResetAPIView.as_view(), name="forgot-password-complete"),
+    path("admin/password-reset-requests/", AdminPasswordResetRequestListAPIView.as_view(), name="admin-password-reset-request-list"),
+    path("admin/password-reset-requests/<int:reset_request_id>/review/", AdminPasswordResetReviewAPIView.as_view(), name="admin-password-reset-request-review"),
+    path("token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
 ]
