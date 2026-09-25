@@ -12,7 +12,6 @@ class LoginController {
     final identifier = phone.trim();
     try {
       lastError = '';
-
       http.Response response;
       final looksLikePhone = RegExp(r'^\d{10}$').hasMatch(identifier);
       if (looksLikePhone) {
@@ -23,7 +22,6 @@ class LoginController {
               body: jsonEncode({'phone': identifier, 'password': password}),
             )
             .timeout(const Duration(seconds: 20));
-
         if (response.statusCode != 200) {
           response = await _customerReferenceLogin(identifier, password);
         }
@@ -58,11 +56,11 @@ class LoginController {
   Future<http.Response> _customerReferenceLogin(
     String identifier,
     String password,
-  ) {
+  ) async {
     return http
         .post(
           Uri.parse('${ApiService.baseUrl}/auth/existing-customer/login/'),
-          headers: ApiService.deviceHeaders(),
+          headers: await ApiService.deviceHeaders(),
           body: jsonEncode({'identifier': identifier, 'password': password}),
         )
         .timeout(const Duration(seconds: 20));
