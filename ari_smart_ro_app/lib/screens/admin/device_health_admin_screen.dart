@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/device_health_service.dart';
+import 'sms_gateway_setup_screen.dart';
 
 class DeviceHealthAdminScreen extends StatefulWidget {
   const DeviceHealthAdminScreen({super.key});
@@ -64,6 +65,16 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
       appBar: AppBar(
         title: const Text('Device Health Center'),
         actions: [
+          IconButton(
+            tooltip: 'Free SIM verification gateway',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const SmsGatewaySetupScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.sms_outlined),
+          ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
