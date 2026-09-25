@@ -183,6 +183,22 @@ class ApiService {
     final refresh = await getRefreshToken();
     if (refresh == null || refresh.isEmpty) return false;
 
+    return _runRefresh(refresh);
+  }
+
+  /// Force one refresh after an authenticated endpoint returns 401.
+  ///
+  /// The live-location foreground service runs in a background isolate, while
+  /// the main Flutter UI can refresh the same rotating JWT at the same time.
+  /// This method lets the background isolate recover instead of permanently
+  /// disabling tracking when that short race happens.
+  static Future<bool> recoverSessionAfterUnauthorized() async {
+    final refresh = await getRefreshToken();
+    if (refresh == null || refresh.isEmpty) return false;
+    return _runRefresh(refresh);
+  }
+
+  static Future<bool> _runRefresh(String refresh) async {
     final existingRefresh = _refreshInFlight;
     if (existingRefresh != null) return existingRefresh;
 
@@ -209,6 +225,18 @@ class ApiService {
 
       if (response.statusCode != 200) {
         if (response.statusCode == 400 || response.statusCode == 401) {
+          // A rotating refresh token can be consumed by the UI isolate and the
+          // background location isolate at nearly the same instant. One request
+          // succeeds, the other receives 401. Give the successful isolate a
+          // moment to persist its new access token before deciding the session
+          // is really invalid. Never delete a freshly-rotated session because
+          // the sibling isolate lost this race.
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+          final concurrentAccess = await _readAccessToken();
+          if (isJwtUsable(concurrentAccess)) {
+            return true;
+          }
+
           await logout();
         }
         return false;
