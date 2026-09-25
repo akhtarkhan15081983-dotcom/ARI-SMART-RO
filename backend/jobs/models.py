@@ -47,7 +47,9 @@ class Job(models.Model):
     ro_asset = models.ForeignKey(
         ROAsset,
         on_delete=models.PROTECT,
-        related_name="jobs"
+        related_name="jobs",
+        null=True,
+        blank=True,
     )
 
     engineer = models.ForeignKey(
