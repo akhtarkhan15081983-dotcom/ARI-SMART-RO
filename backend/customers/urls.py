@@ -1,9 +1,9 @@
 from django.urls import path
 
 from .bulk_import import CustomerBulkImportAPIView, CustomerQRCodeAPIView
+from .customer_app_compat import CustomerListAPIView, CustomerRentAPIView
 from .rent_management_optimized import RentManagementAPIView
 from .views import (
-    CustomerListAPIView,
     MyCustomersAPIView,
     CustomerCreateAPIView,
     CustomerDetailAPIView,
@@ -12,7 +12,6 @@ from .views import (
     CustomerUpdateAPIView,
     WalkInCustomerAPIView,
     AssignCustomerAPIView,
-    CustomerRentAPIView,
     RentPaymentCreateAPIView,
     RentPaymentHistoryAPIView,
     CustomerProfileAPIView,
@@ -60,97 +59,81 @@ urlpatterns = [
         CustomerProfileAPIView.as_view(),
         name="customer-profile",
     ),
-
     path(
         "my-ro/",
         MyROAPIView.as_view(),
         name="my-ro",
     ),
-
     path(
         "my-customers/",
         MyCustomersAPIView.as_view(),
         name="my-customers",
     ),
-
     path(
         "bulk-import/",
         CustomerBulkImportAPIView.as_view(),
         name="customer-bulk-import",
     ),
-
     path(
         "",
         CustomerListAPIView.as_view(),
         name="customer-list",
     ),
-
     path(
         "create/",
         CustomerCreateAPIView.as_view(),
         name="customer-create",
     ),
-
     path(
         "<int:pk>/qr/",
         CustomerQRCodeAPIView.as_view(),
         name="customer-qr",
     ),
-
     path(
         "<int:pk>/",
         CustomerDetailAPIView.as_view(),
         name="customer-detail",
     ),
-
     path(
         "<int:pk>/service-history/",
         CustomerServiceHistoryAPIView.as_view(),
         name="customer-service-history",
     ),
-
     path(
         "search/",
         CustomerSearchAPIView.as_view(),
         name="customer-search",
     ),
-
     path(
         "<int:pk>/update/",
         CustomerUpdateAPIView.as_view(),
         name="customer-update",
     ),
-
     path(
         "walk-in/",
         WalkInCustomerAPIView.as_view(),
         name="walk_in_customer",
     ),
-
     path(
         "<int:pk>/assign/",
         AssignCustomerAPIView.as_view(),
         name="customer-assign",
     ),
-
     path(
         "rent/",
         CustomerRentAPIView.as_view(),
         name="customer-rent",
     ),
-
     path(
         "rent-management/",
         RentManagementAPIView.as_view(),
         name="rent-management",
     ),
-
     path(
         "rent-management/payment/",
         RentPaymentCreateAPIView.as_view(),
         name="rent-management-payment",
     ),
-
     path(
         "rent-management/payments/",
         RentPaymentHistoryAPIView.as_view(),
