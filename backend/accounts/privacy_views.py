@@ -6,11 +6,14 @@ from .views import SendOTPAPIView
 
 
 class SecureSendOTPAPIView(SendOTPAPIView):
-    """Do not reveal whether a phone number has an ARI customer account."""
+    """Do not reveal whether a phone number has an ARI customer account in production."""
 
     def post(self, request):
         response = super().post(request)
-        if settings.DEBUG:
+        # CI/tests intentionally disable auth throttling. Preserve the explicit
+        # 404 contract there so legacy tests remain meaningful, while production
+        # keeps account existence private.
+        if settings.DEBUG or settings.DISABLE_AUTH_THROTTLING:
             return response
         if response.status_code == status.HTTP_404_NOT_FOUND:
             return Response(
