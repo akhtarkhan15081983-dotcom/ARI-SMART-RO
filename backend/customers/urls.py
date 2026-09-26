@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .bulk_import import CustomerBulkImportAPIView, CustomerQRCodeAPIView
+from .edit_views import CustomerUpdateAPIView
 from .rent_management_optimized import RentManagementAPIView
 from .views import (
     CustomerListAPIView,
@@ -9,7 +10,6 @@ from .views import (
     CustomerDetailAPIView,
     CustomerServiceHistoryAPIView,
     CustomerSearchAPIView,
-    CustomerUpdateAPIView,
     WalkInCustomerAPIView,
     AssignCustomerAPIView,
     CustomerRentAPIView,
