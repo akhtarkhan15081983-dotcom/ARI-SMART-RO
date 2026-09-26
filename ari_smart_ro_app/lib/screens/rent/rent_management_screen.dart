@@ -268,7 +268,7 @@ class _RentManagementScreenState extends State<RentManagementScreen> {
   }
 
   Widget _buildBucketStrip() {
-    final buckets = <String, (String, IconData)>[
+    final buckets = <(String, (String, IconData))>[
       ('TODAY', ('Today Due', Icons.today_outlined)),
       ('OVERDUE', ('Overdue', Icons.warning_amber_outlined)),
       ('NEXT_7_DAYS', ('Next 7 Days', Icons.date_range_outlined)),
