@@ -3,7 +3,6 @@ from django.urls import path
 from .views import (
     UpdateLiveLocationAPIView,
     EngineerLiveMapAPIView,
-    EmployeeProfileAPIView,
     EngineerListAPIView,
     AssignmentEmployeeListAPIView,
     FaceEnrollmentAPIView,
@@ -20,6 +19,7 @@ from .views import (
     EmployeeDeviceHealthAPIView,
     AdminDeviceHealthAPIView,
 )
+from .profile_compat import CustomerAwareEmployeeProfileAPIView
 from .route_history import EmployeeDayRouteAPIView
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
 from .training import (
@@ -118,7 +118,7 @@ urlpatterns = [
     ),
     path(
         "employees/profile/",
-        EmployeeProfileAPIView.as_view(),
+        CustomerAwareEmployeeProfileAPIView.as_view(),
         name="employee-profile",
     ),
     path(
