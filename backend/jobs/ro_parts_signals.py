@@ -13,6 +13,7 @@ from .ro_parts_models import ROPartsInspection, ROPartsObservation
 
 
 PASSPORT_JOB_TYPES = {"SERVICE", "COMPLAINT", "INSTALLATION"}
+PASSPORT_LINK_STATUSES = {"ACCEPTED", "ON_THE_WAY", "ARRIVED", "IN_PROGRESS"}
 
 PART_ALIASES = {
     "sediment_filter": ("sediment", "spun", "ppfilter"),
@@ -53,7 +54,7 @@ def _catalog_key_for_name(name):
 
 
 def ensure_job_ro_asset(job):
-    """Attach an RO asset to legacy/imported customer jobs when possible."""
+    """Attach an RO asset to legacy/imported customer jobs when field work begins."""
     if job.ro_asset_id or job.job_type not in PASSPORT_JOB_TYPES or not job.customer_id:
         return job.ro_asset
 
@@ -121,7 +122,10 @@ def ensure_job_ro_asset(job):
 
 @receiver(post_save, sender=Job)
 def auto_link_legacy_ro_asset(sender, instance, **kwargs):
-    ensure_job_ro_asset(instance)
+    # Keep historical/assigned jobs unchanged. Link only after the engineer has
+    # accepted or started travelling/working, which is when the passport can be used.
+    if instance.status in PASSPORT_LINK_STATUSES:
+        ensure_job_ro_asset(instance)
 
 
 @receiver(post_save, sender=JobPartUsed)
