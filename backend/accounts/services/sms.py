@@ -39,12 +39,12 @@ def _send_msg91(phone, otp):
             raise SMSDeliveryError("MSG91 rejected the OTP delivery request.")
 
 
-def _send_webhook(phone, otp):
+def _send_webhook(phone, otp, *, purpose, message):
     payload = json.dumps({
         "phone": _international_phone(phone),
         "otp": otp,
-        "purpose": "customer_phone_verification",
-        "message": f"Your ARI SMART RO verification code is {otp}. It expires in 5 minutes.",
+        "purpose": purpose,
+        "message": message,
     }).encode("utf-8")
     headers = {
         "Accept": "application/json",
@@ -63,19 +63,47 @@ def _send_webhook(phone, otp):
             raise SMSDeliveryError("The SMS webhook rejected the OTP delivery request.")
 
 
-def send_customer_verification_otp(phone, otp):
+def _send_otp(phone, otp, *, purpose, message):
     backend = settings.OTP_SMS_BACKEND
     try:
         if backend == "memory":
-            memory_outbox.append({"phone": str(phone), "otp": str(otp)})
+            memory_outbox.append({
+                "phone": str(phone),
+                "otp": str(otp),
+                "purpose": purpose,
+            })
             return
         if backend == "msg91":
             _send_msg91(phone, otp)
             return
         if backend == "webhook":
-            _send_webhook(phone, otp)
+            _send_webhook(phone, otp, purpose=purpose, message=message)
             return
     except (HTTPError, URLError, TimeoutError, OSError) as exc:
         raise SMSDeliveryError("OTP delivery failed. Please try again.") from exc
 
     raise SMSDeliveryError("No supported SMS backend is configured.")
+
+
+def send_customer_verification_otp(phone, otp):
+    _send_otp(
+        phone,
+        otp,
+        purpose="customer_phone_verification",
+        message=(
+            f"Your ARI SMART RO verification code is {otp}. "
+            "It expires in 5 minutes."
+        ),
+    )
+
+
+def send_admin_login_otp(phone, otp):
+    _send_otp(
+        phone,
+        otp,
+        purpose="admin_login_mfa",
+        message=(
+            f"Your ARI SMART RO admin login code is {otp}. "
+            "It expires in 5 minutes. Do not share it."
+        ),
+    )
