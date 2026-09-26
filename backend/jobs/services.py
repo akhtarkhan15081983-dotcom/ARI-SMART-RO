@@ -42,7 +42,7 @@ def _has_no_parts_declaration(job):
 
 def _has_ro_parts_passport(job):
     if not job.ro_asset_id:
-        return True
+        return False
     from .ro_parts_models import ROPartsInspection
 
     return ROPartsInspection.objects.filter(
