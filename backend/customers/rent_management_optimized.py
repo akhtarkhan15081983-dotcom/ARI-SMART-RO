@@ -1,6 +1,6 @@
 import calendar
 import json
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.serializers.json import DjangoJSONEncoder
@@ -42,8 +42,22 @@ class InspectableStreamingHttpResponse(StreamingHttpResponse):
         return self._data_cache
 
 
+def _collection_bucket(payment_status, balance, due_date, today):
+    """Classify a customer for the field collection desk."""
+
+    if payment_status == "PAID" or balance <= 0:
+        return "COLLECTED"
+    if due_date < today:
+        return "OVERDUE"
+    if due_date == today:
+        return "TODAY"
+    if due_date <= today + timedelta(days=7):
+        return "NEXT_7_DAYS"
+    return "UPCOMING"
+
+
 class RentManagementAPIView(APIView):
-    """Memory-bounded rent management response preserving the existing API shape."""
+    """Memory-bounded digital rent collection response."""
 
     permission_classes = [IsAuthenticated]
     ALLOWED_ROLES = {"ADMIN", "MANAGER", "OFFICE", "ENGINEER"}
@@ -101,6 +115,13 @@ class RentManagementAPIView(APIView):
             last_day = calendar.monthrange(today.year, today.month)[1]
             due_date = date(today.year, today.month, min(installation_day, last_day))
             penalty = rent_penalty(Decimal(str(balance)), due_date)
+            collection_bucket = _collection_bucket(
+                payment_status,
+                balance,
+                due_date,
+                today,
+            )
+            days_until_due = (due_date - today).days
 
             history_data = []
             history = CustomerRentHistory.objects.filter(customer=customer).order_by(
@@ -140,6 +161,11 @@ class RentManagementAPIView(APIView):
                     "phone": customer.phone,
                     "card_number": customer.card_number,
                     "old_card_number": customer.old_card_number,
+                    "area": customer.area,
+                    "address": customer.address,
+                    "city": customer.city,
+                    "latitude": str(customer.latitude) if customer.latitude is not None else None,
+                    "longitude": str(customer.longitude) if customer.longitude is not None else None,
                 },
                 "current_rent": {
                     "rent_month": current_month.isoformat(),
@@ -159,6 +185,8 @@ class RentManagementAPIView(APIView):
                     "balance": balance,
                     "status": payment_status,
                     "due_date": due_date.isoformat(),
+                    "collection_bucket": collection_bucket,
+                    "days_until_due": days_until_due,
                     "grace_days": RENT_GRACE_DAYS,
                     "penalty_days": penalty["penalty_days"],
                     "penalty_amount": float(penalty["penalty_amount"]),
@@ -181,7 +209,9 @@ class RentManagementAPIView(APIView):
         def stream_json():
             yield '{"success":true,"count":'
             yield str(total_count)
-            yield ',"customers":['
+            yield ',"generated_for":"'
+            yield today.isoformat()
+            yield '","customers":['
             first = True
             for customer in customers.iterator(chunk_size=40):
                 if not first:
