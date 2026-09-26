@@ -40,9 +40,25 @@ def _has_no_parts_declaration(job):
     return job.activity_logs.filter(activity=NO_PARTS_ACTIVITY).exists()
 
 
+def _has_ro_parts_passport(job):
+    if not job.ro_asset_id:
+        return True
+    from .ro_parts_models import ROPartsInspection
+
+    return ROPartsInspection.objects.filter(
+        job=job,
+        ro_asset_id=job.ro_asset_id,
+        status="CONFIRMED",
+    ).exists()
+
+
 def _validate_field_work_completion(job):
     if not _has_photo(job, "Before Photo"):
         raise ValueError("Cannot complete job: before photo is missing.")
+    if not _has_ro_parts_passport(job):
+        raise ValueError(
+            "Cannot complete job: capture 3-4 RO photos and confirm the visual parts passport."
+        )
     if not (job.parts_used.exists() or _has_no_parts_declaration(job)):
         raise ValueError(
             "Cannot complete job: scan every used part or confirm that no part was used."
@@ -66,6 +82,10 @@ def change_job_status(job, new_status):
             raise ValueError("Cannot start work: before photo is missing.")
 
     if new_status == "COMPLETED" and job.job_type == "INSTALLATION":
+        if not _has_ro_parts_passport(job):
+            raise ValueError(
+                "Cannot complete job: capture 3-4 RO photos and confirm the visual parts passport."
+            )
         if not job.parts_used.exists():
             raise ValueError("Cannot complete job: parts have not been scanned.")
         if not hasattr(job, "installation"):
