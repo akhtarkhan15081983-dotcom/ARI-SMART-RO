@@ -1,3 +1,5 @@
+import os
+
 from django.utils import timezone
 
 from .models import JobActivityLog
@@ -40,6 +42,21 @@ def _has_no_parts_declaration(job):
     return job.activity_logs.filter(activity=NO_PARTS_ACTIVITY).exists()
 
 
+def _ro_parts_passport_backend_gate_enabled():
+    """Allow a staged rollout without breaking older installed app versions.
+
+    The new Flutter secure-work screen requires the passport immediately. The
+    backend hard gate can be enabled after the new app is distributed by setting
+    ARI_REQUIRE_RO_PARTS_PASSPORT=1 in production.
+    """
+    return str(os.getenv("ARI_REQUIRE_RO_PARTS_PASSPORT", "0")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _has_ro_parts_passport(job):
     if not job.ro_asset_id:
         return False
@@ -55,10 +72,6 @@ def _has_ro_parts_passport(job):
 def _validate_field_work_completion(job):
     if not _has_photo(job, "Before Photo"):
         raise ValueError("Cannot complete job: before photo is missing.")
-    if not _has_ro_parts_passport(job):
-        raise ValueError(
-            "Cannot complete job: capture 3-4 RO photos and confirm the visual parts passport."
-        )
     if not (job.parts_used.exists() or _has_no_parts_declaration(job)):
         raise ValueError(
             "Cannot complete job: scan every used part or confirm that no part was used."
@@ -69,6 +82,10 @@ def _validate_field_work_completion(job):
         raise ValueError("Cannot complete job: customer OTP is not verified.")
     if not hasattr(job, "signature"):
         raise ValueError("Cannot complete job: customer signature is missing.")
+    if _ro_parts_passport_backend_gate_enabled() and not _has_ro_parts_passport(job):
+        raise ValueError(
+            "Cannot complete job: capture 3-4 RO photos and confirm the visual parts passport."
+        )
 
 
 def change_job_status(job, new_status):
@@ -82,10 +99,6 @@ def change_job_status(job, new_status):
             raise ValueError("Cannot start work: before photo is missing.")
 
     if new_status == "COMPLETED" and job.job_type == "INSTALLATION":
-        if not _has_ro_parts_passport(job):
-            raise ValueError(
-                "Cannot complete job: capture 3-4 RO photos and confirm the visual parts passport."
-            )
         if not job.parts_used.exists():
             raise ValueError("Cannot complete job: parts have not been scanned.")
         if not hasattr(job, "installation"):
@@ -96,6 +109,10 @@ def change_job_status(job, new_status):
             raise ValueError("Cannot complete job: customer OTP is not verified.")
         if not hasattr(job, "signature"):
             raise ValueError("Cannot complete job: customer signature is missing.")
+        if _ro_parts_passport_backend_gate_enabled() and not _has_ro_parts_passport(job):
+            raise ValueError(
+                "Cannot complete job: capture 3-4 RO photos and confirm the visual parts passport."
+            )
 
     if new_status == "COMPLETED" and job.job_type in FIELD_WORK_TYPES:
         _validate_field_work_completion(job)
