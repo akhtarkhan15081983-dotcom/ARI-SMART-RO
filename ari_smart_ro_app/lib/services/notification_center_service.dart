@@ -86,6 +86,18 @@ class NotificationCenterService {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> adminOfferCustomers() async {
+    final response = await http.get(
+      Uri.parse('${ApiService.baseUrl}/auth/admin/offers/customers/'),
+      headers: await ApiService.authHeaders(),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    return (data['customers'] as List<dynamic>? ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
   Future<Map<String, dynamic>> createOffer(Map<String, dynamic> payload) async {
     final response = await http.post(
       Uri.parse('${ApiService.baseUrl}/auth/admin/offers/'),
