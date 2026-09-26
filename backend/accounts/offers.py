@@ -4,6 +4,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import CustomerEngagement
+from .offer_audience import offer_audience_q_for_user
 
 
 ZERO = Decimal("0.00")
@@ -26,10 +27,7 @@ def eligible_offers(user=None, scope=None, now=None):
     if user is None:
         rows = rows.filter(audience="ALL", target_user__isnull=True)
     else:
-        rows = rows.filter(
-            Q(audience="ALL", target_user__isnull=True)
-            | Q(audience="TARGETED", target_user=user)
-        )
+        rows = rows.filter(offer_audience_q_for_user(user))
     return rows.order_by("-priority", "-created_at")
 
 
@@ -72,7 +70,6 @@ def customer_offer_user(customer):
         return None
     from .models import User
     return User.objects.filter(phone=customer.phone, role="CUSTOMER", is_active=True).first()
-
 
 
 def best_public_offer(scope, base_amount, promo_code=""):

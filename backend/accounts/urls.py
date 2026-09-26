@@ -30,8 +30,11 @@ from .sim_verification import (
 from .engagement import CustomerEngagementAPIView
 from .notifications import (
     AdminNotificationCampaignAPIView,
-    AdminOfferAPIView,
     NotificationCenterAPIView,
+)
+from .offer_admin import (
+    AdminOfferAPIView,
+    AdminOfferCustomerAudienceAPIView,
 )
 
 
@@ -40,6 +43,7 @@ urlpatterns = [
     path("notifications/", NotificationCenterAPIView.as_view(), name="notification-center"),
     path("admin/notification-campaigns/", AdminNotificationCampaignAPIView.as_view(), name="admin-notification-campaigns"),
     path("admin/offers/", AdminOfferAPIView.as_view(), name="admin-offers"),
+    path("admin/offers/customers/", AdminOfferCustomerAudienceAPIView.as_view(), name="admin-offer-customers"),
     path("admin/sms-gateway/", AdminSmsGatewaySetupAPIView.as_view(), name="admin-sms-gateway"),
     path("customer-engagement/", CustomerEngagementAPIView.as_view(), name="customer-engagement"),
     path("sim-verification/start/", SimVerificationStartAPIView.as_view(), name="sim-verification-start"),
