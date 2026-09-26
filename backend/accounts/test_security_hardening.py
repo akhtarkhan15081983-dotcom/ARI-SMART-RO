@@ -2,7 +2,8 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.models import User
+from accounts.models import PhoneOTP, User
+from accounts.services.otp import create_phone_otp, verify_phone_otp
 from accounts.services.sms import memory_outbox
 from customers.models import Customer
 
@@ -112,6 +113,73 @@ class SecurityHardeningTests(TestCase):
             HTTP_X_ARI_DEVICE_ID="device-b",
         )
         self.assertEqual(denied.status_code, 403)
+
+    def test_admin_mfa_challenge_cannot_be_replayed(self):
+        User.objects.create_user(
+            phone="9400000005",
+            password="AdminStrong@123",
+            first_name="Admin",
+            role="ADMIN",
+            is_active=True,
+            is_verified=True,
+        )
+        client = APIClient()
+        login = client.post(
+            "/api/auth/login/",
+            {"phone": "9400000005", "password": "AdminStrong@123"},
+            format="json",
+            HTTP_X_ARI_DEVICE_ID="replay-test-device",
+        )
+        self.assertEqual(login.status_code, 202)
+        payload = {
+            "challenge": login.data["challenge"],
+            "otp": memory_outbox[-1]["otp"],
+        }
+
+        first = client.post(
+            "/api/auth/admin/mfa/verify/",
+            payload,
+            format="json",
+            HTTP_X_ARI_DEVICE_ID="replay-test-device",
+        )
+        self.assertEqual(first.status_code, 200)
+
+        replay = client.post(
+            "/api/auth/admin/mfa/verify/",
+            payload,
+            format="json",
+            HTTP_X_ARI_DEVICE_ID="replay-test-device",
+        )
+        self.assertEqual(replay.status_code, 409)
+        self.assertNotIn("access", replay.data)
+        self.assertNotIn("refresh", replay.data)
+
+    @override_settings(DEBUG=False, SECRET_KEY="security-test-secret-key")
+    def test_customer_otp_is_not_stored_in_plaintext_in_production(self):
+        user = User.objects.create_user(
+            phone="9400000006",
+            password="CustomerStrong@123",
+            first_name="Customer",
+            role="CUSTOMER",
+            is_active=False,
+            is_verified=False,
+        )
+
+        issued = create_phone_otp(user)
+        plaintext = issued.delivery_otp
+        stored = PhoneOTP.objects.get(pk=issued.pk)
+
+        self.assertEqual(len(plaintext), 6)
+        self.assertTrue(plaintext.isdigit())
+        self.assertNotEqual(stored.otp, plaintext)
+        self.assertTrue(stored.otp.startswith("h"))
+        self.assertEqual(len(stored.otp), 6)
+
+        verified = verify_phone_otp(user, plaintext, "NewCustomerStrong@456")
+        self.assertEqual(verified.pk, user.pk)
+        user.refresh_from_db()
+        self.assertTrue(user.is_verified)
+        self.assertTrue(user.check_password("NewCustomerStrong@456"))
 
     def test_customer_cannot_change_operational_ro_fields(self):
         user = User.objects.create_user(
