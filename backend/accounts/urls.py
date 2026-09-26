@@ -3,7 +3,6 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     CustomerRegisterAPIView,
-    SendOTPAPIView,
     VerifyOTPAPIView,
     ForgotPasswordRequestAPIView,
     AdminPasswordResetRequestListAPIView,
@@ -11,6 +10,7 @@ from .views import (
     CompleteAdminApprovedPasswordResetAPIView,
     AdminSystemAuditAPIView,
 )
+from .privacy_views import SecureSendOTPAPIView
 from .security_views import (
     AdminMFAVerifyAPIView,
     SecureChangePasswordAPIView,
@@ -51,7 +51,7 @@ urlpatterns = [
     path("existing-customer/login/", ExistingCustomerReferenceLoginAPIView.as_view(), name="existing-customer-login"),
 
     path("register/", CustomerRegisterAPIView.as_view(), name="customer-register"),
-    path("send-otp/", SendOTPAPIView.as_view(), name="send-otp"),
+    path("send-otp/", SecureSendOTPAPIView.as_view(), name="send-otp"),
     path("verify-otp/", VerifyOTPAPIView.as_view(), name="verify-otp"),
     path("login/", SecureLoginAPIView.as_view(), name="login"),
     path("admin/mfa/verify/", AdminMFAVerifyAPIView.as_view(), name="admin-mfa-verify"),
