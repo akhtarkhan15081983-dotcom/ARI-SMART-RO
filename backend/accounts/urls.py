@@ -6,13 +6,13 @@ from .views import (
     SendOTPAPIView,
     VerifyOTPAPIView,
     LoginAPIView,
-    ChangePasswordAPIView,
     ForgotPasswordRequestAPIView,
     AdminPasswordResetRequestListAPIView,
     AdminPasswordResetReviewAPIView,
     CompleteAdminApprovedPasswordResetAPIView,
     AdminSystemAuditAPIView,
 )
+from .security_views import SecureChangePasswordAPIView
 from .existing_customer_access import (
     ExistingCustomerBootstrapAPIView,
     ExistingCustomerCompleteAPIView,
@@ -51,7 +51,7 @@ urlpatterns = [
     path("send-otp/", SendOTPAPIView.as_view(), name="send-otp"),
     path("verify-otp/", VerifyOTPAPIView.as_view(), name="verify-otp"),
     path("login/", LoginAPIView.as_view(), name="login"),
-    path("change-password/", ChangePasswordAPIView.as_view(), name="change-password"),
+    path("change-password/", SecureChangePasswordAPIView.as_view(), name="change-password"),
     path("forgot-password/request/", ForgotPasswordRequestAPIView.as_view(), name="forgot-password-request"),
     path("forgot-password/complete/", CompleteAdminApprovedPasswordResetAPIView.as_view(), name="forgot-password-complete"),
     path("admin/password-reset-requests/", AdminPasswordResetRequestListAPIView.as_view(), name="admin-password-reset-request-list"),
