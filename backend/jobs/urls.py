@@ -20,6 +20,11 @@ from .views import (
 )
 from .fraud_controls import JobNoPartsDeclarationAPIView
 from .work_planner import WorkCalendarAPIView, WorkRescheduleAPIView, WorkRouteAPIView
+from .ro_parts_views import (
+    ROPartsScanAPIView,
+    ROPartsConfirmAPIView,
+    CustomerROPartsPassportAPIView,
+)
 
 router = DefaultRouter()
 router.register(r"jobs", JobViewSet, basename="jobs")
@@ -30,6 +35,9 @@ urlpatterns = [
     path("work-planner/route/", WorkRouteAPIView.as_view(), name="work-route"),
     path("jobs/my-jobs/", MyJobsAPIView.as_view(), name="my-jobs"),
     path("jobs/search/", JobSearchAPIView.as_view(), name="job-search"),
+    path("jobs/customer/ro-parts-passport/", CustomerROPartsPassportAPIView.as_view(), name="customer-ro-parts-passport"),
+    path("jobs/<int:pk>/ro-parts/scan/", ROPartsScanAPIView.as_view(), name="ro-parts-scan"),
+    path("jobs/<int:pk>/ro-parts/inspections/<int:inspection_id>/confirm/", ROPartsConfirmAPIView.as_view(), name="ro-parts-confirm"),
     path("jobs/<int:pk>/accept/", JobAcceptAPIView.as_view(), name="job-accept"),
     path("jobs/<int:pk>/change-status/", JobChangeStatusAPIView.as_view(), name="job-change-status"),
     path("jobs/<int:pk>/media/", JobMediaUploadAPIView.as_view(), name="job-media-upload"),
