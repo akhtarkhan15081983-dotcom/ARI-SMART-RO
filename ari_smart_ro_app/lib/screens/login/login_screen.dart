@@ -14,6 +14,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const _rememberedLoginKey = 'remembered_login_id';
   final phoneController = TextEditingController();
   final passwordController = TextEditingController();
   final loginController = LoginController();
@@ -28,14 +29,22 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loadRememberedLogin() async {
-    // Security hardening: remove any legacy remembered raw password and retain
-    // only the login identifier. The authenticated refresh session is already
-    // stored separately in secure storage.
     final legacy = await ApiService.rememberedCredentials();
-    final rememberedPhone = legacy?['phone'];
+    final legacyIdentifier = legacy?['phone'];
     await ApiService.clearRememberedCredentials();
-    if (!mounted || rememberedPhone == null || rememberedPhone.isEmpty) return;
-    phoneController.text = rememberedPhone;
+
+    var remembered = await ApiService.storage.read(key: _rememberedLoginKey);
+    if ((remembered == null || remembered.isEmpty) &&
+        legacyIdentifier != null &&
+        legacyIdentifier.isNotEmpty) {
+      remembered = legacyIdentifier;
+      await ApiService.storage.write(
+        key: _rememberedLoginKey,
+        value: remembered,
+      );
+    }
+    if (!mounted || remembered == null || remembered.isEmpty) return;
+    phoneController.text = remembered;
     setState(() => _rememberMe = true);
   }
 
@@ -156,9 +165,17 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (!context.mounted) return;
                           setState(() => isLoading = false);
                           if (success) {
-                            // Never persist the password. Autofill/password
-                            // managers remain available at the OS level.
                             await ApiService.clearRememberedCredentials();
+                            if (_rememberMe) {
+                              await ApiService.storage.write(
+                                key: _rememberedLoginKey,
+                                value: phoneController.text.trim(),
+                              );
+                            } else {
+                              await ApiService.storage.delete(
+                                key: _rememberedLoginKey,
+                              );
+                            }
                             if (!context.mounted) return;
                             Navigator.pushReplacement(
                               context,
