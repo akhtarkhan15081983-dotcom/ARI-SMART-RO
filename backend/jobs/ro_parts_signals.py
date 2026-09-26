@@ -1,22 +1,59 @@
+import re
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils import timezone
 
 from assets.models import ROAsset
 from products.models import ProductCategory, ROModel
 
-from .models import Job
+from .models import Job, JobPartUsed
+from .ro_parts_ai import PART_CATALOG
+from .ro_parts_models import ROPartsInspection, ROPartsObservation
 
 
 PASSPORT_JOB_TYPES = {"SERVICE", "COMPLAINT", "INSTALLATION"}
 
+PART_ALIASES = {
+    "sediment_filter": ("sediment", "spun", "ppfilter"),
+    "pre_carbon": ("precarbon", "gac", "carbonblock", "carbonfilter"),
+    "ro_membrane": ("romembrane", "membrane"),
+    "post_carbon": ("postcarbon", "tasteodor", "t33"),
+    "alkaline_filter": ("alkaline",),
+    "copper_filter": ("copper",),
+    "uv_chamber": ("uvchamber", "uvlamp", "uv"),
+    "uf_filter": ("ufmembrane", "uffilter", "uf"),
+    "mineral_cartridge": ("mineral",),
+    "booster_pump": ("boosterpump", "pump"),
+    "smps": ("smps", "powersupply", "adapter"),
+    "solenoid_valve": ("solenoidvalve", "svvalve", "sv"),
+    "flow_restrictor": ("flowrestrictor", "fr"),
+    "tds_controller": ("tdscontroller", "tdscontrol"),
+    "auto_flush_valve": ("autoflush", "flushvalve"),
+    "low_pressure_switch": ("lowpressureswitch", "lps"),
+    "high_pressure_switch": ("highpressureswitch", "hps"),
+    "storage_tank": ("storagetank", "pressuretank", "tank"),
+    "filter_housing": ("filterhousing", "prefilterhousing"),
+    "membrane_housing": ("membranehousing",),
+}
+
+
+def _normalise(value):
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _catalog_key_for_name(name):
+    value = _normalise(name)
+    if not value:
+        return None
+    for key, aliases in PART_ALIASES.items():
+        if any(_normalise(alias) in value for alias in aliases):
+            return key
+    return None
+
 
 def ensure_job_ro_asset(job):
-    """Attach an RO asset to legacy/imported customer jobs when possible.
-
-    Older imported customers can predate ROAsset records. For those customers,
-    reuse an existing linked asset first; otherwise create a private inactive
-    catalog model solely to anchor that customer's physical RO history.
-    """
+    """Attach an RO asset to legacy/imported customer jobs when possible."""
     if job.ro_asset_id or job.job_type not in PASSPORT_JOB_TYPES or not job.customer_id:
         return job.ro_asset
 
@@ -85,3 +122,56 @@ def ensure_job_ro_asset(job):
 @receiver(post_save, sender=Job)
 def auto_link_legacy_ro_asset(sender, instance, **kwargs):
     ensure_job_ro_asset(instance)
+
+
+@receiver(post_save, sender=JobPartUsed)
+def sync_inventory_replacement_to_passport(sender, instance, created, **kwargs):
+    """Upgrade a confirmed visual record when a serialized inventory part is installed.
+
+    This makes the replacement date trustworthy regardless of whether the
+    engineer captured RO photos before or after scanning the used-part QR.
+    """
+    if not created:
+        return
+    job = instance.job
+    if not job.ro_asset_id:
+        ensure_job_ro_asset(job)
+    if not job.ro_asset_id:
+        return
+
+    part_name = str(getattr(instance.inventory_item.part, "name", "") or "").strip()
+    key = _catalog_key_for_name(part_name)
+    if key not in PART_CATALOG:
+        return
+
+    inspection = (
+        ROPartsInspection.objects.filter(
+            job=job,
+            ro_asset_id=job.ro_asset_id,
+            status="CONFIRMED",
+        )
+        .order_by("-confirmed_at", "-captured_at", "-id")
+        .first()
+    )
+    if inspection is None:
+        return
+
+    current = inspection.observations.filter(part_key=key).first()
+    used_at = instance.used_at or timezone.now()
+    installed_on = timezone.localtime(used_at).date()
+    ROPartsObservation.objects.update_or_create(
+        inspection=inspection,
+        part_key=key,
+        defaults={
+            "part_name": PART_CATALOG[key],
+            "confidence": current.confidence if current else 1,
+            "visible": current.visible if current else False,
+            "confirmed": True,
+            "installed_on": installed_on,
+            "date_source": "INVENTORY_JOB",
+            "evidence_notes": f"Inventory job record: {part_name}"[:250],
+        },
+    )
+    if inspection.inspection_type != "REPLACEMENT":
+        inspection.inspection_type = "REPLACEMENT"
+        inspection.save(update_fields=["inspection_type"])
