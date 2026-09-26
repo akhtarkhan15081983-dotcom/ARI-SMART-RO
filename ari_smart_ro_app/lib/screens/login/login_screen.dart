@@ -28,10 +28,14 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loadRememberedLogin() async {
-    final credentials = await ApiService.rememberedCredentials();
-    if (!mounted || credentials == null) return;
-    phoneController.text = credentials['phone'] ?? '';
-    passwordController.text = credentials['password'] ?? '';
+    // Security hardening: remove any legacy remembered raw password and retain
+    // only the login identifier. The authenticated refresh session is already
+    // stored separately in secure storage.
+    final legacy = await ApiService.rememberedCredentials();
+    final rememberedPhone = legacy?['phone'];
+    await ApiService.clearRememberedCredentials();
+    if (!mounted || rememberedPhone == null || rememberedPhone.isEmpty) return;
+    phoneController.text = rememberedPhone;
     setState(() => _rememberMe = true);
   }
 
@@ -118,8 +122,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 onChanged: isLoading
                     ? null
                     : (value) => setState(() => _rememberMe = value ?? false),
-                title: const Text('Remember login and password'),
-                subtitle: const Text('Stored securely on this device'),
+                title: const Text('Remember login ID'),
+                subtitle: const Text('Password is never saved by ARI SMART RO'),
               ),
               Align(
                 alignment: Alignment.centerRight,
@@ -152,14 +156,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (!context.mounted) return;
                           setState(() => isLoading = false);
                           if (success) {
-                            if (_rememberMe) {
-                              await ApiService.saveRememberedCredentials(
-                                phone: phoneController.text.trim(),
-                                password: passwordController.text,
-                              );
-                            } else {
-                              await ApiService.clearRememberedCredentials();
-                            }
+                            // Never persist the password. Autofill/password
+                            // managers remain available at the OS level.
+                            await ApiService.clearRememberedCredentials();
                             if (!context.mounted) return;
                             Navigator.pushReplacement(
                               context,
