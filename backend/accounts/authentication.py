@@ -1,6 +1,8 @@
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from .token_security import token_session_is_current
+
 
 class VerifiedCustomerJWTAuthentication(JWTAuthentication):
     TENANT_SAFE_PREFIXES = (
@@ -14,6 +16,13 @@ class VerifiedCustomerJWTAuthentication(JWTAuthentication):
         if result is None:
             return None
         user, token = result
+
+        if not token_session_is_current(user, token):
+            raise AuthenticationFailed(
+                "Your secure session has expired. Please sign in again.",
+                code="session_revoked",
+            )
+
         if user.is_superuser or user.role == "CUSTOMER":
             return user, token
 

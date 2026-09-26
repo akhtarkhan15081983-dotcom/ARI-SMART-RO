@@ -15,20 +15,20 @@ class _ExistingCustomerFirstLoginScreenState
     extends State<ExistingCustomerFirstLoginScreen> {
   final _service = ExistingCustomerAccessService();
   final _identifier = TextEditingController();
-  final _temporaryPassword = TextEditingController();
+  final _otp = TextEditingController();
   final _newPassword = TextEditingController();
   final _confirmPassword = TextEditingController();
   bool _busy = false;
-  bool _verified = false;
-  bool _hideTemp = true;
+  bool _codeSent = false;
   bool _hideNew = true;
   String _activationToken = '';
   String _customerLabel = '';
+  String _destination = '';
 
   @override
   void dispose() {
     _identifier.dispose();
-    _temporaryPassword.dispose();
+    _otp.dispose();
     _newPassword.dispose();
     _confirmPassword.dispose();
     super.dispose();
@@ -39,26 +39,24 @@ class _ExistingCustomerFirstLoginScreenState
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _verifyExisting() async {
-    if (_identifier.text.trim().isEmpty || _temporaryPassword.text.isEmpty) {
-      _show('Customer ID / Card / Mobile and temporary password are required.');
+  Future<void> _sendVerificationCode() async {
+    if (_identifier.text.trim().isEmpty) {
+      _show('Customer ID / Card / Mobile is required.');
       return;
     }
     setState(() => _busy = true);
     try {
-      final result = await _service.start(
-        identifier: _identifier.text,
-        temporaryPassword: _temporaryPassword.text,
-      );
+      final result = await _service.start(identifier: _identifier.text);
       final customer = Map<String, dynamic>.from(result['customer'] as Map);
       if (!mounted) return;
       setState(() {
         _activationToken = result['activation_token'].toString();
+        _destination = result['destination']?.toString() ?? '';
         _customerLabel =
             '${customer['name'] ?? ''} • ${customer['customer_id'] ?? ''}';
-        _verified = true;
+        _codeSent = true;
       });
-      _show('Customer verified. Create your personal password now.');
+      _show('Verification code sent to the registered mobile.');
     } catch (e) {
       _show(e.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -67,6 +65,10 @@ class _ExistingCustomerFirstLoginScreenState
   }
 
   Future<void> _finish() async {
+    if (_otp.text.trim().length != 6) {
+      _show('Enter the 6-digit verification code.');
+      return;
+    }
     if (_newPassword.text != _confirmPassword.text) {
       _show('New password and confirm password do not match.');
       return;
@@ -79,6 +81,7 @@ class _ExistingCustomerFirstLoginScreenState
     try {
       await _service.complete(
         activationToken: _activationToken,
+        otp: _otp.text,
         newPassword: _newPassword.text,
       );
       if (!mounted) return;
@@ -107,7 +110,7 @@ class _ExistingCustomerFirstLoginScreenState
               const Icon(Icons.verified_user_outlined, size: 64),
               const SizedBox(height: 12),
               Text(
-                _verified ? 'Create Personal Password' : 'Activate Existing Customer',
+                _codeSent ? 'Verify Mobile & Set Password' : 'Activate Existing Customer',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
@@ -115,13 +118,13 @@ class _ExistingCustomerFirstLoginScreenState
               ),
               const SizedBox(height: 8),
               Text(
-                _verified
-                    ? _customerLabel
-                    : 'Use Customer ID, Card Number, old card number or registered mobile.',
+                _codeSent
+                    ? '$_customerLabel\nCode sent to $_destination'
+                    : 'Use Customer ID, Card Number, old card number or registered mobile. We will verify the registered mobile before activation.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              if (!_verified) ...[
+              if (!_codeSent) ...[
                 TextField(
                   controller: _identifier,
                   textCapitalization: TextCapitalization.characters,
@@ -131,36 +134,26 @@ class _ExistingCustomerFirstLoginScreenState
                     border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _temporaryPassword,
-                  obscureText: _hideTemp,
-                  decoration: InputDecoration(
-                    labelText: 'Temporary universal password',
-                    prefixIcon: const Icon(Icons.key_outlined),
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      onPressed: () => setState(() => _hideTemp = !_hideTemp),
-                      icon: Icon(
-                        _hideTemp
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                      ),
-                    ),
-                  ),
-                ),
                 const SizedBox(height: 18),
                 FilledButton.icon(
-                  onPressed: _busy ? null : _verifyExisting,
-                  icon: const Icon(Icons.verified_outlined),
-                  label: Text(_busy ? 'VERIFYING…' : 'VERIFY EXISTING CUSTOMER'),
+                  onPressed: _busy ? null : _sendVerificationCode,
+                  icon: const Icon(Icons.sms_outlined),
+                  label: Text(_busy ? 'SENDING…' : 'SEND VERIFICATION CODE'),
                 ),
               ] else ...[
-                const Text(
-                  'The temporary password works only for first activation. Choose a private password now; the temporary password cannot be reused for this account.',
-                  textAlign: TextAlign.center,
+                TextField(
+                  controller: _otp,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: '6-digit verification code',
+                    prefixIcon: Icon(Icons.shield_outlined),
+                    border: OutlineInputBorder(),
+                    counterText: '',
+                  ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
                 TextField(
                   controller: _newPassword,
                   obscureText: _hideNew,
@@ -192,7 +185,17 @@ class _ExistingCustomerFirstLoginScreenState
                 FilledButton.icon(
                   onPressed: _busy ? null : _finish,
                   icon: const Icon(Icons.check_circle_outline),
-                  label: Text(_busy ? 'ACTIVATING…' : 'ACTIVATE & LOGIN'),
+                  label: Text(_busy ? 'ACTIVATING…' : 'VERIFY & ACTIVATE'),
+                ),
+                TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () => setState(() {
+                            _codeSent = false;
+                            _activationToken = '';
+                            _otp.clear();
+                          }),
+                  child: const Text('START AGAIN / RESEND'),
                 ),
               ],
             ],

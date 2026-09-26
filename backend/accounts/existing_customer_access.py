@@ -1,8 +1,8 @@
-import hmac
 import re
+import secrets
 from datetime import timedelta
 
-from django.conf import settings
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core import signing
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -19,9 +19,10 @@ from customers.models import Customer
 
 from .models import AuthSecurityEvent, User
 from .serializers import UserSerializer
+from .services.sms import SMSDeliveryError, send_customer_verification_otp
 from .views import ProductionScopedRateThrottle
 
-SALT = "ari-existing-customer-first-login-v1"
+SALT = "ari-existing-customer-first-login-v2"
 MAX_AGE_SECONDS = 600
 
 
@@ -34,12 +35,16 @@ def _phone(value):
     return digits[-10:] if len(digits) >= 10 else digits
 
 
+def _mask_phone(value):
+    phone = _phone(value)
+    return f"••••••{phone[-4:]}" if len(phone) == 10 else "registered mobile"
+
+
 def _customer_for_identifier(identifier):
     value = str(identifier or "").strip()
     if not value:
         return None, "MISSING"
 
-    # Exact customer/card reference always wins and stays unique.
     reference = Customer.objects.filter(is_active=True).filter(
         Q(customer_id__iexact=value)
         | Q(card_number__iexact=value)
@@ -96,16 +101,9 @@ def _tokens(user):
 class ExistingCustomerBootstrapAPIView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ProductionScopedRateThrottle]
-    throttle_scope = "login"
+    throttle_scope = "otp"
 
     def post(self, request):
-        configured = str(getattr(settings, "EXISTING_CUSTOMER_TEMP_PASSWORD", "") or "")
-        supplied = str(request.data.get("temporary_password") or "")
-        if not configured:
-            return Response({"success": False, "message": "Existing customer first login is not configured."}, status=503)
-        if not hmac.compare_digest(configured, supplied):
-            return Response({"success": False, "message": "Temporary password is incorrect."}, status=401)
-
         customer, error = _customer_for_identifier(request.data.get("identifier"))
         if customer is None:
             if error == "AMBIGUOUS_PHONE":
@@ -120,40 +118,80 @@ class ExistingCustomerBootstrapAPIView(APIView):
                 status=409,
             )
 
-        payload = {"customer_pk": customer.pk, "internal_phone": _internal_phone(customer)}
+        phone = _phone(customer.phone)
+        if len(phone) != 10 or not phone.isdigit():
+            return Response(
+                {"success": False, "message": "This customer record does not have a valid registered mobile number. Contact ARI office."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        otp = f"{secrets.randbelow(1000000):06d}"
+        try:
+            send_customer_verification_otp(phone, otp)
+        except SMSDeliveryError:
+            return Response(
+                {"success": False, "message": "Verification code could not be delivered. Please try again."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        device_id = str(request.headers.get("X-ARI-Device-ID", "") or "").strip()[:64]
+        payload = {
+            "customer_pk": customer.pk,
+            "internal_phone": _internal_phone(customer),
+            "otp_hash": make_password(otp),
+            "device_id": device_id,
+            "nonce": secrets.token_urlsafe(18),
+        }
         token = signing.dumps(payload, salt=SALT, compress=True)
         return Response({
             "success": True,
             "activation_token": token,
             "expires_in_seconds": MAX_AGE_SECONDS,
+            "destination": _mask_phone(phone),
             "customer": {
                 "customer_id": customer.customer_id,
                 "card_number": customer.card_number,
                 "name": customer.name,
-                "phone": _phone(customer.phone),
             },
-            "message": "Existing customer verified. Create your personal password now.",
+            "message": "Verification code sent to the registered mobile number.",
         })
 
 
 class ExistingCustomerCompleteAPIView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ProductionScopedRateThrottle]
-    throttle_scope = "login"
+    throttle_scope = "otp"
 
     @transaction.atomic
     def post(self, request):
         token = str(request.data.get("activation_token") or "")
+        otp = str(request.data.get("otp") or "").strip()
         new_password = str(request.data.get("new_password") or "")
-        if not token or not new_password:
-            return Response({"success": False, "message": "Activation session and new password are required."}, status=400)
+        if not token or len(otp) != 6 or not otp.isdigit() or not new_password:
+            return Response(
+                {"success": False, "message": "Activation session, 6-digit OTP and new password are required."},
+                status=400,
+            )
 
         try:
             payload = signing.loads(token, salt=SALT, max_age=MAX_AGE_SECONDS)
         except signing.SignatureExpired:
-            return Response({"success": False, "message": "First-login session expired. Start again."}, status=410)
+            return Response({"success": False, "message": "First-login verification expired. Start again."}, status=410)
         except signing.BadSignature:
-            return Response({"success": False, "message": "Invalid first-login session."}, status=400)
+            return Response({"success": False, "message": "Invalid first-login verification session."}, status=400)
+
+        expected_device = str(payload.get("device_id") or "")
+        supplied_device = str(request.headers.get("X-ARI-Device-ID", "") or "").strip()[:64]
+        if expected_device and expected_device != supplied_device:
+            return Response(
+                {"success": False, "message": "Verification must be completed on the same device."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not check_password(otp, str(payload.get("otp_hash") or "")):
+            return Response(
+                {"success": False, "message": "Verification code is incorrect."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         customer = Customer.objects.select_for_update().filter(pk=payload.get("customer_pk"), is_active=True).first()
         if customer is None:
@@ -171,10 +209,6 @@ class ExistingCustomerCompleteAPIView(APIView):
         except DjangoValidationError as exc:
             return Response({"success": False, "message": " ".join(exc.messages)}, status=400)
 
-        configured = str(getattr(settings, "EXISTING_CUSTOMER_TEMP_PASSWORD", "") or "")
-        if configured and hmac.compare_digest(configured, new_password):
-            return Response({"success": False, "message": "Choose a personal password different from the temporary password."}, status=400)
-
         user = User.objects.create_user(
             phone=internal_phone,
             password=new_password,
@@ -187,10 +221,10 @@ class ExistingCustomerCompleteAPIView(APIView):
         customer.user = user
         customer.save(update_fields=["user"])
         access, refresh = _tokens(user)
-        _event(request, "LOGIN_SUCCESS", user=user, method="EXISTING_CUSTOMER_BOOTSTRAP", customer_id=customer.customer_id)
+        _event(request, "LOGIN_SUCCESS", user=user, method="EXISTING_CUSTOMER_OTP", customer_id=customer.customer_id)
         return Response({
             "success": True,
-            "message": "Account activated. Your personal password is now active.",
+            "message": "Account activated securely. Your personal password is now active.",
             "access": access,
             "refresh": refresh,
             "user": UserSerializer(user).data,

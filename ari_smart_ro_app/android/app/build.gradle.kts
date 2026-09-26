@@ -3,7 +3,6 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -46,7 +45,6 @@ android {
 
     buildTypes {
         debug {
-            // Keep observability test builds installable beside the production app.
             applicationIdSuffix = ".posthogtest"
             versionNameSuffix = "-posthog-test"
         }
@@ -60,6 +58,8 @@ android {
             } else {
                 signingConfigs.getByName("release")
             }
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

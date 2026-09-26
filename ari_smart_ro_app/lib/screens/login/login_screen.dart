@@ -14,6 +14,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const _rememberedLoginKey = 'remembered_login_id';
   final phoneController = TextEditingController();
   final passwordController = TextEditingController();
   final loginController = LoginController();
@@ -28,11 +29,168 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loadRememberedLogin() async {
-    final credentials = await ApiService.rememberedCredentials();
-    if (!mounted || credentials == null) return;
-    phoneController.text = credentials['phone'] ?? '';
-    passwordController.text = credentials['password'] ?? '';
+    final legacy = await ApiService.rememberedCredentials();
+    final legacyIdentifier = legacy?['phone'];
+    await ApiService.clearRememberedCredentials();
+
+    var remembered = await ApiService.storage.read(key: _rememberedLoginKey);
+    if ((remembered == null || remembered.isEmpty) &&
+        legacyIdentifier != null &&
+        legacyIdentifier.isNotEmpty) {
+      remembered = legacyIdentifier;
+      await ApiService.storage.write(
+        key: _rememberedLoginKey,
+        value: remembered,
+      );
+    }
+    if (!mounted || remembered == null || remembered.isEmpty) return;
+    phoneController.text = remembered;
     setState(() => _rememberMe = true);
+  }
+
+  Future<void> _finishSuccessfulLogin() async {
+    await ApiService.clearRememberedCredentials();
+    if (_rememberMe) {
+      await ApiService.storage.write(
+        key: _rememberedLoginKey,
+        value: phoneController.text.trim(),
+      );
+    } else {
+      await ApiService.storage.delete(key: _rememberedLoginKey);
+    }
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const DashboardScreen()),
+    );
+  }
+
+  Future<void> _showAdminMfaDialog() async {
+    final otpController = TextEditingController();
+    var verifying = false;
+    String error = '';
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> verify() async {
+              final otp = otpController.text.trim();
+              if (otp.length != 6) {
+                setDialogState(() => error = 'Enter the 6-digit code.');
+                return;
+              }
+              setDialogState(() {
+                verifying = true;
+                error = '';
+              });
+              final success = await loginController.verifyAdminMfa(otp);
+              if (!dialogContext.mounted) return;
+              if (success) {
+                Navigator.of(dialogContext).pop();
+                await _finishSuccessfulLogin();
+                return;
+              }
+              setDialogState(() {
+                verifying = false;
+                error = loginController.lastError.isEmpty
+                    ? 'Admin verification failed.'
+                    : loginController.lastError;
+              });
+            }
+
+            return AlertDialog(
+              icon: const Icon(Icons.admin_panel_settings_outlined, size: 42),
+              title: const Text('Admin security verification'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    loginController.mfaDestination.isEmpty
+                        ? 'Enter the verification code sent to the registered admin mobile.'
+                        : 'Code sent to ${loginController.mfaDestination}',
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: otpController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    obscureText: true,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: '6-digit admin code',
+                      prefixIcon: Icon(Icons.shield_outlined),
+                      border: OutlineInputBorder(),
+                      counterText: '',
+                    ),
+                    onSubmitted: verifying ? null : (_) => verify(),
+                  ),
+                  if (error.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      error,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: verifying
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('CANCEL'),
+                ),
+                FilledButton.icon(
+                  onPressed: verifying ? null : verify,
+                  icon: verifying
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.verified_user_outlined),
+                  label: Text(verifying ? 'VERIFYING…' : 'VERIFY'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    otpController.dispose();
+  }
+
+  Future<void> _submitLogin() async {
+    setState(() => isLoading = true);
+    final success = await loginController.login(
+      phone: phoneController.text.trim(),
+      password: passwordController.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() => isLoading = false);
+
+    if (success) {
+      await _finishSuccessfulLogin();
+      return;
+    }
+    if (loginController.requiresMfa) {
+      await _showAdminMfaDialog();
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          loginController.lastError.isEmpty
+              ? 'Invalid login or password.'
+              : loginController.lastError,
+        ),
+      ),
+    );
   }
 
   @override
@@ -92,6 +250,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 autocorrect: false,
                 textInputAction: TextInputAction.done,
                 autofillHints: const [AutofillHints.password],
+                onSubmitted: isLoading ? null : (_) => _submitLogin(),
                 decoration: InputDecoration(
                   labelText: 'Password',
                   prefixIcon: const Icon(Icons.lock),
@@ -118,8 +277,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 onChanged: isLoading
                     ? null
                     : (value) => setState(() => _rememberMe = value ?? false),
-                title: const Text('Remember login and password'),
-                subtitle: const Text('Stored securely on this device'),
+                title: const Text('Remember login ID'),
+                subtitle: const Text('Password is never saved by ARI SMART RO'),
               ),
               Align(
                 alignment: Alignment.centerRight,
@@ -141,44 +300,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          setState(() => isLoading = true);
-                          final success = await loginController.login(
-                            phone: phoneController.text.trim(),
-                            password: passwordController.text.trim(),
-                          );
-                          if (!context.mounted) return;
-                          setState(() => isLoading = false);
-                          if (success) {
-                            if (_rememberMe) {
-                              await ApiService.saveRememberedCredentials(
-                                phone: phoneController.text.trim(),
-                                password: passwordController.text,
-                              );
-                            } else {
-                              await ApiService.clearRememberedCredentials();
-                            }
-                            if (!context.mounted) return;
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const DashboardScreen(),
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  loginController.lastError.isEmpty
-                                      ? 'Invalid login or password.'
-                                      : loginController.lastError,
-                                ),
-                              ),
-                            );
-                          }
-                        },
+                  onPressed: isLoading ? null : _submitLogin,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,

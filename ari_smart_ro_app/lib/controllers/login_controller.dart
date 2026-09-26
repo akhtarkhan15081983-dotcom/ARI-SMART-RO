@@ -7,11 +7,17 @@ import '../services/api_service.dart';
 
 class LoginController {
   String lastError = '';
+  String mfaChallenge = '';
+  String mfaDestination = '';
+
+  bool get requiresMfa => mfaChallenge.isNotEmpty;
 
   Future<bool> login({required String phone, required String password}) async {
     final identifier = phone.trim();
     try {
       lastError = '';
+      mfaChallenge = '';
+      mfaDestination = '';
       http.Response response;
       final looksLikePhone = RegExp(r'^\d{10}$').hasMatch(identifier);
 
@@ -24,7 +30,7 @@ class LoginController {
             )
             .timeout(const Duration(seconds: 20));
 
-        if (primary.statusCode == 200) {
+        if (primary.statusCode == 200 || primary.statusCode == 202) {
           response = primary;
         } else {
           final customerFallback =
@@ -37,6 +43,15 @@ class LoginController {
         response = await _customerReferenceLogin(identifier, password);
       }
 
+      if (response.statusCode == 202) {
+        final payload = jsonDecode(response.body) as Map<String, dynamic>;
+        if (payload['mfa_required'] == true) {
+          mfaChallenge = payload['challenge']?.toString() ?? '';
+          mfaDestination = payload['destination']?.toString() ?? '';
+          if (mfaChallenge.isNotEmpty) return false;
+        }
+      }
+
       if (response.statusCode != 200) {
         try {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -47,18 +62,62 @@ class LoginController {
         return false;
       }
 
-      final data = LoginResponse.fromJson(jsonDecode(response.body));
-      await ApiService.saveLoginData(
-        accessToken: data.access,
-        refreshToken: data.refresh,
-        role: data.user.role,
-        userId: data.user.id.toString(),
-      );
-      return true;
+      return _saveLoginResponse(response);
     } catch (_) {
       lastError = 'Server connection failed. Check your internet and try again.';
       return false;
     }
+  }
+
+  Future<bool> verifyAdminMfa(String otp) async {
+    if (mfaChallenge.isEmpty) {
+      lastError = 'Admin verification session is missing. Sign in again.';
+      return false;
+    }
+    try {
+      lastError = '';
+      final response = await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/auth/admin/mfa/verify/'),
+            headers: await ApiService.deviceHeaders(),
+            body: jsonEncode({
+              'challenge': mfaChallenge,
+              'otp': otp.trim(),
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) {
+        try {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          lastError = data['message']?.toString() ?? 'Admin verification failed.';
+        } catch (_) {
+          lastError = 'Admin verification failed. Please try again.';
+        }
+        return false;
+      }
+
+      final saved = await _saveLoginResponse(response);
+      if (saved) {
+        mfaChallenge = '';
+        mfaDestination = '';
+      }
+      return saved;
+    } catch (_) {
+      lastError = 'Server connection failed during admin verification.';
+      return false;
+    }
+  }
+
+  Future<bool> _saveLoginResponse(http.Response response) async {
+    final data = LoginResponse.fromJson(jsonDecode(response.body));
+    await ApiService.saveLoginData(
+      accessToken: data.access,
+      refreshToken: data.refresh,
+      role: data.user.role,
+      userId: data.user.id.toString(),
+    );
+    return true;
   }
 
   Future<http.Response> _customerReferenceLogin(
