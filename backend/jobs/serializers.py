@@ -78,7 +78,7 @@ class JobSerializer(serializers.ModelSerializer):
 
     def get_ro_parts_passport_confirmed(self, obj):
         if not obj.ro_asset_id:
-            return True
+            return False
         return obj.ro_parts_inspections.filter(status="CONFIRMED").exists()
 
     class Meta:
