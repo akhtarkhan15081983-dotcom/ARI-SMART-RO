@@ -1,8 +1,10 @@
+import hashlib
 import secrets
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core import signing
+from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.crypto import constant_time_compare
 from rest_framework import status
@@ -26,6 +28,13 @@ def _mask_phone(phone):
     if len(value) < 4:
         return "••••"
     return f"••••••{value[-4:]}"
+
+
+def _mfa_replay_cache_key(payload):
+    nonce = str(payload.get("nonce") or "")
+    user_id = str(payload.get("user_id") or "")
+    digest = hashlib.sha256(f"{user_id}:{nonce}".encode("utf-8")).hexdigest()
+    return f"ari:admin-mfa:used:{digest}"
 
 
 class SecureLoginAPIView(LoginAPIView):
@@ -162,6 +171,20 @@ class AdminMFAVerifyAPIView(APIView):
             return Response(
                 {"success": False, "message": "Admin verification code is incorrect."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Successful MFA challenges are single-use. cache.add() is atomic on
+        # Django's supported production cache backends and prevents the same
+        # signed challenge + OTP from minting additional sessions within its
+        # five-minute validity window.
+        replay_key = _mfa_replay_cache_key(payload)
+        if not cache.add(replay_key, True, timeout=ADMIN_MFA_MAX_AGE_SECONDS):
+            return Response(
+                {
+                    "success": False,
+                    "message": "Admin verification code was already used. Sign in again.",
+                },
+                status=status.HTTP_409_CONFLICT,
             )
 
         refresh = RefreshToken.for_user(user)
