@@ -5,18 +5,12 @@ import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class ExistingCustomerAccessService {
-  Future<Map<String, dynamic>> start({
-    required String identifier,
-    required String temporaryPassword,
-  }) async {
+  Future<Map<String, dynamic>> start({required String identifier}) async {
     final response = await http
         .post(
           Uri.parse('${ApiService.baseUrl}/auth/existing-customer/start/'),
           headers: await ApiService.deviceHeaders(),
-          body: jsonEncode({
-            'identifier': identifier.trim(),
-            'temporary_password': temporaryPassword,
-          }),
+          body: jsonEncode({'identifier': identifier.trim()}),
         )
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) throw Exception(_message(response));
@@ -25,6 +19,7 @@ class ExistingCustomerAccessService {
 
   Future<Map<String, dynamic>> complete({
     required String activationToken,
+    required String otp,
     required String newPassword,
   }) async {
     final response = await http
@@ -33,6 +28,7 @@ class ExistingCustomerAccessService {
           headers: await ApiService.deviceHeaders(),
           body: jsonEncode({
             'activation_token': activationToken,
+            'otp': otp.trim(),
             'new_password': newPassword,
           }),
         )
