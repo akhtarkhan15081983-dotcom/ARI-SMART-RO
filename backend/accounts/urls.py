@@ -5,14 +5,17 @@ from .views import (
     CustomerRegisterAPIView,
     SendOTPAPIView,
     VerifyOTPAPIView,
-    LoginAPIView,
     ForgotPasswordRequestAPIView,
     AdminPasswordResetRequestListAPIView,
     AdminPasswordResetReviewAPIView,
     CompleteAdminApprovedPasswordResetAPIView,
     AdminSystemAuditAPIView,
 )
-from .security_views import SecureChangePasswordAPIView
+from .security_views import (
+    AdminMFAVerifyAPIView,
+    SecureChangePasswordAPIView,
+    SecureLoginAPIView,
+)
 from .existing_customer_access import (
     ExistingCustomerBootstrapAPIView,
     ExistingCustomerCompleteAPIView,
@@ -50,7 +53,8 @@ urlpatterns = [
     path("register/", CustomerRegisterAPIView.as_view(), name="customer-register"),
     path("send-otp/", SendOTPAPIView.as_view(), name="send-otp"),
     path("verify-otp/", VerifyOTPAPIView.as_view(), name="verify-otp"),
-    path("login/", LoginAPIView.as_view(), name="login"),
+    path("login/", SecureLoginAPIView.as_view(), name="login"),
+    path("admin/mfa/verify/", AdminMFAVerifyAPIView.as_view(), name="admin-mfa-verify"),
     path("change-password/", SecureChangePasswordAPIView.as_view(), name="change-password"),
     path("forgot-password/request/", ForgotPasswordRequestAPIView.as_view(), name="forgot-password-request"),
     path("forgot-password/complete/", CompleteAdminApprovedPasswordResetAPIView.as_view(), name="forgot-password-complete"),
