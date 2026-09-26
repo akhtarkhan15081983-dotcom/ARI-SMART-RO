@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../models/rent_management_model.dart';
 import '../../services/rent_management_service.dart';
@@ -12,86 +13,17 @@ class RentManagementScreen extends StatefulWidget {
 }
 
 class _RentManagementScreenState extends State<RentManagementScreen> {
-  // ============================================================
-  // STATE
-  // ============================================================
-
   bool _isLoading = true;
-
   String? _error;
-
   List<RentManagementCustomer> _customers = [];
-
-  // ============================================================
-  // CUSTOMER SEARCH
-  // ============================================================
-
   final TextEditingController _searchController = TextEditingController();
-
-  String _searchQuery = "";
-
-  String _statusFilter = "ALL";
-
-  List<RentManagementCustomer> get _filteredCustomers {
-    return _customers.where((customer) {
-      final matchesStatus =
-          _statusFilter == "ALL" ||
-          (_statusFilter == "DUE"
-              ? customer.status == "PENDING" || customer.status == "PARTIAL"
-              : customer.status == _statusFilter);
-      return matchesStatus &&
-          matchesAllSearchTerms(_searchQuery, [
-            customer.name,
-            customer.customerId,
-            customer.phone,
-            customer.cardNumber,
-            customer.oldCardNumber,
-            customer.roModel,
-            customer.status,
-            customer.dueDate,
-          ]);
-    }).toList();
-  }
-
-  // ============================================================
-  // SUMMARY
-  // ============================================================
-
-  double get _totalExpected {
-    return _customers.fold(
-      0.0,
-      (sum, customer) => sum + customer.rentMonthExpected,
-    );
-  }
-
-  double get _totalPaid {
-    return _customers.fold(0.0, (sum, customer) => sum + customer.paidAmount);
-  }
-
-  double get _totalBalance {
-    return _customers.fold(0.0, (sum, customer) => sum + customer.balance);
-  }
-
-  int get _paidCount {
-    return _customers.where((customer) => customer.status == "PAID").length;
-  }
-
-  int get _pendingCount {
-    return _customers.where((customer) => customer.status == "PENDING").length;
-  }
-
-  int get _partialCount {
-    return _customers.where((customer) => customer.status == "PARTIAL").length;
-  }
-
-  // ============================================================
-  // INIT
-  // ============================================================
+  String _searchQuery = '';
+  String _bucketFilter = 'TODAY';
+  String _areaFilter = 'ALL';
 
   @override
   void initState() {
     super.initState();
-
     _loadRentManagement();
   }
 
@@ -101,10 +33,6 @@ class _RentManagementScreenState extends State<RentManagementScreen> {
     super.dispose();
   }
 
-  // ============================================================
-  // LOAD DATA
-  // ============================================================
-
   Future<void> _loadRentManagement() async {
     if (mounted) {
       setState(() {
@@ -112,144 +40,119 @@ class _RentManagementScreenState extends State<RentManagementScreen> {
         _error = null;
       });
     }
-
     try {
       final response = await RentManagementService.getRentManagement();
-
-      final customerList = (response["customers"] ?? []) as List;
-
-      final customers = customerList
-          .map(
-            (item) =>
-                RentManagementCustomer.fromJson(item as Map<String, dynamic>),
-          )
+      final raw = (response['customers'] ?? const []) as List;
+      final customers = raw
+          .whereType<Map>()
+          .map((e) => RentManagementCustomer.fromJson(Map<String, dynamic>.from(e)))
           .toList();
-
       if (!mounted) return;
-
       setState(() {
         _customers = customers;
-
         _isLoading = false;
-
-        _error = null;
       });
     } catch (e) {
-      debugPrint("RENT MANAGEMENT ERROR: $e");
-
       if (!mounted) return;
-
       setState(() {
         _isLoading = false;
-
-        _error = e.toString().replaceFirst("Exception: ", "");
+        _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
   }
 
-  // ============================================================
-  // REFRESH
-  // ============================================================
+  Future<void> _refresh() => _loadRentManagement();
 
-  Future<void> _refresh() async {
-    await _loadRentManagement();
+  List<RentManagementCustomer> get _filteredCustomers {
+    final rows = _customers.where((customer) {
+      final bucketMatch =
+          _bucketFilter == 'ALL' || customer.collectionBucket == _bucketFilter;
+      final areaMatch = _areaFilter == 'ALL' || customer.areaLabel == _areaFilter;
+      final searchMatch = matchesAllSearchTerms(_searchQuery, [
+        customer.name,
+        customer.customerId,
+        customer.phone,
+        customer.cardNumber,
+        customer.oldCardNumber,
+        customer.area,
+        customer.address,
+        customer.city,
+        customer.roModel,
+        customer.status,
+        customer.dueDate,
+      ]);
+      return bucketMatch && areaMatch && searchMatch;
+    }).toList();
+
+    rows.sort((a, b) {
+      final due = a.dueDate.compareTo(b.dueDate);
+      if (due != 0) return due;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return rows;
   }
 
-  // ============================================================
-  // STATUS COLOR
-  // ============================================================
+  int _count(String bucket) =>
+      _customers.where((e) => e.collectionBucket == bucket).length;
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case "PAID":
-        return Colors.green;
+  double get _totalBalance =>
+      _customers.fold(0, (sum, customer) => sum + customer.balance);
 
-      case "PARTIAL":
-        return Colors.orange;
+  double get _totalPaid =>
+      _customers.fold(0, (sum, customer) => sum + customer.paidAmount);
 
-      case "PENDING":
-        return Colors.red;
-
-      case "NO_RENT":
-        return Colors.grey;
-
-      default:
-        return Colors.blue;
-    }
+  List<String> get _areas {
+    final values = _customers.map((e) => e.areaLabel).toSet().toList()..sort();
+    return ['ALL', ...values];
   }
-
-  // ============================================================
-  // STATUS TEXT
-  // ============================================================
-
-  String _statusText(String status) {
-    switch (status) {
-      case "PAID":
-        return "PAID";
-
-      case "PARTIAL":
-        return "PARTIAL";
-
-      case "PENDING":
-        return "PENDING";
-
-      case "NO_RENT":
-        return "NO RENT";
-
-      default:
-        return status;
-    }
-  }
-
-  // ============================================================
-  // CUSTOMER DETAILS
-  // ============================================================
 
   Future<void> _openCustomerDetails(RentManagementCustomer customer) async {
-    final paymentSaved = await Navigator.of(context).push<bool>(
+    final changed = await Navigator.push<bool>(
+      context,
       MaterialPageRoute(
         builder: (_) => RentCustomerDetailsScreen(customer: customer),
       ),
     );
-
-    if (paymentSaved == true) {
-      await _refresh();
-    }
+    if (changed == true && mounted) await _refresh();
   }
 
-  // ============================================================
-  // BUILD
-  // ============================================================
+  Future<void> _scanCustomerQr() async {
+    final customer = await Navigator.push<RentManagementCustomer>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _RentCustomerQrScanner(customers: _customers),
+      ),
+    );
+    if (customer != null && mounted) {
+      await _openCustomerDetails(customer);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Rent Management"),
-
+        title: const Text('Digital Rent Collection'),
         centerTitle: true,
-
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            tooltip: 'Scan customer QR',
+            onPressed: _isLoading ? null : _scanCustomerQr,
+            icon: const Icon(Icons.qr_code_scanner),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
             onPressed: _isLoading ? null : _refresh,
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
-
       body: _buildBody(),
     );
   }
 
-  // ============================================================
-  // BODY
-  // ============================================================
-
   Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
       return Center(
         child: Padding(
@@ -257,532 +160,437 @@ class _RentManagementScreenState extends State<RentManagementScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, size: 60, color: Colors.red),
-
+              const Icon(Icons.error_outline, size: 56),
+              const SizedBox(height: 12),
+              Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
-
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16),
-              ),
-
-              const SizedBox(height: 20),
-
-              ElevatedButton.icon(
+              FilledButton.icon(
                 onPressed: _refresh,
                 icon: const Icon(Icons.refresh),
-                label: const Text("Retry"),
+                label: const Text('Retry'),
               ),
             ],
           ),
-        ),
-      );
-    }
-
-    if (_customers.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          children: const [
-            SizedBox(height: 200),
-
-            Center(
-              child: Text(
-                "No customer rent records found.",
-                style: TextStyle(fontSize: 16),
-              ),
-            ),
-          ],
         ),
       );
     }
 
     return RefreshIndicator(
       onRefresh: _refresh,
-
       child: ListView(
         padding: const EdgeInsets.all(12),
-
         children: [
-          _buildSummary(),
-
+          _buildCollectionHeader(),
           const SizedBox(height: 12),
-
-          _buildCustomerSearch(),
-
-          const SizedBox(height: 10),
-
+          _buildBucketStrip(),
+          const SizedBox(height: 12),
+          _buildSearchAndArea(),
+          const SizedBox(height: 12),
           _buildCustomerList(),
         ],
       ),
     );
   }
 
-  // ============================================================
-  // SUMMARY CARD
-  // ============================================================
-
-  Widget _buildSummary() {
+  Widget _buildCollectionHeader() {
     return Card(
-      elevation: 3,
-
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-
       child: Padding(
         padding: const EdgeInsets.all(16),
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-
           children: [
+            Text(
+              'Collection Desk',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
             const Text(
-              "Rent Summary",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              'Assigned customers only • due-date driven • card/QR searchable',
             ),
-
-            const SizedBox(height: 16),
-
+            const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
-                  child: _summaryBox(
-                    "Customers",
+                  child: _metricTile(
+                    'Customers',
                     _customers.length.toString(),
-                    Icons.people,
-                    Colors.blue,
+                    Icons.people_alt_outlined,
                   ),
                 ),
-
                 const SizedBox(width: 8),
-
                 Expanded(
-                  child: _summaryBox(
-                    "Paid",
-                    _paidCount.toString(),
-                    Icons.check_circle,
-                    Colors.green,
+                  child: _metricTile(
+                    'Collected',
+                    '₹${_totalPaid.toStringAsFixed(0)}',
+                    Icons.payments_outlined,
                   ),
                 ),
-
                 const SizedBox(width: 8),
-
                 Expanded(
-                  child: _summaryBox(
-                    "Pending",
-                    _pendingCount.toString(),
-                    Icons.pending,
-                    Colors.red,
+                  child: _metricTile(
+                    'Balance',
+                    '₹${_totalBalance.toStringAsFixed(0)}',
+                    Icons.account_balance_wallet_outlined,
                   ),
                 ),
               ],
             ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _summaryBox(
-                    "Expected",
-                    "₹${_totalExpected.toStringAsFixed(0)}",
-                    Icons.account_balance_wallet,
-                    Colors.blueGrey,
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                Expanded(
-                  child: _summaryBox(
-                    "Collected",
-                    "₹${_totalPaid.toStringAsFixed(0)}",
-                    Icons.payments,
-                    Colors.green,
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                Expanded(
-                  child: _summaryBox(
-                    "Balance",
-                    "₹${_totalBalance.toStringAsFixed(0)}",
-                    Icons.money_off,
-                    Colors.orange,
-                  ),
-                ),
-              ],
-            ),
-
-            if (_partialCount > 0) ...[
-              const SizedBox(height: 12),
-
-              Text(
-                "Partial Payments: $_partialCount",
-                style: const TextStyle(
-                  color: Colors.orange,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  // ============================================================
-  // SUMMARY BOX
-  // ============================================================
-
-  Widget _summaryBox(String title, String value, IconData icon, Color color) {
+  Widget _metricTile(String title, String value, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(10),
-
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-
         borderRadius: BorderRadius.circular(12),
-
-        border: Border.all(color: color.withValues(alpha: 0.20)),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
-
       child: Column(
         children: [
-          Icon(icon, color: color, size: 24),
-
+          Icon(icon, size: 22),
           const SizedBox(height: 6),
-
           Text(
             value,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w800),
           ),
-
-          const SizedBox(height: 3),
-
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 11),
-          ),
+          const SizedBox(height: 2),
+          Text(title, style: const TextStyle(fontSize: 11)),
         ],
       ),
     );
   }
 
-  // ============================================================
-  // CUSTOMER LIST
-  // ============================================================
+  Widget _buildBucketStrip() {
+    final buckets = <String, (String, IconData)>[
+      ('TODAY', ('Today Due', Icons.today_outlined)),
+      ('OVERDUE', ('Overdue', Icons.warning_amber_outlined)),
+      ('NEXT_7_DAYS', ('Next 7 Days', Icons.date_range_outlined)),
+      ('UPCOMING', ('Upcoming', Icons.event_available_outlined)),
+      ('COLLECTED', ('Collected', Icons.check_circle_outline)),
+      ('ALL', ('All', Icons.list_alt_outlined)),
+    ];
 
-  Widget _buildCustomerSearch() {
-    final resultCount = _filteredCustomers.length;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: buckets.map((entry) {
+          final value = entry.$1;
+          final label = entry.$2.$1;
+          final icon = entry.$2.$2;
+          final count = value == 'ALL' ? _customers.length : _count(value);
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              avatar: Icon(icon, size: 18),
+              label: Text('$label  $count'),
+              selected: _bucketFilter == value,
+              onSelected: (_) => setState(() => _bucketFilter = value),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
 
+  Widget _buildSearchAndArea() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextField(
           controller: _searchController,
-          onChanged: (value) {
-            setState(() {
-              _searchQuery = value;
-            });
-          },
           textInputAction: TextInputAction.search,
+          onChanged: (value) => setState(() => _searchQuery = value),
           decoration: InputDecoration(
-            hintText: "Search name, ID, phone, current card or old card...",
+            hintText: 'Search old/new card, name, ID, phone, area...',
             prefixIcon: const Icon(Icons.search),
             suffixIcon: _searchQuery.isEmpty
-                ? null
+                ? IconButton(
+                    tooltip: 'Scan customer QR',
+                    onPressed: _scanCustomerQr,
+                    icon: const Icon(Icons.qr_code_scanner),
+                  )
                 : IconButton(
-                    tooltip: "Clear search",
-                    icon: const Icon(Icons.clear),
+                    tooltip: 'Clear',
                     onPressed: () {
                       _searchController.clear();
-                      setState(() {
-                        _searchQuery = "";
-                      });
+                      setState(() => _searchQuery = '');
                     },
+                    icon: const Icon(Icons.clear),
                   ),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Colors.blue, width: 1.5),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
           ),
         ),
-
         const SizedBox(height: 10),
-
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: ["ALL", "DUE", "PARTIAL", "PAID"].map((status) {
-              final label = status == "ALL"
-                  ? "All"
-                  : status == "DUE"
-                  ? "Due"
-                  : status[0] + status.substring(1).toLowerCase();
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(label),
-                  selected: _statusFilter == status,
-                  onSelected: (_) => setState(() => _statusFilter = status),
+        DropdownButtonFormField<String>(
+          initialValue: _areas.contains(_areaFilter) ? _areaFilter : 'ALL',
+          decoration: const InputDecoration(
+            labelText: 'Area / Route',
+            prefixIcon: Icon(Icons.route_outlined),
+          ),
+          items: _areas
+              .map(
+                (area) => DropdownMenuItem(
+                  value: area,
+                  child: Text(area == 'ALL' ? 'All areas' : area),
                 ),
-              );
-            }).toList(),
-          ),
+              )
+              .toList(),
+          onChanged: (value) => setState(() => _areaFilter = value ?? 'ALL'),
         ),
-
-        if (_searchQuery.trim().isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              resultCount == 0
-                  ? "No customer found"
-                  : "$resultCount customer${resultCount == 1 ? "" : "s"} found",
-              style: TextStyle(
-                color: resultCount == 0 ? Colors.red : Colors.grey.shade700,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }
 
   Widget _buildCustomerList() {
     final customers = _filteredCustomers;
-
     if (customers.isEmpty) {
-      return Card(
-        elevation: 1,
+      return const Card(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(28),
           child: Column(
             children: [
-              Icon(Icons.person_search, size: 52, color: Colors.grey.shade500),
-              const SizedBox(height: 10),
-              Text(
-                _searchQuery.trim().isEmpty
-                    ? "No customer rent records found."
-                    : "No customer matches your search.",
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (_searchQuery.trim().isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  "Try name, customer ID, phone, current card or old card number.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-              ],
+              Icon(Icons.search_off_outlined, size: 48),
+              SizedBox(height: 8),
+              Text('No customers in this collection view.'),
             ],
           ),
         ),
       );
     }
 
-    return Column(
-      children: customers.map((customer) {
-        return Card(
-          margin: const EdgeInsets.only(bottom: 10),
+    final grouped = <String, List<RentManagementCustomer>>{};
+    for (final customer in customers) {
+      grouped.putIfAbsent(customer.areaLabel, () => []).add(customer);
+    }
+    final areas = grouped.keys.toList()..sort();
 
-          elevation: 2,
-
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-
-            onTap: () => _openCustomerDetails(customer),
-
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: Colors.blue.withValues(alpha: 0.10),
-
-                        child: const Icon(Icons.person, color: Colors.blue),
-                      ),
-
-                      const SizedBox(width: 12),
-
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-
-                          children: [
-                            Text(
-                              customer.name.isEmpty
-                                  ? "Unknown Customer"
-                                  : customer.name,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-
-                            const SizedBox(height: 3),
-
-                            Text(
-                              customer.customerId,
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-
-                            Text(
-                              customer.phone,
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      _statusBadge(customer.status),
-                    ],
-                  ),
-
-                  const Divider(height: 24),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _amountColumn(
-                          "Expected",
-                          customer.rentMonthExpected,
-                        ),
-                      ),
-
-                      Expanded(
-                        child: _amountColumn("Paid", customer.paidAmount),
-                      ),
-
-                      Expanded(
-                        child: _amountColumn("Balance", customer.balance),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_today,
-                        size: 16,
-                        color: Colors.grey,
-                      ),
-
-                      const SizedBox(width: 6),
-
-                      Text(
-                        "Due: ${customer.dueDate}",
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey,
-                        ),
-                      ),
-
-                      const Spacer(),
-
-                      const Icon(Icons.chevron_right, color: Colors.grey),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  // ============================================================
-  // AMOUNT COLUMN
-  // ============================================================
-
-  Widget _amountColumn(String title, double amount) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-
       children: [
-        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-
-        const SizedBox(height: 3),
-
-        Text(
-          "₹${amount.toStringAsFixed(2)}",
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Text(
+            '${customers.length} customer${customers.length == 1 ? '' : 's'}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
         ),
+        ...areas.expand((area) sync* {
+          final rows = grouped[area]!;
+          yield Padding(
+            padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.location_on_outlined, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    area,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Text('${rows.length}'),
+              ],
+            ),
+          );
+          for (final customer in rows) {
+            yield _customerCard(customer);
+          }
+        }),
       ],
     );
   }
 
-  // ============================================================
-  // STATUS BADGE
-  // ============================================================
+  Widget _customerCard(RentManagementCustomer customer) {
+    final isCollected = customer.collectionBucket == 'COLLECTED';
+    final dueLabel = switch (customer.collectionBucket) {
+      'TODAY' => 'Due today',
+      'OVERDUE' => '${customer.daysUntilDue.abs()} day overdue',
+      'NEXT_7_DAYS' => 'Due in ${customer.daysUntilDue} day',
+      'COLLECTED' => 'Collected',
+      _ => 'Due ${customer.dueDate}',
+    };
 
-  Widget _statusBadge(String status) {
-    final color = _statusColor(status);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-
-        borderRadius: BorderRadius.circular(20),
-
-        border: Border.all(color: color.withValues(alpha: 0.30)),
-      ),
-
-      child: Text(
-        _statusText(status),
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
+    return Card(
+      margin: const EdgeInsets.only(bottom: 9),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _openCustomerDetails(customer),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    child: Text(
+                      customer.name.trim().isEmpty
+                          ? '?'
+                          : customer.name.trim()[0].toUpperCase(),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          customer.name.isEmpty ? 'Customer' : customer.name,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        Text('${customer.customerId} • ${customer.phone}'),
+                      ],
+                    ),
+                  ),
+                  Chip(label: Text(dueLabel)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  if (customer.oldCardNumber.trim().isNotEmpty)
+                    _miniChip('Old ${customer.oldCardNumber}'),
+                  if (customer.cardNumber.trim().isNotEmpty)
+                    _miniChip('ARI ${customer.cardNumber}'),
+                  _miniChip('Balance ₹${customer.balance.toStringAsFixed(0)}'),
+                  if (customer.hasLocation)
+                    _miniChip('GPS saved')
+                  else
+                    _miniChip('GPS pending'),
+                ],
+              ),
+              if (customer.address.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  customer.address,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: isCollected
+                      ? null
+                      : () => _openCustomerDetails(customer),
+                  icon: Icon(isCollected ? Icons.check : Icons.currency_rupee),
+                  label: Text(isCollected ? 'COLLECTED' : 'COLLECT RENT'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _miniChip(String label) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 12)),
+      );
 }
 
-// =================================================================
-// CUSTOMER RENT DETAILS
-// =================================================================
+class _RentCustomerQrScanner extends StatefulWidget {
+  const _RentCustomerQrScanner({required this.customers});
+
+  final List<RentManagementCustomer> customers;
+
+  @override
+  State<_RentCustomerQrScanner> createState() => _RentCustomerQrScannerState();
+}
+
+class _RentCustomerQrScannerState extends State<_RentCustomerQrScanner> {
+  final MobileScannerController _controller = MobileScannerController();
+  bool _processing = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    if (_processing || capture.barcodes.isEmpty) return;
+    final raw = capture.barcodes.first.rawValue?.trim() ?? '';
+    if (raw.isEmpty) return;
+    _processing = true;
+
+    final token = raw.startsWith('ARI-SMART-RO:CUSTOMER:')
+        ? raw.substring('ARI-SMART-RO:CUSTOMER:'.length)
+        : raw;
+
+    RentManagementCustomer? match;
+    for (final customer in widget.customers) {
+      if (customer.customerId == token ||
+          customer.cardNumber == token ||
+          customer.oldCardNumber == token ||
+          customer.phone == token) {
+        match = customer;
+        break;
+      }
+    }
+
+    if (match != null) {
+      Navigator.pop(context, match);
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This QR/customer is not in your assigned rent list.')),
+    );
+    Future<void>.delayed(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _processing = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Scan Customer QR')),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            MobileScanner(controller: _controller, onDetect: _onDetect),
+            Center(
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white, width: 3),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+            const Positioned(
+              left: 24,
+              right: 24,
+              bottom: 34,
+              child: Card(
+                child: Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Text(
+                    'Scan ARI customer QR. Only customers assigned to your rent list can open.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+}
 
 class RentCustomerDetailsScreen extends StatefulWidget {
   const RentCustomerDetailsScreen({super.key, required this.customer});
@@ -795,264 +603,126 @@ class RentCustomerDetailsScreen extends StatefulWidget {
 }
 
 class _RentCustomerDetailsScreenState extends State<RentCustomerDetailsScreen> {
-  // ============================================================
-  // LOCAL STATE
-  // ============================================================
-
   bool _savingPayment = false;
-
-  // ============================================================
-  // CUSTOMER
-  // ============================================================
 
   RentManagementCustomer get customer => widget.customer;
 
-  // ============================================================
-  // STATUS COLOR
-  // ============================================================
-
   Color _statusColor(String status) {
     switch (status) {
-      case "PAID":
+      case 'PAID':
         return Colors.green;
-
-      case "PARTIAL":
+      case 'PARTIAL':
         return Colors.orange;
-
-      case "PENDING":
+      case 'PENDING':
         return Colors.red;
-
       default:
         return Colors.grey;
     }
   }
 
-  // ============================================================
-  // STATUS TEXT
-  // ============================================================
-
-  String _statusText(String status) {
-    switch (status) {
-      case "PAID":
-        return "PAID";
-
-      case "PARTIAL":
-        return "PARTIAL";
-
-      case "PENDING":
-        return "PENDING";
-
-      case "NO_RENT":
-        return "NO RENT";
-
-      default:
-        return status;
-    }
-  }
-
-  // ============================================================
-  // ADD PAYMENT DIALOG
-  // ============================================================
-
   Future<void> _showAddPaymentDialog() async {
-    final amountController = TextEditingController();
-
+    final amountController = TextEditingController(
+      text: customer.balance > 0 ? customer.balance.toStringAsFixed(0) : '',
+    );
     final remarksController = TextEditingController();
-
-    String paymentMode = "CASH";
+    String paymentMode = 'CASH';
 
     try {
-      await showDialog(
+      await showDialog<void>(
         context: context,
-        builder: (dialogContext) {
-          return StatefulBuilder(
-            builder: (context, setDialogState) {
-              return AlertDialog(
-                title: const Text("Add Rent Payment"),
-
-                content: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-
-                    children: [
-                      Text(
-                        customer.name.isEmpty ? "Customer" : customer.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 17,
-                        ),
-                      ),
-
-                      const SizedBox(height: 6),
-
-                      Text(
-                        "Balance: ₹${customer.balance.toStringAsFixed(2)}",
-                        style: const TextStyle(
-                          color: Colors.orange,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      TextField(
-                        controller: amountController,
-
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-
-                        decoration: const InputDecoration(
-                          labelText: "Payment Amount",
-                          prefixText: "₹ ",
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      DropdownButtonFormField<String>(
-                        initialValue: paymentMode,
-
-                        decoration: const InputDecoration(
-                          labelText: "Payment Mode",
-                          border: OutlineInputBorder(),
-                        ),
-
-                        items: const [
-                          DropdownMenuItem(value: "CASH", child: Text("Cash")),
-
-                          DropdownMenuItem(value: "UPI", child: Text("UPI")),
-
-                          DropdownMenuItem(
-                            value: "BANK",
-                            child: Text("Bank Transfer"),
-                          ),
-
-                          DropdownMenuItem(
-                            value: "OTHER",
-                            child: Text("Other"),
-                          ),
-                        ],
-
-                        onChanged: _savingPayment
-                            ? null
-                            : (value) {
-                                if (value == null) {
-                                  return;
-                                }
-
-                                setDialogState(() {
-                                  paymentMode = value;
-                                });
-                              },
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      TextField(
-                        controller: remarksController,
-
-                        maxLines: 2,
-
-                        decoration: const InputDecoration(
-                          labelText: "Remarks",
-                          hintText: "Optional",
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Collect Rent'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    customer.name,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Balance ₹${customer.balance.toStringAsFixed(2)}'),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: amountController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Amount collected',
+                      prefixText: '₹ ',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: paymentMode,
+                    decoration: const InputDecoration(labelText: 'Payment mode'),
+                    items: const [
+                      DropdownMenuItem(value: 'CASH', child: Text('Cash')),
+                      DropdownMenuItem(value: 'UPI', child: Text('UPI')),
+                      DropdownMenuItem(value: 'BANK', child: Text('Bank transfer')),
+                      DropdownMenuItem(value: 'OTHER', child: Text('Other')),
                     ],
+                    onChanged: (value) =>
+                        setDialogState(() => paymentMode = value ?? 'CASH'),
                   ),
-                ),
-
-                actions: [
-                  TextButton(
-                    onPressed: _savingPayment
-                        ? null
-                        : () {
-                            Navigator.pop(dialogContext);
-                          },
-
-                    child: const Text("CANCEL"),
-                  ),
-
-                  ElevatedButton(
-                    onPressed: _savingPayment
-                        ? null
-                        : () async {
-                            final amount = double.tryParse(
-                              amountController.text.trim(),
-                            );
-
-                            if (amount == null || amount <= 0) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Please enter a valid payment amount.",
-                                  ),
-                                ),
-                              );
-
-                              return;
-                            }
-
-                            if (amount > customer.balance) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Payment cannot be greater than balance.",
-                                  ),
-                                ),
-                              );
-
-                              return;
-                            }
-
-                            // IMPORTANT:
-                            // Close the payment dialog before making the
-                            // API call. The previous implementation kept
-                            // the dialog mounted while _submitPayment()
-                            // popped the customer details route, which
-                            // caused Flutter's "_dependencies.isEmpty"
-                            // assertion on some devices.
-
-                            setDialogState(() {
-                              _savingPayment = true;
-                            });
-
-                            Navigator.pop(dialogContext);
-
-                            await _submitPayment(
-                              amount: amount,
-                              paymentMode: paymentMode,
-                              remarks: remarksController.text.trim(),
-                            );
-                          },
-
-                    child: _savingPayment
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text("SAVE PAYMENT"),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: remarksController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Remarks / transaction reference',
+                    ),
                   ),
                 ],
-              );
-            },
-          );
-        },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: _savingPayment
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('CANCEL'),
+              ),
+              FilledButton(
+                onPressed: _savingPayment
+                    ? null
+                    : () async {
+                        final amount =
+                            double.tryParse(amountController.text.trim());
+                        if (amount == null || amount <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Enter a valid amount.')),
+                          );
+                          return;
+                        }
+                        if (amount > customer.balance) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Amount cannot exceed current balance.'),
+                            ),
+                          );
+                          return;
+                        }
+                        setDialogState(() => _savingPayment = true);
+                        Navigator.pop(dialogContext);
+                        await _submitPayment(
+                          amount: amount,
+                          paymentMode: paymentMode,
+                          remarks: remarksController.text.trim(),
+                        );
+                      },
+                child: const Text('CONFIRM COLLECTION'),
+              ),
+            ],
+          ),
+        ),
       );
     } finally {
       amountController.dispose();
-
       remarksController.dispose();
     }
   }
-
-  // ============================================================
-  // SUBMIT PAYMENT
-  // ============================================================
 
   Future<bool> _submitPayment({
     required double amount,
@@ -1062,196 +732,102 @@ class _RentCustomerDetailsScreenState extends State<RentCustomerDetailsScreen> {
     try {
       final response = await RentManagementService.addRentPayment(
         customerId: customer.id,
-
         amount: amount,
-
         paymentMode: paymentMode,
-
         remarks: remarks,
       );
-
-      if (!mounted) {
-        return false;
-      }
-
-      final rent = response["rent"] as Map<String, dynamic>?;
-
-      final newPaid = rent?["paid_amount"];
-
-      final newBalance = rent?["balance"];
-
-      final newStatus = rent?["status"];
-
+      if (!mounted) return false;
+      final rent = response['rent'] as Map<String, dynamic>?;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            "Payment saved successfully"
-            "${newPaid != null ? " • Paid: ₹$newPaid" : ""}"
-            "${newBalance != null ? " • Balance: ₹$newBalance" : ""}",
+            'Payment saved'
+            '${rent?['balance'] != null ? ' • Balance ₹${rent?['balance']}' : ''}',
           ),
-          backgroundColor: Colors.green,
         ),
       );
-
-      Navigator.of(context).pop(true);
-
+      Navigator.pop(context, true);
       return true;
     } catch (e) {
-      if (!mounted) {
-        return false;
-      }
-
+      if (!mounted) return false;
+      setState(() => _savingPayment = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst("Exception: ", "")),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
       );
-
       return false;
     }
   }
 
-  // ============================================================
-  // BUILD
-  // ============================================================
-
   @override
   Widget build(BuildContext context) {
     final statusColor = _statusColor(customer.status);
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(customer.name.isEmpty ? "Customer Rent" : customer.name),
-      ),
-
+      appBar: AppBar(title: Text(customer.name.isEmpty ? 'Customer Rent' : customer.name)),
       body: ListView(
         padding: const EdgeInsets.all(16),
-
         children: [
-          // ------------------------------------------------------
-          // CUSTOMER INFO
-          // ------------------------------------------------------
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
                   Text(
                     customer.name,
-                    style: const TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
                   ),
-
                   const SizedBox(height: 6),
-
-                  Text("Customer ID: ${customer.customerId}"),
-
-                  Text("Card: ${customer.cardNumber}"),
-
+                  Text('Customer ID: ${customer.customerId}'),
+                  Text('Current Card: ${customer.cardNumber}'),
                   if (customer.oldCardNumber.trim().isNotEmpty)
-                    Text(
-                      "Old Card: ${customer.oldCardNumber}",
-                      style: TextStyle(
-                        color: Colors.orange.shade800,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-
-                  Text("Phone: ${customer.phone}"),
-
-                  if (customer.roModel.isNotEmpty)
-                    Text("RO Model: ${customer.roModel}"),
+                    Text('Old Card: ${customer.oldCardNumber}'),
+                  Text('Phone: ${customer.phone}'),
+                  Text('Area: ${customer.areaLabel}'),
+                  if (customer.address.trim().isNotEmpty)
+                    Text('Address: ${customer.address}'),
                 ],
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
-          // ------------------------------------------------------
-          // CURRENT RENT
-          // ------------------------------------------------------
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
                   const Text(
-                    "Current Rent",
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                    'Current Rent',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                   ),
-
-                  const SizedBox(height: 16),
-
-                  _detailRow(
-                    "Expected Rent",
-                    "₹${customer.rentMonthExpected.toStringAsFixed(2)}",
-                  ),
-
-                  _detailRow(
-                    "Paid Amount",
-                    "₹${customer.paidAmount.toStringAsFixed(2)}",
-                  ),
-
-                  _detailRow(
-                    "Balance",
-                    "₹${customer.balance.toStringAsFixed(2)}",
-                  ),
-
-                  _detailRow("Due Date", customer.dueDate),
-
-                  const SizedBox(height: 10),
-
-                  // ------------------------------------------------
-                  // ADD PAYMENT BUTTON
-                  // ------------------------------------------------
+                  const SizedBox(height: 12),
+                  _detailRow('Expected Rent', '₹${customer.rentMonthExpected.toStringAsFixed(2)}'),
+                  _detailRow('Paid Amount', '₹${customer.paidAmount.toStringAsFixed(2)}'),
+                  _detailRow('Balance', '₹${customer.balance.toStringAsFixed(2)}'),
+                  _detailRow('Due Date', customer.dueDate),
+                  const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-
-                    child: ElevatedButton.icon(
-                      onPressed: customer.balance <= 0
-                          ? null
-                          : _showAddPaymentDialog,
-
-                      icon: const Icon(Icons.add_card),
-
-                      label: const Text("ADD PAYMENT"),
+                    child: FilledButton.icon(
+                      onPressed: customer.balance <= 0 ? null : _showAddPaymentDialog,
+                      icon: const Icon(Icons.currency_rupee),
+                      label: Text(customer.balance <= 0 ? 'COLLECTED' : 'COLLECT RENT'),
                     ),
                   ),
-
                   const SizedBox(height: 10),
-
-                  // ------------------------------------------------
-                  // STATUS
-                  // ------------------------------------------------
                   Container(
                     width: double.infinity,
-
                     padding: const EdgeInsets.all(10),
-
                     decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.10),
-
+                      color: statusColor.withValues(alpha: .10),
                       borderRadius: BorderRadius.circular(10),
                     ),
-
                     child: Text(
-                      _statusText(customer.status),
-
+                      customer.status,
                       textAlign: TextAlign.center,
-
                       style: TextStyle(
                         color: statusColor,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
@@ -1259,75 +835,31 @@ class _RentCustomerDetailsScreenState extends State<RentCustomerDetailsScreen> {
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
-          // ------------------------------------------------------
-          // RO DETAILS
-          // ------------------------------------------------------
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
                   const Text(
-                    "RO Details",
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                    'Recent Rent History',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                   ),
-
-                  const SizedBox(height: 12),
-
-                  _detailRow(
-                    "Monthly Rent",
-                    "₹${customer.monthlyRent.toStringAsFixed(2)}",
-                  ),
-
-                  _detailRow(
-                    "Installation Charge",
-                    "₹${customer.installationCharge.toStringAsFixed(2)}",
-                  ),
-
-                  _detailRow(
-                    "Security Deposit",
-                    "₹${customer.securityDeposit.toStringAsFixed(2)}",
-                  ),
-
-                  _detailRow(
-                    "Installation Date",
-                    customer.installationDate ?? "-",
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // ------------------------------------------------------
-          // HISTORY
-          // ------------------------------------------------------
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-
-                children: [
-                  const Text(
-                    "Rent History",
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-                  ),
-
-                  const SizedBox(height: 12),
-
+                  const SizedBox(height: 10),
                   if (customer.history.isEmpty)
-                    const Text("No rent history available.")
+                    const Text('No payment history yet.')
                   else
-                    ...customer.history.map((item) => _historyItem(item)),
+                    ...customer.history.take(12).map(
+                          (item) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(item.rentMonth ?? '-'),
+                            subtitle: Text(
+                              'Expected ₹${item.expectedRent.toStringAsFixed(0)} • Paid ₹${item.paidAmount.toStringAsFixed(0)}',
+                            ),
+                            trailing: Text(item.status),
+                          ),
+                        ),
                 ],
               ),
             ),
@@ -1337,97 +869,13 @@ class _RentCustomerDetailsScreenState extends State<RentCustomerDetailsScreen> {
     );
   }
 
-  // ============================================================
-  // DETAIL ROW
-  // ============================================================
-
-  Widget _detailRow(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
-
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(title, style: const TextStyle(color: Colors.grey)),
-          ),
-
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // HISTORY ITEM
-  // ============================================================
-
-  Widget _historyItem(RentHistoryItem item) {
-    final color = _statusColor(item.status);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-
-      padding: const EdgeInsets.all(12),
-
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-
-        borderRadius: BorderRadius.circular(10),
-      ),
-
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  item.rentMonth ?? "-",
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.10),
-
-                  borderRadius: BorderRadius.circular(20),
-                ),
-
-                child: Text(
-                  item.status,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          Text("Expected: ₹${item.expectedRent.toStringAsFixed(2)}"),
-
-          Text("Paid: ₹${item.paidAmount.toStringAsFixed(2)}"),
-
-          Text("Balance: ₹${item.balance.toStringAsFixed(2)}"),
-
-          if (item.remarks.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 5),
-
-              child: Text(
-                "Remarks: ${item.remarks}",
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  Widget _detailRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            Expanded(child: Text(label)),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
 }
