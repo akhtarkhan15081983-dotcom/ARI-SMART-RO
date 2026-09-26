@@ -61,8 +61,11 @@ def create_phone_otp(user):
         expires_at=timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES),
     )
 
-    # Transient only; never persisted to the database.
+    # Keep the real code in memory only long enough for the delivery layer.
+    # Existing callers use ``phone_otp.otp`` directly, so expose the plaintext
+    # on this Python object after the hashed value has already been persisted.
     phone_otp.delivery_otp = otp
+    phone_otp.otp = otp
     return phone_otp
 
 
