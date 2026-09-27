@@ -44,40 +44,39 @@ def _generate_codes_for_items(items, user):
     return codes
 
 
+def _purchase_id_from_item(purchase_item_id):
+    if not purchase_item_id:
+        return None
+    return (
+        PurchaseItem.objects.filter(id=purchase_item_id)
+        .values_list("purchase_id", flat=True)
+        .first()
+    )
+
+
 class InventoryCodeGenerationAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     @transaction.atomic
     def post(self, request):
         purchase_item_id = request.data.get("purchase_item_id")
-        purchase_id = request.data.get("purchase_id")
-        if not purchase_item_id and not purchase_id:
+        purchase_id = request.data.get("purchase_id") or _purchase_id_from_item(purchase_item_id)
+        if not purchase_id:
             return Response(
                 {"success": False, "message": "Purchase or purchase item is required."},
                 status=400,
             )
 
-        queryset = (
+        items = list(
             InventoryItem.objects.select_for_update()
-            .filter(status="PENDING_RECEIPT", serial_number__isnull=True)
+            .filter(
+                purchase_item__purchase_id=purchase_id,
+                status="PENDING_RECEIPT",
+                serial_number__isnull=True,
+            )
             .select_related("part", "purchase_item")
             .order_by("purchase_item_id", "id")
         )
-        if purchase_id:
-            queryset = queryset.filter(purchase_item__purchase_id=purchase_id)
-        else:
-            queryset = queryset.filter(purchase_item_id=purchase_item_id)
-
-        items = list(queryset)
-        requested_count = request.data.get("count")
-        if requested_count not in (None, "") and not purchase_id:
-            try:
-                count = int(requested_count)
-            except (TypeError, ValueError):
-                return Response({"success": False, "message": "Count must be a number."}, status=400)
-            if count < 1 or count > len(items):
-                return Response({"success": False, "message": "Count exceeds pending quantity."}, status=400)
-            items = items[:count]
         if not items:
             return Response({"success": False, "message": "No pending items need QR codes."}, status=409)
 
@@ -93,11 +92,9 @@ class InventoryQrLabelsPdfAPIView(APIView):
             serial_number=""
         ).select_related("part", "purchase_item__purchase")
         purchase_item_id = request.query_params.get("purchase_item_id")
-        purchase_id = request.query_params.get("purchase_id")
+        purchase_id = request.query_params.get("purchase_id") or _purchase_id_from_item(purchase_item_id)
         if purchase_id:
             queryset = queryset.filter(purchase_item__purchase_id=purchase_id)
-        elif purchase_item_id:
-            queryset = queryset.filter(purchase_item_id=purchase_item_id)
         items = list(queryset.order_by("part__code", "id")[:1000])
         if not items:
             return Response({"success": False, "message": "No QR labels are available."}, status=404)
