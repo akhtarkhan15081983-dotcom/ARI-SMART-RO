@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/customer_onboarding_service.dart';
+import '../../services/otp_autofill_service.dart';
 import '../dashboard/dashboard_screen.dart';
 
 class CustomerOnboardingScreen extends StatefulWidget {
@@ -19,6 +20,7 @@ class CustomerOnboardingScreen extends StatefulWidget {
 
 class _CustomerOnboardingScreenState extends State<CustomerOnboardingScreen> {
   final _service = CustomerOnboardingService();
+  final _otpAutofill = OtpAutofillService.instance;
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _phone = TextEditingController();
@@ -30,6 +32,8 @@ class _CustomerOnboardingScreenState extends State<CustomerOnboardingScreen> {
   bool _busy = false;
   bool _hidePassword = true;
   bool _registered = false;
+  bool _otpListening = false;
+  String? _otpAutofillStatus;
   Timer? _simPollTimer;
   bool _simPolling = false;
   String? _simStatus;
@@ -49,6 +53,7 @@ class _CustomerOnboardingScreenState extends State<CustomerOnboardingScreen> {
   @override
   void dispose() {
     _simPollTimer?.cancel();
+    unawaited(_otpAutofill.stop());
     _name.removeListener(_refreshPasswordGuidance);
     _password.removeListener(_refreshPasswordGuidance);
     for (final controller in [
@@ -62,6 +67,56 @@ class _CustomerOnboardingScreenState extends State<CustomerOnboardingScreen> {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _armOtpAutofill() async {
+    await _otpAutofill.stop();
+    if (!mounted) return;
+    setState(() {
+      _otpListening = true;
+      _otpAutofillStatus = 'Waiting for OTP securely…';
+    });
+    unawaited(_listenForOtp());
+  }
+
+  Future<void> _listenForOtp() async {
+    final code = await _otpAutofill.listenForUserConsent();
+    if (!mounted) return;
+    if (code == null) {
+      setState(() {
+        _otpListening = false;
+        _otpAutofillStatus = 'Auto-fill unavailable. You can enter the OTP manually.';
+      });
+      return;
+    }
+    setState(() {
+      _otp.value = TextEditingValue(
+        text: code,
+        selection: TextSelection.collapsed(offset: code.length),
+      );
+      _otpListening = false;
+      _otpAutofillStatus = 'OTP filled securely.';
+    });
+  }
+
+  Future<void> _sendOtp() async {
+    await _armOtpAutofill();
+    await _service.sendOtp(_phone.text);
+    if (!mounted) return;
+    setState(() => _otpStep = true);
+  }
+
+  Future<void> _resendOtp() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _sendOtp();
+      _show('A new OTP has been sent.');
+    } catch (e) {
+      _show(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _createAccount() async {
@@ -78,18 +133,16 @@ class _CustomerOnboardingScreenState extends State<CustomerOnboardingScreen> {
         );
         _registered = true;
       }
-      await _service.sendOtp(_phone.text);
+      await _sendOtp();
       if (!mounted) return;
-      setState(() => _otpStep = true);
       _show('OTP sent to ${_phone.text.trim()}');
     } catch (e) {
       final message = e.toString().replaceFirst('Exception: ', '');
       if (!_registered && message.toLowerCase().contains('already exists')) {
         try {
-          await _service.sendOtp(_phone.text);
-          if (!mounted) return;
           _registered = true;
-          setState(() => _otpStep = true);
+          await _sendOtp();
+          if (!mounted) return;
           _show('Existing account found. OTP sent to complete verification.');
         } catch (sendError) {
           _show(sendError.toString().replaceFirst('Exception: ', ''));
@@ -431,6 +484,7 @@ class _CustomerOnboardingScreenState extends State<CustomerOnboardingScreen> {
                     autofocus: true,
                     keyboardType: TextInputType.number,
                     maxLength: 6,
+                    autofillHints: const [AutofillHints.oneTimeCode],
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     textAlign: TextAlign.center,
                     style: const TextStyle(
@@ -444,18 +498,31 @@ class _CustomerOnboardingScreenState extends State<CustomerOnboardingScreen> {
                       counterText: '',
                     ),
                   ),
+                  if (_otpAutofillStatus != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_otpListening) ...[
+                          const SizedBox.square(
+                            dimension: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Flexible(
+                          child: Text(
+                            _otpAutofillStatus!,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => _service
-                              .sendOtp(_phone.text)
-                              .then((_) => _show('A new OTP has been sent.'))
-                              .catchError(
-                                (e) => _show(
-                                  e.toString().replaceFirst('Exception: ', ''),
-                                ),
-                              ),
+                    onPressed: _busy ? null : _resendOtp,
                     child: const Text('Resend OTP'),
                   ),
                   const Padding(
