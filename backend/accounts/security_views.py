@@ -1,3 +1,4 @@
+import os
 import secrets
 
 from django.contrib.auth.hashers import check_password, make_password
@@ -21,6 +22,13 @@ ADMIN_MFA_SALT = "ari-admin-login-mfa-v1"
 ADMIN_MFA_MAX_AGE_SECONDS = 300
 
 
+def _admin_login_otp_required():
+    """Keep Admin MFA secure-by-default, with an explicit temporary test switch."""
+
+    value = str(os.getenv("ARI_ADMIN_LOGIN_OTP_REQUIRED", "1") or "1").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
 def _mask_phone(phone):
     value = str(phone or "")
     if len(value) < 4:
@@ -29,7 +37,7 @@ def _mask_phone(phone):
 
 
 class SecureLoginAPIView(LoginAPIView):
-    """Normal login for users, plus mandatory second factor for Admin."""
+    """Normal login for users, plus optional second factor for Admin."""
 
     def post(self, request):
         response = super().post(request)
@@ -39,6 +47,12 @@ class SecureLoginAPIView(LoginAPIView):
         data = dict(response.data or {})
         user_data = data.get("user") or {}
         if str(user_data.get("role") or "").upper() != "ADMIN":
+            return response
+
+        # During an explicitly enabled testing window, let the already-validated
+        # base login response through unchanged. Production remains MFA-on by
+        # default unless ARI_ADMIN_LOGIN_OTP_REQUIRED is deliberately disabled.
+        if not _admin_login_otp_required():
             return response
 
         # The password was valid, but Admin must not receive a usable session
