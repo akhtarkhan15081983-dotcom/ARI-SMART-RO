@@ -9,6 +9,7 @@ import 'api_service.dart';
 
 class InventoryWorkflowService {
   static const _downloads = MethodChannel('com.arismartro.app/downloads');
+  static const _archiveFolder = 'ARI Smart RO Downloads';
 
   Future<List<Map<String, dynamic>>> requests() async =>
       _rows(await _get('/inventory/workflow/requests/'), 'requests');
@@ -97,9 +98,10 @@ class InventoryWorkflowService {
     final query = purchaseItemId == null
         ? ''
         : '?purchase_item_id=$purchaseItemId';
+    final suffix = purchaseItemId == null ? 'All' : 'Purchase';
     return _download(
       '/inventory/workflow/qr-labels.pdf$query',
-      'ARI_Inventory_QR_Labels.pdf',
+      'ARI_Inventory_QR_Labels_$suffix.pdf',
       'application/pdf',
     );
   }
@@ -109,6 +111,17 @@ class InventoryWorkflowService {
     'ARI_Professional_Inventory_Report.xlsx',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   );
+
+  Future<List<FileSystemEntity>> savedDownloads() async {
+    final root = await getApplicationDocumentsDirectory();
+    final directory = Directory('${root.path}/$_archiveFolder');
+    if (!await directory.exists()) return const [];
+    final files = directory.listSync().whereType<File>().toList()
+      ..sort(
+        (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
+      );
+    return files;
+  }
 
   Future<dynamic> _getRaw(String path) async {
     final response = await http
@@ -163,6 +176,13 @@ class InventoryWorkflowService {
         )
         .timeout(const Duration(seconds: 60));
     if (response.statusCode != 200) throw Exception(_message(response));
+
+    final root = await getApplicationDocumentsDirectory();
+    final archive = Directory('${root.path}/$_archiveFolder');
+    if (!await archive.exists()) await archive.create(recursive: true);
+    final archivedFile = File('${archive.path}/$filename');
+    await archivedFile.writeAsBytes(response.bodyBytes, flush: true);
+
     if (Platform.isAndroid) {
       final saved = await _downloads.invokeMethod<String>('saveFile', {
         'filename': filename,
@@ -170,14 +190,10 @@ class InventoryWorkflowService {
         'bytes': response.bodyBytes,
       });
       if (saved == null || saved.isEmpty) {
-        throw Exception('Download location not returned.');
+        return archivedFile.path;
       }
-      return saved;
     }
-    final directory = await getApplicationDocumentsDirectory();
-    final file = File('${directory.path}/$filename');
-    await file.writeAsBytes(response.bodyBytes, flush: true);
-    return file.path;
+    return archivedFile.path;
   }
 
   List<Map<String, dynamic>> _rawList(dynamic data) {

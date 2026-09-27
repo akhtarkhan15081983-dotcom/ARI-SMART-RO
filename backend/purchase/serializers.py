@@ -1,3 +1,6 @@
+from uuid import uuid4
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
@@ -31,12 +34,14 @@ class PurchaseItemSerializer(serializers.ModelSerializer):
             }
         }
 
+
 class PurchaseSerializer(serializers.ModelSerializer):
 
     supplier_name = serializers.CharField(
         source="supplier.name",
         read_only=True
     )
+    invoice_number = serializers.CharField(required=False, allow_blank=True)
 
     items = PurchaseItemSerializer(
         many=True
@@ -44,6 +49,12 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         items_data = validated_data.pop("items")
+        invoice_number = str(validated_data.get("invoice_number") or "").strip()
+        if not invoice_number:
+            stamp = timezone.localtime().strftime("%Y%m%d-%H%M%S")
+            validated_data["invoice_number"] = f"NO-BILL-{stamp}-{uuid4().hex[:6].upper()}"
+        else:
+            validated_data["invoice_number"] = invoice_number
 
         purchase = Purchase.objects.create(**validated_data)
 
