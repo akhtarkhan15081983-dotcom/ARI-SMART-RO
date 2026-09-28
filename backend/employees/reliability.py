@@ -24,16 +24,10 @@ class CombinedFaceEnrollmentControlAPIView(APIView):
     @transaction.atomic
     def post(self, request, employee_id):
         company = request_company(request)
-        if company is None:
-            return Response(
-                {"success": False, "message": "Active company workspace not found."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        employee = EmployeeProfile.objects.select_related("user").filter(
-            pk=employee_id,
-            company=company,
-        ).first()
+        employees = EmployeeProfile.objects.select_related("user").filter(pk=employee_id)
+        if company is not None:
+            employees = employees.filter(company=company)
+        employee = employees.first()
         if employee is None:
             return Response(
                 {"success": False, "message": "Employee not found."},
@@ -160,9 +154,15 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
                 ended_at__isnull=True,
             ).exists()
 
+        # Preserve the legacy location endpoint for employees who have not
+        # checked in yet. This keeps location validation, queued-point handling,
+        # device diagnostics and operations-map behavior backward compatible.
+        # Only an actual attendance record that has ended may stop tracking.
         if (
             request.data.get("tracking_active") is not False
-            and (attendance is None or (attendance.check_out and not active_overtime))
+            and attendance is not None
+            and attendance.check_out
+            and not active_overtime
         ):
             if employee.is_online:
                 employee.is_online = False
@@ -172,18 +172,22 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
                     "message": "Work shift is not active. Live tracking stopped on the server.",
                     "online": False,
                     "shift_active": False,
-                    "auto_checked_out": bool(attendance and attendance.auto_checked_out),
-                    "check_out": attendance.check_out if attendance else None,
+                    "auto_checked_out": attendance.auto_checked_out,
+                    "check_out": attendance.check_out,
                 }
             )
 
         response = super().post(request)
         if isinstance(getattr(response, "data", None), dict):
-            response.data["shift_active"] = bool(
-                attendance is not None
-                and (attendance.check_out is None or active_overtime)
-            )
-            if attendance is not None:
+            if attendance is None:
+                # No attendance record means the location API remains usable for
+                # pre-check-in diagnostics/operations without telling the phone
+                # background service to stop itself.
+                response.data["shift_active"] = None
+            else:
+                response.data["shift_active"] = bool(
+                    attendance.check_out is None or active_overtime
+                )
                 response.data["regular_shift_end_at"] = regular_shift_end(attendance)
                 response.data["auto_checked_out"] = attendance.auto_checked_out
         return response
