@@ -30,6 +30,7 @@ class InventoryItem(models.Model):
     manufacturing_date = models.DateField(blank=True, null=True)
     expiry_date = models.DateField(blank=True, null=True)
     qr_code = models.ImageField(upload_to="qr_codes/", blank=True, null=True)
+    receipt_photo = models.ImageField(upload_to="inventory_receipts/%Y/%m/", blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     received_at = models.DateTimeField(null=True, blank=True)
     received_by = models.ForeignKey(

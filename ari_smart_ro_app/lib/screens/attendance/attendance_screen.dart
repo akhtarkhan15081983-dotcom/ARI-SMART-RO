@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../services/attendance_service.dart';
 import '../../services/attendance_reminder_service.dart';
+import '../../services/device_capability_service.dart';
 import '../../services/live_location_service.dart';
 import '../../services/selfie_quality_service.dart';
 
@@ -287,12 +288,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _selfieMessage = null;
     });
     try {
+      final lowMemoryDevice = await DeviceCapabilityService.isLowMemoryDevice();
       final image = await _imagePicker.pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.front,
-        imageQuality: 72,
-        maxWidth: 960,
-        maxHeight: 1280,
+        imageQuality: lowMemoryDevice ? 60 : 72,
+        maxWidth: lowMemoryDevice ? 720 : 960,
+        maxHeight: lowMemoryDevice ? 960 : 1280,
       );
       if (image == null || !mounted) return;
       await _acceptSelfie(image);

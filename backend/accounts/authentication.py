@@ -1,5 +1,6 @@
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from django.utils import timezone
 
 from .token_security import token_session_is_current
 
@@ -35,10 +36,25 @@ class VerifiedCustomerJWTAuthentication(JWTAuthentication):
                     code="employee_device_login_required",
                 )
             if not device_id or device_id != bound_device_id:
-                raise AuthenticationFailed(
-                    "This employee session belongs to another phone.",
-                    code="employee_device_mismatch",
-                )
+                legacy_device_id = str(request.headers.get("X-ARI-Legacy-Device-ID", "") or "").strip()[:64]
+                if device_id and legacy_device_id and legacy_device_id == bound_device_id:
+                    user.previous_login_device_id = legacy_device_id
+                    user.active_login_device_id = device_id
+                    user.login_device_bound_at = timezone.now()
+                    user.save(update_fields=["previous_login_device_id", "active_login_device_id", "login_device_bound_at"])
+                    try:
+                        employee = user.employee_profile
+                    except Exception:
+                        employee = None
+                    if employee is not None and employee.attendance_device_id == legacy_device_id:
+                        employee.attendance_device_id = device_id
+                        employee.save(update_fields=["attendance_device_id"])
+                    bound_device_id = device_id
+                else:
+                    raise AuthenticationFailed(
+                        "This employee session belongs to another phone.",
+                        code="employee_device_mismatch",
+                    )
 
         membership = (
             user.company_memberships.filter(is_active=True)

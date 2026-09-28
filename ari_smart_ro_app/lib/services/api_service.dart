@@ -4,39 +4,21 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/services.dart';
 
 import '../utils/jwt_utils.dart';
 
 class AriPlatformStorage {
   const AriPlatformStorage();
 
-  static final Map<String, String> _windowsMemory = <String, String>{};
   static const FlutterSecureStorage _secure = FlutterSecureStorage();
 
-  Future<String?> read({required String key}) {
-    if (Platform.isWindows) return Future.value(_windowsMemory[key]);
-    return _secure.read(key: key);
-  }
+  Future<String?> read({required String key}) => _secure.read(key: key);
 
-  Future<void> write({required String key, required String? value}) async {
-    if (Platform.isWindows) {
-      if (value == null) {
-        _windowsMemory.remove(key);
-      } else {
-        _windowsMemory[key] = value;
-      }
-      return;
-    }
-    await _secure.write(key: key, value: value);
-  }
+  Future<void> write({required String key, required String? value}) =>
+      _secure.write(key: key, value: value);
 
-  Future<void> delete({required String key}) async {
-    if (Platform.isWindows) {
-      _windowsMemory.remove(key);
-      return;
-    }
-    await _secure.delete(key: key);
-  }
+  Future<void> delete({required String key}) => _secure.delete(key: key);
 }
 
 class ApiService {
@@ -58,6 +40,9 @@ class ApiService {
   }
 
   static const AriPlatformStorage storage = AriPlatformStorage();
+  static const MethodChannel _deviceChannel = MethodChannel(
+    'com.arismartro.app/device_capabilities',
+  );
 
   static Future<String?> _readAccessToken() {
     return storage.read(key: "access");
@@ -73,11 +58,17 @@ class ApiService {
   }
 
   static Future<Map<String, String>> deviceHeaders() async {
-    final deviceId = await _deviceId();
-    return <String, String>{
+    final stableDeviceId = await _stableDeviceId();
+    final legacyDeviceId = await _deviceId();
+    final headers = <String, String>{
       "Content-Type": "application/json",
-      "X-ARI-Device-ID": deviceId,
+      "X-ARI-Device-ID": stableDeviceId,
+      "X-ARI-Device-ID-Scheme": "stable-v1",
     };
+    if (legacyDeviceId.isNotEmpty && legacyDeviceId != stableDeviceId) {
+      headers["X-ARI-Legacy-Device-ID"] = legacyDeviceId;
+    }
+    return headers;
   }
 
   static Future<Map<String, String>> authHeaders() async {
@@ -102,6 +93,35 @@ class ApiService {
     ).map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
     await storage.write(key: key, value: value);
     return value;
+  }
+
+  static Future<String> _stableDeviceId() async {
+    if (Platform.isAndroid) {
+      try {
+        final nativeId = await _deviceChannel.invokeMethod<String>('getStableDeviceId');
+        final clean = nativeId?.trim();
+        if (clean != null && clean.isNotEmpty) return 'android-$clean';
+      } on PlatformException {
+        // Fall back to the persisted identity.
+      } on MissingPluginException {
+        // Fall back to the persisted identity.
+      }
+    }
+    if (Platform.isWindows) {
+      final host = Platform.localHostname.trim().toLowerCase();
+      final user = (Platform.environment['USERNAME'] ?? '').trim().toLowerCase();
+      return 'windows-${_fnv1a64('ARI-SMART-RO|$host|$user')}';
+    }
+    return _deviceId();
+  }
+
+  static String _fnv1a64(String input) {
+    var hash = 0xcbf29ce484222325;
+    for (final byte in utf8.encode(input)) {
+      hash ^= byte;
+      hash = (hash * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
+    }
+    return hash.toRadixString(16).padLeft(16, '0');
   }
 
   static Future<String?> getRole() {
