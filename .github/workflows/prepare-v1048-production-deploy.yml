@@ -1,0 +1,100 @@
+name: Prepare v1.0.48 Production Deploy
+permissions:
+  contents: write
+on:
+  push:
+    branches: [deploy/v1.0.48-production]
+jobs:
+  prepare-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: ari_ci
+          POSTGRES_USER: ari_ci
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ari_ci -d ari_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_NAME: ari_ci
+      DB_USER: ari_ci
+      DB_PASSWORD: ci-only-password
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      ARI_SKIP_EXACT_EXCEL_IMPORT_FOR_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: deploy/v1.0.48-production
+          fetch-depth: 0
+      - name: Merge validated release source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin andy-assistant
+          git merge --no-commit --no-ff origin/andy-assistant
+      - name: Chain production employee migrations safely
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          src = Path('backend/employees/migrations/0024_one_time_device_migration_reset.py')
+          if not src.exists():
+              raise SystemExit('release employee reset migration missing')
+          text = src.read_text()
+          text = text.replace("('employees', '0023_employee_location_point')", "('employees', '0024_reset_faizan_device_binding')")
+          dst = Path('backend/employees/migrations/0025_one_time_device_migration_reset.py')
+          dst.write_text(text)
+          src.unlink()
+          PY
+      - name: Remove temporary release automation helpers
+        run: |
+          rm -f \
+            .github/workflows/report-null-safe-hotfix.yml \
+            .github/workflows/v1047-patch-runner.yml \
+            .github/workflows/v1_0_47_autopatch.yml \
+            .github/workflows/windows-responsive-cursor-autopatch.yml \
+            .github/workflows/v1048-release-consolidation.yml \
+            .github/workflows/v1048-hardening.yml \
+            .github/workflows/prepare-v1048-production-deploy.yml \
+            tools/apply_v1047_patch.py \
+            tools/v1047_trigger.txt \
+            tools/v1048_ci_trigger.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Validate migrations and deployment
+        working-directory: backend
+        env:
+          DJANGO_DEBUG: "0"
+          DJANGO_SECRET_KEY: "ci-only-secret-key-not-used-in-production"
+          DJANGO_ALLOWED_HOSTS: "testserver,localhost"
+          DJANGO_SECURE_SSL_REDIRECT: "0"
+          DJANGO_MEDIA_STORAGE_BACKEND: "filesystem"
+          DJANGO_MEDIA_ROOT: "/tmp/ari-smart-ro-ci-media"
+          OTP_SMS_BACKEND: "webhook"
+          OTP_SMS_WEBHOOK_URL: "https://example.invalid/otp"
+        run: |
+          python manage.py check --deploy
+          python manage.py makemigrations --check --dry-run
+          python manage.py migrate --noinput
+      - name: Backend regression tests
+        working-directory: backend
+        env:
+          DJANGO_DISABLE_AUTH_THROTTLING: "1"
+        run: python manage.py test -v 1 --keepdb
+      - name: Commit prepared production branch
+        run: |
+          git add -A
+          git commit -m "release: prepare v1.0.48 production backend with safe migration chain"
+          git push origin HEAD:deploy/v1.0.48-production
