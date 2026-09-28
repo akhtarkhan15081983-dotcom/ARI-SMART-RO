@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from rest_framework import status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from accounts.audit import write_audit_event
 from accounts.models import AuthSecurityEvent
@@ -15,14 +16,8 @@ from .models import EmployeeProfile
 from .views import UpdateLiveLocationAPIView
 
 
-class CombinedFaceEnrollmentControlAPIView(UpdateLiveLocationAPIView.__mro__[1]):
-    """Admin face/device control with a single safe new-phone reset path.
-
-    This intentionally preserves the existing endpoint contract used by the
-    Flutter admin screen. `allow_reenrollment` now resets both the staff login
-    binding and the attendance-device binding, then opens exactly one
-    face/device re-enrollment attempt.
-    """
+class CombinedFaceEnrollmentControlAPIView(APIView):
+    """Admin face/device control with a single safe new-phone reset path."""
 
     permission_classes = [IsAdmin]
 
@@ -79,8 +74,6 @@ class CombinedFaceEnrollmentControlAPIView(UpdateLiveLocationAPIView.__mro__[1])
             ]
         )
 
-        # The old attendance phone must stop being trusted immediately. The
-        # next successful face enrollment will bind the newly logged-in phone.
         employee.attendance_device_id = ""
         employee.face_enrollment_allowed = True
         employee.face_enrollment_verified = False
@@ -92,8 +85,6 @@ class CombinedFaceEnrollmentControlAPIView(UpdateLiveLocationAPIView.__mro__[1])
             ]
         )
 
-        # A temporary other-phone attendance override must not survive a full
-        # device reset; otherwise two separate bypass paths can overlap.
         AttendanceDeviceOverride.objects.filter(
             employee=employee,
             is_active=True,
@@ -145,12 +136,7 @@ class CombinedFaceEnrollmentControlAPIView(UpdateLiveLocationAPIView.__mro__[1])
 
 
 class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
-    """Live-location endpoint that also enforces attendance shift state.
-
-    The employee app posts location roughly every 20 seconds during an active
-    foreground tracking session. Reconciliation here makes the 8-hour checkout
-    server-enforced even when the Attendance screen itself is not open.
-    """
+    """Live-location endpoint that also enforces the current attendance shift."""
 
     def post(self, request):
         try:
@@ -174,9 +160,6 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
                 ended_at__isnull=True,
             ).exists()
 
-        # Stale background tracking must not keep an employee "online" after
-        # a regular/manual checkout. Approved overtime restarts tracking from
-        # the Attendance screen when the employee explicitly starts overtime.
         if (
             request.data.get("tracking_active") is not False
             and (attendance is None or (attendance.check_out and not active_overtime))
