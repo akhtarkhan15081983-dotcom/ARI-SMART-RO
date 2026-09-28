@@ -49,6 +49,12 @@ class ReportService {
 
     final filename = "ari-smart-ro-$period-${_dateValue(date)}.xlsx";
 
+    final root = await getApplicationDocumentsDirectory();
+    final archive = Directory('${root.path}/ARI Smart RO Downloads');
+    if (!await archive.exists()) await archive.create(recursive: true);
+    final archivedFile = File('${archive.path}/$filename');
+    await archivedFile.writeAsBytes(response.bodyBytes, flush: true);
+
     if (Platform.isAndroid) {
       final savedPath = await _downloadsChannel.invokeMethod<String>('saveFile', {
         'filename': filename,
@@ -59,13 +65,9 @@ class ReportService {
       if (savedPath == null || savedPath.isEmpty) {
         throw Exception('Report download location was not returned.');
       }
-      return savedPath;
+      return archivedFile.path;
     }
-
-    final directory = await getApplicationDocumentsDirectory();
-    final file = File("${directory.path}/$filename");
-    await file.writeAsBytes(response.bodyBytes, flush: true);
-    return file.path;
+    return archivedFile.path;
   }
 
   static String _dateValue(DateTime value) {

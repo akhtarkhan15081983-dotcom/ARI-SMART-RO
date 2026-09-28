@@ -38,6 +38,7 @@ import '../rent/rent_payment_screen.dart';
 import '../rent/rent_management_screen.dart';
 import '../rent/payment_history_screen.dart';
 import '../reports/reports_screen.dart';
+import '../downloads/download_center_screen.dart';
 import '../service/service_list_screen.dart';
 import '../complaint/complaint_list_screen.dart';
 import '../profile/profile_screen.dart';
@@ -552,6 +553,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       case 'reports':
         _push(const ReportsScreen());
         return;
+      case 'downloads':
+        _push(const DownloadCenterScreen());
+        return;
       case 'profile':
         _push(const ProfileScreen());
         return;
@@ -912,6 +916,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
+                            mouseCursor: SystemMouseCursors.click,
                             borderRadius: BorderRadius.circular(14),
                             onTap: () =>
                                 setState(() => _windowsWorkspace = group.title),
@@ -1534,6 +1539,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
     final allItems = _dashboardItems, isCustomer = _role == 'CUSTOMER';
     final isWindows = defaultTargetPlatform == TargetPlatform.windows;
+    final useWindowsDesktop = isWindows && MediaQuery.sizeOf(context).width >= 1050;
     final items = allItems
         .where((item) => matchesAllSearchTerms(_toolQuery, [item.title, item.route]))
         .toList();
@@ -1543,7 +1549,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (!didPop) _handleDashboardBack();
       },
       child: Scaffold(
-        appBar: isWindows ? null : AppBar(
+        appBar: useWindowsDesktop ? null : AppBar(
           title: Text(isCustomer ? 'ARI Smart RO' : '$_role Dashboard'),
           actions: [
             Stack(
@@ -1588,7 +1594,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             IconButton(onPressed: _logout, icon: const Icon(Icons.logout)),
           ],
         ),
-        body: isWindows
+        body: useWindowsDesktop
             ? _buildWindowsDashboard(items: items, isCustomer: isCustomer)
             : RefreshIndicator(
           onRefresh: _loadDashboard,
@@ -1655,6 +1661,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 role: _role,
                 groups: _dashboardGroups(items),
                 onOpen: _openDashboardGroup,
+                isDesktop: isWindows,
               ),
             ],
           ),
@@ -1725,6 +1732,7 @@ class _CommandGrid extends StatelessWidget {
           return Card(
             margin: EdgeInsets.zero,
             child: InkWell(
+              mouseCursor: SystemMouseCursors.click,
               borderRadius: BorderRadius.circular(16),
               onTap: () => onOpen(group),
               child: Padding(
@@ -1847,6 +1855,7 @@ class _WindowsHeaderAction extends StatelessWidget {
           color: Colors.white.withValues(alpha: .14),
           borderRadius: BorderRadius.circular(13),
           child: InkWell(
+            mouseCursor: SystemMouseCursors.click,
             borderRadius: BorderRadius.circular(13),
             onTap: onTap,
             child: Container(
@@ -2142,6 +2151,7 @@ class _WindowsToolCardState extends State<_WindowsToolCard> {
   Widget build(BuildContext context) {
     final color = widget.color;
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedScale(
