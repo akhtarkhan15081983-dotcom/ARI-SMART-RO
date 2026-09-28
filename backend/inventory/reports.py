@@ -79,7 +79,7 @@ class InventoryCodeGenerationAPIView(APIView):
             .order_by("purchase_item_id", "id")
         )
         if not items:
-            return Response({"success": False, "message": "No pending items need QR codes."}, status=409)
+            return Response({"success": True, "generated": 0, "codes": [], "message": "QR codes are already available for serialized pending stock."})
 
         codes = _generate_codes_for_items(items, request.user)
         return Response({"success": True, "generated": len(codes), "codes": codes})

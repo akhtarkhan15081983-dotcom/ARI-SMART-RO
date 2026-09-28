@@ -957,18 +957,6 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
                         OutlinedButton.icon(
                           onPressed: _busy
                               ? null
-                              : () => _act(() async {
-                                  final n = await _service.generateCodes(
-                                    (item['purchase_item_id'] as num).toInt(),
-                                  );
-                                  _show('$n secure QR codes generated.');
-                                }, 'QR generation completed.'),
-                          icon: const Icon(Icons.qr_code_2),
-                          label: const Text('GENERATE QR'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _busy
-                              ? null
                               : () async {
                                   try {
                                     final path = await _service.downloadQrLabels(

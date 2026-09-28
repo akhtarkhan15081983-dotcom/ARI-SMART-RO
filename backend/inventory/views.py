@@ -215,10 +215,17 @@ class InventoryReceiveAPIView(APIView):
             return Response({"success": False, "message": "This QR/serial code is already registered."}, status=409)
         inventory_item = registered or (
             InventoryItem.objects.select_for_update()
-            .filter(purchase_item_id=purchase_item_id, status="PENDING_RECEIPT", serial_number__isnull=True)
+            .filter(
+                purchase_item_id=purchase_item_id,
+                status="PENDING_RECEIPT",
+                serial_number__isnull=True,
+                part__is_serialized=True,
+            )
             .select_related("part")
             .first()
         )
+        if inventory_item is not None and not inventory_item.part.is_serialized:
+            return Response({"success": False, "message": "This item uses photo receipt, not QR scanning."}, status=400)
         if inventory_item is None:
             return Response({"success": False, "message": "No pending quantity remains for this purchase item."}, status=409)
         inventory_item.serial_number = code
