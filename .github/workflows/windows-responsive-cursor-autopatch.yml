@@ -1,0 +1,102 @@
+name: Windows Responsive Cursor Autopatch
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - fix/device-migration-customer-scroll-v1.0.47-2026-09-28
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[windows-responsive-cursor]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/device-migration-customer-scroll-v1.0.47-2026-09-28
+          fetch-depth: 0
+      - name: Apply Windows responsiveness and pointer cursor fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f'pattern not found in {path}: {old[:100]!r}')
+              p.write_text(s.replace(old, new, 1))
+
+          replace_once(
+              'ari_smart_ro_app/lib/screens/dashboard/dashboard_card.dart',
+              '''      child: InkWell(\n        borderRadius: BorderRadius.circular(15),\n        onTap: onTap,\n''',
+              '''      child: InkWell(\n        mouseCursor: SystemMouseCursors.click,\n        borderRadius: BorderRadius.circular(15),\n        onTap: onTap,\n''',
+          )
+
+          p = Path('ari_smart_ro_app/lib/screens/dashboard/dashboard_screen.dart')
+          s = p.read_text()
+
+          old = '''    final isWindows = defaultTargetPlatform == TargetPlatform.windows;\n    final items = allItems\n'''
+          new = '''    final isWindows = defaultTargetPlatform == TargetPlatform.windows;\n    final useWindowsDesktop =\n        isWindows && MediaQuery.sizeOf(context).width >= 1050;\n    final items = allItems\n'''
+          if old not in s:
+              raise SystemExit('Windows breakpoint insertion point not found')
+          s = s.replace(old, new, 1)
+
+          s = s.replace(
+              '        appBar: isWindows ? null : AppBar(\n',
+              '        appBar: useWindowsDesktop ? null : AppBar(\n',
+              1,
+          )
+          s = s.replace(
+              '''        body: isWindows\n            ? _buildWindowsDashboard(items: items, isCustomer: isCustomer)\n            : RefreshIndicator(\n''',
+              '''        body: useWindowsDesktop\n            ? _buildWindowsDashboard(items: items, isCustomer: isCustomer)\n            : RefreshIndicator(\n''',
+              1,
+          )
+          s = s.replace(
+              '''              _CommandGrid(\n                role: _role,\n                groups: _dashboardGroups(items),\n                onOpen: _openDashboardGroup,\n              ),\n''',
+              '''              _CommandGrid(\n                role: _role,\n                groups: _dashboardGroups(items),\n                onOpen: _openDashboardGroup,\n                isDesktop: isWindows,\n              ),\n''',
+              1,
+          )
+
+          # Workspace navigation pointer.
+          needle = '''                          child: InkWell(\n                            borderRadius: BorderRadius.circular(14),\n                            onTap: () =>\n'''
+          repl = '''                          child: InkWell(\n                            mouseCursor: SystemMouseCursors.click,\n                            borderRadius: BorderRadius.circular(14),\n                            onTap: () =>\n'''
+          if needle not in s:
+              raise SystemExit('Workspace InkWell not found')
+          s = s.replace(needle, repl, 1)
+
+          # Compact command-grid pointer.
+          needle = '''            child: InkWell(\n              borderRadius: BorderRadius.circular(16),\n              onTap: () => onOpen(group),\n'''
+          repl = '''            child: InkWell(\n              mouseCursor: SystemMouseCursors.click,\n              borderRadius: BorderRadius.circular(16),\n              onTap: () => onOpen(group),\n'''
+          if needle not in s:
+              raise SystemExit('Command grid InkWell not found')
+          s = s.replace(needle, repl, 1)
+
+          # Header action pointer.
+          needle = '''          child: InkWell(\n            borderRadius: BorderRadius.circular(13),\n            onTap: onTap,\n'''
+          repl = '''          child: InkWell(\n            mouseCursor: SystemMouseCursors.click,\n            borderRadius: BorderRadius.circular(13),\n            onTap: onTap,\n'''
+          if needle not in s:
+              raise SystemExit('Header action InkWell not found')
+          s = s.replace(needle, repl, 1)
+
+          # Tool card pointer + hover remains intact.
+          needle = '''    return MouseRegion(\n      onEnter: (_) => setState(() => _hovered = true),\n'''
+          repl = '''    return MouseRegion(\n      cursor: SystemMouseCursors.click,\n      onEnter: (_) => setState(() => _hovered = true),\n'''
+          if needle not in s:
+              raise SystemExit('Windows tool MouseRegion not found')
+          s = s.replace(needle, repl, 1)
+
+          p.write_text(s)
+          PY
+      - name: Format Flutter files
+        run: |
+          dart format ari_smart_ro_app/lib/screens/dashboard/dashboard_card.dart ari_smart_ro_app/lib/screens/dashboard/dashboard_screen.dart
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ari_smart_ro_app/lib/screens/dashboard/dashboard_card.dart ari_smart_ro_app/lib/screens/dashboard/dashboard_screen.dart
+          git commit -m "fix: responsive Windows dashboard and pointer cursor [windows-responsive-cursor]"
+          git push origin HEAD:fix/device-migration-customer-scroll-v1.0.47-2026-09-28

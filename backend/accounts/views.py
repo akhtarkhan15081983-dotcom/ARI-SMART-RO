@@ -442,24 +442,33 @@ class LoginAPIView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
+            legacy_device_id = str(request.headers.get("X-ARI-Legacy-Device-ID", "") or "").strip()[:64]
             if user.active_login_device_id and user.active_login_device_id != device_id:
-                _security_event(
-                    request,
-                    "LOGIN_DEVICE_BLOCKED",
-                    user=user,
-                    reason="OTHER_DEVICE_ACTIVE",
-                )
-                return Response(
-                    {
-                        "success": False,
-                        "code": "EMPLOYEE_DEVICE_ALREADY_BOUND",
-                        "message": (
-                            "This employee ID is already active on another phone. "
-                            "Ask Admin to reset the login device before using a new phone."
-                        ),
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
+                if legacy_device_id and user.active_login_device_id == legacy_device_id:
+                    user.previous_login_device_id = legacy_device_id
+                    user.active_login_device_id = device_id
+                    user.login_device_bound_at = timezone.now()
+                    user.save(update_fields=["previous_login_device_id", "active_login_device_id", "login_device_bound_at"])
+                    try:
+                        employee = user.employee_profile
+                    except Exception:
+                        employee = None
+                    if employee is not None and employee.attendance_device_id == legacy_device_id:
+                        employee.attendance_device_id = device_id
+                        employee.save(update_fields=["attendance_device_id"])
+                else:
+                    _security_event(request, "LOGIN_DEVICE_BLOCKED", user=user, reason="OTHER_DEVICE_ACTIVE")
+                    return Response(
+                        {
+                            "success": False,
+                            "code": "EMPLOYEE_DEVICE_ALREADY_BOUND",
+                            "message": (
+                                "This employee ID is already active on another phone. "
+                                "Ask Admin to reset the login device before using a new phone."
+                            ),
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
 
             if not user.active_login_device_id:
                 user.active_login_device_id = device_id

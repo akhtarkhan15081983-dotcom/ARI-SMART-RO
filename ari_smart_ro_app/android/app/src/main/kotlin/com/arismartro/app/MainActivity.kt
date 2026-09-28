@@ -9,6 +9,7 @@ import android.os.PowerManager
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -81,6 +82,10 @@ class MainActivity : FlutterActivity() {
             deviceCapabilitiesChannel,
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                "getStableDeviceId" -> {
+                    val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+                    result.success(androidId)
+                }
                 "isLowMemoryDevice" -> {
                     val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
                     val lowMemory = activityManager.isLowRamDevice || activityManager.memoryClass <= 256

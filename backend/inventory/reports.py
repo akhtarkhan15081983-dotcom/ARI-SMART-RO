@@ -73,12 +73,13 @@ class InventoryCodeGenerationAPIView(APIView):
                 purchase_item__purchase_id=purchase_id,
                 status="PENDING_RECEIPT",
                 serial_number__isnull=True,
+                part__is_serialized=True,
             )
             .select_related("part", "purchase_item")
             .order_by("purchase_item_id", "id")
         )
         if not items:
-            return Response({"success": False, "message": "No pending items need QR codes."}, status=409)
+            return Response({"success": True, "generated": 0, "codes": [], "message": "QR codes are already available for serialized pending stock."})
 
         codes = _generate_codes_for_items(items, request.user)
         return Response({"success": True, "generated": len(codes), "codes": codes})
@@ -88,7 +89,7 @@ class InventoryQrLabelsPdfAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     def get(self, request):
-        queryset = InventoryItem.objects.exclude(serial_number__isnull=True).exclude(
+        queryset = InventoryItem.objects.filter(part__is_serialized=True).exclude(serial_number__isnull=True).exclude(
             serial_number=""
         ).select_related("part", "purchase_item__purchase")
         purchase_item_id = request.query_params.get("purchase_item_id")

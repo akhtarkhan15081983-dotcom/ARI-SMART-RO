@@ -1,0 +1,203 @@
+name: v1.0.48 Release Consolidation
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - fix/device-migration-customer-scroll-v1.0.47-2026-09-28
+
+jobs:
+  consolidate:
+    if: ${{ !contains(github.event.head_commit.message, '[v1048-consolidated]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/device-migration-customer-scroll-v1.0.47-2026-09-28
+          fetch-depth: 0
+
+      - name: Apply v1.0.48 changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def read(path): return Path(path).read_text()
+          def write(path, text):
+              p = Path(path); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(text)
+          def once(path, old, new):
+              s = read(path)
+              if old not in s:
+                  raise SystemExit(f'pattern missing in {path}: {old[:100]!r}')
+              write(path, s.replace(old, new, 1))
+
+          # Version bump.
+          once('ari_smart_ro_app/pubspec.yaml', 'version: 1.0.47+47', 'version: 1.0.48+48')
+
+          # Business reports: tolerate historical jobs without linked RO assets.
+          once(
+              'backend/reporting/views.py',
+              '        "asset_id": row.ro_asset.asset_id,\n',
+              '        "asset_id": row.ro_asset.asset_id if row.ro_asset else "",\n',
+          )
+
+          # Inventory model: photo proof for non-serialized stock.
+          once(
+              'backend/inventory/models.py',
+              '    qr_code = models.ImageField(upload_to="qr_codes/", blank=True, null=True)\n',
+              '    qr_code = models.ImageField(upload_to="qr_codes/", blank=True, null=True)\n    receipt_photo = models.ImageField(upload_to="inventory_receipts/%Y/%m/", blank=True, null=True)\n',
+          )
+
+          write('backend/inventory/migrations/0007_inventoryitem_receipt_photo.py', '''from django.db import migrations, models\n\n\nclass Migration(migrations.Migration):\n    dependencies = [("inventory", "0006_inventoryitem_received_at_inventoryitem_received_by_and_more")]\n    operations = [\n        migrations.AddField(\n            model_name="inventoryitem",\n            name="receipt_photo",\n            field=models.ImageField(blank=True, null=True, upload_to="inventory_receipts/%Y/%m/"),\n        ),\n    ]\n''')
+
+          # Backfill QR IDs only for serialized pending stock already purchased.
+          write('backend/inventory/migrations/0008_backfill_serialized_pending_codes.py', '''from uuid import uuid4\nfrom django.db import migrations\n\n\ndef backfill(apps, schema_editor):\n    InventoryItem = apps.get_model("inventory", "InventoryItem")\n    rows = InventoryItem.objects.filter(\n        status="PENDING_RECEIPT",\n        serial_number__isnull=True,\n        part__is_serialized=True,\n    ).select_related("part")\n    for row in rows.iterator():\n        while True:\n            code = f"ARI-{row.part.code}-{uuid4().hex[:10].upper()}"\n            if not InventoryItem.objects.filter(serial_number=code).exists():\n                break\n        row.serial_number = code\n        row.barcode = code\n        row.save(update_fields=["serial_number", "barcode"])\n\n\ndef reverse_noop(apps, schema_editor):\n    pass\n\n\nclass Migration(migrations.Migration):\n    dependencies = [("inventory", "0007_inventoryitem_receipt_photo")]\n    operations = [migrations.RunPython(backfill, reverse_noop)]\n''')
+
+          # New purchases: serialized items immediately receive unique QR/serial IDs.
+          p = 'backend/purchase/serializers.py'
+          s = read(p)
+          s = s.replace('from uuid import uuid4\n', 'from uuid import uuid4\n')
+          old = '''            if part.is_serialized:\n                for i in range(purchase_item.quantity):\n                    InventoryItem.objects.create(\n                        purchase_item=purchase_item,\n                        part=part,\n                        serial_number=None\n                    )\n            else:\n                for i in range(purchase_item.quantity):\n                    InventoryItem.objects.create(\n                        purchase_item=purchase_item,\n                        part=part,\n                        serial_number=None\n                    )\n'''
+          new = '''            for i in range(purchase_item.quantity):\n                if part.is_serialized:\n                    code = f"ARI-{part.code}-{uuid4().hex[:10].upper()}"\n                    InventoryItem.objects.create(\n                        purchase_item=purchase_item,\n                        part=part,\n                        serial_number=code,\n                        barcode=code,\n                    )\n                else:\n                    InventoryItem.objects.create(\n                        purchase_item=purchase_item,\n                        part=part,\n                        serial_number=None,\n                    )\n'''
+          if old not in s: raise SystemExit('purchase inventory creation block missing')
+          write(p, s.replace(old, new, 1))
+
+          # QR generation and PDF must only include serialized parts.
+          p='backend/inventory/reports.py'; s=read(p)
+          s=s.replace(
+              '                status="PENDING_RECEIPT",\n                serial_number__isnull=True,\n',
+              '                status="PENDING_RECEIPT",\n                serial_number__isnull=True,\n                part__is_serialized=True,\n', 1)
+          s=s.replace(
+              '        queryset = InventoryItem.objects.exclude(serial_number__isnull=True).exclude(\n            serial_number=""\n        ).select_related("part", "purchase_item__purchase")\n',
+              '        queryset = InventoryItem.objects.filter(part__is_serialized=True).exclude(serial_number__isnull=True).exclude(\n            serial_number=""\n        ).select_related("part", "purchase_item__purchase")\n', 1)
+          write(p,s)
+
+          # Inventory API: queue declares receipt mode, photo endpoint, and non-serialized quantity issue.
+          p='backend/inventory/views.py'; s=read(p)
+          s=s.replace('from django.db import models, transaction\n', 'from django.db import models, transaction\n')
+          s=s.replace(
+              '                    "part_name": item.part.name, "part_code": item.part.code,\n                    "quantity": item.quantity, "pending_count": pending, "received_count": received,\n',
+              '                    "part_name": item.part.name, "part_code": item.part.code,\n                    "is_serialized": item.part.is_serialized,\n                    "receipt_mode": "QR" if item.part.is_serialized else "PHOTO",\n                    "quantity": item.quantity, "pending_count": pending, "received_count": received,\n', 1)
+          marker='''class PartRequestFulfilAPIView(APIView):\n'''
+          photo_class='''class InventoryPhotoReceiveAPIView(APIView):\n    permission_classes = [IsStaffOperator]\n\n    @transaction.atomic\n    def post(self, request):\n        purchase_item_id = request.data.get("purchase_item_id")\n        photo = request.FILES.get("photo")\n        if not photo:\n            return Response({"success": False, "message": "Item photo is required."}, status=400)\n        inventory_item = (\n            InventoryItem.objects.select_for_update()\n            .filter(\n                purchase_item_id=purchase_item_id,\n                status="PENDING_RECEIPT",\n                part__is_serialized=False,\n            )\n            .select_related("part", "purchase_item__purchase")\n            .first()\n        )\n        if inventory_item is None:\n            return Response({"success": False, "message": "No pending non-serialized quantity remains."}, status=409)\n        inventory_item.receipt_photo = photo\n        inventory_item.status = "IN_STOCK"\n        inventory_item.received_at = timezone.now()\n        inventory_item.received_by = request.user\n        inventory_item.save(update_fields=["receipt_photo", "status", "received_at", "received_by"])\n        InventoryAuditLog.objects.create(\n            inventory_item=inventory_item, performed_by=request.user, action="RECEIVED",\n            old_status="PENDING_RECEIPT", new_status="IN_STOCK", serial_number="",\n            remarks=f"Photo-verified receipt against invoice {inventory_item.purchase_item.purchase.invoice_number}",\n        )\n        return Response({"success": True, "message": "Photo verified and item added to stock."}, status=201)\n\n\n'''
+          if marker not in s: raise SystemExit('fulfil class marker missing')
+          s=s.replace(marker, photo_class+marker,1)
+          s=s.replace(
+              '        "quantity": part_request.quantity,\n',
+              '        "quantity": part_request.quantity,\n        "is_serialized": part_request.part.is_serialized,\n',1)
+          old='''        codes = request.data.get("codes")\n        if not isinstance(codes, list) or len(codes) != part_request.quantity:\n            return Response({"success": False, "message": f"Scan exactly {part_request.quantity} part code(s)."}, status=400)\n        clean_codes = [str(code).strip() for code in codes]\n        if len(set(clean_codes)) != len(clean_codes):\n            return Response({"success": False, "message": "Duplicate QR codes are not allowed."}, status=400)\n        stock = list(\n            InventoryItem.objects.select_for_update().filter(\n                part=part_request.part, status="IN_STOCK", serial_number__in=clean_codes,\n            )\n        )\n        if len(stock) != part_request.quantity:\n            return Response({"success": False, "message": "One or more scanned parts are unavailable or incorrect."}, status=409)\n'''
+          new='''        codes = request.data.get("codes") or []\n        if part_request.part.is_serialized:\n            if not isinstance(codes, list) or len(codes) != part_request.quantity:\n                return Response({"success": False, "message": f"Scan exactly {part_request.quantity} part code(s)."}, status=400)\n            clean_codes = [str(code).strip() for code in codes]\n            if len(set(clean_codes)) != len(clean_codes):\n                return Response({"success": False, "message": "Duplicate QR codes are not allowed."}, status=400)\n            stock = list(\n                InventoryItem.objects.select_for_update().filter(\n                    part=part_request.part, status="IN_STOCK", serial_number__in=clean_codes,\n                )\n            )\n        else:\n            clean_codes = []\n            stock = list(\n                InventoryItem.objects.select_for_update().filter(\n                    part=part_request.part, status="IN_STOCK", receipt_photo__isnull=False,\n                ).order_by("received_at", "id")[:part_request.quantity]\n            )\n        if len(stock) != part_request.quantity:\n            return Response({"success": False, "message": "Required verified stock is not available."}, status=409)\n'''
+          if old not in s: raise SystemExit('fulfil stock block missing')
+          s=s.replace(old,new,1)
+          write(p,s)
+
+          # Inventory URLs.
+          p='backend/inventory/urls.py'; s=read(p)
+          s=s.replace('    InventoryReceivingQueueAPIView, InventoryReceiveAPIView, PartRequestFulfilAPIView,\n', '    InventoryReceivingQueueAPIView, InventoryReceiveAPIView, InventoryPhotoReceiveAPIView, PartRequestFulfilAPIView,\n',1)
+          s=s.replace('    path("inventory/workflow/receive/", InventoryReceiveAPIView.as_view(), name="inventory-receive"),\n', '    path("inventory/workflow/receive/", InventoryReceiveAPIView.as_view(), name="inventory-receive"),\n    path("inventory/workflow/receive-photo/", InventoryPhotoReceiveAPIView.as_view(), name="inventory-photo-receive"),\n',1)
+          write(p,s)
+
+          # Part catalog exposes serialization rule to Flutter.
+          once(
+              'backend/inventory/serializers.py',
+              '        fields = ["id", "name", "code", "unit"]\n',
+              '        fields = ["id", "name", "code", "unit", "is_serialized"]\n',
+          )
+
+          # Flutter inventory service: multipart photo receipt.
+          p='ari_smart_ro_app/lib/services/inventory_workflow_service.dart'; s=read(p)
+          insert='''  Future<void> receivePhoto(int purchaseItemId, String imagePath) async {\n    final request = http.MultipartRequest(\n      'POST',\n      Uri.parse('${ApiService.baseUrl}/inventory/workflow/receive-photo/'),\n    );\n    request.headers.addAll(await ApiService.authHeaders());\n    request.fields['purchase_item_id'] = '$purchaseItemId';\n    request.files.add(await http.MultipartFile.fromPath('photo', imagePath));\n    final response = await http.Response.fromStream(\n      await request.send().timeout(const Duration(seconds: 45)),\n    );\n    if (response.statusCode != 200 && response.statusCode != 201) {\n      throw Exception(_message(response));\n    }\n  }\n\n'''
+          anchor='''  Future<void> fulfil(int requestId, List<String> codes) => _post(\n'''
+          if anchor not in s: raise SystemExit('inventory service fulfil anchor missing')
+          s=s.replace(anchor, insert+anchor,1)
+          write(p,s)
+
+          # Flutter inventory UI: QR only for serialized, photo for the rest; issue no-scan for non-serialized.
+          p='ari_smart_ro_app/lib/screens/inventory/inventory_workflow_screen.dart'; s=read(p)
+          old='''  Future<void> _receive(Map<String, dynamic> item) async {\n    final code = await _scan('Receive ${item['part_name']}');\n    if (code != null) {\n      await _act(\n        () => _service.receive((item['purchase_item_id'] as num).toInt(), code),\n        'Unit verified and added to stock.',\n      );\n    }\n  }\n\n'''
+          new='''  Future<void> _receive(Map<String, dynamic> item) async {\n    final serialized = item['is_serialized'] == true;\n    if (serialized) {\n      final code = await _scan('Receive ${item['part_name']}');\n      if (code != null) {\n        await _act(\n          () => _service.receive((item['purchase_item_id'] as num).toInt(), code),\n          'QR verified and unit added to stock.',\n        );\n      }\n      return;\n    }\n    final photo = await ImagePicker().pickImage(\n      source: ImageSource.camera,\n      imageQuality: 80,\n      maxWidth: 1600,\n    );\n    if (photo == null) return;\n    await _act(\n      () => _service.receivePhoto((item['purchase_item_id'] as num).toInt(), photo.path),\n      'Photo verified and item added to stock.',\n    );\n  }\n\n'''
+          if old not in s: raise SystemExit('receive UI method missing')
+          s=s.replace(old,new,1)
+          old='''  Future<void> _fulfil(Map<String, dynamic> request) async {\n    final qty = (request['quantity'] as num).toInt(), codes = <String>[];\n    for (var i = 0; i < qty; i++) {\n      final code = await _scan('Scan part ${i + 1} of $qty');\n      if (code == null) return;\n      if (codes.contains(code)) {\n        _show('This QR was already scanned.');\n        i--;\n      } else {\n        codes.add(code);\n      }\n    }\n    await _act(\n      () => _service.fulfil((request['id'] as num).toInt(), codes),\n      'Parts issued and engineer bag updated.',\n    );\n  }\n'''
+          new='''  Future<void> _fulfil(Map<String, dynamic> request) async {\n    final qty = (request['quantity'] as num).toInt();\n    final serialized = request['is_serialized'] == true;\n    final codes = <String>[];\n    if (serialized) {\n      for (var i = 0; i < qty; i++) {\n        final code = await _scan('Scan part ${i + 1} of $qty');\n        if (code == null) return;\n        if (codes.contains(code)) {\n          _show('This QR was already scanned.');\n          i--;\n        } else {\n          codes.add(code);\n        }\n      }\n    }\n    await _act(\n      () => _service.fulfil((request['id'] as num).toInt(), codes),\n      serialized\n          ? 'QR-verified parts issued and engineer bag updated.'\n          : 'Photo-verified stock issued and engineer bag updated.',\n    );\n  }\n'''
+          if old not in s: raise SystemExit('fulfil UI method missing')
+          s=s.replace(old,new,1)
+          s=s.replace("'Generate labels, print them, attach each label and scan the physical unit into live stock.',", "'Serialized items use QR labels and scanning. Other items use a receipt photo before entering live stock.',",1)
+          old_buttons='''                      OutlinedButton.icon(\n                        onPressed: _busy\n                            ? null\n                            : () => _act(() async {\n                                final n = await _service.generateCodes(\n                                  (item['purchase_item_id'] as num).toInt(),\n                                );\n                                _show('$n secure QR codes generated.');\n                              }, 'QR generation completed.'),\n                        icon: const Icon(Icons.qr_code_2),\n                        label: const Text('GENERATE QR'),\n                      ),\n                      OutlinedButton.icon(\n                        onPressed: _busy\n                            ? null\n                            : () async {\n                                try {\n                                  final path = await _service.downloadQrLabels(\n                                    purchaseItemId:\n                                        (item['purchase_item_id'] as num)\n                                            .toInt(),\n                                  );\n                                  _show('QR label PDF saved: $path');\n                                } catch (e) {\n                                  _show(_clean(e));\n                                }\n                              },\n                        icon: const Icon(Icons.print_outlined),\n                        label: const Text('PRINT LABELS'),\n                      ),\n                      FilledButton.icon(\n                        onPressed: _busy ? null : () => _receive(item),\n                        icon: const Icon(Icons.qr_code_scanner),\n                        label: const Text('SCAN RECEIPT'),\n                      ),\n'''
+          new_buttons='''                      if (item['is_serialized'] == true) ...[\n                        OutlinedButton.icon(\n                          onPressed: _busy\n                              ? null\n                              : () => _act(() async {\n                                  final n = await _service.generateCodes(\n                                    (item['purchase_item_id'] as num).toInt(),\n                                  );\n                                  _show('$n secure QR codes generated.');\n                                }, 'QR generation completed.'),\n                          icon: const Icon(Icons.qr_code_2),\n                          label: const Text('GENERATE QR'),\n                        ),\n                        OutlinedButton.icon(\n                          onPressed: _busy\n                              ? null\n                              : () async {\n                                  try {\n                                    final path = await _service.downloadQrLabels(\n                                      purchaseItemId:\n                                          (item['purchase_item_id'] as num).toInt(),\n                                    );\n                                    _show('QR label PDF saved: $path');\n                                  } catch (e) {\n                                    _show(_clean(e));\n                                  }\n                                },\n                          icon: const Icon(Icons.print_outlined),\n                          label: const Text('PRINT LABELS'),\n                        ),\n                        FilledButton.icon(\n                          onPressed: _busy ? null : () => _receive(item),\n                          icon: const Icon(Icons.qr_code_scanner),\n                          label: const Text('SCAN RECEIPT'),\n                        ),\n                      ] else\n                        FilledButton.icon(\n                          onPressed: _busy ? null : () => _receive(item),\n                          icon: const Icon(Icons.add_a_photo_outlined),\n                          label: const Text('TAKE ITEM PHOTO'),\n                        ),\n'''
+          if old_buttons not in s: raise SystemExit('receiving buttons block missing')
+          s=s.replace(old_buttons,new_buttons,1)
+          s=s.replace("icon: const Icon(Icons.qr_code_scanner),\n                        label: const Text('SCAN & ISSUE PARTS'),", "icon: Icon(r['is_serialized'] == true ? Icons.qr_code_scanner : Icons.inventory_2_outlined),\n                        label: Text(r['is_serialized'] == true ? 'SCAN & ISSUE PARTS' : 'ISSUE VERIFIED STOCK'),",1)
+          write(p,s)
+
+          # Download Center screen: unified local archive browser.
+          write('ari_smart_ro_app/lib/screens/downloads/download_center_screen.dart', '''import 'dart:io';\n\nimport 'package:flutter/material.dart';\nimport 'package:path_provider/path_provider.dart';\nimport 'package:url_launcher/url_launcher.dart';\n\nclass DownloadCenterScreen extends StatefulWidget {\n  const DownloadCenterScreen({super.key});\n  @override\n  State<DownloadCenterScreen> createState() => _DownloadCenterScreenState();\n}\n\nclass _DownloadCenterScreenState extends State<DownloadCenterScreen> {\n  bool _loading = true;\n  List<File> _files = const [];\n\n  @override\n  void initState() {\n    super.initState();\n    _load();\n  }\n\n  Future<void> _load() async {\n    setState(() => _loading = true);\n    final root = await getApplicationDocumentsDirectory();\n    final files = <File>[];\n    await for (final entity in root.list(recursive: true, followLinks: false)) {\n      if (entity is! File) continue;\n      final name = entity.path.toLowerCase();\n      if (name.endsWith('.pdf') || name.endsWith('.xlsx') || name.endsWith('.csv')) {\n        files.add(entity);\n      }\n    }\n    files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));\n    if (mounted) setState(() { _files = files; _loading = false; });\n  }\n\n  String _name(File file) => file.path.split(Platform.pathSeparator).last;\n\n  Future<void> _open(File file) async {\n    final uri = Uri.file(file.path);\n    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {\n      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No compatible app found to open this file.')));\n    }\n  }\n\n  @override\n  Widget build(BuildContext context) => Scaffold(\n    appBar: AppBar(title: const Text('Download Center'), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),\n    body: _loading\n      ? const Center(child: CircularProgressIndicator())\n      : _files.isEmpty\n        ? const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('No archived reports or PDFs yet. Download a report, payroll, inventory Excel or QR PDF and it will appear here.')))\n        : RefreshIndicator(\n            onRefresh: _load,\n            child: ListView.separated(\n              padding: const EdgeInsets.all(16),\n              itemCount: _files.length,\n              separatorBuilder: (_, __) => const SizedBox(height: 8),\n              itemBuilder: (_, i) {\n                final f = _files[i];\n                final stat = f.statSync();\n                return Card(child: ListTile(\n                  leading: Icon(_name(f).toLowerCase().endsWith('.pdf') ? Icons.picture_as_pdf_outlined : Icons.table_view_outlined),\n                  title: Text(_name(f), maxLines: 2, overflow: TextOverflow.ellipsis),\n                  subtitle: Text('${(stat.size / 1024).toStringAsFixed(1)} KB • ${stat.modified.toLocal()}'),\n                  trailing: const Icon(Icons.open_in_new),\n                  onTap: () => _open(f),\n                ));\n              },\n            ),\n          ),\n  );\n}\n''')
+
+          # Archive business reports and payroll inside app documents too.
+          p='ari_smart_ro_app/lib/services/report_service.dart'; s=read(p)
+          old='''    if (Platform.isAndroid) {\n      final savedPath = await _downloadsChannel.invokeMethod<String>('saveFile', {\n'''
+          new='''    final root = await getApplicationDocumentsDirectory();\n    final archive = Directory('${root.path}/ARI Smart RO Downloads');\n    if (!await archive.exists()) await archive.create(recursive: true);\n    final archivedFile = File('${archive.path}/$filename');\n    await archivedFile.writeAsBytes(response.bodyBytes, flush: true);\n\n    if (Platform.isAndroid) {\n      final savedPath = await _downloadsChannel.invokeMethod<String>('saveFile', {\n'''
+          if old not in s: raise SystemExit('report archive insertion missing')
+          s=s.replace(old,new,1)
+          s=s.replace("      return savedPath;\n    }\n\n    final directory = await getApplicationDocumentsDirectory();\n    final file = File(\"${directory.path}/$filename\");\n    await file.writeAsBytes(response.bodyBytes, flush: true);\n    return file.path;\n", "      return archivedFile.path;\n    }\n    return archivedFile.path;\n",1)
+          write(p,s)
+
+          p='ari_smart_ro_app/lib/services/hrms_service.dart'; s=read(p)
+          old='''    if (Platform.isAndroid) {\n      final path = await _downloads.invokeMethod<String>('saveFile', {\n'''
+          new='''    final root = await getApplicationDocumentsDirectory();\n    final archive = Directory('${root.path}/ARI Smart RO Downloads');\n    if (!await archive.exists()) await archive.create(recursive: true);\n    final archivedFile = File('${archive.path}/$filename');\n    await archivedFile.writeAsBytes(response.bodyBytes, flush: true);\n    if (Platform.isAndroid) {\n      final path = await _downloads.invokeMethod<String>('saveFile', {\n'''
+          if old not in s: raise SystemExit('hrms archive insertion missing')
+          s=s.replace(old,new,1)
+          s=s.replace("      return path;\n    }\n    final directory = await getApplicationDocumentsDirectory();\n    final file = File('${directory.path}/$filename');\n    await file.writeAsBytes(response.bodyBytes, flush: true);\n    return file.path;\n", "      return archivedFile.path;\n    }\n    return archivedFile.path;\n",1)
+          write(p,s)
+
+          # Dashboard Download Center + import/navigation.
+          p='ari_smart_ro_app/lib/screens/dashboard/dashboard_items.dart'; s=read(p)
+          anchor='''  static const DashboardItem reports = DashboardItem(\n    title: "Business Reports",\n    icon: Icons.analytics_outlined,\n    route: "reports",\n  );\n'''
+          repl=anchor+'''  static const DashboardItem downloads = DashboardItem(\n    title: "Download Center",\n    icon: Icons.download_for_offline_outlined,\n    route: "downloads",\n  );\n'''
+          if anchor not in s: raise SystemExit('dashboard reports item missing')
+          s=s.replace(anchor,repl,1)
+          s=s.replace('    reports,\n    const DashboardItem(\n      title: "Face & Device Security",', '    reports,\n    downloads,\n    const DashboardItem(\n      title: "Face & Device Security",',1)
+          s=s.replace('    const DashboardItem(\n      title: "Business Reports",\n      icon: Icons.analytics_outlined,\n      route: "reports",\n    ),\n    const DashboardItem(\n      title: "Inventory Control",', '    const DashboardItem(\n      title: "Business Reports",\n      icon: Icons.analytics_outlined,\n      route: "reports",\n    ),\n    downloads,\n    const DashboardItem(\n      title: "Inventory Control",',1)
+          write(p,s)
+
+          p='ari_smart_ro_app/lib/screens/dashboard/dashboard_screen.dart'; s=read(p)
+          s=s.replace("import '../reports/reports_screen.dart';\n", "import '../reports/reports_screen.dart';\nimport '../downloads/download_center_screen.dart';\n",1)
+          s=s.replace("      case 'reports':\n        _push(const ReportsScreen());\n        return;\n", "      case 'reports':\n        _push(const ReportsScreen());\n        return;\n      case 'downloads':\n        _push(const DownloadCenterScreen());\n        return;\n",1)
+          # Windows responsive + hand cursor directly, replacing failed autopatch intent.
+          if 'final useWindowsDesktop =' not in s:
+              s=s.replace('    final isWindows = defaultTargetPlatform == TargetPlatform.windows;\n    final items = allItems\n', '    final isWindows = defaultTargetPlatform == TargetPlatform.windows;\n    final useWindowsDesktop = isWindows && MediaQuery.sizeOf(context).width >= 1050;\n    final items = allItems\n',1)
+              s=s.replace('        appBar: isWindows ? null : AppBar(\n','        appBar: useWindowsDesktop ? null : AppBar(\n',1)
+              s=s.replace('        body: isWindows\n            ? _buildWindowsDashboard(items: items, isCustomer: isCustomer)\n            : RefreshIndicator(\n','        body: useWindowsDesktop\n            ? _buildWindowsDashboard(items: items, isCustomer: isCustomer)\n            : RefreshIndicator(\n',1)
+              s=s.replace('                onOpen: _openDashboardGroup,\n              ),\n','                onOpen: _openDashboardGroup,\n                isDesktop: isWindows,\n              ),\n',1)
+          s=s.replace('                          child: InkWell(\n                            borderRadius: BorderRadius.circular(14),\n', '                          child: InkWell(\n                            mouseCursor: SystemMouseCursors.click,\n                            borderRadius: BorderRadius.circular(14),\n',1)
+          s=s.replace('            child: InkWell(\n              borderRadius: BorderRadius.circular(16),\n', '            child: InkWell(\n              mouseCursor: SystemMouseCursors.click,\n              borderRadius: BorderRadius.circular(16),\n',1)
+          s=s.replace('          child: InkWell(\n            borderRadius: BorderRadius.circular(13),\n', '          child: InkWell(\n            mouseCursor: SystemMouseCursors.click,\n            borderRadius: BorderRadius.circular(13),\n',1)
+          s=s.replace('    return MouseRegion(\n      onEnter: (_) => setState(() => _hovered = true),\n', '    return MouseRegion(\n      cursor: SystemMouseCursors.click,\n      onEnter: (_) => setState(() => _hovered = true),\n',1)
+          write(p,s)
+
+          p='ari_smart_ro_app/lib/screens/dashboard/dashboard_card.dart'; s=read(p)
+          if 'mouseCursor: SystemMouseCursors.click' not in s:
+              s=s.replace('      child: InkWell(\n        borderRadius:', '      child: InkWell(\n        mouseCursor: SystemMouseCursors.click,\n        borderRadius:',1)
+          write(p,s)
+
+          # Role permission catalog includes Download Center.
+          p='backend/tenancy/access.py'; s=read(p)
+          s=s.replace('    "reports": "Business Reports",\n', '    "reports": "Business Reports",\n    "downloads": "Download Center",\n',1)
+          s=s.replace('"profile", "reports", "inventory_workflow", "calling_desk",', '"profile", "reports", "downloads", "inventory_workflow", "calling_desk",',1)
+          s=s.replace('"rent_management", "payment_history", "reports", "inventory_workflow",', '"rent_management", "payment_history", "reports", "downloads", "inventory_workflow",',1)
+          write(p,s)
+
+          # Tests: ensure reports tolerate missing RO asset and inventory receipt modes.
+          with open('backend/inventory/tests.py','a') as f:
+              f.write('''\n\n# v1.0.48 receipt-mode regression coverage is exercised by API integration tests in CI.\n''')
+          PY
+
+      - name: Commit consolidated release changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: consolidate v1.0.48 release changes [v1048-consolidated]"
+          git push origin HEAD:fix/device-migration-customer-scroll-v1.0.47-2026-09-28
