@@ -1,0 +1,39 @@
+name: Reports Null-Safe Hotfix
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - hotfix/admin-otp-testing-toggle-2026-09-27
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[reports-null-safe]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hotfix/admin-otp-testing-toggle-2026-09-27
+          fetch-depth: 0
+      - name: Patch reports null RO asset handling
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/reporting/views.py')
+          s = p.read_text()
+          old = '        "asset_id": row.ro_asset.asset_id,\n'
+          new = '        "asset_id": row.ro_asset.asset_id if row.ro_asset else "",\n'
+          count = s.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one asset_id match, found {count}')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/reporting/views.py
+          git commit -m "fix: handle jobs without RO asset in reports [reports-null-safe]"
+          git push origin HEAD:hotfix/admin-otp-testing-toggle-2026-09-27
