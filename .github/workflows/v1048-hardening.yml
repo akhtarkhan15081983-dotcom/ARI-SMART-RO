@@ -1,0 +1,57 @@
+name: v1.0.48 Hardening
+permissions:
+  contents: write
+on:
+  push:
+    branches: [fix/device-migration-customer-scroll-v1.0.47-2026-09-28]
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[v1048-hardened]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/device-migration-customer-scroll-v1.0.47-2026-09-28
+          fetch-depth: 0
+      - name: Harden inventory rules
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # QR generator: generated-at-purchase is normal, so return success with 0 instead of 409.
+          p=Path('backend/inventory/reports.py'); s=p.read_text()
+          old='''        if not items:\n            return Response({"success": False, "message": "No pending items need QR codes."}, status=409)\n\n        codes = _generate_codes_for_items(items, request.user)\n'''
+          new='''        if not items:\n            return Response({"success": True, "generated": 0, "codes": [], "message": "QR codes are already available for serialized pending stock."})\n\n        codes = _generate_codes_for_items(items, request.user)\n'''
+          if old not in s: raise SystemExit('QR empty block missing')
+          p.write_text(s.replace(old,new,1))
+
+          # Receiving-by-code is serialized-only; photo route handles all non-serialized items.
+          p=Path('backend/inventory/views.py'); s=p.read_text()
+          old='''        inventory_item = registered or (\n            InventoryItem.objects.select_for_update()\n            .filter(purchase_item_id=purchase_item_id, status="PENDING_RECEIPT", serial_number__isnull=True)\n            .select_related("part")\n            .first()\n        )\n        if inventory_item is None:\n'''
+          new='''        inventory_item = registered or (\n            InventoryItem.objects.select_for_update()\n            .filter(\n                purchase_item_id=purchase_item_id,\n                status="PENDING_RECEIPT",\n                serial_number__isnull=True,\n                part__is_serialized=True,\n            )\n            .select_related("part")\n            .first()\n        )\n        if inventory_item is not None and not inventory_item.part.is_serialized:\n            return Response({"success": False, "message": "This item uses photo receipt, not QR scanning."}, status=400)\n        if inventory_item is None:\n'''
+          if old not in s: raise SystemExit('receive lookup block missing')
+          p.write_text(s.replace(old,new,1))
+
+          # New serialized purchase codes: enforce uniqueness even in the extremely unlikely UUID collision case.
+          p=Path('backend/purchase/serializers.py'); s=p.read_text()
+          old='''                if part.is_serialized:\n                    code = f"ARI-{part.code}-{uuid4().hex[:10].upper()}"\n                    InventoryItem.objects.create(\n'''
+          new='''                if part.is_serialized:\n                    while True:\n                        code = f"ARI-{part.code}-{uuid4().hex[:10].upper()}"\n                        if not InventoryItem.objects.filter(serial_number=code).exists():\n                            break\n                    InventoryItem.objects.create(\n'''
+          if old not in s: raise SystemExit('purchase code block missing')
+          p.write_text(s.replace(old,new,1))
+
+          # Serialized codes are automatic now: receiving UI should not ask user to generate them again.
+          p=Path('ari_smart_ro_app/lib/screens/inventory/inventory_workflow_screen.dart'); s=p.read_text()
+          start=s.find("                        OutlinedButton.icon(\n                          onPressed: _busy\n                              ? null\n                              : () => _act(() async {\n                                  final n = await _service.generateCodes(")
+          if start < 0: raise SystemExit('generate QR UI block start missing')
+          end=s.find("                        OutlinedButton.icon(\n                          onPressed: _busy", start+20)
+          if end < 0: raise SystemExit('print labels UI block missing')
+          s=s[:start]+s[end:]
+          p.write_text(s)
+          PY
+      - name: Commit hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: harden v1.0.48 inventory receipt rules [v1048-hardened]"
+          git push origin HEAD:fix/device-migration-customer-scroll-v1.0.47-2026-09-28
