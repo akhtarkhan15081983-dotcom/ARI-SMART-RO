@@ -220,22 +220,31 @@ class LiveLocationService {
     );
   }
 
+  static Future<bool> _acceptSuccessfulResponse(http.Response response) async {
+    if (response.statusCode < 200 || response.statusCode >= 300) return false;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map && decoded['shift_active'] == false) {
+        await _storage.write(key: _trackingEnabledKey, value: 'false');
+      }
+    } catch (_) {
+      // Older backend responses may not include shift state.
+    }
+    return true;
+  }
+
   static Future<bool> _sendPoint(Map<String, dynamic> point) async {
     try {
       var response = await _postPoint(point);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (await _acceptSuccessfulResponse(response)) {
         return true;
       }
 
       if (response.statusCode == 401) {
-        // The foreground service runs in a background isolate. With rotating
-        // refresh tokens, the UI isolate may refresh at the same moment and
-        // briefly make this request use an older token. Recover once and retry
-        // instead of switching live tracking off permanently.
         final recovered = await ApiService.recoverSessionAfterUnauthorized();
         if (recovered) {
           response = await _postPoint(point);
-          if (response.statusCode >= 200 && response.statusCode < 300) {
+          if (await _acceptSuccessfulResponse(response)) {
             return true;
           }
         }
@@ -267,6 +276,7 @@ class LiveLocationService {
     for (final point in queue) {
       if (!await _sendPoint(point)) break;
       sentCount++;
+      if (await _storage.read(key: _trackingEnabledKey) != 'true') break;
     }
     if (sentCount == 0) return;
 
@@ -340,6 +350,14 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
       }
 
       await LiveLocationService._flushPendingLocations();
+      final stillEnabledAfterFlush =
+          await storage.read(key: _trackingEnabledKey) == 'true';
+      if (!stillEnabledAfterFlush) {
+        timer.cancel();
+        await service.stopSelf();
+        return;
+      }
+
       final point = await LiveLocationService._capturePoint();
       var locationSent = false;
       if (point != null) {
@@ -347,6 +365,14 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
         if (!locationSent) {
           await LiveLocationService._queuePoint(point);
         }
+      }
+
+      final shiftStillActive =
+          await storage.read(key: _trackingEnabledKey) == 'true';
+      if (!shiftStillActive) {
+        timer.cancel();
+        await service.stopSelf();
+        return;
       }
 
       if (service is AndroidServiceInstance &&
@@ -361,13 +387,6 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
               ? 'Work shift tracking active • updated $time'
               : 'GPS/permission is off or network failed. Open the app now.',
         );
-      }
-
-      final stillEnabled =
-          await storage.read(key: _trackingEnabledKey) == 'true';
-      if (!stillEnabled) {
-        timer.cancel();
-        await service.stopSelf();
       }
     } finally {
       busy = false;
