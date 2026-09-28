@@ -1,13 +1,11 @@
 from django.urls import path
 
 from .views import (
-    UpdateLiveLocationAPIView,
     EngineerLiveMapAPIView,
     EmployeeProfileAPIView,
     EngineerListAPIView,
     AssignmentEmployeeListAPIView,
     FaceEnrollmentAPIView,
-    AdminFaceEnrollmentControlAPIView,
     AdminFaceEnrollmentListAPIView,
     EmployeeManagementAPIView,
     EmployeeCustomerEditPermissionAPIView,
@@ -19,6 +17,10 @@ from .views import (
     EmployeeIdVerifyAPIView,
     EmployeeDeviceHealthAPIView,
     AdminDeviceHealthAPIView,
+)
+from .reliability import (
+    AttendanceAwareLiveLocationAPIView,
+    CombinedFaceEnrollmentControlAPIView,
 )
 from .route_history import EmployeeDayRouteAPIView
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
@@ -103,7 +105,7 @@ urlpatterns = [
     path("employees/hrms/reports/payroll.xlsx", PayrollExcelReportAPIView.as_view(), name="hrms-payroll-excel"),
     path(
         "employees/live-location/",
-        UpdateLiveLocationAPIView.as_view(),
+        AttendanceAwareLiveLocationAPIView.as_view(),
         name="live-location",
     ),
     path(
@@ -133,7 +135,7 @@ urlpatterns = [
     ),
     path(
         "employees/<int:employee_id>/face-enrollment-control/",
-        AdminFaceEnrollmentControlAPIView.as_view(),
+        CombinedFaceEnrollmentControlAPIView.as_view(),
         name="face-enrollment-control",
     ),
     path(
