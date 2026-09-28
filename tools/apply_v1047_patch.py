@@ -307,3 +307,5 @@ replace_once(path, '''    try {
 replace_once('ari_smart_ro_app/pubspec.yaml', 'version: 1.0.46+46\n', 'version: 1.0.47+47\n')
 
 print('v1.0.47 patch applied successfully')
+
+# trigger-runner
