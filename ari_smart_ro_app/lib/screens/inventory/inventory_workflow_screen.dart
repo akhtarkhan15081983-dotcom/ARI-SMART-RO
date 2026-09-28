@@ -390,8 +390,9 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
                       ),
                       TextField(
                         controller: invoice,
-                        decoration: const InputDecoration(
-                          labelText: 'Invoice number *',
+                        decoration: InputDecoration(
+                          labelText: draft == null ? 'Bill / Invoice number (optional)' : 'Invoice number *',
+                          helperText: draft == null ? 'No bill? Leave blank; an internal NO-BILL reference will be created.' : null,
                         ),
                       ),
                       ListTile(
@@ -530,7 +531,7 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
           ),
         ) ??
         false;
-    if (ok && invoice.text.trim().isNotEmpty && supplierId != null) {
+    if (ok && supplierId != null && (draft == null || invoice.text.trim().isNotEmpty)) {
       final valid = lines.every(
         (l) =>
             l.partId != null &&
