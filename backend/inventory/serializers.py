@@ -85,4 +85,4 @@ class PartRequestSerializer(serializers.ModelSerializer):
 class PartCatalogSerializer(serializers.ModelSerializer):
     class Meta:
         model = PartMaster
-        fields = ["id", "name", "code", "unit"]
+        fields = ["id", "name", "code", "unit", "is_serialized"]

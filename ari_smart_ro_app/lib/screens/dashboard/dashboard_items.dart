@@ -22,6 +22,11 @@ class DashboardItems {
     icon: Icons.analytics_outlined,
     route: "reports",
   );
+  static const DashboardItem downloads = DashboardItem(
+    title: "Download Center",
+    icon: Icons.download_for_offline_outlined,
+    route: "downloads",
+  );
   static const DashboardItem referral = DashboardItem(
     title: "Refer & Wallet",
     icon: Icons.card_giftcard,
@@ -133,6 +138,7 @@ class DashboardItems {
       route: "payment_history",
     ),
     reports,
+    downloads,
     const DashboardItem(
       title: "Face & Device Security",
       icon: Icons.admin_panel_settings,
@@ -235,6 +241,7 @@ class DashboardItems {
       icon: Icons.analytics_outlined,
       route: "reports",
     ),
+    downloads,
     const DashboardItem(
       title: "Inventory Control",
       icon: Icons.qr_code_2_rounded,

@@ -66,19 +66,20 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
             part = purchase_item.part
 
-            if part.is_serialized:
-                for i in range(purchase_item.quantity):
+            for i in range(purchase_item.quantity):
+                if part.is_serialized:
+                    code = f"ARI-{part.code}-{uuid4().hex[:10].upper()}"
                     InventoryItem.objects.create(
                         purchase_item=purchase_item,
                         part=part,
-                        serial_number=None
+                        serial_number=code,
+                        barcode=code,
                     )
-            else:
-                for i in range(purchase_item.quantity):
+                else:
                     InventoryItem.objects.create(
                         purchase_item=purchase_item,
                         part=part,
-                        serial_number=None
+                        serial_number=None,
                     )
         return purchase
 

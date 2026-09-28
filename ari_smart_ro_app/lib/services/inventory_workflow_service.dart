@@ -33,6 +33,22 @@ class InventoryWorkflowService {
     {'purchase_item_id': purchaseItemId, 'code': code},
     expected: const {200, 201},
   );
+  Future<void> receivePhoto(int purchaseItemId, String imagePath) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('${ApiService.baseUrl}/inventory/workflow/receive-photo/'),
+    );
+    request.headers.addAll(await ApiService.authHeaders());
+    request.fields['purchase_item_id'] = '$purchaseItemId';
+    request.files.add(await http.MultipartFile.fromPath('photo', imagePath));
+    final response = await http.Response.fromStream(
+      await request.send().timeout(const Duration(seconds: 45)),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(_message(response));
+    }
+  }
+
   Future<void> fulfil(int requestId, List<String> codes) => _post(
     '/inventory/workflow/requests/$requestId/fulfil/',
     {'codes': codes},

@@ -121,6 +121,7 @@ def _request_payload(part_request):
         "part_name": part_request.part.name,
         "part_code": part_request.part.code,
         "quantity": part_request.quantity,
+        "is_serialized": part_request.part.is_serialized,
         "remarks": part_request.remarks,
         "status": part_request.status,
         "review_remarks": part_request.review_remarks,
@@ -188,6 +189,8 @@ class InventoryReceivingQueueAPIView(APIView):
                     "purchase_item_id": item.id, "invoice_number": item.purchase.invoice_number,
                     "invoice_date": item.purchase.invoice_date, "supplier": item.purchase.supplier.name,
                     "part_name": item.part.name, "part_code": item.part.code,
+                    "is_serialized": item.part.is_serialized,
+                    "receipt_mode": "QR" if item.part.is_serialized else "PHOTO",
                     "quantity": item.quantity, "pending_count": pending, "received_count": received,
                 })
         return Response({"success": True, "items": rows})
@@ -236,6 +239,40 @@ class InventoryReceiveAPIView(APIView):
         }, status=201)
 
 
+class InventoryPhotoReceiveAPIView(APIView):
+    permission_classes = [IsStaffOperator]
+
+    @transaction.atomic
+    def post(self, request):
+        purchase_item_id = request.data.get("purchase_item_id")
+        photo = request.FILES.get("photo")
+        if not photo:
+            return Response({"success": False, "message": "Item photo is required."}, status=400)
+        inventory_item = (
+            InventoryItem.objects.select_for_update()
+            .filter(
+                purchase_item_id=purchase_item_id,
+                status="PENDING_RECEIPT",
+                part__is_serialized=False,
+            )
+            .select_related("part", "purchase_item__purchase")
+            .first()
+        )
+        if inventory_item is None:
+            return Response({"success": False, "message": "No pending non-serialized quantity remains."}, status=409)
+        inventory_item.receipt_photo = photo
+        inventory_item.status = "IN_STOCK"
+        inventory_item.received_at = timezone.now()
+        inventory_item.received_by = request.user
+        inventory_item.save(update_fields=["receipt_photo", "status", "received_at", "received_by"])
+        InventoryAuditLog.objects.create(
+            inventory_item=inventory_item, performed_by=request.user, action="RECEIVED",
+            old_status="PENDING_RECEIPT", new_status="IN_STOCK", serial_number="",
+            remarks=f"Photo-verified receipt against invoice {inventory_item.purchase_item.purchase.invoice_number}",
+        )
+        return Response({"success": True, "message": "Photo verified and item added to stock."}, status=201)
+
+
 class PartRequestFulfilAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
@@ -249,19 +286,27 @@ class PartRequestFulfilAPIView(APIView):
             return Response({"success": False, "message": "This request belongs to another company."}, status=403)
         if part_request.status != "APPROVED":
             return Response({"success": False, "message": "Only approved requests can be issued."}, status=409)
-        codes = request.data.get("codes")
-        if not isinstance(codes, list) or len(codes) != part_request.quantity:
-            return Response({"success": False, "message": f"Scan exactly {part_request.quantity} part code(s)."}, status=400)
-        clean_codes = [str(code).strip() for code in codes]
-        if len(set(clean_codes)) != len(clean_codes):
-            return Response({"success": False, "message": "Duplicate QR codes are not allowed."}, status=400)
-        stock = list(
-            InventoryItem.objects.select_for_update().filter(
-                part=part_request.part, status="IN_STOCK", serial_number__in=clean_codes,
+        codes = request.data.get("codes") or []
+        if part_request.part.is_serialized:
+            if not isinstance(codes, list) or len(codes) != part_request.quantity:
+                return Response({"success": False, "message": f"Scan exactly {part_request.quantity} part code(s)."}, status=400)
+            clean_codes = [str(code).strip() for code in codes]
+            if len(set(clean_codes)) != len(clean_codes):
+                return Response({"success": False, "message": "Duplicate QR codes are not allowed."}, status=400)
+            stock = list(
+                InventoryItem.objects.select_for_update().filter(
+                    part=part_request.part, status="IN_STOCK", serial_number__in=clean_codes,
+                )
             )
-        )
+        else:
+            clean_codes = []
+            stock = list(
+                InventoryItem.objects.select_for_update().filter(
+                    part=part_request.part, status="IN_STOCK", receipt_photo__isnull=False,
+                ).order_by("received_at", "id")[:part_request.quantity]
+            )
         if len(stock) != part_request.quantity:
-            return Response({"success": False, "message": "One or more scanned parts are unavailable or incorrect."}, status=409)
+            return Response({"success": False, "message": "Required verified stock is not available."}, status=409)
         for item in stock:
             EngineerBagItem.objects.create(
                 engineer=part_request.engineer, inventory_item=item, status="ISSUED",

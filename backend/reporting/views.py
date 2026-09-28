@@ -917,7 +917,7 @@ def build_operational_ledgers(period):
         "customer_phone": row.customer.phone,
         "engineer_id": row.engineer.employee_id,
         "engineer_name": employee_name(row.engineer),
-        "asset_id": row.ro_asset.asset_id,
+        "asset_id": row.ro_asset.asset_id if row.ro_asset else "",
         "job_type": row.get_job_type_display(),
         "priority": row.get_priority_display(),
         "scheduled_date": row.scheduled_date,

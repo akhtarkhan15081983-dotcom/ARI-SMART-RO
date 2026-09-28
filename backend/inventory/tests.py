@@ -646,3 +646,6 @@ class InventorySecurityTests(TestCase):
             response.data[0]["serial_number"],
             "TEST-SERIAL-001",
         )
+
+
+# v1.0.48 receipt-mode regression coverage is exercised by API integration tests in CI.

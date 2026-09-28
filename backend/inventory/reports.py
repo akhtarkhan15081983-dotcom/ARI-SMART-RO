@@ -73,6 +73,7 @@ class InventoryCodeGenerationAPIView(APIView):
                 purchase_item__purchase_id=purchase_id,
                 status="PENDING_RECEIPT",
                 serial_number__isnull=True,
+                part__is_serialized=True,
             )
             .select_related("part", "purchase_item")
             .order_by("purchase_item_id", "id")
@@ -88,7 +89,7 @@ class InventoryQrLabelsPdfAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     def get(self, request):
-        queryset = InventoryItem.objects.exclude(serial_number__isnull=True).exclude(
+        queryset = InventoryItem.objects.filter(part__is_serialized=True).exclude(serial_number__isnull=True).exclude(
             serial_number=""
         ).select_related("part", "purchase_item__purchase")
         purchase_item_id = request.query_params.get("purchase_item_id")
