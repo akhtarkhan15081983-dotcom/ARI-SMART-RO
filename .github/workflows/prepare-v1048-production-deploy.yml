@@ -47,7 +47,11 @@ jobs:
           if not src.exists():
               raise SystemExit('release employee reset migration missing')
           text = src.read_text()
-          text = text.replace("('employees', '0023_employee_location_point')", "('employees', '0024_reset_faizan_device_binding')")
+          old = '("employees", "0023_employee_location_point")'
+          new = '("employees", "0024_reset_faizan_device_binding")'
+          if old not in text:
+              raise SystemExit('expected employee migration dependency missing')
+          text = text.replace(old, new, 1)
           dst = Path('backend/employees/migrations/0025_one_time_device_migration_reset.py')
           dst.write_text(text)
           src.unlink()
