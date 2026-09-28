@@ -1,3 +1,6 @@
+import os
+from unittest.mock import patch
+
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -85,6 +88,30 @@ class SecurityHardeningTests(TestCase):
         self.assertEqual(verified.status_code, 200)
         self.assertIn("access", verified.data)
         self.assertIn("refresh", verified.data)
+
+    def test_admin_login_can_temporarily_bypass_mfa_for_testing(self):
+        User.objects.create_user(
+            phone="9400000005",
+            password="AdminStrong@123",
+            first_name="Admin",
+            role="ADMIN",
+            is_active=True,
+            is_verified=True,
+        )
+        client = APIClient()
+        with patch.dict(os.environ, {"ARI_ADMIN_LOGIN_OTP_REQUIRED": "0"}):
+            login = client.post(
+                "/api/auth/login/",
+                {"phone": "9400000005", "password": "AdminStrong@123"},
+                format="json",
+                HTTP_X_ARI_DEVICE_ID="security-test-device",
+            )
+
+        self.assertEqual(login.status_code, 200)
+        self.assertNotIn("mfa_required", login.data)
+        self.assertIn("access", login.data)
+        self.assertIn("refresh", login.data)
+        self.assertEqual(memory_outbox, [])
 
     def test_admin_mfa_is_bound_to_same_device(self):
         User.objects.create_user(
