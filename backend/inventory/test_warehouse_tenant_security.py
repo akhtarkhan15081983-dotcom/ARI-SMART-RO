@@ -207,6 +207,36 @@ class WarehouseTenantSecurityTests(TestCase):
         self.assertEqual(row.company_id, self.company_a.id)
         self.assertEqual(row.engineer_id, self.engineer_a.id)
 
+    def test_part_request_same_action_id_is_created_once(self):
+        engineer_client = APIClient()
+        engineer_client.force_authenticate(self.engineer_a.user)
+        payload = {"part": self.part.id, "quantity": 1, "remarks": "Retry-safe request"}
+        first = engineer_client.post(
+            "/api/inventory/part-requests/",
+            payload,
+            format="json",
+            HTTP_X_ARI_ACTION_ID="part-request-retry-001",
+        )
+        second = engineer_client.post(
+            "/api/inventory/part-requests/",
+            payload,
+            format="json",
+            HTTP_X_ARI_ACTION_ID="part-request-retry-001",
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertFalse(first.data["idempotent_replay"])
+        self.assertTrue(second.data["idempotent_replay"])
+        self.assertEqual(first.data["id"], second.data["id"])
+        self.assertEqual(
+            PartRequest.objects.filter(
+                engineer=self.engineer_a,
+                remarks="Retry-safe request",
+            ).count(),
+            1,
+        )
+
     def test_my_bag_hides_mismatched_legacy_ownership(self):
         EngineerBagItem.objects.create(
             company=self.company_b,
