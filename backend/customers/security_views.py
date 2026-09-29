@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from employees.models import EmployeeProfile
 from jobs.idempotency import action_id_from_request
-from jobs.models import ClientActionReceipt
+from jobs.models import ClientActionReceipt, Job
 from tenancy.access import request_company
 
 from .models import Customer, CustomerRentPayment
@@ -16,12 +16,11 @@ from .views import (
     CustomerCreateAPIView,
     RentPaymentCreateAPIView,
     RentPaymentHistoryAPIView,
+    WalkInCustomerAPIView,
 )
 
 
 class TenantScopedCustomerCreateAPIView(CustomerCreateAPIView):
-    """New staff-created customers always receive explicit workspace ownership."""
-
     def perform_create(self, serializer):
         company = request_company(self.request)
         if company is None:
@@ -29,9 +28,44 @@ class TenantScopedCustomerCreateAPIView(CustomerCreateAPIView):
         serializer.save(company=company)
 
 
-class TenantScopedAssignCustomerAPIView(AssignCustomerAPIView):
-    """Limit customer assignment targets to staff in the current workspace."""
+class TenantScopedWalkInCustomerAPIView(WalkInCustomerAPIView):
+    """Stamp walk-in Customer + Installation Job with engineer workspace ownership."""
 
+    @transaction.atomic
+    def post(self, request):
+        employee = getattr(request.user, "employee_profile", None)
+        company = getattr(employee, "company", None)
+        if employee is None or company is None:
+            return Response(
+                {"success": False, "message": "Active employee company workspace is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        response = super().post(request)
+        if response.status_code < 200 or response.status_code >= 300:
+            return response
+
+        customer_id = response.data.get("customer_id") if isinstance(response.data, dict) else None
+        job_id = response.data.get("job_id") if isinstance(response.data, dict) else None
+        customer = Customer.objects.select_for_update().filter(pk=customer_id).first()
+        job = Job.objects.select_for_update().filter(pk=job_id).first()
+        if customer is None or job is None:
+            raise ValidationError({"detail": "Walk-in workflow did not create expected records."})
+        if customer.company_id not in (None, company.id) or job.company_id not in (None, company.id):
+            raise ValidationError({"detail": "Walk-in records conflict with the active workspace."})
+        if customer.company_id is None:
+            customer.company = company
+            customer.save(update_fields=["company"])
+        if job.company_id is None:
+            job.company = company
+            job.save(update_fields=["company", "updated_at"])
+        return response
+
+
+class TenantScopedAssignCustomerAPIView(AssignCustomerAPIView):
+    """Limit customer assignment and active-job ownership to the current workspace."""
+
+    @transaction.atomic
     def post(self, request, pk):
         company = request_company(request)
 
@@ -58,7 +92,7 @@ class TenantScopedAssignCustomerAPIView(AssignCustomerAPIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        customer = Customer.objects.filter(pk=pk).first()
+        customer = Customer.objects.select_for_update().filter(pk=pk).first()
         if customer is not None and company is not None:
             if customer.company_id not in (None, company.id):
                 return Response(
@@ -69,7 +103,18 @@ class TenantScopedAssignCustomerAPIView(AssignCustomerAPIView):
                 customer.company = company
                 customer.save(update_fields=["company"])
 
-        return super().post(request, pk)
+        response = super().post(request, pk)
+        if response.status_code >= 200 and response.status_code < 300 and company is not None:
+            job_id = response.data.get("job_id") if isinstance(response.data, dict) else None
+            if job_id:
+                job = Job.objects.select_for_update().filter(pk=job_id).first()
+                if job is not None:
+                    if job.company_id not in (None, company.id):
+                        raise ValidationError({"detail": "Assigned job belongs to another workspace."})
+                    if job.company_id is None:
+                        job.company = company
+                        job.save(update_fields=["company", "updated_at"])
+        return response
 
 
 class TenantScopedRentPaymentCreateAPIView(RentPaymentCreateAPIView):
@@ -192,9 +237,7 @@ class TenantScopedRentPaymentHistoryAPIView(RentPaymentHistoryAPIView):
                 | Q(customer__company__isnull=True, customer__assigned_engineer__company=company)
             )
         else:
-            payments = payments.filter(
-                customer__company__isnull=True,
-            ).filter(
+            payments = payments.filter(customer__company__isnull=True).filter(
                 Q(customer__assigned_engineer__isnull=True)
                 | Q(customer__assigned_engineer__company__isnull=True)
             )
