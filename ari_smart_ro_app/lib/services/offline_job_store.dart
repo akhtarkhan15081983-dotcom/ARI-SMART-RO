@@ -17,6 +17,7 @@ class OfflineJobStore {
   static const _recoveryLogFileName = 'offline_job_recovery_events.jsonl';
   static const _mediaFolderName = 'pending_media';
   static const _quarantineFolderName = 'corrupt_state';
+  static const _lockFileName = '.offline_job_state.lock';
 
   final Directory? _rootDirectoryOverride;
 
@@ -41,6 +42,22 @@ class OfflineJobStore {
       await dir.create(recursive: true);
     }
     return dir;
+  }
+
+  Future<T> _withMutationLock<T>(Future<T> Function() action) async {
+    final root = await _rootDirectory();
+    final lockFile = File('${root.path}/$_lockFileName');
+    final handle = await lockFile.open(mode: FileMode.append);
+    await handle.lock(FileLock.exclusive);
+    try {
+      return await action();
+    } finally {
+      try {
+        await handle.unlock();
+      } finally {
+        await handle.close();
+      }
+    }
   }
 
   Future<File> _stateFile() async {
@@ -150,10 +167,36 @@ class OfflineJobStore {
 
   Future<Map<String, dynamic>> _readState() async {
     final file = await _stateFile();
-    if (!await file.exists()) return _emptyState();
-
+    final temp = File('${file.path}.tmp');
     final primary = await _readValidFile(file);
-    if (primary != null) return primary;
+    final tempState = await _readValidFile(temp);
+
+    if (primary != null) {
+      if (await temp.exists()) {
+        if (tempState == null) {
+          await _quarantineCorruptFile(temp);
+          await _recordRecoveryEvent(reason: 'STALE_TEMP_STATE_CORRUPT');
+        }
+        try {
+          await temp.delete();
+        } catch (_) {}
+      }
+      return primary;
+    }
+
+    if (tempState != null) {
+      final quarantinedPath = await _quarantineCorruptFile(file);
+      if (await file.exists()) await file.delete();
+      await temp.rename(file.path);
+      await _recordRecoveryEvent(
+        reason: 'RECOVERED_VALID_TEMP_STATE',
+        quarantinedPath: quarantinedPath,
+        recoveredFrom: '${_stateFileName}.tmp',
+      );
+      return tempState;
+    }
+
+    if (!await file.exists()) return _emptyState();
 
     final quarantinedPath = await _quarantineCorruptFile(file);
     final backup = await _backupFile();
@@ -203,27 +246,27 @@ class OfflineJobStore {
     await temp.rename(file.path);
   }
 
-  Future<void> cacheJobs(List<JobModel> jobs) async {
-    final state = await _readState();
-    final cached = Map<String, dynamic>.from(
-      state['jobs'] as Map? ?? const <String, dynamic>{},
-    );
-    for (final job in jobs) {
-      cached[job.id.toString()] = job.toJson();
-    }
-    state['jobs'] = cached;
-    await _writeState(state);
-  }
+  Future<void> cacheJobs(List<JobModel> jobs) => _withMutationLock(() async {
+        final state = await _readState();
+        final cached = Map<String, dynamic>.from(
+          state['jobs'] as Map? ?? const <String, dynamic>{},
+        );
+        for (final job in jobs) {
+          cached[job.id.toString()] = job.toJson();
+        }
+        state['jobs'] = cached;
+        await _writeState(state);
+      });
 
-  Future<void> cacheJob(JobModel job) async {
-    final state = await _readState();
-    final cached = Map<String, dynamic>.from(
-      state['jobs'] as Map? ?? const <String, dynamic>{},
-    );
-    cached[job.id.toString()] = job.toJson();
-    state['jobs'] = cached;
-    await _writeState(state);
-  }
+  Future<void> cacheJob(JobModel job) => _withMutationLock(() async {
+        final state = await _readState();
+        final cached = Map<String, dynamic>.from(
+          state['jobs'] as Map? ?? const <String, dynamic>{},
+        );
+        cached[job.id.toString()] = job.toJson();
+        state['jobs'] = cached;
+        await _writeState(state);
+      });
 
   Future<List<JobModel>> getCachedJobs() async {
     final state = await _readState();
@@ -258,20 +301,21 @@ class OfflineJobStore {
     }
   }
 
-  Future<void> updateCachedStatus(int jobId, String status) async {
-    final state = await _readState();
-    final cached = Map<String, dynamic>.from(
-      state['jobs'] as Map? ?? const <String, dynamic>{},
-    );
-    final value = cached[jobId.toString()];
-    if (value is Map) {
-      final row = Map<String, dynamic>.from(value);
-      row['status'] = status;
-      cached[jobId.toString()] = row;
-      state['jobs'] = cached;
-      await _writeState(state);
-    }
-  }
+  Future<void> updateCachedStatus(int jobId, String status) =>
+      _withMutationLock(() async {
+        final state = await _readState();
+        final cached = Map<String, dynamic>.from(
+          state['jobs'] as Map? ?? const <String, dynamic>{},
+        );
+        final value = cached[jobId.toString()];
+        if (value is Map) {
+          final row = Map<String, dynamic>.from(value);
+          row['status'] = status;
+          cached[jobId.toString()] = row;
+          state['jobs'] = cached;
+          await _writeState(state);
+        }
+      });
 
   String newActionId(String type, int jobId) {
     final random = Random().nextInt(1 << 32).toRadixString(16);
@@ -284,28 +328,28 @@ class OfflineJobStore {
     required Map<String, dynamic> payload,
     String? actionId,
     String? filePath,
-  }) async {
+  }) {
     final id = actionId ?? newActionId(type, jobId);
-    final state = await _readState();
-    final queue = List<Map<String, dynamic>>.from(
-      (state['queue'] as List? ?? const <dynamic>[])
-          .whereType<Map>()
-          .map((row) => Map<String, dynamic>.from(row)),
-    );
-
-    if (queue.any((row) => row['id'] == id)) return id;
-
-    queue.add(<String, dynamic>{
-      'id': id,
-      'type': type,
-      'job_id': jobId,
-      'payload': payload,
-      if (filePath != null) 'file_path': filePath,
-      'created_at': DateTime.now().toUtc().toIso8601String(),
+    return _withMutationLock(() async {
+      final state = await _readState();
+      final queue = List<Map<String, dynamic>>.from(
+        (state['queue'] as List? ?? const <dynamic>[])
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row)),
+      );
+      if (queue.any((row) => row['id'] == id)) return id;
+      queue.add(<String, dynamic>{
+        'id': id,
+        'type': type,
+        'job_id': jobId,
+        'payload': payload,
+        if (filePath != null) 'file_path': filePath,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      state['queue'] = queue;
+      await _writeState(state);
+      return id;
     });
-    state['queue'] = queue;
-    await _writeState(state);
-    return id;
   }
 
   Future<String> queuePhoto({
@@ -348,69 +392,69 @@ class OfflineJobStore {
     );
   }
 
-  Future<List<Map<String, dynamic>>> pendingActions() async {
-    final state = await _readState();
-    final queue = List<Map<String, dynamic>>.from(
-      (state['queue'] as List? ?? const <dynamic>[])
-          .whereType<Map>()
-          .map((row) => Map<String, dynamic>.from(row)),
-    );
-    if (queue.isEmpty) return queue;
-
-    final valid = <Map<String, dynamic>>[];
-    final deadLetters = OfflineActionDeadLetterStore(
-      rootDirectoryOverride: _rootDirectoryOverride,
-    );
-    var changed = false;
-
-    for (final action in queue) {
-      final type = (action['type'] ?? '').toString().trim().toUpperCase();
-      if (type != 'PHOTO' && type != 'SIGNATURE') {
-        valid.add(action);
-        continue;
-      }
-
-      final filePath = (action['file_path'] ?? '').toString().trim();
-      String? reason;
-      if (filePath.isEmpty) {
-        reason = 'MEDIA_PATH_MISSING';
-      } else {
-        final file = File(filePath);
-        try {
-          if (!await file.exists()) {
-            reason = 'MEDIA_FILE_MISSING';
-          } else if (await file.length() <= 0) {
-            reason = 'MEDIA_FILE_EMPTY';
-          }
-        } catch (_) {
-          reason = 'MEDIA_FILE_UNREADABLE';
-        }
-      }
-
-      if (reason == null) {
-        valid.add(action);
-        continue;
-      }
-
-      changed = true;
-      try {
-        await deadLetters.append(
-          action: action,
-          reason: reason,
-          detail: filePath.isEmpty ? null : filePath,
+  Future<List<Map<String, dynamic>>> pendingActions() =>
+      _withMutationLock(() async {
+        final state = await _readState();
+        final queue = List<Map<String, dynamic>>.from(
+          (state['queue'] as List? ?? const <dynamic>[])
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row)),
         );
-      } catch (_) {
-        // Do not allow a diagnostic write failure to keep the whole sync queue
-        // permanently blocked. The state backup still preserves prior history.
-      }
-    }
+        if (queue.isEmpty) return queue;
 
-    if (changed) {
-      state['queue'] = valid;
-      await _writeState(state);
-    }
-    return valid;
-  }
+        final valid = <Map<String, dynamic>>[];
+        final deadLetters = OfflineActionDeadLetterStore(
+          rootDirectoryOverride: _rootDirectoryOverride,
+        );
+        var changed = false;
+
+        for (final action in queue) {
+          final type = (action['type'] ?? '').toString().trim().toUpperCase();
+          if (type != 'PHOTO' && type != 'SIGNATURE') {
+            valid.add(action);
+            continue;
+          }
+
+          final filePath = (action['file_path'] ?? '').toString().trim();
+          String? reason;
+          if (filePath.isEmpty) {
+            reason = 'MEDIA_PATH_MISSING';
+          } else {
+            final file = File(filePath);
+            try {
+              if (!await file.exists()) {
+                reason = 'MEDIA_FILE_MISSING';
+              } else if (await file.length() <= 0) {
+                reason = 'MEDIA_FILE_EMPTY';
+              }
+            } catch (_) {
+              reason = 'MEDIA_FILE_UNREADABLE';
+            }
+          }
+
+          if (reason == null) {
+            valid.add(action);
+            continue;
+          }
+
+          changed = true;
+          try {
+            await deadLetters.append(
+              action: action,
+              reason: reason,
+              detail: filePath.isEmpty ? null : filePath,
+            );
+          } catch (_) {
+            // Diagnostic failure does not permanently block later valid work.
+          }
+        }
+
+        if (changed) {
+          state['queue'] = valid;
+          await _writeState(state);
+        }
+        return valid;
+      });
 
   Future<int> pendingCount({int? jobId}) async {
     final queue = await pendingActions();
@@ -418,41 +462,43 @@ class OfflineJobStore {
     return queue.where((row) => row['job_id'] == jobId).length;
   }
 
-  Future<void> removeAction(String actionId) async {
-    final state = await _readState();
-    final queue = List<Map<String, dynamic>>.from(
-      (state['queue'] as List? ?? const <dynamic>[])
-          .whereType<Map>()
-          .map((row) => Map<String, dynamic>.from(row)),
-    );
-    final row = queue.cast<Map<String, dynamic>?>().firstWhere(
-          (item) => item?['id'] == actionId,
-          orElse: () => null,
+  Future<void> removeAction(String actionId) => _withMutationLock(() async {
+        final state = await _readState();
+        final queue = List<Map<String, dynamic>>.from(
+          (state['queue'] as List? ?? const <dynamic>[])
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row)),
         );
-    queue.removeWhere((item) => item['id'] == actionId);
-    state['queue'] = queue;
-    await _writeState(state);
+        final row = queue.cast<Map<String, dynamic>?>().firstWhere(
+              (item) => item?['id'] == actionId,
+              orElse: () => null,
+            );
+        if (row == null) return;
+        queue.removeWhere((item) => item['id'] == actionId);
+        state['queue'] = queue;
+        await _writeState(state);
 
-    final filePath = row?['file_path']?.toString();
-    if (filePath != null && filePath.isNotEmpty) {
-      final file = File(filePath);
-      if (await file.exists()) await file.delete();
-    }
-  }
+        final filePath = row['file_path']?.toString();
+        if (filePath != null && filePath.isNotEmpty) {
+          final file = File(filePath);
+          if (await file.exists()) await file.delete();
+        }
+      });
 
-  Future<void> setGpsUnavailable(int jobId, bool unavailable) async {
-    final state = await _readState();
-    final map = Map<String, dynamic>.from(
-      state['gps_unavailable'] as Map? ?? const <String, dynamic>{},
-    );
-    if (unavailable) {
-      map[jobId.toString()] = DateTime.now().toUtc().toIso8601String();
-    } else {
-      map.remove(jobId.toString());
-    }
-    state['gps_unavailable'] = map;
-    await _writeState(state);
-  }
+  Future<void> setGpsUnavailable(int jobId, bool unavailable) =>
+      _withMutationLock(() async {
+        final state = await _readState();
+        final map = Map<String, dynamic>.from(
+          state['gps_unavailable'] as Map? ?? const <String, dynamic>{},
+        );
+        if (unavailable) {
+          map[jobId.toString()] = DateTime.now().toUtc().toIso8601String();
+        } else {
+          map.remove(jobId.toString());
+        }
+        state['gps_unavailable'] = map;
+        await _writeState(state);
+      });
 
   Future<bool> isGpsUnavailable(int jobId) async {
     final state = await _readState();
