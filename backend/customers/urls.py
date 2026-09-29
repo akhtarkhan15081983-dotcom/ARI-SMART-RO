@@ -5,13 +5,13 @@ from .edit_views import CustomerUpdateAPIView
 from .rent_management_optimized import RentManagementAPIView
 from .security_views import (
     TenantScopedAssignCustomerAPIView,
+    TenantScopedCustomerCreateAPIView,
     TenantScopedRentPaymentCreateAPIView,
     TenantScopedRentPaymentHistoryAPIView,
 )
 from .views import (
     CustomerListAPIView,
     MyCustomersAPIView,
-    CustomerCreateAPIView,
     CustomerDetailAPIView,
     CustomerServiceHistoryAPIView,
     CustomerSearchAPIView,
@@ -38,7 +38,7 @@ urlpatterns = [
     path("my-customers/", MyCustomersAPIView.as_view(), name="my-customers"),
     path("bulk-import/", CustomerBulkImportAPIView.as_view(), name="customer-bulk-import"),
     path("", CustomerListAPIView.as_view(), name="customer-list"),
-    path("create/", CustomerCreateAPIView.as_view(), name="customer-create"),
+    path("create/", TenantScopedCustomerCreateAPIView.as_view(), name="customer-create"),
     path("<int:pk>/qr/", CustomerQRCodeAPIView.as_view(), name="customer-qr"),
     path("<int:pk>/", CustomerDetailAPIView.as_view(), name="customer-detail"),
     path("<int:pk>/service-history/", CustomerServiceHistoryAPIView.as_view(), name="customer-service-history"),
