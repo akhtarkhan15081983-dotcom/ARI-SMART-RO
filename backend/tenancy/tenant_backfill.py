@@ -8,6 +8,7 @@ from complaints.models import Complaint
 from customers.models import Customer
 from jobs.models import Job
 from service.models import Service
+from tenancy.models import Company
 
 
 @dataclass(frozen=True)
@@ -31,7 +32,19 @@ class OwnershipDecision:
         }
 
 
-def _decision(model: str, pk: int, current_company_id: int | None, evidence: Iterable[tuple[str, int | None]]):
+def _single_company_id():
+    ids = list(Company.objects.order_by("pk").values_list("id", flat=True)[:2])
+    return ids[0] if len(ids) == 1 else None
+
+
+def _decision(
+    model: str,
+    pk: int,
+    current_company_id: int | None,
+    evidence: Iterable[tuple[str, int | None]],
+    *,
+    fallback_company_id: int | None = None,
+):
     normalized = tuple(
         sorted(
             {(source, int(company_id)) for source, company_id in evidence if company_id is not None},
@@ -46,6 +59,11 @@ def _decision(model: str, pk: int, current_company_id: int | None, evidence: Ite
         if len(candidate_ids) > 1:
             return OwnershipDecision(model, pk, "CONFLICT", None, normalized)
         return OwnershipDecision(model, pk, "ALREADY_OWNED", int(current_company_id), normalized)
+
+    if not candidate_ids and fallback_company_id is not None:
+        fallback_company_id = int(fallback_company_id)
+        normalized = (("single_company_database", fallback_company_id),)
+        candidate_ids = {fallback_company_id}
 
     if not candidate_ids:
         return OwnershipDecision(model, pk, "UNRESOLVED", None, normalized)
@@ -85,9 +103,16 @@ def build_ownership_plan():
     planned_customer: dict[int, int] = {}
     planned_job: dict[int, int] = {}
     planned_service: dict[int, int] = {}
+    fallback_company_id = _single_company_id()
 
     for customer in Customer.objects.select_related("assigned_engineer", "user").order_by("pk"):
-        decision = _decision("Customer", customer.pk, customer.company_id, _customer_evidence(customer))
+        decision = _decision(
+            "Customer",
+            customer.pk,
+            customer.company_id,
+            _customer_evidence(customer),
+            fallback_company_id=fallback_company_id,
+        )
         decisions.append(decision)
         if decision.company_id is not None and decision.status in {"RESOLVED", "ALREADY_OWNED"}:
             planned_customer[customer.pk] = decision.company_id
@@ -97,7 +122,13 @@ def build_ownership_plan():
             ("customer", planned_customer.get(job.customer_id) or job.customer.company_id),
             ("engineer", job.engineer.company_id),
         ]
-        decision = _decision("Job", job.pk, job.company_id, evidence)
+        decision = _decision(
+            "Job",
+            job.pk,
+            job.company_id,
+            evidence,
+            fallback_company_id=fallback_company_id,
+        )
         decisions.append(decision)
         if decision.company_id is not None and decision.status in {"RESOLVED", "ALREADY_OWNED"}:
             planned_job[job.pk] = decision.company_id
@@ -109,7 +140,13 @@ def build_ownership_plan():
         ]
         if row.job_id:
             evidence.append(("job", planned_job.get(row.job_id) or row.job.company_id))
-        decision = _decision("Service", row.pk, row.company_id, evidence)
+        decision = _decision(
+            "Service",
+            row.pk,
+            row.company_id,
+            evidence,
+            fallback_company_id=fallback_company_id,
+        )
         decisions.append(decision)
         if decision.company_id is not None and decision.status in {"RESOLVED", "ALREADY_OWNED"}:
             planned_service[row.pk] = decision.company_id
@@ -122,7 +159,15 @@ def build_ownership_plan():
             evidence.append(("job", planned_job.get(row.job_id) or row.job.company_id))
         if row.linked_service_id:
             evidence.append(("linked_service", planned_service.get(row.linked_service_id) or row.linked_service.company_id))
-        decisions.append(_decision("Complaint", row.pk, row.company_id, evidence))
+        decisions.append(
+            _decision(
+                "Complaint",
+                row.pk,
+                row.company_id,
+                evidence,
+                fallback_company_id=fallback_company_id,
+            )
+        )
 
     return decisions
 
