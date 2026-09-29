@@ -122,6 +122,17 @@ class OperationalTenantSecurityTests(TestCase):
         self.complaint.refresh_from_db()
         self.assertEqual(self.complaint.engineer_id, self.engineer_a.id)
 
+    def test_complaint_generic_update_cannot_bypass_assignment_guard(self):
+        response = self.client.patch(
+            f"/api/complaints/{self.complaint.id}/update/",
+            {"engineer": self.engineer_b.id, "status": "CLOSED"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.complaint.refresh_from_db()
+        self.assertEqual(self.complaint.engineer_id, self.engineer_a.id)
+        self.assertNotEqual(self.complaint.status, "CLOSED")
+
     def test_admin_job_otp_rejects_job_owned_by_other_tenant_engineer(self):
         response = self.client.get(f"/api/jobs/{self.job_b.id}/admin-otp/")
         self.assertEqual(response.status_code, 404)
