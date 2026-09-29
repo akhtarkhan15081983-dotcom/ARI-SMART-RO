@@ -12,11 +12,6 @@ class TenantScopedAssignCustomerAPIView(AssignCustomerAPIView):
 
     def post(self, request, pk):
         company = request_company(request)
-        if company is None:
-            return Response(
-                {"detail": "Active company workspace not found."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
 
         employee_id = request.data.get("employee_id", request.data.get("engineer"))
         try:
@@ -24,13 +19,21 @@ class TenantScopedAssignCustomerAPIView(AssignCustomerAPIView):
         except (TypeError, ValueError):
             return super().post(request, pk)
 
-        if not EmployeeProfile.objects.filter(
+        employee_scope = EmployeeProfile.objects.filter(
             pk=employee_id,
-            company=company,
             is_active=True,
             user__is_active=True,
             user__role__in=["ENGINEER", "OFFICE"],
-        ).exists():
+        )
+        if company is not None:
+            employee_scope = employee_scope.filter(company=company)
+        else:
+            # Backward-compatible path for records created before tenancy was
+            # introduced. A tenant-less actor may only target a tenant-less
+            # employee; it can never cross into a real company workspace.
+            employee_scope = employee_scope.filter(company__isnull=True)
+
+        if not employee_scope.exists():
             return Response(
                 {"message": "Employee not found in this workspace."},
                 status=status.HTTP_404_NOT_FOUND,
