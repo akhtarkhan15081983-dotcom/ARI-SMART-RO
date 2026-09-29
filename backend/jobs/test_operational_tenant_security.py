@@ -84,7 +84,19 @@ class OperationalTenantSecurityTests(TestCase):
             state="Uttar Pradesh",
             pincode="282001",
             ro_model="ARI TEST",
+            monthly_rent="900.00",
             assigned_engineer=self.engineer_a,
+        )
+        self.customer_b = Customer.objects.create(
+            name="Other Tenant Customer",
+            phone="9700000002",
+            address="Other Address",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI TEST",
+            monthly_rent="900.00",
+            assigned_engineer=self.engineer_b,
         )
         self.complaint = Complaint.objects.create(
             customer=self.customer,
@@ -135,6 +147,25 @@ class OperationalTenantSecurityTests(TestCase):
 
     def test_admin_job_otp_rejects_job_owned_by_other_tenant_engineer(self):
         response = self.client.get(f"/api/jobs/{self.job_b.id}/admin-otp/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_rent_management_hides_other_tenant_customer(self):
+        response = self.client.get("/api/customers/rent-management/")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["customer"]["id"] for row in response.data["customers"]}
+        self.assertIn(self.customer.id, ids)
+        self.assertNotIn(self.customer_b.id, ids)
+
+    def test_rent_payment_rejects_other_tenant_customer_id(self):
+        response = self.client.post(
+            "/api/customers/rent-management/payment/",
+            {
+                "customer_id": self.customer_b.id,
+                "amount": "900.00",
+                "payment_mode": "CASH",
+            },
+            format="json",
+        )
         self.assertEqual(response.status_code, 404)
 
 
