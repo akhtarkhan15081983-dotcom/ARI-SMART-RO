@@ -5,14 +5,30 @@ from django.core.management.base import BaseCommand, CommandError
 
 from purchase.invoice_identity import normalize_invoice_number
 from purchase.models import Purchase
+from tenancy.inventory_tenant_backfill import build_inventory_ownership_plan
+
+
+SAFE_OWNERSHIP_STATUSES = {"RESOLVED", "ALREADY_OWNED"}
+
+
+def projected_purchase_company_ids():
+    return {
+        decision.pk: decision.company_id
+        for decision in build_inventory_ownership_plan()
+        if decision.model == "Purchase"
+        and decision.status in SAFE_OWNERSHIP_STATUSES
+        and decision.company_id is not None
+    }
 
 
 def invoice_identity_groups():
     groups = defaultdict(list)
+    projected_company_ids = projected_purchase_company_ids()
     queryset = Purchase.objects.select_related("supplier", "company").order_by("id")
     for purchase in queryset.iterator():
         normalized = normalize_invoice_number(purchase.invoice_number)
-        key = (purchase.company_id, purchase.supplier_id, normalized)
+        company_id = projected_company_ids.get(purchase.id)
+        key = (company_id, purchase.supplier_id, normalized)
         groups[key].append(purchase)
     return groups
 
@@ -71,6 +87,7 @@ def build_duplicate_invoice_report():
 
     return {
         "mode": "DRY_RUN_ONLY",
+        "ownership_source": "projected inventory tenant ownership; no database writes",
         "normalization": "trim + uppercase + remove whitespace; punctuation preserved",
         "total_purchase_count": Purchase.objects.count(),
         "unique_identity_count": len(valid_identity_groups),
