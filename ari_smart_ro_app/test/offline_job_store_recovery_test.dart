@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ari_smart_ro_app/services/offline_action_dead_letter_store.dart';
 import 'package:ari_smart_ro_app/services/offline_job_store.dart';
 
 void main() {
@@ -94,5 +95,67 @@ void main() {
     final pending = await store.pendingActions();
     expect(pending, hasLength(1));
     expect(pending.single['id'], 'stable-retry-id');
+  });
+
+  test('missing media is dead-lettered without blocking later actions', () async {
+    final missingPath = '${tempDir.path}/pending_media/missing-photo.jpg';
+    await store.queueAction(
+      type: 'PHOTO',
+      jobId: 303,
+      payload: const <String, dynamic>{'description': 'offline proof'},
+      actionId: 'photo-missing',
+      filePath: missingPath,
+    );
+    await store.queueAction(
+      type: 'STATUS',
+      jobId: 303,
+      payload: const <String, dynamic>{'status': 'COMPLETED'},
+      actionId: 'status-after-photo',
+    );
+
+    final pending = await store.pendingActions();
+    expect(pending, hasLength(1));
+    expect(pending.single['id'], 'status-after-photo');
+
+    final deadLetters = OfflineActionDeadLetterStore(
+      rootDirectoryOverride: tempDir,
+    );
+    final entries = await deadLetters.entries();
+    expect(entries, hasLength(1));
+    expect(entries.single['reason'], 'MEDIA_FILE_MISSING');
+    final action = Map<String, dynamic>.from(entries.single['action'] as Map);
+    expect(action['id'], 'photo-missing');
+
+    final state = jsonDecode(
+      await File('${tempDir.path}/offline_job_state_v1.json').readAsString(),
+    ) as Map<String, dynamic>;
+    final queue = List<Map<String, dynamic>>.from(
+      (state['queue'] as List).map((row) => Map<String, dynamic>.from(row as Map)),
+    );
+    expect(queue.map((row) => row['id']), contains('status-after-photo'));
+    expect(queue.map((row) => row['id']), isNot(contains('photo-missing')));
+  });
+
+  test('zero-byte signature is quarantined as unusable media', () async {
+    final mediaDir = Directory('${tempDir.path}/pending_media');
+    await mediaDir.create(recursive: true);
+    final emptySignature = File('${mediaDir.path}/empty-signature.png');
+    await emptySignature.writeAsBytes(const <int>[], flush: true);
+
+    await store.queueAction(
+      type: 'SIGNATURE',
+      jobId: 404,
+      payload: const <String, dynamic>{'customer_name': 'Test Customer'},
+      actionId: 'empty-signature',
+      filePath: emptySignature.path,
+    );
+
+    expect(await store.pendingActions(), isEmpty);
+
+    final deadLetters = OfflineActionDeadLetterStore(
+      rootDirectoryOverride: tempDir,
+    );
+    final entries = await deadLetters.entries();
+    expect(entries.single['reason'], 'MEDIA_FILE_EMPTY');
   });
 }
