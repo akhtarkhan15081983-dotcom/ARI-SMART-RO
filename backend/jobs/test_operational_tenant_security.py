@@ -128,17 +128,10 @@ class OperationalTenantSecurityTests(TestCase):
 
 
 class SharedPhoneCustomerScopeTests(TestCase):
-    def test_service_customer_resolution_claims_one_deterministic_legacy_record(self):
-        user = User.objects.create_user(
-            phone="9800000001",
-            password="CustomerStrong@123",
-            role="CUSTOMER",
-            is_verified=True,
-            is_active=True,
-        )
+    def _legacy_pair(self, phone):
         first = Customer.objects.create(
             name="Shared Phone One",
-            phone=user.phone,
+            phone=phone,
             address="Address 1",
             city="Agra",
             state="Uttar Pradesh",
@@ -147,13 +140,24 @@ class SharedPhoneCustomerScopeTests(TestCase):
         )
         second = Customer.objects.create(
             name="Shared Phone Two",
-            phone=user.phone,
+            phone=phone,
             address="Address 2",
             city="Agra",
             state="Uttar Pradesh",
             pincode="282001",
             ro_model="ARI TWO",
         )
+        return first, second
+
+    def test_service_customer_resolution_claims_one_deterministic_legacy_record(self):
+        user = User.objects.create_user(
+            phone="9800000001",
+            password="CustomerStrong@123",
+            role="CUSTOMER",
+            is_verified=True,
+            is_active=True,
+        )
+        first, second = self._legacy_pair(user.phone)
 
         resolved = _linked_customer_for(user)
 
@@ -163,3 +167,32 @@ class SharedPhoneCustomerScopeTests(TestCase):
         self.assertEqual(first.user_id, user.id)
         self.assertIsNone(second.user_id)
         self.assertEqual(_linked_customer_for(user).id, first.id)
+
+    def test_complaint_list_does_not_expose_second_shared_phone_customer(self):
+        user = User.objects.create_user(
+            phone="9800000002",
+            password="CustomerStrong@123",
+            role="CUSTOMER",
+            is_verified=True,
+            is_active=True,
+        )
+        first, second = self._legacy_pair(user.phone)
+        visible = Complaint.objects.create(
+            customer=first,
+            complaint_type="OTHER",
+            description="Visible complaint",
+        )
+        hidden = Complaint.objects.create(
+            customer=second,
+            complaint_type="OTHER",
+            description="Hidden complaint",
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.get("/api/complaints/")
+
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data}
+        self.assertIn(visible.id, ids)
+        self.assertNotIn(hidden.id, ids)
