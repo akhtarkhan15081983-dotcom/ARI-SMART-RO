@@ -13,9 +13,9 @@ from .security_views import (
     TenantScopedPartRequestReviewAPIView,
     TenantScopedPartRequestFulfilAPIView,
 )
+from .strict_receive_view import StrictTenantScopedInventoryReceiveAPIView
 from .warehouse_security_views import (
     TenantScopedInventoryReceivingQueueAPIView,
-    TenantScopedInventoryReceiveAPIView,
     TenantScopedInventoryPhotoReceiveAPIView,
     TenantScopedInventoryCodeGenerationAPIView,
     TenantScopedInventoryQrLabelsPdfAPIView,
@@ -34,7 +34,7 @@ urlpatterns = [
     path("inventory/workflow/requests/<int:request_id>/review/", TenantScopedPartRequestReviewAPIView.as_view(), name="part-request-review"),
     path("inventory/workflow/requests/<int:request_id>/fulfil/", TenantScopedPartRequestFulfilAPIView.as_view(), name="part-request-fulfil"),
     path("inventory/workflow/receiving/", TenantScopedInventoryReceivingQueueAPIView.as_view(), name="inventory-receiving-queue"),
-    path("inventory/workflow/receive/", TenantScopedInventoryReceiveAPIView.as_view(), name="inventory-receive"),
+    path("inventory/workflow/receive/", StrictTenantScopedInventoryReceiveAPIView.as_view(), name="inventory-receive"),
     path("inventory/workflow/receive-photo/", TenantScopedInventoryPhotoReceiveAPIView.as_view(), name="inventory-photo-receive"),
     path("inventory/workflow/generate-codes/", TenantScopedInventoryCodeGenerationAPIView.as_view(), name="inventory-generate-codes"),
     path("inventory/workflow/qr-labels.pdf", TenantScopedInventoryQrLabelsPdfAPIView.as_view(), name="inventory-qr-labels"),
