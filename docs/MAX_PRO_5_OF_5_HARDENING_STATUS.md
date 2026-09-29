@@ -13,22 +13,23 @@ ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 item below is ve
 - [x] Confirm live Render production is one commit newer than `deploy/v1.0.48-production`.
 - [x] Rebase hardening baseline to the live production commit.
 - [x] Create isolated hardening branch.
-- [ ] Add/verify CI gates: backend tests, Flutter tests/analyze, Android build, migration checks.
+- [x] Enable CI gates on `hardening/**`: backend checks/tests, Flutter analyze/tests, Android debug compile, container build and Windows build/installer.
+- [ ] Latest hardening CI run passes all required jobs.
 - [ ] Protect final release branch from direct unverified changes.
 - [ ] Consolidate intentionally retained divergent Windows work before final RC.
 - [ ] Produce a single Release Candidate commit and immutable release notes.
 
 ## Phase 1 — Crash, data and recovery safety
-- [ ] PostgreSQL automated backups verified in production.
+- [ ] PostgreSQL automated backups/PITR verified on the actual production Recovery page.
 - [ ] Restore drill completed from a real backup into an isolated DB.
-- [ ] Define/document RPO and RTO targets.
+- [x] Define/document Max-Pro RPO/RTO targets.
 - [ ] Media storage verified persistent/object storage; no critical file on ephemeral disk.
 - [ ] Backup/restore procedure tested before destructive migrations.
 - [ ] Client/server crash telemetry verified end-to-end.
-- [ ] Failed background/offline work survives app restart and network loss.
-- [ ] Offline location history retained for at least 24 hours at normal cadence.
-- [ ] Offline location queue drains safely after reconnect without starving current tracking.
-- [ ] Synced business actions use idempotency/acknowledgement.
+- [ ] Failed background/offline work survives app restart and network loss on device.
+- [ ] Offline location history retained for at least 24 hours at normal cadence — implementation complete; CI/device verification pending.
+- [ ] Offline location queue drains safely after reconnect without starving current tracking — implementation complete; CI/device verification pending.
+- [ ] Synced business actions use idempotency/acknowledgement — location path implemented; remaining business actions still require audit.
 - [ ] Corrupt local queue/state preserved for diagnostics rather than silently discarded where recoverable.
 
 ### Current verified facts
@@ -37,8 +38,17 @@ ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 item below is ve
 - Flutter crash/error telemetry exists and sanitizes sensitive tokens/password-like values.
 - Offline jobs/photos/signatures have local queue/storage support.
 - Live location cadence is 20 seconds.
-- **Known P1 blocker:** pending location queue capacity is 30 points (~10 minutes), below the 24-hour Max-Pro target.
-- **Design note:** do not solve this by blindly putting thousands of GPS points into secure key-value storage; use a durable bounded local store plus controlled batch draining.
+- Durable mobile GPS queue now uses append-only JSONL in app-support storage instead of putting thousands of points in secure key-value storage.
+- Queue retains up to 6000 valid points, approximately 33 hours at the normal 20-second cadence; compaction is periodic rather than performed on every GPS append.
+- Reconnect draining uploads a bounded 200-point batch per tracking tick so backlog replay cannot starve current-position capture.
+- New backend batch endpoint accepts up to 500 delayed points per request, validates coordinate/time/shift boundaries, and stores route-history points idempotently without moving the current live marker backwards.
+- Backend batch backfill window is bounded to 72 hours.
+- Regression tests cover delayed-point persistence, duplicate retry idempotency and rejection outside the attendance window.
+- Legacy 30-point secure-storage backlog is migrated into the durable queue.
+- Production Render Postgres currently reports status `available`, PostgreSQL 18, Singapore, 1 GB disk, `0.1c-256mb`, no HA and no read replica.
+- Backup/PITR availability is not yet marked verified because the actual Recovery page / restore drill has not been proven.
+- Recovery runbook: `docs/PRODUCTION_BACKUP_RECOVERY_RUNBOOK.md`.
+- Max-Pro recovery targets: database RPO <= 15 minutes once PITR is verified; RTO <= 2 hours; daily off-Render logical backup; monthly restore drill.
 
 ## Phase 2 — Core operational certification
 - [ ] Attendance
@@ -85,7 +95,8 @@ ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 item below is ve
 A feature existing in code is not enough. A module is 5/5 only when implemented, permission-safe, recoverable, observable, tested on supported platforms, resilient to expected network/device failures, data-safe, and free of P0/P1 defects.
 
 ## Next actions
-1. Replace the ~10-minute GPS backlog design with durable 24h+ local storage and bounded reconnect draining.
-2. Verify Render/PostgreSQL backup and restore capability.
-3. Verify CI coverage on the hardening baseline and add missing gates.
-4. Certify core modules in order: Attendance → Location → Security → Customer → Jobs/Service/Complaint → Rent/Payments → Inventory.
+1. Obtain a clean all-jobs CI result for the durable GPS implementation and patch any failure.
+2. Verify Render/PostgreSQL PITR on the actual production Recovery page and perform an isolated restore drill.
+3. Verify production media persistence/object storage.
+4. Certify Attendance + Location together, including app-killed, reboot, long-offline and reconnect stress tests.
+5. Continue core certification: Security → Customer → Jobs/Service/Complaint → Rent/Payments → Inventory.
