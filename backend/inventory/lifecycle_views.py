@@ -57,13 +57,11 @@ class ReissuableTenantScopedEngineerBagIssueAPIView(generics.CreateAPIView):
                 remarks="Attempted to issue inventory that was not in stock.",
             )
             return Response({"error": "Part is not available in stock."}, status=400)
-
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        if serializer.validated_data["engineer"].id != engineer.id:
-            return Response({"error": "Engineer mismatch."}, status=400)
-        if serializer.validated_data["inventory_item"].id != inventory_item.id:
-            return Response({"error": "Inventory item mismatch."}, status=400)
+        if inventory_item.part.is_serialized and not inventory_item.serial_number:
+            return Response(
+                {"error": "Serialized part must have a serial number."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         bag_item = (
             EngineerBagItem.objects.select_for_update()
@@ -95,7 +93,13 @@ class ReissuableTenantScopedEngineerBagIssueAPIView(generics.CreateAPIView):
                 ]
             )
         else:
-            bag_item = serializer.save(company_id=company_id, status="ISSUED")
+            bag_item = EngineerBagItem.objects.create(
+                company_id=company_id,
+                engineer=engineer,
+                inventory_item=inventory_item,
+                status="ISSUED",
+                remarks=str(request.data.get("remarks", "")),
+            )
 
         old_status = inventory_item.status
         inventory_item.status = "ISSUED"
