@@ -12,13 +12,13 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart' as permissions;
 
 import 'api_service.dart';
+import 'location_queue_store.dart';
 
 const String _trackingEnabledKey = 'ari_live_location_tracking_enabled';
-const String _pendingLocationsKey = 'ari_live_location_pending_queue';
+const String _legacyPendingLocationsKey = 'ari_live_location_pending_queue';
 const String _notificationChannelId = 'ari_live_location';
 const int _notificationId = 4091;
 const Duration _trackingInterval = Duration(seconds: 20);
-const int _maxPendingLocations = 30;
 
 class LiveLocationException implements Exception {
   const LiveLocationException(this.message);
@@ -50,6 +50,7 @@ class LiveLocationService {
   }
 
   static Future<void> _configure() async {
+    await _migrateLegacyQueue();
     final service = FlutterBackgroundService();
 
     if (Platform.isAndroid) {
@@ -167,7 +168,7 @@ class LiveLocationService {
 
   Future<int> pendingLocationCount() async {
     if (!isSupportedPlatform) return 0;
-    return (await _readQueue()).length;
+    return LocationQueueStore.count();
   }
 
   Future<void> sendCurrentLocation() async {
@@ -220,6 +221,20 @@ class LiveLocationService {
     );
   }
 
+  static Future<http.Response> _postBatch(
+    List<Map<String, dynamic>> points,
+  ) {
+    return ApiService.authHeaders().then(
+      (headers) => http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/employees/live-location/batch/'),
+            headers: headers,
+            body: jsonEncode(<String, dynamic>{'points': points}),
+          )
+          .timeout(const Duration(seconds: 20)),
+    );
+  }
+
   static Future<bool> _acceptSuccessfulResponse(http.Response response) async {
     if (response.statusCode < 200 || response.statusCode >= 300) return false;
     try {
@@ -256,53 +271,51 @@ class LiveLocationService {
     }
   }
 
-  static Future<void> _queuePoint(Map<String, dynamic> point) async {
-    final queue = await _readQueue();
-    queue.add(point);
-    if (queue.length > _maxPendingLocations) {
-      queue.removeRange(0, queue.length - _maxPendingLocations);
+  static Future<bool> _sendBatch(List<Map<String, dynamic>> points) async {
+    if (points.isEmpty) return true;
+    try {
+      var response = await _postBatch(points);
+      if (response.statusCode >= 200 && response.statusCode < 300) return true;
+
+      if (response.statusCode == 401) {
+        final recovered = await ApiService.recoverSessionAfterUnauthorized();
+        if (recovered) {
+          response = await _postBatch(points);
+          return response.statusCode >= 200 && response.statusCode < 300;
+        }
+      }
+      return false;
+    } catch (_) {
+      return false;
     }
-    await _storage.write(
-      key: _pendingLocationsKey,
-      value: jsonEncode(queue),
-    );
+  }
+
+  static Future<void> _queuePoint(Map<String, dynamic> point) {
+    return LocationQueueStore.append(point);
   }
 
   static Future<void> _flushPendingLocations() async {
-    final queue = await _readQueue();
-    if (queue.isEmpty) return;
-
-    var sentCount = 0;
-    for (final point in queue) {
-      if (!await _sendPoint(point)) break;
-      sentCount++;
-      if (await _storage.read(key: _trackingEnabledKey) != 'true') break;
-    }
-    if (sentCount == 0) return;
-
-    final remaining = queue.sublist(sentCount);
-    if (remaining.isEmpty) {
-      await _storage.delete(key: _pendingLocationsKey);
-    } else {
-      await _storage.write(
-        key: _pendingLocationsKey,
-        value: jsonEncode(remaining),
-      );
-    }
+    // Drain only one bounded batch per tracking tick. This prevents a large
+    // offline backlog from starving capture of the employee's current position.
+    final batch = await LocationQueueStore.readBatch();
+    if (batch.isEmpty) return;
+    if (!await _sendBatch(batch)) return;
+    await LocationQueueStore.acknowledgeFirst(batch.length);
   }
 
-  static Future<List<Map<String, dynamic>>> _readQueue() async {
+  static Future<void> _migrateLegacyQueue() async {
     try {
-      final raw = await _storage.read(key: _pendingLocationsKey);
-      if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
+      final raw = await _storage.read(key: _legacyPendingLocationsKey);
+      if (raw == null || raw.isEmpty) return;
       final decoded = jsonDecode(raw);
-      if (decoded is! List) return <Map<String, dynamic>>[];
-      return decoded
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList();
+      if (decoded is List) {
+        for (final item in decoded.whereType<Map>()) {
+          await LocationQueueStore.append(Map<String, dynamic>.from(item));
+        }
+      }
+      await _storage.delete(key: _legacyPendingLocationsKey);
     } catch (_) {
-      return <Map<String, dynamic>>[];
+      // Keep legacy data untouched if migration cannot complete.
     }
   }
 
@@ -334,6 +347,7 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
   final storage = const FlutterSecureStorage();
+  await LiveLocationService._migrateLegacyQueue();
   var timer = Timer(const Duration(days: 3650), () {});
   var busy = false;
 
@@ -379,13 +393,14 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
           await service.isForegroundService()) {
         final time =
             '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}';
+        final pending = await LocationQueueStore.count();
         await service.setForegroundNotificationInfo(
           title: locationSent
               ? 'ARI SMART RO • Live location ON'
-              : 'ARI SMART RO • Location required',
+              : 'ARI SMART RO • Location queued safely',
           content: locationSent
-              ? 'Work shift tracking active • updated $time'
-              : 'GPS/permission is off or network failed. Open the app now.',
+              ? 'Work shift tracking active • updated $time${pending > 0 ? ' • $pending pending' : ''}'
+              : 'Network/GPS issue • pending route points: $pending',
         );
       }
     } finally {
