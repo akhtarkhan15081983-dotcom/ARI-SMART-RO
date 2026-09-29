@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from complaints.models import Complaint
-from customers.models import Customer
+from customers.models import Customer, CustomerRentPayment
 from employees.models import EmployeeProfile
 from jobs.models import Job
 from service.views import _linked_customer_for
@@ -167,6 +167,34 @@ class OperationalTenantSecurityTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_rent_payment_same_action_id_is_applied_once(self):
+        payload = {
+            "customer_id": self.customer.id,
+            "amount": "900.00",
+            "payment_mode": "CASH",
+        }
+        first = self.client.post(
+            "/api/customers/rent-management/payment/",
+            payload,
+            format="json",
+            HTTP_X_ARI_ACTION_ID="rent-payment-test-001",
+        )
+        second = self.client.post(
+            "/api/customers/rent-management/payment/",
+            payload,
+            format="json",
+            HTTP_X_ARI_ACTION_ID="rent-payment-test-001",
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertFalse(first.data["idempotent_replay"])
+        self.assertTrue(second.data["idempotent_replay"])
+        self.assertEqual(
+            CustomerRentPayment.objects.filter(customer=self.customer).count(),
+            1,
+        )
 
 
 class SharedPhoneCustomerScopeTests(TestCase):
