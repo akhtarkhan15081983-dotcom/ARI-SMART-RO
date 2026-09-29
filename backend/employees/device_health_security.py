@@ -1,12 +1,13 @@
-from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from accounts.audit import write_audit_event
 from accounts.permissions import IsAdmin
 from tenancy.access import request_company
 
 from .models import EmployeeDeviceHealth, EmployeeProfile
-from .views import EmployeeDeviceHealthAPIView, AdminDeviceHealthAPIView
+from .views import AdminDeviceHealthAPIView, EmployeeDeviceHealthAPIView
 
 
 RISK_PREFIX = "SECURITY_RISK["
@@ -77,10 +78,7 @@ class SecurityAwareEmployeeDeviceHealthAPIView(EmployeeDeviceHealthAPIView):
                 entity_id=row.id,
                 company=getattr(employee, "company", None),
                 reason="Device integrity risk signal reported by active app installation.",
-                metadata={
-                    "employee_id": employee.employee_id,
-                    "risks": risks,
-                },
+                metadata={"employee_id": employee.employee_id, "risks": risks},
             )
         elif row.last_error.startswith(RISK_PREFIX):
             row.last_error = client_error
@@ -110,13 +108,6 @@ class SecurityAwareAdminDeviceHealthAPIView(AdminDeviceHealthAPIView):
             item["security_risks"] = risks
             item["risk_level"] = "HIGH" if risks else "CLEAR"
         return response
-
-
-class TenantScopedAdminFaceEnrollmentListAPIView(Response.__mro__[1]):
-    pass
-
-
-from rest_framework.views import APIView
 
 
 class TenantScopedAdminFaceEnrollmentListAPIView(APIView):
