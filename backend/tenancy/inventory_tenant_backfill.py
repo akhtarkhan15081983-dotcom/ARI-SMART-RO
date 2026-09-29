@@ -146,7 +146,9 @@ def build_inventory_ownership_plan():
         decisions.append(decision)
         item_candidates[row.pk] = _candidate_ids(decision)
 
-    for row in InventoryItem.objects.select_related("purchase_item").order_by("pk"):
+    for row in InventoryItem.objects.select_related(
+        "purchase_item", "bag_item__engineer"
+    ).order_by("pk"):
         evidence = [
             ("purchase_item_evidence", company_id)
             for company_id in sorted(item_candidates.get(row.purchase_item_id, set()))
