@@ -10,11 +10,11 @@ ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 and certificatio
 
 ## Latest exact code-bearing verification
 
-**Verified code SHA:** `5ab3f6eea270088f72a7fd51aefa333cdc1d8adc`  
-**CI:** #753  
-**Run ID:** `36533396314`
+**Verified code SHA:** `6961bf8f7f4181a1b80af10353cea200bd486606`
+**CI:** #758
+**Run ID:** `36538291546`
 
-CI #753 passed all required exact-head code-bearing gates:
+CI #758 passed all required exact-head code-bearing gates:
 
 - Django deployment/migration checks: PASS
 - full PostgreSQL-backed backend regression: PASS
@@ -61,8 +61,17 @@ This verification includes the database-safe visible-ID concurrency/rollback gat
   unverified until that run passes.
 - CI #757 (run `36537369655`) also failed backend tests: both new retry tests
   reached replay but the shared receipt response still reported
-  `idempotent_replay=false`. A shared helper correction is prepared for another
-  full CI run. This is not a passing inventory receive gate.
+  `idempotent_replay=false`. Commit `6961bf8f` corrected the shared replay
+  response. Exact-head CI #758 (run `36538291546`) passed backend deployment
+  checks and full tests, Flutter analyze/tests and Android compile/upload,
+  production container, and Windows release/safe-build/startup/installer.
+  The receive-retry code/test gate is therefore verified at that SHA; trusted
+  Windows signing was skipped.
+- Read-only Render metadata identifies `ari-smart-ro-db` as an available
+  PostgreSQL 18 primary in Singapore on compute plan `0.1c-256mb` with 1 GB
+  disk. This metadata does not expose the instance's Recovery page, available
+  PITR timestamps, or exports. Those capabilities remain unverified for this
+  particular instance. No restored instance was listed or used in this check.
 - The broader service/complaint, inventory, purchase and wallet retry audit
   remains open. No real restore rehearsal counts are available; do not infer
   zero values for any category.
@@ -72,7 +81,7 @@ This verification includes the database-safe visible-ID concurrency/rollback gat
 - [x] Base hardening on live production state.
 - [x] Keep work isolated on hardening branch.
 - [x] CI gates enabled on `hardening/**`.
-- [x] Latest exact code-bearing integrity state verified by CI #753.
+- [x] Latest exact code-bearing integrity state verified by CI #758.
 - [ ] Protect final release branch from direct unverified changes.
 - [ ] Consolidate intentionally retained divergent Windows work before final RC.
 - [ ] Produce one immutable Release Candidate commit, release notes and checksums.
