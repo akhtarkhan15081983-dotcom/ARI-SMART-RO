@@ -4,6 +4,7 @@ from rest_framework import serializers, viewsets
 from accounts.permissions import IsStaffOperator
 from tenancy.access import request_company
 
+from .invoice_identity import supplier_invoice_exists
 from .models import Supplier, Purchase, PurchaseItem
 from .serializers import SupplierSerializer, PurchaseSerializer, PurchaseItemSerializer
 
@@ -52,11 +53,11 @@ class PurchaseViewSet(viewsets.ModelViewSet):
             )
 
         invoice_number = str(serializer.validated_data.get("invoice_number") or "").strip()
-        if invoice_number and Purchase.objects.filter(
+        if invoice_number and supplier_invoice_exists(
             company_id=expected_company_id,
-            supplier=supplier,
-            invoice_number__iexact=invoice_number,
-        ).exists():
+            supplier_id=supplier.id,
+            invoice_number=invoice_number,
+        ):
             raise serializers.ValidationError(
                 {"invoice_number": "This supplier invoice already exists in this workspace."}
             )
