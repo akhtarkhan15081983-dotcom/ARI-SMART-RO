@@ -1,13 +1,15 @@
 from django.urls import path
 
 from .security_views import SecureCheckInAPIView
+from .tenant_security import (
+    TenantScopedAttendanceDeviceOverrideAPIView,
+    TenantScopedAttendanceReviewListAPIView,
+    TenantScopedAttendanceReviewActionAPIView,
+)
 from .views import (
     CheckOutAPIView,
     TodayAttendanceAPIView,
     AttendanceHistoryAPIView,
-    AdminAttendanceReviewListAPIView,
-    AdminAttendanceReviewActionAPIView,
-    AdminAttendanceDeviceOverrideAPIView,
     OvertimeRequestAPIView,
     OvertimeStartAPIView,
     OvertimeStopAPIView,
@@ -26,14 +28,22 @@ urlpatterns = [
     path("admin/overtime/<int:request_id>/", AdminOvertimeAPIView.as_view(), name="admin-attendance-overtime-action"),
     path(
         "admin/device-overrides/",
-        AdminAttendanceDeviceOverrideAPIView.as_view(),
+        TenantScopedAttendanceDeviceOverrideAPIView.as_view(),
         name="admin-attendance-device-overrides",
     ),
     path(
         "admin/device-overrides/<int:employee_id>/",
-        AdminAttendanceDeviceOverrideAPIView.as_view(),
+        TenantScopedAttendanceDeviceOverrideAPIView.as_view(),
         name="admin-attendance-device-override-action",
     ),
-    path("admin/reviews/", AdminAttendanceReviewListAPIView.as_view(), name="admin-attendance-reviews"),
-    path("admin/reviews/<int:attendance_id>/", AdminAttendanceReviewActionAPIView.as_view(), name="admin-attendance-review-action"),
+    path(
+        "admin/reviews/",
+        TenantScopedAttendanceReviewListAPIView.as_view(),
+        name="admin-attendance-reviews",
+    ),
+    path(
+        "admin/reviews/<int:attendance_id>/",
+        TenantScopedAttendanceReviewActionAPIView.as_view(),
+        name="admin-attendance-review-action",
+    ),
 ]
