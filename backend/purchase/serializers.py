@@ -3,6 +3,8 @@ from uuid import uuid4
 from django.utils import timezone
 from rest_framework import serializers
 
+from tenancy.access import request_company
+
 from .models import Supplier, Purchase, PurchaseItem
 from inventory.models import InventoryItem
 
@@ -30,11 +32,10 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
     def validate_supplier(self, supplier):
         request = self.context.get("request")
-        company = getattr(request, "ari_company", None) if request is not None else None
-        if company is not None and supplier.company_id != company.id:
+        company = request_company(request) if request is not None else None
+        expected_company_id = company.id if company is not None else None
+        if supplier.company_id != expected_company_id:
             raise serializers.ValidationError("Supplier does not belong to this workspace.")
-        if company is None and supplier.company_id is not None:
-            raise serializers.ValidationError("Supplier does not belong to the legacy workspace.")
         return supplier
 
     def create(self, validated_data):
