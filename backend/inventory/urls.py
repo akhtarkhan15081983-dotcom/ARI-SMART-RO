@@ -2,11 +2,11 @@ from django.urls import path
 
 from .views import (
     OCRVerifyAPIView,
-    MyBagAPIView,
     PartCatalogAPIView,
 )
 from .security_views import (
     TenantScopedEngineerBagIssueAPIView,
+    TenantScopedMyBagAPIView,
     TenantScopedAdminEngineerBagAPIView,
     TenantScopedMyPartRequestsAPIView,
     TenantScopedPartRequestApprovalInboxAPIView,
@@ -26,7 +26,7 @@ from .warehouse_security_views import (
 urlpatterns = [
     path("inventory/issue/", TenantScopedEngineerBagIssueAPIView.as_view(), name="inventory-issue"),
     path("inventory/verify/", OCRVerifyAPIView.as_view(), name="inventory-verify"),
-    path("inventory/my-bag/", MyBagAPIView.as_view(), name="my-bag"),
+    path("inventory/my-bag/", TenantScopedMyBagAPIView.as_view(), name="my-bag"),
     path("inventory/admin/engineer-bags/", TenantScopedAdminEngineerBagAPIView.as_view(), name="admin-engineer-bags"),
     path("inventory/parts/", PartCatalogAPIView.as_view(), name="part-catalog"),
     path("inventory/part-requests/", TenantScopedMyPartRequestsAPIView.as_view(), name="my-part-requests"),
