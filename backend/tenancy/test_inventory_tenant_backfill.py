@@ -103,8 +103,8 @@ class InventoryTenantOwnershipBackfillTests(TestCase):
         bag_decision = rows[("EngineerBagItem", bag.pk)]
         self.assertEqual(inventory_decision.status, "CONFLICT")
         self.assertIsNone(inventory_decision.company_id)
-        self.assertEqual(bag_decision.status, "RESOLVED")
-        self.assertEqual(bag_decision.company_id, self.company_b.id)
+        self.assertEqual(bag_decision.status, "CONFLICT")
+        self.assertIsNone(bag_decision.company_id)
 
     def test_unresolved_supplier_stays_unresolved(self):
         orphan = Supplier.objects.create(name="Unresolved Supplier")
