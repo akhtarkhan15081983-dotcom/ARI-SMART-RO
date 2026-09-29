@@ -34,13 +34,16 @@ class TenantScopedWalkInCustomerAPIView(WalkInCustomerAPIView):
     @transaction.atomic
     def post(self, request):
         employee = getattr(request.user, "employee_profile", None)
-        company = getattr(employee, "company", None)
-        if employee is None or company is None:
+        if employee is None:
             return Response(
-                {"success": False, "message": "Active employee company workspace is required."},
+                {"success": False, "message": "Active employee profile is required."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        company = getattr(employee, "company", None)
 
+        # Run the proven business validation first. Pre-tenancy employees may
+        # legitimately have company=NULL; they are allowed only to produce
+        # company=NULL records. Company-bound employees are stamped below.
         response = super().post(request)
         if response.status_code < 200 or response.status_code >= 300:
             return response
@@ -51,6 +54,12 @@ class TenantScopedWalkInCustomerAPIView(WalkInCustomerAPIView):
         job = Job.objects.select_for_update().filter(pk=job_id).first()
         if customer is None or job is None:
             raise ValidationError({"detail": "Walk-in workflow did not create expected records."})
+
+        if company is None:
+            if customer.company_id is not None or job.company_id is not None:
+                raise ValidationError({"detail": "Walk-in records belong to a company workspace."})
+            return response
+
         if customer.company_id not in (None, company.id) or job.company_id not in (None, company.id):
             raise ValidationError({"detail": "Walk-in records conflict with the active workspace."})
         if customer.company_id is None:
