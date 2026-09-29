@@ -78,6 +78,37 @@ void main() {
     expect(event['reason'], 'PRIMARY_STATE_CORRUPT_NO_VALID_BACKUP');
   });
 
+  test('valid temp state is recovered after interrupted primary replacement', () async {
+    final primary = File('${tempDir.path}/offline_job_state_v1.json');
+    final temp = File('${primary.path}.tmp');
+    await primary.writeAsString('{broken-primary', flush: true);
+    await temp.writeAsString(
+      jsonEncode(<String, dynamic>{
+        'jobs': <String, dynamic>{},
+        'queue': <dynamic>[
+          <String, dynamic>{
+            'id': 'temp-recovered-action',
+            'type': 'STATUS',
+            'job_id': 505,
+            'payload': <String, dynamic>{'status': 'ACCEPTED'},
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+          },
+        ],
+        'gps_unavailable': <String, dynamic>{},
+      }),
+      flush: true,
+    );
+
+    final pending = await store.pendingActions();
+
+    expect(pending, hasLength(1));
+    expect(pending.single['id'], 'temp-recovered-action');
+    expect(await temp.exists(), isFalse);
+    final log = File('${tempDir.path}/offline_job_recovery_events.jsonl');
+    final event = jsonDecode((await log.readAsLines()).last) as Map<String, dynamic>;
+    expect(event['reason'], 'RECOVERED_VALID_TEMP_STATE');
+  });
+
   test('duplicate offline action id remains idempotent after state hardening', () async {
     await store.queueAction(
       type: 'STATUS',
@@ -95,6 +126,44 @@ void main() {
     final pending = await store.pendingActions();
     expect(pending, hasLength(1));
     expect(pending.single['id'], 'stable-retry-id');
+  });
+
+  test('concurrent writers do not lose queued actions', () async {
+    await Future.wait(
+      List<Future<String>>.generate(
+        20,
+        (index) => store.queueAction(
+          type: 'STATUS',
+          jobId: 600 + index,
+          payload: <String, dynamic>{'status': 'ACCEPTED', 'index': index},
+          actionId: 'parallel-$index',
+        ),
+      ),
+    );
+
+    final pending = await store.pendingActions();
+    expect(pending, hasLength(20));
+    expect(
+      pending.map((row) => row['id']).toSet(),
+      equals(<String>{for (var i = 0; i < 20; i++) 'parallel-$i'}),
+    );
+  });
+
+  test('ack removal deletes only the confirmed action', () async {
+    for (final id in <String>['ack-a', 'ack-b', 'ack-c']) {
+      await store.queueAction(
+        type: 'STATUS',
+        jobId: 707,
+        payload: <String, dynamic>{'status': id},
+        actionId: id,
+      );
+    }
+
+    await store.removeAction('ack-b');
+
+    final pending = await store.pendingActions();
+    final ids = pending.map((row) => row['id']).toSet();
+    expect(ids, equals(<String>{'ack-a', 'ack-c'}));
   });
 
   test('missing media is dead-lettered without blocking later actions', () async {
