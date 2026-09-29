@@ -4,18 +4,21 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsStaffOperator
+from jobs.idempotency import action_id_from_request, replay_response, remember_response
 from partmaster.models import PartMaster
 from tenancy.access import request_company
 
 from .invoice_identity import supplier_invoice_exists
 from .models import Purchase, Supplier
 from .serializers import PurchaseSerializer
+from .retry_identity import purchase_action_type
 
 
 def _clean(value):
@@ -164,6 +167,14 @@ class InvoiceConfirmAPIView(APIView):
         if not supplier_id or not invoice_number:
             return Response({"message": "Supplier and invoice number are required."}, status=400)
 
+        action_id = action_id_from_request(request)
+        if action_id:
+            get_user_model().objects.select_for_update().get(pk=request.user.pk)
+        action_type = purchase_action_type("purchase_ocr", company_id, payload)
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
+
         supplier = Supplier.objects.select_for_update().filter(
             pk=supplier_id,
             company_id=company_id,
@@ -202,8 +213,12 @@ class InvoiceConfirmAPIView(APIView):
             "invoice_image", "entry_source", "ocr_text", "ocr_confidence",
             "verified_by", "verified_at",
         ))
-        return Response({
+        response = Response({
             "success": True,
             "purchase_id": purchase.id,
             "message": "Invoice verified and purchase created.",
         }, status=201)
+        return remember_response(
+            request=request, action_id=action_id,
+            action_type=action_type, response=response,
+        )

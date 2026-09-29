@@ -8,6 +8,7 @@ from django.test import TransactionTestCase
 from rest_framework.test import APIClient
 
 from partmaster.models import PartCategory, PartMaster
+from inventory.models import InventoryItem
 from purchase.models import Purchase, Supplier
 from tenancy.models import Company, CompanyMembership
 
@@ -133,3 +134,47 @@ class DuplicateInvoiceConcurrencyTests(TransactionTestCase):
             Purchase.objects.filter(company=self.company, supplier=self.supplier).count(),
             1,
         )
+
+    def test_blank_invoice_lost_response_retry_creates_one_purchase_and_stock(self):
+        payload = {
+            "supplier": self.supplier.id,
+            "invoice_number": "",
+            "invoice_date": "2026-09-29",
+            "items": [{"part": self.part.id, "quantity": 2, "purchase_price": "100.00"}],
+        }
+        headers = {"HTTP_X_ARI_ACTION_ID": "blank-invoice-retry-001"}
+        first = self._client().post("/api/purchases/", payload, format="json", **headers)
+        second = self._client().post("/api/purchases/", payload, format="json", **headers)
+        self.assertEqual((first.status_code, second.status_code), (201, 201))
+        self.assertTrue(second.data["idempotent_replay"])
+        self.assertEqual(first.data["id"], second.data["id"])
+        self.assertEqual(Purchase.objects.filter(company=self.company).count(), 1)
+        self.assertEqual(InventoryItem.objects.filter(company=self.company).count(), 2)
+
+        changed = {**payload, "items": [
+            {"part": self.part.id, "quantity": 3, "purchase_price": "100.00"}
+        ]}
+        conflict = self._client().post("/api/purchases/", changed, format="json", **headers)
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(InventoryItem.objects.filter(company=self.company).count(), 2)
+
+    def test_ocr_lost_response_retry_returns_same_purchase(self):
+        payload = {
+            "supplier": self.supplier.id,
+            "invoice_number": "OCR-RETRY-001",
+            "invoice_date": "2026-09-29",
+            "items": [{"part": self.part.id, "quantity": 1, "purchase_price": "125.00"}],
+        }
+        fields = {"payload": json.dumps(payload), "ocr_text": "verified invoice"}
+        headers = {"HTTP_X_ARI_ACTION_ID": "ocr-retry-001"}
+        first = self._client().post(
+            "/api/purchases/invoice-scan/confirm/", fields, format="multipart", **headers,
+        )
+        second = self._client().post(
+            "/api/purchases/invoice-scan/confirm/", fields, format="multipart", **headers,
+        )
+        self.assertEqual((first.status_code, second.status_code), (201, 201))
+        self.assertEqual(first.data["purchase_id"], second.data["purchase_id"])
+        self.assertTrue(second.data["idempotent_replay"])
+        self.assertEqual(Purchase.objects.filter(company=self.company).count(), 1)
+        self.assertEqual(InventoryItem.objects.filter(company=self.company).count(), 1)

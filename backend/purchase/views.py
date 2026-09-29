@@ -1,11 +1,14 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers, viewsets
 
 from accounts.permissions import IsStaffOperator
+from jobs.idempotency import action_id_from_request, replay_response, remember_response
 from tenancy.access import request_company
 
 from .invoice_identity import supplier_invoice_exists
 from .models import Supplier, Purchase, PurchaseItem
+from .retry_identity import purchase_action_type
 from .serializers import SupplierSerializer, PurchaseSerializer, PurchaseItemSerializer
 
 
@@ -35,6 +38,27 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         return _scope_for_request(
             self.request,
             Purchase.objects.select_related("supplier").prefetch_related("items"),
+        )
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        company = request_company(request)
+        action_id = action_id_from_request(request)
+        if not action_id:
+            return super().create(request, *args, **kwargs)
+        # Serialize retries by this user even when a blank invoice would
+        # generate different NO-BILL values in concurrent requests.
+        get_user_model().objects.select_for_update().get(pk=request.user.pk)
+        action_type = purchase_action_type(
+            "purchase_manual", company.id if company else None, request.data,
+        )
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
+        response = super().create(request, *args, **kwargs)
+        return remember_response(
+            request=request, action_id=action_id,
+            action_type=action_type, response=response,
         )
 
     @transaction.atomic
