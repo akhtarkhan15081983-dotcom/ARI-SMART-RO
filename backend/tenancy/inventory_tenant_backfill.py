@@ -113,18 +113,40 @@ def build_inventory_ownership_plan():
         if decision.company_id is not None and decision.status in {"RESOLVED", "ALREADY_OWNED"}:
             inventory_plan[row.pk] = decision.company_id
 
-    for row in EngineerBagItem.objects.select_related("engineer", "inventory_item").order_by("pk"):
+    for row in EngineerBagItem.objects.select_related(
+        "engineer", "inventory_item__purchase_item"
+    ).order_by("pk"):
+        purchase_chain_company = (
+            item_plan.get(row.inventory_item.purchase_item_id)
+            or row.inventory_item.purchase_item.company_id
+        )
         evidence = [
             ("engineer", row.engineer.company_id),
-            ("inventory_item", inventory_plan.get(row.inventory_item_id) or row.inventory_item.company_id),
+            (
+                "inventory_item",
+                inventory_plan.get(row.inventory_item_id)
+                or row.inventory_item.company_id
+                or purchase_chain_company,
+            ),
         ]
         decisions.append(decide("EngineerBagItem", row.pk, row.company_id, evidence))
 
     for row in PartRequest.objects.select_related("engineer").order_by("pk"):
         decisions.append(decide("PartRequest", row.pk, row.company_id, [("engineer", row.engineer.company_id)]))
 
-    for row in InventoryAuditLog.objects.select_related("inventory_item", "engineer", "job").order_by("pk"):
-        evidence = [("inventory_item", inventory_plan.get(row.inventory_item_id) or row.inventory_item.company_id)]
+    for row in InventoryAuditLog.objects.select_related(
+        "inventory_item__purchase_item", "engineer", "job"
+    ).order_by("pk"):
+        purchase_chain_company = (
+            item_plan.get(row.inventory_item.purchase_item_id)
+            or row.inventory_item.purchase_item.company_id
+        )
+        evidence = [(
+            "inventory_item",
+            inventory_plan.get(row.inventory_item_id)
+            or row.inventory_item.company_id
+            or purchase_chain_company,
+        )]
         if row.engineer_id:
             evidence.append(("engineer", row.engineer.company_id))
         if row.job_id:
