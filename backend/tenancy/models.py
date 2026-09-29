@@ -218,24 +218,3 @@ class CompanySubscription(models.Model):
 
     def __str__(self):
         return f"{self.company} - {self.plan} ({self.status})"
-
-
-class HumanReadableIdSequence(models.Model):
-    """Database-serialized allocator for legacy-visible operational identifiers."""
-
-    namespace = models.CharField(max_length=40)
-    year = models.PositiveSmallIntegerField()
-    next_value = models.PositiveBigIntegerField(default=1)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["namespace", "year"],
-                name="unique_human_readable_id_sequence",
-            )
-        ]
-        ordering = ["namespace", "year"]
-
-    def __str__(self):
-        return f"{self.namespace}:{self.year}:{self.next_value}"
