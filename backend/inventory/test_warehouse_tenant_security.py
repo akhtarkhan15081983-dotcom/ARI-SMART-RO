@@ -148,6 +148,20 @@ class WarehouseTenantSecurityTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(Purchase.objects.filter(invoice_number="CROSS-TENANT").exists())
 
+    def test_invoice_ocr_does_not_match_other_company_supplier(self):
+        response = self.client.post(
+            "/api/purchases/invoice-scan/analyze/",
+            {
+                "ocr_text": (
+                    "Supplier B\nInvoice No: B-NEW-100\nDate: 29/09/2026\n"
+                    "TEN-SED Tenant Sediment 1 100.00"
+                )
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["draft"]["supplier"])
+
     def test_inventory_summary_counts_only_current_company_stock(self):
         response = self.client.get("/api/inventory/workflow/summary/")
         self.assertEqual(response.status_code, 200)
