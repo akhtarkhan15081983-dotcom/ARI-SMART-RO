@@ -15,9 +15,13 @@ def _validate_service_relations(request, validated_data, instance=None):
     engineer = validated_data.get("engineer", getattr(instance, "engineer", None))
     customer = validated_data.get("customer", getattr(instance, "customer", None))
     ro_asset = validated_data.get("ro_asset", getattr(instance, "ro_asset", None))
+    job = validated_data.get("job", getattr(instance, "job", None))
 
     if company is None:
         raise ValidationError({"detail": "Active company workspace not found."})
+
+    if instance is not None and instance.company_id not in (None, company.id):
+        raise ValidationError({"detail": "Service belongs to another company workspace."})
 
     if engineer is None or engineer.company_id != company.id:
         raise ValidationError({
@@ -25,6 +29,11 @@ def _validate_service_relations(request, validated_data, instance=None):
         })
     if not engineer.is_active or not engineer.user.is_active:
         raise ValidationError({"engineer": ["Engineer must be active."]})
+
+    if getattr(customer, "company_id", None) not in (None, company.id):
+        raise ValidationError({"customer": ["Customer belongs to another company workspace."]})
+    if job is not None and getattr(job, "company_id", None) not in (None, company.id):
+        raise ValidationError({"job": ["Job belongs to another company workspace."]})
 
     if ro_asset is not None and ro_asset.current_customer_id not in (None, getattr(customer, "id", None)):
         raise ValidationError({
@@ -46,19 +55,20 @@ def _validate_service_relations(request, validated_data, instance=None):
                 ),
                 "protected_fields": changed,
             })
+    return company
 
 
 class SecureServiceCreateAPIView(ServiceCreateAPIView):
     def perform_create(self, serializer):
-        _validate_service_relations(self.request, serializer.validated_data)
-        serializer.save()
+        company = _validate_service_relations(self.request, serializer.validated_data)
+        serializer.save(company=company)
 
 
 class SecureServiceUpdateAPIView(ServiceUpdateAPIView):
     def perform_update(self, serializer):
-        _validate_service_relations(
+        company = _validate_service_relations(
             self.request,
             serializer.validated_data,
             instance=self.get_object(),
         )
-        serializer.save()
+        serializer.save(company=company)
