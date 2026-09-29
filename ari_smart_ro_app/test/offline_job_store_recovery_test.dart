@@ -149,6 +149,31 @@ void main() {
     );
   });
 
+  test('two store instances serialize writers through the shared file lock', () async {
+    final secondStore = OfflineJobStore(rootDirectoryOverride: tempDir);
+    final writes = <Future<String>>[];
+    for (var index = 0; index < 20; index++) {
+      final writer = index.isEven ? store : secondStore;
+      writes.add(
+        writer.queueAction(
+          type: 'STATUS',
+          jobId: 800 + index,
+          payload: <String, dynamic>{'status': 'ACCEPTED', 'index': index},
+          actionId: 'shared-lock-$index',
+        ),
+      );
+    }
+
+    await Future.wait(writes);
+
+    final pending = await store.pendingActions();
+    expect(pending, hasLength(20));
+    expect(
+      pending.map((row) => row['id']).toSet(),
+      equals(<String>{for (var i = 0; i < 20; i++) 'shared-lock-$i'}),
+    );
+  });
+
   test('ack removal deletes only the confirmed action', () async {
     for (final id in <String>['ack-a', 'ack-b', 'ack-c']) {
       await store.queueAction(
