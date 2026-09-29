@@ -105,14 +105,27 @@ class SecureComplaintCreateAPIView(ComplaintCreateAPIView):
             return
 
         company = request_company(self.request)
-        if company is None:
-            raise ValidationError({"detail": "Active company workspace not found."})
-
         customer = serializer.validated_data.get("customer")
         engineer = serializer.validated_data.get("engineer")
         customer_company_id = getattr(customer, "company_id", None)
         if customer_company_id is None and getattr(customer, "assigned_engineer_id", None):
             customer_company_id = customer.assigned_engineer.company_id
+
+        if company is None:
+            # Narrow pre-tenancy compatibility only. A tenant-less actor may
+            # operate only on tenant-less customer/engineer records and never
+            # fall through to a real company workspace.
+            if customer_company_id is not None:
+                raise ValidationError({
+                    "customer": ["Customer belongs to a company workspace."]
+                })
+            if engineer is not None and engineer.company_id is not None:
+                raise ValidationError({
+                    "engineer": ["Engineer belongs to a company workspace."]
+                })
+            serializer.save(company=None)
+            return
+
         if customer_company_id != company.id:
             raise ValidationError({
                 "customer": ["Customer ownership is unresolved or outside the active workspace."]
