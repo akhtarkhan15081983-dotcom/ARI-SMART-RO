@@ -20,14 +20,6 @@ from .views import _sync_current_rent_offer
 
 
 class InspectableStreamingHttpResponse(StreamingHttpResponse):
-    """Streaming response with lazy DRF-style ``data`` introspection.
-
-    Normal HTTP delivery remains streaming and memory bounded. The payload is
-    materialized only when in-process code (primarily tests) explicitly reads
-    ``response.data``; consumed chunks are then restored so the response can
-    still be iterated normally.
-    """
-
     _data_cache = None
 
     @property
@@ -36,9 +28,7 @@ class InspectableStreamingHttpResponse(StreamingHttpResponse):
             chunks = list(self.streaming_content)
             self.streaming_content = iter(chunks)
             payload = b"".join(
-                chunk
-                if isinstance(chunk, bytes)
-                else str(chunk).encode(self.charset or "utf-8")
+                chunk if isinstance(chunk, bytes) else str(chunk).encode(self.charset or "utf-8")
                 for chunk in chunks
             )
             self._data_cache = json.loads(payload.decode(self.charset or "utf-8"))
@@ -46,8 +36,6 @@ class InspectableStreamingHttpResponse(StreamingHttpResponse):
 
 
 def _collection_bucket(payment_status, balance, due_date, today):
-    """Classify a customer for the field collection desk."""
-
     if payment_status == "PAID" or balance <= 0:
         return "COLLECTED"
     if due_date < today:
@@ -60,26 +48,28 @@ def _collection_bucket(payment_status, balance, due_date, today):
 
 
 def _rent_customer_scope(request):
-    """Interim tenant-safe customer scope until Customer.company exists.
-
-    Company-bound operational users may only see customers whose current
-    assigned employee belongs to that company. Unassigned customers are
-    intentionally hidden rather than guessed. Legacy tenant-less users are
-    restricted to unassigned/tenant-less employee records only.
-    """
+    """Explicit tenant ownership first; narrow assignment fallback for legacy NULL rows."""
 
     customers = Customer.objects.filter(is_active=True)
     role = request.user.role
 
     if role == "ENGINEER":
         engineer = getattr(request.user, "employee_profile", None)
-        return Customer.objects.none() if engineer is None else customers.filter(assigned_engineer=engineer)
+        if engineer is None:
+            return Customer.objects.none()
+        return customers.filter(
+            Q(company=engineer.company)
+            | Q(company__isnull=True, assigned_engineer=engineer)
+        ).filter(assigned_engineer=engineer)
 
     company = request_company(request)
     if company is not None:
-        return customers.filter(assigned_engineer__company=company)
+        return customers.filter(
+            Q(company=company)
+            | Q(company__isnull=True, assigned_engineer__company=company)
+        )
 
-    return customers.filter(
+    return customers.filter(company__isnull=True).filter(
         Q(assigned_engineer__isnull=True)
         | Q(assigned_engineer__company__isnull=True)
     )
@@ -135,12 +125,7 @@ class RentManagementAPIView(APIView):
             last_day = calendar.monthrange(today.year, today.month)[1]
             due_date = date(today.year, today.month, min(installation_day, last_day))
             penalty = rent_penalty(Decimal(str(balance)), due_date)
-            collection_bucket = _collection_bucket(
-                payment_status,
-                balance,
-                due_date,
-                today,
-            )
+            collection_bucket = _collection_bucket(payment_status, balance, due_date, today)
             days_until_due = (due_date - today).days
 
             history_data = []
@@ -197,8 +182,7 @@ class RentManagementAPIView(APIView):
                             "title": rent_record.applied_offer.title,
                             "promo_code": rent_record.applied_offer.promo_code,
                         }
-                        if rent_record.applied_offer_id
-                        else None
+                        if rent_record.applied_offer_id else None
                     ),
                     "expected_rent": expected,
                     "paid_amount": paid,
@@ -218,9 +202,7 @@ class RentManagementAPIView(APIView):
                     "installation_charge": float(customer.installation_charge or 0),
                     "security_deposit": float(customer.security_deposit or 0),
                     "installation_date": (
-                        customer.installation_date.isoformat()
-                        if customer.installation_date
-                        else None
+                        customer.installation_date.isoformat() if customer.installation_date else None
                     ),
                 },
                 "history": history_data,
