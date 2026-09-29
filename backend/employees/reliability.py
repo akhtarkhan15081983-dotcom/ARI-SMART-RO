@@ -32,7 +32,19 @@ class SecureFaceEnrollmentAPIView(FaceEnrollmentAPIView):
         login_device_id = str(request.user.active_login_device_id or "").strip()
         header_device_id = str(request.headers.get("X-ARI-Device-ID", "") or "").strip()
 
-        if not login_device_id:
+        # Normal authenticated app traffic must always arrive with an active
+        # login-device binding; VerifiedCustomerJWTAuthentication enforces this
+        # before the view. The narrow fallback below only supports legacy/unbound
+        # records after an explicit admin face-reenrollment grant. It does not
+        # permit a device move when a login device is already bound.
+        legacy_admin_authorized_recovery = bool(
+            not login_device_id
+            and employee.face_enrollment_allowed
+            and supplied_device_id
+            and not header_device_id
+        )
+
+        if not login_device_id and not legacy_admin_authorized_recovery:
             return Response(
                 {
                     "success": False,
@@ -42,7 +54,7 @@ class SecureFaceEnrollmentAPIView(FaceEnrollmentAPIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        if (
+        if login_device_id and (
             not supplied_device_id
             or supplied_device_id != login_device_id
             or (header_device_id and header_device_id != login_device_id)
@@ -77,6 +89,12 @@ class SecureFaceEnrollmentAPIView(FaceEnrollmentAPIView):
 
         response = super().post(request)
         if response.status_code in {status.HTTP_200_OK, status.HTTP_201_CREATED}:
+            if legacy_admin_authorized_recovery:
+                request.user.active_login_device_id = supplied_device_id[:64]
+                request.user.login_device_bound_at = timezone.now()
+                request.user.save(
+                    update_fields=["active_login_device_id", "login_device_bound_at"]
+                )
             write_audit_event(
                 request=request,
                 action="FACE_DEVICE_ENROLLMENT_COMPLETED",
@@ -85,7 +103,8 @@ class SecureFaceEnrollmentAPIView(FaceEnrollmentAPIView):
                 company=getattr(employee, "company", None),
                 metadata={
                     "employee_id": employee.employee_id,
-                    "device_matches_login_binding": True,
+                    "device_matches_login_binding": bool(login_device_id),
+                    "legacy_admin_authorized_recovery": legacy_admin_authorized_recovery,
                 },
             )
         return response
@@ -102,6 +121,10 @@ class CombinedFaceEnrollmentControlAPIView(APIView):
         employees = EmployeeProfile.objects.select_related("user").filter(pk=employee_id)
         if company is not None:
             employees = employees.filter(company=company)
+        else:
+            # Legacy records created before tenancy assignment are intentionally
+            # limited to company-null employees; never fall back to all tenants.
+            employees = employees.filter(company__isnull=True)
         employee = employees.first()
         if employee is None:
             return Response(
