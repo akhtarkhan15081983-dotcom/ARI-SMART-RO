@@ -114,6 +114,7 @@ class InventoryReturnLifecycleTests(TransactionTestCase):
             "/api/inventory/return/",
             {"inventory_item": self.stock.id, "remarks": "Unused part returned"},
             format="json",
+            HTTP_X_ARI_ACTION_ID="return-retry-001",
         )
         self.assertEqual(returned.status_code, 200)
         self.stock.refresh_from_db()
@@ -154,6 +155,19 @@ class InventoryReturnLifecycleTests(TransactionTestCase):
         self.assertEqual(bag.engineer_id, self.engineers[1].id)
         self.assertIsNone(bag.return_date)
         self.assertEqual(EngineerBagItem.objects.filter(inventory_item=self.stock).count(), 1)
+
+        replay = self._client().post(
+            "/api/inventory/return/",
+            {"inventory_item": self.stock.id, "remarks": "Unused part returned"},
+            format="json", HTTP_X_ARI_ACTION_ID="return-retry-001",
+        )
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.data["idempotent_replay"])
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.status, "ISSUED")
+        self.assertEqual(
+            InventoryAuditLog.objects.filter(inventory_item=self.stock, action="RETURNED").count(), 1,
+        )
 
     def _parallel_issue(self, engineer_id):
         close_old_connections()

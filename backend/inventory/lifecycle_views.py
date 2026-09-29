@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsStaffOperator
 from employees.models import EmployeeProfile
+from jobs.idempotency import replay_response, remember_response
 from tenancy.access import request_company
 
 from .models import EngineerBagItem, InventoryAuditLog, InventoryItem
@@ -136,6 +137,10 @@ class TenantScopedEngineerBagReturnAPIView(APIView):
             pk=inventory_item_id,
             company_id=company_id,
         )
+        action_type = f"inventory_return:{inventory_item.id}"
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
         bag_item = (
             EngineerBagItem.objects.select_for_update()
             .filter(
@@ -171,7 +176,7 @@ class TenantScopedEngineerBagReturnAPIView(APIView):
             serial_number=inventory_item.serial_number or "",
             remarks=str(request.data.get("remarks", "")),
         )
-        return Response(
+        response = Response(
             {
                 "success": True,
                 "inventory_item": inventory_item.id,
@@ -179,4 +184,8 @@ class TenantScopedEngineerBagReturnAPIView(APIView):
                 "bag_status": bag_item.status,
             },
             status=status.HTTP_200_OK,
+        )
+        return remember_response(
+            request=request, action_id=replay.action_id,
+            action_type=action_type, response=response,
         )

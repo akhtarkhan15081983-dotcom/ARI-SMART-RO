@@ -77,13 +77,22 @@ class InventoryWorkflowTests(TestCase):
         fulfilled = self.client.post(
             f"/api/inventory/workflow/requests/{self.part_request.id}/fulfil/",
             {"codes": ["QR-WF-0001"]}, format="json",
+            HTTP_X_ARI_ACTION_ID="fulfil-retry-001",
         )
         self.assertEqual(fulfilled.status_code, 200)
+        replay = self.client.post(
+            f"/api/inventory/workflow/requests/{self.part_request.id}/fulfil/",
+            {"codes": ["QR-WF-0001"]}, format="json",
+            HTTP_X_ARI_ACTION_ID="fulfil-retry-001",
+        )
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.data["idempotent_replay"])
         self.part_request.refresh_from_db()
         self.inventory_item.refresh_from_db()
         self.assertEqual(self.part_request.status, "FULFILLED")
         self.assertEqual(self.inventory_item.status, "ISSUED")
         self.assertTrue(EngineerBagItem.objects.filter(engineer=self.engineer, inventory_item=self.inventory_item).exists())
+        self.assertEqual(self.part_request.events.filter(action="FULFILLED").count(), 1)
 
     def test_qr_labels_and_professional_inventory_report(self):
         self.client.force_authenticate(self.office)

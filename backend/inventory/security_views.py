@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from employees.models import EmployeeProfile
+from jobs.idempotency import replay_response, remember_response
 from tenancy.access import request_company
 
 from .models import EngineerBagItem, InventoryAuditLog, InventoryItem, PartRequest, PartRequestEvent
@@ -191,6 +192,10 @@ class TenantScopedPartRequestFulfilAPIView(PartRequestFulfilAPIView):
             company_id=expected_company_id,
             engineer__company_id=expected_company_id,
         )
+        action_type = f"part_request_fulfil:{part_request.id}"
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
         if part_request.status != "APPROVED":
             return Response({"success": False, "message": "Only approved requests can be issued."}, status=409)
 
@@ -247,4 +252,7 @@ class TenantScopedPartRequestFulfilAPIView(PartRequestFulfilAPIView):
             remarks="Parts issued from company-owned verified stock.",
             metadata={"company_id": expected_company_id},
         )
-        return Response({"success": True, "message": "Part request fulfilled."})
+        return remember_response(
+            request=request, action_id=replay.action_id, action_type=action_type,
+            response=Response({"success": True, "message": "Part request fulfilled."}),
+        )
