@@ -1,14 +1,10 @@
 import json
-import re
 from collections import defaultdict
 
 from django.core.management.base import BaseCommand
 
+from purchase.invoice_identity import normalize_invoice_number
 from purchase.models import Purchase
-
-
-def normalize_invoice_number(value):
-    return re.sub(r"\s+", "", str(value or "").strip().upper())
 
 
 def duplicate_invoice_groups():
