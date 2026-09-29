@@ -8,10 +8,32 @@ import 'package:path_provider/path_provider.dart';
 import '../models/job_model.dart';
 
 class OfflineJobStore {
+  OfflineJobStore({Directory? rootDirectoryOverride})
+      : _rootDirectoryOverride = rootDirectoryOverride;
+
   static const _stateFileName = 'offline_job_state_v1.json';
+  static const _backupFileName = 'offline_job_state_v1.backup.json';
+  static const _recoveryLogFileName = 'offline_job_recovery_events.jsonl';
   static const _mediaFolderName = 'pending_media';
+  static const _quarantineFolderName = 'corrupt_state';
+
+  final Directory? _rootDirectoryOverride;
+
+  Map<String, dynamic> _emptyState() => <String, dynamic>{
+        'jobs': <String, dynamic>{},
+        'queue': <dynamic>[],
+        'gps_unavailable': <String, dynamic>{},
+      };
 
   Future<Directory> _rootDirectory() async {
+    final override = _rootDirectoryOverride;
+    if (override != null) {
+      if (!await override.exists()) {
+        await override.create(recursive: true);
+      }
+      return override;
+    }
+
     final base = await getApplicationSupportDirectory();
     final dir = Directory('${base.path}/ari_offline_jobs');
     if (!await dir.exists()) {
@@ -25,6 +47,25 @@ class OfflineJobStore {
     return File('${root.path}/$_stateFileName');
   }
 
+  Future<File> _backupFile() async {
+    final root = await _rootDirectory();
+    return File('${root.path}/$_backupFileName');
+  }
+
+  Future<File> _recoveryLogFile() async {
+    final root = await _rootDirectory();
+    return File('${root.path}/$_recoveryLogFileName');
+  }
+
+  Future<Directory> _quarantineDirectory() async {
+    final root = await _rootDirectory();
+    final dir = Directory('${root.path}/$_quarantineFolderName');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
   Future<Directory> _mediaDirectory() async {
     final root = await _rootDirectory();
     final dir = Directory('${root.path}/$_mediaFolderName');
@@ -34,42 +75,132 @@ class OfflineJobStore {
     return dir;
   }
 
-  Future<Map<String, dynamic>> _readState() async {
-    final file = await _stateFile();
-    if (!await file.exists()) {
-      return <String, dynamic>{
-        'jobs': <String, dynamic>{},
-        'queue': <dynamic>[],
-        'gps_unavailable': <String, dynamic>{},
-      };
-    }
-
+  Map<String, dynamic>? _decodeState(String raw) {
     try {
-      final decoded = jsonDecode(await file.readAsString());
-      if (decoded is Map<String, dynamic>) {
-        decoded.putIfAbsent('jobs', () => <String, dynamic>{});
-        decoded.putIfAbsent('queue', () => <dynamic>[]);
-        decoded.putIfAbsent('gps_unavailable', () => <String, dynamic>{});
-        return decoded;
-      }
-    } catch (_) {
-      // If the cache is damaged, start clean rather than blocking field work.
-    }
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
 
-    return <String, dynamic>{
-      'jobs': <String, dynamic>{},
-      'queue': <dynamic>[],
-      'gps_unavailable': <String, dynamic>{},
-    };
+      final state = Map<String, dynamic>.from(decoded);
+      final jobs = state['jobs'];
+      final queue = state['queue'];
+      final gpsUnavailable = state['gps_unavailable'];
+      if (jobs != null && jobs is! Map) return null;
+      if (queue != null && queue is! List) return null;
+      if (gpsUnavailable != null && gpsUnavailable is! Map) return null;
+
+      state['jobs'] = Map<String, dynamic>.from(
+        jobs as Map? ?? const <String, dynamic>{},
+      );
+      state['queue'] = List<dynamic>.from(
+        queue as List? ?? const <dynamic>[],
+      );
+      state['gps_unavailable'] = Map<String, dynamic>.from(
+        gpsUnavailable as Map? ?? const <String, dynamic>{},
+      );
+      return state;
+    } catch (_) {
+      return null;
+    }
   }
 
-  Future<void> _writeState(Map<String, dynamic> state) async {
-    final file = await _stateFile();
-    final temp = File('${file.path}.tmp');
-    await temp.writeAsString(jsonEncode(state), flush: true);
-    if (await file.exists()) {
-      await file.delete();
+  Future<Map<String, dynamic>?> _readValidFile(File file) async {
+    if (!await file.exists()) return null;
+    try {
+      return _decodeState(await file.readAsString());
+    } catch (_) {
+      return null;
     }
+  }
+
+  Future<String?> _quarantineCorruptFile(File file) async {
+    if (!await file.exists()) return null;
+    try {
+      final dir = await _quarantineDirectory();
+      final stamp = DateTime.now().toUtc().microsecondsSinceEpoch;
+      final target = File('${dir.path}/state-$stamp.corrupt.json');
+      await file.copy(target.path);
+      return target.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _recordRecoveryEvent({
+    required String reason,
+    String? quarantinedPath,
+    String? recoveredFrom,
+  }) async {
+    try {
+      final log = await _recoveryLogFile();
+      await log.writeAsString(
+        '${jsonEncode(<String, dynamic>{
+          'occurred_at': DateTime.now().toUtc().toIso8601String(),
+          'reason': reason,
+          if (quarantinedPath != null) 'quarantined_path': quarantinedPath,
+          if (recoveredFrom != null) 'recovered_from': recoveredFrom,
+        })}\n',
+        mode: FileMode.append,
+        flush: true,
+      );
+    } catch (_) {
+      // Recovery logging must never block field work.
+    }
+  }
+
+  Future<Map<String, dynamic>> _readState() async {
+    final file = await _stateFile();
+    if (!await file.exists()) return _emptyState();
+
+    final primary = await _readValidFile(file);
+    if (primary != null) return primary;
+
+    // Never silently overwrite damaged offline work. Preserve the raw file first
+    // so support can inspect it later, then attempt last-known-good recovery.
+    final quarantinedPath = await _quarantineCorruptFile(file);
+    final backup = await _backupFile();
+    final recovered = await _readValidFile(backup);
+    if (recovered != null) {
+      await _recordRecoveryEvent(
+        reason: 'PRIMARY_STATE_CORRUPT',
+        quarantinedPath: quarantinedPath,
+        recoveredFrom: _backupFileName,
+      );
+      await _writeState(recovered, preserveExistingAsBackup: false);
+      return recovered;
+    }
+
+    await _recordRecoveryEvent(
+      reason: 'PRIMARY_STATE_CORRUPT_NO_VALID_BACKUP',
+      quarantinedPath: quarantinedPath,
+    );
+    return _emptyState();
+  }
+
+  Future<void> _writeState(
+    Map<String, dynamic> state, {
+    bool preserveExistingAsBackup = true,
+  }) async {
+    final file = await _stateFile();
+    final backup = await _backupFile();
+    final temp = File('${file.path}.tmp');
+    final payload = jsonEncode(state);
+
+    await temp.writeAsString(payload, flush: true);
+    if (_decodeState(await temp.readAsString()) == null) {
+      throw const FileSystemException('Offline job state validation failed.');
+    }
+
+    if (preserveExistingAsBackup && await file.exists()) {
+      final existing = await _readValidFile(file);
+      if (existing != null) {
+        final backupTemp = File('${backup.path}.tmp');
+        await backupTemp.writeAsString(jsonEncode(existing), flush: true);
+        if (await backup.exists()) await backup.delete();
+        await backupTemp.rename(backup.path);
+      }
+    }
+
+    if (await file.exists()) await file.delete();
     await temp.rename(file.path);
   }
 
@@ -103,7 +234,11 @@ class OfflineJobStore {
     final jobs = <JobModel>[];
     for (final value in cached.values) {
       if (value is Map) {
-        jobs.add(JobModel.fromJson(Map<String, dynamic>.from(value)));
+        try {
+          jobs.add(JobModel.fromJson(Map<String, dynamic>.from(value)));
+        } catch (_) {
+          // One malformed cached job must not hide other usable offline jobs.
+        }
       }
     }
     jobs.sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
@@ -117,7 +252,11 @@ class OfflineJobStore {
     );
     final value = cached[jobId.toString()];
     if (value is! Map) return null;
-    return JobModel.fromJson(Map<String, dynamic>.from(value));
+    try {
+      return JobModel.fromJson(Map<String, dynamic>.from(value));
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> updateCachedStatus(int jobId, String status) async {
@@ -155,9 +294,7 @@ class OfflineJobStore {
           .map((row) => Map<String, dynamic>.from(row)),
     );
 
-    if (queue.any((row) => row['id'] == id)) {
-      return id;
-    }
+    if (queue.any((row) => row['id'] == id)) return id;
 
     queue.add(<String, dynamic>{
       'id': id,
@@ -183,9 +320,7 @@ class OfflineJobStore {
     final mediaDir = await _mediaDirectory();
     final extension = sourcePath.toLowerCase().endsWith('.png') ? '.png' : '.jpg';
     final saved = File('${mediaDir.path}/$id$extension');
-    if (!await saved.exists()) {
-      await source.copy(saved.path);
-    }
+    if (!await saved.exists()) await source.copy(saved.path);
     return queueAction(
       type: 'PHOTO',
       jobId: jobId,
@@ -204,9 +339,7 @@ class OfflineJobStore {
     final id = actionId ?? newActionId('SIGNATURE', jobId);
     final mediaDir = await _mediaDirectory();
     final saved = File('${mediaDir.path}/$id.png');
-    if (!await saved.exists()) {
-      await saved.writeAsBytes(bytes, flush: true);
-    }
+    if (!await saved.exists()) await saved.writeAsBytes(bytes, flush: true);
     return queueAction(
       type: 'SIGNATURE',
       jobId: jobId,
@@ -239,9 +372,9 @@ class OfflineJobStore {
           .map((row) => Map<String, dynamic>.from(row)),
     );
     final row = queue.cast<Map<String, dynamic>?>().firstWhere(
-      (item) => item?['id'] == actionId,
-      orElse: () => null,
-    );
+          (item) => item?['id'] == actionId,
+          orElse: () => null,
+        );
     queue.removeWhere((item) => item['id'] == actionId);
     state['queue'] = queue;
     await _writeState(state);
@@ -249,9 +382,7 @@ class OfflineJobStore {
     final filePath = row?['file_path']?.toString();
     if (filePath != null && filePath.isNotEmpty) {
       final file = File(filePath);
-      if (await file.exists()) {
-        await file.delete();
-      }
+      if (await file.exists()) await file.delete();
     }
   }
 
