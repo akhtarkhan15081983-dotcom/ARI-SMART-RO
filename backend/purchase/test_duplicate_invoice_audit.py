@@ -53,9 +53,10 @@ class DuplicateSupplierInvoiceAuditTests(TestCase):
         self.assertEqual(group["normalized_invoice_number"], "INV100")
         self.assertEqual(group["purchase_ids"], [first.id, second.id])
 
-    def test_command_is_read_only_and_reports_future_constraint_design(self):
+    def test_command_is_read_only_and_reports_exact_rehearsal_counts(self):
         self._purchase(self.company_a, self.supplier_a, "A B C")
         self._purchase(self.company_a, self.supplier_a, "abc")
+        self._purchase(self.company_a, self.supplier_a2, "UNIQUE-1")
         before = list(Purchase.objects.values_list("id", "invoice_number"))
         output = io.StringIO()
 
@@ -65,5 +66,9 @@ class DuplicateSupplierInvoiceAuditTests(TestCase):
         self.assertEqual(after, before)
         report = json.loads(output.getvalue())
         self.assertEqual(report["mode"], "DRY_RUN_ONLY")
+        self.assertEqual(report["total_purchase_count"], 3)
+        self.assertEqual(report["unique_identity_count"], 2)
         self.assertEqual(report["duplicate_group_count"], 1)
+        self.assertEqual(report["duplicate_row_count"], 2)
+        self.assertEqual(report["duplicate_groups"][0]["purchase_ids"], before[:2] and [before[0][0], before[1][0]])
         self.assertIn("normalized invoice key", report["future_constraint_design"])
