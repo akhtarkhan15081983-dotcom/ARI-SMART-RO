@@ -127,3 +127,15 @@ class ServiceAssignmentTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.other_service.refresh_from_db()
         self.assertEqual(self.other_service.status, "PENDING")
+
+    def test_completed_service_retry_preserves_original_completion_time(self):
+        completed_at = timezone.now()
+        Service.objects.filter(pk=self.service.pk).update(
+            status="COMPLETED", completed_date=completed_at,
+        )
+        url = reverse("service-complete", kwargs={"pk": self.service.pk})
+        first = self.client.post(url, {}, format="json")
+        second = self.client.post(url, {}, format="json")
+        self.assertEqual((first.status_code, second.status_code), (200, 200))
+        self.service.refresh_from_db()
+        self.assertEqual(self.service.completed_date, completed_at)

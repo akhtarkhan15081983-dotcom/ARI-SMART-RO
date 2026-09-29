@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from django.utils import timezone
 
 from rest_framework.test import APITestCase
 
@@ -57,6 +58,29 @@ class ComplaintWorkflowTests(APITestCase):
         self.assertEqual(response.data["engineer_phone"], self.engineer_user.phone)
         self.assertEqual(complaint.status, "ASSIGNED")
         self.assertEqual(response.data["status"], "ASSIGNED")
+
+    def test_resolve_retry_does_not_reopen_closed_complaint_or_replace_time(self):
+        complaint = Complaint.objects.create(
+            customer=self.customer, engineer=self.engineer,
+            complaint_type="OTHER", description="Retry safety",
+        )
+        completed_at = timezone.now()
+        Complaint.objects.filter(pk=complaint.pk).update(
+            status="RESOLVED", resolution="Fixed leak", resolved_date=completed_at,
+        )
+        self.client.force_authenticate(self.office)
+        resolve_url = f"/api/complaints/{complaint.pk}/resolve/"
+        same = self.client.patch(resolve_url, {"resolution": "Fixed leak"}, format="json")
+        different = self.client.patch(resolve_url, {"resolution": "Other work"}, format="json")
+        self.assertEqual((same.status_code, different.status_code), (200, 409))
+        closed = self.client.patch(f"/api/complaints/{complaint.pk}/close/", {}, format="json")
+        retry_close = self.client.patch(f"/api/complaints/{complaint.pk}/close/", {}, format="json")
+        stale_resolve = self.client.patch(resolve_url, {"resolution": "Fixed leak"}, format="json")
+        self.assertEqual((closed.status_code, retry_close.status_code, stale_resolve.status_code), (200, 200, 409))
+        complaint.refresh_from_db()
+        self.assertEqual(complaint.status, "CLOSED")
+        self.assertEqual(complaint.resolution, "Fixed leak")
+        self.assertEqual(complaint.resolved_date, completed_at)
 
     def test_generic_update_cannot_leave_assigned_complaint_in_new_status(self):
         complaint = Complaint.objects.create(

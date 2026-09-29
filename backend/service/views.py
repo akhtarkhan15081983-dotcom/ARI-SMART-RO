@@ -1,8 +1,10 @@
 from io import BytesIO
 
 import openpyxl
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
@@ -100,8 +102,18 @@ class CompleteServiceAPIView(generics.UpdateAPIView):
     def get_queryset(self):
         return _service_queryset_for(self.request.user, include_customer=False)
 
+    @transaction.atomic
     def _complete(self):
-        service = self.get_object()
+        service = get_object_or_404(
+            self.get_queryset().select_for_update(), pk=self.kwargs["pk"]
+        )
+        self.check_object_permissions(self.request, service)
+        if service.status == "COMPLETED":
+            return Response({
+                "success": True,
+                "service_id": service.service_id,
+                "message": "Service completed successfully.",
+            }, status=status.HTTP_200_OK)
         service.status = "COMPLETED"
         service.completed_date = timezone.now()
         service.save(update_fields=["status", "completed_date", "updated_at"])
