@@ -14,8 +14,8 @@ class MockLocationAttendanceSecurityTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.company = Company.objects.create(
-            name="ARI SMART RO",
-            slug="ari-smart-ro",
+            name="ARI SMART RO Mock Security",
+            slug="ari-smart-ro-mock-security",
         )
         self.user = User.objects.create_user(
             phone="9000099911",
