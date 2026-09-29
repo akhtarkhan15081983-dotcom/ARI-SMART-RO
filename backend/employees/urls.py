@@ -22,6 +22,7 @@ from .reliability import (
     AttendanceAwareLiveLocationAPIView,
     CombinedFaceEnrollmentControlAPIView,
 )
+from .location_batch import EmployeeLocationBatchAPIView
 from .route_history import EmployeeDayRouteAPIView
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
 from .training import (
@@ -107,6 +108,11 @@ urlpatterns = [
         "employees/live-location/",
         AttendanceAwareLiveLocationAPIView.as_view(),
         name="live-location",
+    ),
+    path(
+        "employees/live-location/batch/",
+        EmployeeLocationBatchAPIView.as_view(),
+        name="live-location-batch",
     ),
     path(
         "employees/live-map/",
