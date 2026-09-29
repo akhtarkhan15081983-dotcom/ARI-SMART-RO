@@ -16,8 +16,8 @@ from .views import (
     VerifyOTPAPIView,
     CustomerActiveOTPAPIView,
     CustomerAssignedEngineerAPIView,
-    AdminJobOTPAPIView,
 )
+from .security_views import TenantScopedAdminJobOTPAPIView
 from .fraud_controls import JobNoPartsDeclarationAPIView
 from .work_planner import WorkCalendarAPIView, WorkRescheduleAPIView, WorkRouteAPIView
 from .ro_parts_views import (
@@ -51,5 +51,9 @@ urlpatterns = [
     path("jobs/<int:pk>/verify-otp/", VerifyOTPAPIView.as_view()),
     path("jobs/otp/customer-active/", CustomerActiveOTPAPIView.as_view(), name="customer-active-job-otp"),
     path("jobs/customer/assigned-engineer/", CustomerAssignedEngineerAPIView.as_view(), name="customer-assigned-engineer"),
-    path("jobs/<int:pk>/admin-otp/", AdminJobOTPAPIView.as_view(), name="admin-job-otp"),
+    path(
+        "jobs/<int:pk>/admin-otp/",
+        TenantScopedAdminJobOTPAPIView.as_view(),
+        name="admin-job-otp",
+    ),
 ]
