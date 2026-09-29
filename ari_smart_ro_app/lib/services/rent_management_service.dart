@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -60,7 +61,13 @@ class RentManagementService {
     double? longitude,
     double? accuracy,
   }) async {
-    final headers = await ApiService.authHeaders();
+    final authHeaders = await ApiService.authHeaders();
+    final actionId =
+        "rent-$customerId-${DateTime.now().microsecondsSinceEpoch}";
+    final headers = <String, String>{
+      ...authHeaders,
+      "X-ARI-Action-ID": actionId,
+    };
 
     final url = Uri.parse(
       "${ApiService.baseUrl}/customers/rent-management/payment/",
@@ -94,11 +101,27 @@ class RentManagementService {
 
     print("BODY: ${jsonEncode(body)}");
 
-    final response = await http.post(
-      url,
-      headers: headers,
-      body: jsonEncode(body),
-    );
+    Future<http.Response> send() {
+      return http
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 25));
+    }
+
+    late http.Response response;
+    try {
+      response = await send();
+    } on TimeoutException {
+      // The server may have committed the payment even if the response was
+      // lost. Retry once with the exact same action ID so the backend replays
+      // the completed result instead of creating a duplicate ledger row.
+      response = await send();
+    } on http.ClientException {
+      response = await send();
+    }
 
     print("Status: ${response.statusCode}");
 
@@ -123,7 +146,7 @@ class RentManagementService {
       );
     }
 
-    if (response.statusCode == 400) {
+    if (response.statusCode == 400 || response.statusCode == 409) {
       final data = _decodeResponse(response.body);
 
       final message = data["message"]?.toString();
@@ -191,25 +214,13 @@ class RentManagementService {
 
     print("=====================================");
 
-    // ----------------------------------------------------------
-    // SUCCESS
-    // ----------------------------------------------------------
-
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
 
-    // ----------------------------------------------------------
-    // AUTH
-    // ----------------------------------------------------------
-
     if (response.statusCode == 401) {
       throw Exception("Authentication expired. Please login again.");
     }
-
-    // ----------------------------------------------------------
-    // PERMISSION
-    // ----------------------------------------------------------
 
     if (response.statusCode == 403) {
       final data = _decodeResponse(response.body);
@@ -220,10 +231,6 @@ class RentManagementService {
       );
     }
 
-    // ----------------------------------------------------------
-    // OTHER ERROR
-    // ----------------------------------------------------------
-
     final data = _decodeResponse(response.body);
 
     throw Exception(
@@ -232,10 +239,6 @@ class RentManagementService {
               "Status: ${response.statusCode}",
     );
   }
-
-  // ============================================================
-  // DECODE ERROR RESPONSE
-  // ============================================================
 
   static Map<String, dynamic> _decodeResponse(String body) {
     try {
