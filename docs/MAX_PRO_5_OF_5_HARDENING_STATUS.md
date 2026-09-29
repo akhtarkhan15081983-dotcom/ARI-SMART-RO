@@ -52,8 +52,13 @@ This verification includes the database-safe visible-ID concurrency/rollback gat
   Windows release/safe-build/startup/installer. Trusted signing remains open.
 - Inventory receiving audit found that a lost response followed by the same
   QR/photo request could consume another pending physical unit. The locked
-  purchase-item/action-receipt fix and two-unit regression are prepared for
-  a separate exact-head CI run; do not count it as verified until that passes.
+  purchase-item/action-receipt fix and two-unit regression are on
+  `3a1c2a86a4bff83024ab7346ae7cab76ac5739e7`. Exact-head CI #756
+  (run `36536379435`) **FAILED** backend tests because the new test fixture
+  assigned NULL to the non-null inventory barcode column (2 errors). Flutter,
+  Android/upload, production container and Windows jobs passed in that run.
+  The fixture correction requires a new full exact-head CI; receiving remains
+  unverified until that run passes.
 - The broader service/complaint, inventory, purchase and wallet retry audit
   remains open. No real restore rehearsal counts are available; do not infer
   zero values for any category.

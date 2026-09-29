@@ -185,7 +185,7 @@ class WarehouseTenantSecurityTests(TestCase):
     def test_qr_receive_retry_does_not_consume_another_pending_unit(self):
         self.stock_a.status = "PENDING_RECEIPT"
         self.stock_a.serial_number = None
-        self.stock_a.barcode = None
+        self.stock_a.barcode = ""
         self.stock_a.save(update_fields=["status", "serial_number", "barcode"])
         InventoryItem.objects.create(
             company=self.company_a, purchase_item=self.item_a, part=self.part,
@@ -209,7 +209,7 @@ class WarehouseTenantSecurityTests(TestCase):
         self.part.save(update_fields=["is_serialized"])
         self.stock_a.status = "PENDING_RECEIPT"
         self.stock_a.serial_number = None
-        self.stock_a.barcode = None
+        self.stock_a.barcode = ""
         self.stock_a.save(update_fields=["status", "serial_number", "barcode"])
         InventoryItem.objects.create(
             company=self.company_a, purchase_item=self.item_a, part=self.part,
