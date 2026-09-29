@@ -70,10 +70,14 @@ def replay_response(
             ),
         )
 
+    payload = receipt.response_payload
+    if isinstance(payload, dict):
+        payload = {**payload, "idempotent_replay": True}
+
     return IdempotencyReplay(
         action_id=action_id,
         response=Response(
-            receipt.response_payload,
+            payload,
             status=receipt.response_status,
         ),
     )

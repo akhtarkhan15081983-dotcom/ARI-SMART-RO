@@ -59,6 +59,10 @@ This verification includes the database-safe visible-ID concurrency/rollback gat
   Android/upload, production container and Windows jobs passed in that run.
   The fixture correction requires a new full exact-head CI; receiving remains
   unverified until that run passes.
+- CI #757 (run `36537369655`) also failed backend tests: both new retry tests
+  reached replay but the shared receipt response still reported
+  `idempotent_replay=false`. A shared helper correction is prepared for another
+  full CI run. This is not a passing inventory receive gate.
 - The broader service/complaint, inventory, purchase and wallet retry audit
   remains open. No real restore rehearsal counts are available; do not infer
   zero values for any category.
