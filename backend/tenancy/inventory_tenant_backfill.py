@@ -44,6 +44,13 @@ def decide(model, pk, current_company_id, evidence):
     return InventoryOwnershipDecision(model, pk, "RESOLVED", next(iter(candidates)), normalized)
 
 
+def _candidate_ids(decision):
+    values = {company_id for _, company_id in decision.evidence}
+    if decision.company_id is not None:
+        values.add(decision.company_id)
+    return values
+
+
 def _single_membership_company(user):
     if user is None:
         return None
@@ -57,10 +64,10 @@ def _single_membership_company(user):
 
 def build_inventory_ownership_plan():
     decisions = []
-    supplier_plan = {}
-    purchase_plan = {}
-    item_plan = {}
-    inventory_plan = {}
+    supplier_candidates = {}
+    purchase_candidates = {}
+    item_candidates = {}
+    inventory_candidates = {}
 
     for supplier in Supplier.objects.order_by("pk"):
         evidence = []
@@ -75,11 +82,15 @@ def build_inventory_ownership_plan():
             evidence.append(("purchase_evidence", company_id))
         decision = decide("Supplier", supplier.pk, supplier.company_id, evidence)
         decisions.append(decision)
-        if decision.company_id is not None and decision.status in {"RESOLVED", "ALREADY_OWNED"}:
-            supplier_plan[supplier.pk] = decision.company_id
+        supplier_candidates[supplier.pk] = _candidate_ids(decision)
 
     for purchase in Purchase.objects.select_related("supplier", "verified_by").order_by("pk"):
-        evidence = [("supplier", supplier_plan.get(purchase.supplier_id) or purchase.supplier.company_id)]
+        evidence = [
+            ("supplier_evidence", company_id)
+            for company_id in sorted(supplier_candidates.get(purchase.supplier_id, set()))
+        ]
+        if purchase.supplier.company_id:
+            evidence.append(("supplier_current", purchase.supplier.company_id))
         member_company = _single_membership_company(purchase.verified_by)
         if member_company:
             evidence.append(("single_verifier_membership", member_company))
@@ -93,60 +104,55 @@ def build_inventory_ownership_plan():
             evidence.append(("bag_engineer", company_id))
         decision = decide("Purchase", purchase.pk, purchase.company_id, evidence)
         decisions.append(decision)
-        if decision.company_id is not None and decision.status in {"RESOLVED", "ALREADY_OWNED"}:
-            purchase_plan[purchase.pk] = decision.company_id
+        purchase_candidates[purchase.pk] = _candidate_ids(decision)
 
     for row in PurchaseItem.objects.select_related("purchase").order_by("pk"):
-        authoritative = purchase_plan.get(row.purchase_id) or row.purchase.company_id
-        decision = decide("PurchaseItem", row.pk, row.company_id, [("purchase", authoritative)])
+        evidence = [
+            ("purchase_evidence", company_id)
+            for company_id in sorted(purchase_candidates.get(row.purchase_id, set()))
+        ]
+        if row.purchase.company_id:
+            evidence.append(("purchase_current", row.purchase.company_id))
+        decision = decide("PurchaseItem", row.pk, row.company_id, evidence)
         decisions.append(decision)
-        if decision.company_id is not None and decision.status in {"RESOLVED", "ALREADY_OWNED"}:
-            item_plan[row.pk] = decision.company_id
+        item_candidates[row.pk] = _candidate_ids(decision)
 
     for row in InventoryItem.objects.select_related("purchase_item").order_by("pk"):
-        authoritative = item_plan.get(row.purchase_item_id) or row.purchase_item.company_id
-        evidence = [("purchase_item", authoritative)]
+        evidence = [
+            ("purchase_item_evidence", company_id)
+            for company_id in sorted(item_candidates.get(row.purchase_item_id, set()))
+        ]
+        if row.purchase_item.company_id:
+            evidence.append(("purchase_item_current", row.purchase_item.company_id))
         if hasattr(row, "bag_item") and row.bag_item.engineer.company_id:
             evidence.append(("bag_engineer", row.bag_item.engineer.company_id))
         decision = decide("InventoryItem", row.pk, row.company_id, evidence)
         decisions.append(decision)
-        if decision.company_id is not None and decision.status in {"RESOLVED", "ALREADY_OWNED"}:
-            inventory_plan[row.pk] = decision.company_id
+        inventory_candidates[row.pk] = _candidate_ids(decision)
 
     for row in EngineerBagItem.objects.select_related(
         "engineer", "inventory_item__purchase_item"
     ).order_by("pk"):
-        purchase_chain_company = (
-            item_plan.get(row.inventory_item.purchase_item_id)
-            or row.inventory_item.purchase_item.company_id
-        )
-        evidence = [
-            ("engineer", row.engineer.company_id),
-            (
-                "inventory_item",
-                inventory_plan.get(row.inventory_item_id)
-                or row.inventory_item.company_id
-                or purchase_chain_company,
-            ),
-        ]
+        evidence = [("engineer", row.engineer.company_id)]
+        for company_id in sorted(inventory_candidates.get(row.inventory_item_id, set())):
+            evidence.append(("inventory_evidence", company_id))
+        if row.inventory_item.company_id:
+            evidence.append(("inventory_current", row.inventory_item.company_id))
         decisions.append(decide("EngineerBagItem", row.pk, row.company_id, evidence))
 
     for row in PartRequest.objects.select_related("engineer").order_by("pk"):
-        decisions.append(decide("PartRequest", row.pk, row.company_id, [("engineer", row.engineer.company_id)]))
+        decisions.append(
+            decide("PartRequest", row.pk, row.company_id, [("engineer", row.engineer.company_id)])
+        )
 
     for row in InventoryAuditLog.objects.select_related(
         "inventory_item__purchase_item", "engineer", "job"
     ).order_by("pk"):
-        purchase_chain_company = (
-            item_plan.get(row.inventory_item.purchase_item_id)
-            or row.inventory_item.purchase_item.company_id
-        )
-        evidence = [(
-            "inventory_item",
-            inventory_plan.get(row.inventory_item_id)
-            or row.inventory_item.company_id
-            or purchase_chain_company,
-        )]
+        evidence = []
+        for company_id in sorted(inventory_candidates.get(row.inventory_item_id, set())):
+            evidence.append(("inventory_evidence", company_id))
+        if row.inventory_item.company_id:
+            evidence.append(("inventory_current", row.inventory_item.company_id))
         if row.engineer_id:
             evidence.append(("engineer", row.engineer.company_id))
         if row.job_id:
