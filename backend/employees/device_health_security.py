@@ -52,11 +52,6 @@ class SecurityAwareEmployeeDeviceHealthAPIView(EmployeeDeviceHealthAPIView):
     """Persist normalized device-integrity diagnostics without blocking field work."""
 
     def post(self, request):
-        # The base health endpoint historically treats all numeric values as
-        # nullable. Pending sync counters are DB non-null fields, however, so a
-        # partial/older client payload could otherwise attempt to persist NULL
-        # and turn a best-effort health report into a 500. Normalize only these
-        # counters before delegating; optional memory/SDK metrics remain nullable.
         payload = request.data if isinstance(request.data, dict) else {}
         payload.setdefault("pending_job_actions", 0)
         payload.setdefault("pending_location_points", 0)
@@ -123,16 +118,19 @@ class TenantScopedAdminFaceEnrollmentListAPIView(APIView):
 
     def get(self, request):
         company = request_company(request)
-        if company is None:
-            return Response(
-                {"detail": "Active company workspace not found."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
         employees = EmployeeProfile.objects.filter(
-            company=company,
             is_active=True,
             user__is_active=True,
-        ).select_related("user").order_by(
+        )
+        if company is not None:
+            employees = employees.filter(company=company)
+        else:
+            # Only legacy records that have not yet been assigned to any tenant
+            # are visible to an admin without a company membership. This avoids
+            # the historical all-company fallback while keeping migration-era
+            # unassigned employee records recoverable.
+            employees = employees.filter(company__isnull=True)
+        employees = employees.select_related("user").order_by(
             "designation", "user__first_name", "user__last_name", "employee_id"
         )
         return Response([
