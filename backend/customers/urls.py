@@ -8,6 +8,7 @@ from .security_views import (
     TenantScopedCustomerCreateAPIView,
     TenantScopedRentPaymentCreateAPIView,
     TenantScopedRentPaymentHistoryAPIView,
+    TenantScopedWalkInCustomerAPIView,
 )
 from .views import (
     CustomerListAPIView,
@@ -15,7 +16,6 @@ from .views import (
     CustomerDetailAPIView,
     CustomerServiceHistoryAPIView,
     CustomerSearchAPIView,
-    WalkInCustomerAPIView,
     CustomerRentAPIView,
     CustomerProfileAPIView,
     MyROAPIView,
@@ -44,7 +44,7 @@ urlpatterns = [
     path("<int:pk>/service-history/", CustomerServiceHistoryAPIView.as_view(), name="customer-service-history"),
     path("search/", CustomerSearchAPIView.as_view(), name="customer-search"),
     path("<int:pk>/update/", CustomerUpdateAPIView.as_view(), name="customer-update"),
-    path("walk-in/", WalkInCustomerAPIView.as_view(), name="walk_in_customer"),
+    path("walk-in/", TenantScopedWalkInCustomerAPIView.as_view(), name="walk_in_customer"),
     path("<int:pk>/assign/", TenantScopedAssignCustomerAPIView.as_view(), name="customer-assign"),
     path("rent/", CustomerRentAPIView.as_view(), name="customer-rent"),
     path("rent-management/", RentManagementAPIView.as_view(), name="rent-management"),
