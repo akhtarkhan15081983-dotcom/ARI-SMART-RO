@@ -13,6 +13,7 @@ from accounts.permissions import IsStaffOperator
 from partmaster.models import PartMaster
 from tenancy.access import request_company
 
+from .invoice_identity import supplier_invoice_exists
 from .models import Purchase, Supplier
 from .serializers import PurchaseSerializer
 
@@ -103,11 +104,12 @@ def analyze(text, company_id=None):
     confidence = round(sum(checks) / len(checks) * 100, 2)
     duplicate = bool(
         invoice
-        and Purchase.objects.filter(
+        and supplier
+        and supplier_invoice_exists(
             company_id=company_id,
-            invoice_number__iexact=invoice,
-            **({"supplier": supplier} if supplier else {}),
-        ).exists()
+            supplier_id=supplier.id,
+            invoice_number=invoice,
+        )
     )
     warnings = []
     if not supplier:
@@ -162,9 +164,6 @@ class InvoiceConfirmAPIView(APIView):
         if not supplier_id or not invoice_number:
             return Response({"message": "Supplier and invoice number are required."}, status=400)
 
-        # The supplier row is the serialization point for invoice creation.
-        # Two concurrent manual/OCR posts for the same supplier cannot both
-        # pass duplicate detection before either transaction commits.
         supplier = Supplier.objects.select_for_update().filter(
             pk=supplier_id,
             company_id=company_id,
@@ -172,11 +171,11 @@ class InvoiceConfirmAPIView(APIView):
         ).first()
         if supplier is None:
             return Response({"message": "Supplier not found in this workspace."}, status=404)
-        if Purchase.objects.filter(
+        if supplier_invoice_exists(
             company_id=company_id,
-            supplier=supplier,
-            invoice_number__iexact=invoice_number,
-        ).exists():
+            supplier_id=supplier.id,
+            invoice_number=invoice_number,
+        ):
             return Response({"message": "This supplier invoice already exists. Duplicate posting blocked."}, status=409)
         serializer = PurchaseSerializer(
             data={
