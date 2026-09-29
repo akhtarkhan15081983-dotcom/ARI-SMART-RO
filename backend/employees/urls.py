@@ -5,7 +5,6 @@ from .views import (
     EmployeeProfileAPIView,
     EngineerListAPIView,
     AssignmentEmployeeListAPIView,
-    AdminFaceEnrollmentListAPIView,
     EmployeeManagementAPIView,
     EmployeeCustomerEditPermissionAPIView,
     EmployeeLoginDeviceResetAPIView,
@@ -14,13 +13,16 @@ from .views import (
     EmployeeCareerMovementActionAPIView,
     EmployeeIdCardAPIView,
     EmployeeIdVerifyAPIView,
-    EmployeeDeviceHealthAPIView,
-    AdminDeviceHealthAPIView,
 )
 from .reliability import (
     AttendanceAwareLiveLocationAPIView,
     CombinedFaceEnrollmentControlAPIView,
     SecureFaceEnrollmentAPIView,
+)
+from .device_health_security import (
+    SecurityAwareEmployeeDeviceHealthAPIView,
+    SecurityAwareAdminDeviceHealthAPIView,
+    TenantScopedAdminFaceEnrollmentListAPIView,
 )
 from .location_batch import EmployeeLocationBatchAPIView
 from .route_history import EmployeeDayRouteAPIView
@@ -45,8 +47,8 @@ from .training import (
 )
 
 urlpatterns = [
-    path("employees/device-health/", EmployeeDeviceHealthAPIView.as_view(), name="employee-device-health"),
-    path("employees/admin/device-health/", AdminDeviceHealthAPIView.as_view(), name="admin-device-health"),
+    path("employees/device-health/", SecurityAwareEmployeeDeviceHealthAPIView.as_view(), name="employee-device-health"),
+    path("employees/admin/device-health/", SecurityAwareAdminDeviceHealthAPIView.as_view(), name="admin-device-health"),
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
     path(
         "employees/manage/<int:employee_id>/customer-edit-permission/",
@@ -136,7 +138,7 @@ urlpatterns = [
     ),
     path(
         "employees/admin/face-enrollments/",
-        AdminFaceEnrollmentListAPIView.as_view(),
+        TenantScopedAdminFaceEnrollmentListAPIView.as_view(),
         name="admin-face-enrollment-list",
     ),
     path(
