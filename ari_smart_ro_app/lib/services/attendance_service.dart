@@ -4,22 +4,27 @@ import 'package:http/http.dart' as http;
 
 import '../models/attendance_model.dart';
 import 'api_service.dart';
+import 'attendance_integrity_service.dart';
 import 'device_identity_service.dart';
 
 typedef AttendanceHeadersProvider = Future<Map<String, String>> Function();
 typedef AttendanceDeviceIdProvider = Future<String> Function();
+typedef AttendanceMockLocationProvider = Future<bool> Function();
 
 class AttendanceService {
   AttendanceService({
     http.Client? client,
     AttendanceHeadersProvider? headersProvider,
     AttendanceDeviceIdProvider? deviceIdProvider,
+    AttendanceMockLocationProvider? mockLocationProvider,
     String? baseUrl,
     Duration requestTimeout = const Duration(seconds: 15),
     Duration uploadTimeout = const Duration(seconds: 30),
   }) : _client = client ?? http.Client(),
        _headersProvider = headersProvider ?? ApiService.authHeaders,
        _deviceIdProvider = deviceIdProvider ?? DeviceIdentityService.getOrCreate,
+       _mockLocationProvider =
+           mockLocationProvider ?? AttendanceIntegrityService.isCurrentLocationMocked,
        _baseUrl = (baseUrl ?? ApiService.baseUrl).replaceFirst(RegExp(r'/$'), ''),
        _requestTimeout = requestTimeout,
        _uploadTimeout = uploadTimeout;
@@ -27,6 +32,7 @@ class AttendanceService {
   final http.Client _client;
   final AttendanceHeadersProvider _headersProvider;
   final AttendanceDeviceIdProvider _deviceIdProvider;
+  final AttendanceMockLocationProvider _mockLocationProvider;
   final String _baseUrl;
   final Duration _requestTimeout;
   final Duration _uploadTimeout;
@@ -73,6 +79,7 @@ class AttendanceService {
     request.fields['latitude'] = latitude.toString();
     request.fields['longitude'] = longitude.toString();
     request.fields['device_id'] = await _deviceIdProvider();
+    request.fields['is_mocked'] = (await _mockLocationProvider()) ? 'true' : 'false';
     request.files.add(await http.MultipartFile.fromPath('selfie', selfiePath));
 
     try {
