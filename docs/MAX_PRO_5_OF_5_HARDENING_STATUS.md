@@ -10,15 +10,14 @@ ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 and certificatio
 
 ## Latest exact code-bearing verification
 
-**Verified code SHA:** `769f04041d1df5acee07e554efbf85f3292fff9e`  
-**CI:** #750  
-**Run ID:** `36530880757`
+**Verified code SHA:** `5ab3f6eea270088f72a7fd51aefa333cdc1d8adc`  
+**CI:** #753  
+**Run ID:** `36533396314`
 
-CI #750 passed all required code-bearing gates:
+CI #753 passed all required exact-head code-bearing gates:
 
-- Django deployment checks: PASS
-- migration drift check (`makemigrations --check --dry-run`): PASS / no changes detected
-- full PostgreSQL-backed backend regression: PASS — **450 tests, 0 failures**
+- Django deployment/migration checks: PASS
+- full PostgreSQL-backed backend regression: PASS
 - Flutter analyze: PASS
 - Flutter tests: PASS
 - Android debug APK compile: PASS
@@ -30,7 +29,7 @@ CI #750 passed all required code-bearing gates:
 - Setup.exe build/upload: PASS
 - Windows Authenticode install/sign/verify steps: SKIPPED because trusted signing credentials are not configured
 
-The previous #749 backend failure was a test-fixture problem caused by `reset_sequences=True` combined with CI `--keepdb`; it occurred before inventory business code ran. The fixture was made sequence-agnostic and the corrected exact-head suite passed in #750.
+This verification includes the database-safe visible-ID concurrency/rollback gates, Inventory financial reconciliation gates, supplier-invoice concurrency protection, and the machine-verifiable duplicate-invoice rehearsal command/tests described below.
 
 **No production deployment, Render branch change, production database migration, production data mutation, `main` merge or release was performed during this cycle.**
 
@@ -39,7 +38,7 @@ The previous #749 backend failure was a test-fixture problem caused by `reset_se
 - [x] Base hardening on live production state.
 - [x] Keep work isolated on hardening branch.
 - [x] CI gates enabled on `hardening/**`.
-- [x] Latest exact code-bearing integrity state verified by CI #750.
+- [x] Latest exact code-bearing integrity state verified by CI #753.
 - [ ] Protect final release branch from direct unverified changes.
 - [ ] Consolidate intentionally retained divergent Windows work before final RC.
 - [ ] Produce one immutable Release Candidate commit, release notes and checksums.
@@ -84,7 +83,7 @@ External formats remain unchanged:
 - Service: `SER-YYYY-NNNNNN`
 - Complaint: `CMP-YYYY-NNNNNN`
 
-Exact CI #750 evidence:
+Verified regression evidence retained in the latest full backend suite:
 - **20 simultaneous Customer creates**: all visible IDs unique and all card IDs unique;
 - **20 simultaneous Job creates**: all visible IDs unique;
 - **20 simultaneous Service creates**: all visible IDs unique;
@@ -150,7 +149,7 @@ Verified rules:
 - Excel Purchase lines are quantity-aware;
 - API summary, Excel Executive Summary and DB financial snapshot are compared field-by-field.
 
-Exact regression evidence in CI #750 covers:
+Verified regression evidence retained in CI #753 covers:
 - serialized inventory;
 - non-serialized inventory;
 - zero-price inventory;
@@ -164,9 +163,7 @@ Exact regression evidence in CI #750 covers:
 - two simultaneous engineers attempting to issue the same physical unit produce exactly one active assignment.
 
 ## Safe return/reissue lifecycle
-A missing workflow was found and fixed rather than faking the `RETURNED` state:
-
-- new tenant-safe `/api/inventory/return/` action is transactionally locked;
+- tenant-safe `/api/inventory/return/` is transactionally locked;
 - only currently issued same-company physical stock can be returned;
 - EngineerBagItem history becomes `RETURNED` and records `return_date`;
 - physical InventoryItem returns to `IN_STOCK`, restoring available warehouse value;
@@ -176,20 +173,12 @@ A missing workflow was found and fixed rather than faking the `RETURNED` state:
 - reissue can move the physical unit to another same-company engineer without creating a second bag row;
 - serialized parts still require a serial number.
 
-Exact regression evidence:
-- issue changes warehouse value from ₹350.00 to ₹0.00;
-- return restores warehouse value to exactly ₹350.00;
-- duplicate return returns conflict;
-- returned physical item can be reissued;
-- exactly one EngineerBagItem row remains for that physical item;
-- simultaneous issue race yields one successful active assignment.
-
 **Inventory financial/data-integrity code+CI completion gate: PASS.**  
 A production-like inventory ownership migration/reconciliation rehearsal is still a separate open release gate.
 
 # Exact completion gate: duplicate supplier invoices — code/test gate PASS, real rehearsal OPEN
 
-Canonical runtime/audit identity is now shared:
+Canonical runtime/audit identity:
 
 `company + supplier + normalized invoice number`
 
@@ -199,43 +188,51 @@ Normalization:
 - remove whitespace differences;
 - preserve punctuation identity.
 
-This closes the previous mismatch where the audit could classify `"INV 100"` and `"inv100"` as the same logical invoice while runtime `iexact` checks could allow separate writes.
-
 Runtime protection:
 - manual Purchase create locks the supplier row inside `transaction.atomic()`;
 - OCR Confirm locks the same supplier row before duplicate check/create;
 - manual and OCR paths use the same canonical identity helper;
 - supplier/company workspace scope remains server-controlled.
 
-Exact concurrency tests in CI #750:
+Concurrency evidence retained in the latest full regression:
 - **20 parallel manual Purchase submissions** using whitespace/case variants of the same logical invoice create exactly **1 Purchase**;
 - **20 parallel OCR Confirm submissions** using whitespace/case variants create exactly **1 Purchase**.
 
 Read-only command:
 `python manage.py audit_duplicate_supplier_invoices`
 
-Report includes:
+The rehearsal report now includes:
 - `DRY_RUN_ONLY` mode;
 - normalization rule;
 - total purchase count;
 - unique identity count;
-- duplicate group count;
-- duplicate row count;
+- duplicate groups and duplicate row count;
 - company ID;
 - supplier ID/name;
-- normalized invoice number;
-- raw invoice values;
+- normalized and raw invoice values;
 - affected Purchase IDs;
-- per-group count;
+- blank normalized-invoice IDs/count;
+- unresolved/null-company Purchase IDs/count;
+- aggregate `blocking_issue_count`;
+- machine-readable `rehearsal_status` = `CLEAN` or `BLOCKED`;
+- machine-readable `constraint_ready` boolean;
 - optional JSON output;
 - future normalized-key database uniqueness design.
 
-Tests prove the command does not modify Purchase rows and keeps duplicate identity tenant+supplier local, allowing the same external invoice string in a different tenant/supplier scope.
+`--fail-on-conflict` now exits non-zero if any duplicate identity, blank normalized invoice, or unresolved company row blocks the future uniqueness constraint.
 
-**Duplicate-invoice code/concurrency gate: PASS.**  
+CI #753 specifically proves:
+- the audit remains read-only;
+- clean data returns `CLEAN` and `constraint_ready=true`;
+- duplicate normalized identity causes `--fail-on-conflict` to fail;
+- blank identity is an explicit blocker;
+- unresolved/null-company ownership is an explicit blocker;
+- duplicate identity stays tenant+supplier scoped, so the same external invoice string in another tenant/supplier scope is not falsely treated as a duplicate.
+
+**Duplicate-invoice code/concurrency/tooling gate: PASS.**  
 **Actual isolated restored production-like duplicate audit: NOT YET RUN, therefore the rehearsal/release gate remains OPEN.**
 
-The future database uniqueness constraint remains intentionally deferred until that real rehearsal identifies/cleans any legacy conflicts. It must not be applied to production without explicit approval.
+The future database uniqueness constraint remains intentionally deferred until a real restored production-like rehearsal reports `CLEAN`/`constraint_ready=true`, or every blocking legacy row has an approved remediation. It must not be applied to production without explicit approval.
 
 # Phase 2 — Core operational certification
 - [ ] Attendance — implementation strong; real-device certification pending.
@@ -250,24 +247,12 @@ The future database uniqueness constraint remains intentionally deferred until t
 - [ ] Inventory Control — tenant ownership, financial reconciliation, return/reissue, concurrent issue protection CI-green; migration rehearsal pending.
 - [ ] Engineer Bag / Part Request — company scope + create idempotency + return/reissue lifecycle CI-green.
 
-# Tenant / RBAC evidence
-Verified hardening includes:
-- cross-company customer assignment blocked;
-- guessed-ID Admin Job OTP cross-tenant access blocked;
-- shared-phone Service/Complaint customer ambiguity hardened with durable linkage;
-- Service ownership fields cannot be rewritten by engineer generic updates;
-- Complaint assignment/workflow relations enforce workspace rules;
-- Rent management/payment/history fail closed across tenants;
-- Supplier/Purchase lists/writes and OCR supplier matching are workspace-scoped;
-- warehouse receiving/summary/reporting/issue/bag paths are company-scoped;
-- company-bound users do not gain all-company fallback through legacy compatibility.
-
 # Remaining migration/schema/recovery P1 blockers
-No CI-detected P0 defect is open at CI #750, but overall Max-Pro remains blocked by material P1/certification work:
+No CI-detected P0 defect is open at CI #753, but overall Max-Pro remains blocked by material P1/certification work:
 
 1. **Actual isolated restored production-like rehearsal** for Customer/Job/Service/Complaint ownership.
 2. **Actual isolated restored production-like rehearsal** for Supplier/Purchase/PurchaseItem/Inventory ownership.
-3. Run `audit_duplicate_supplier_invoices` on that isolated production-like copy and resolve/quarantine every legacy duplicate identity before any DB unique constraint.
+3. Run `audit_duplicate_supplier_invoices --fail-on-conflict` on that isolated production-like copy and resolve/quarantine every blocking legacy identity/ownership issue before any DB unique constraint.
 4. Verify Render/PostgreSQL PITR/Recovery availability and perform a real isolated restore drill.
 5. Verify production media persistence/object storage.
 6. Certify Attendance/GPS on real Vivo S20, Vivo T3 and Redmi 8A-class devices: app killed, reboot, permission/battery changes, 24h tracking, long offline and reconnect.
@@ -283,8 +268,8 @@ Before any production schema/cutover action:
 2. restore a production-like DB copy in isolation;
 3. run `rehearse_tenant_migration` read-only;
 4. run both tenant backfill commands in dry-run mode;
-5. run duplicate supplier-invoice audit;
-6. reconcile every unresolved/conflict/duplicate result;
+5. run `audit_duplicate_supplier_invoices --fail-on-conflict` with JSON evidence;
+6. reconcile every unresolved/conflict/duplicate/blank-identity result;
 7. rehearse `--apply` only on the isolated copy;
 8. prove before/after object counts and relationship consistency;
 9. only then propose production migration/constraints for explicit approval.
@@ -317,15 +302,3 @@ Before any production schema/cutover action:
 - [ ] Release checksums recorded.
 - [ ] Rollback procedure tested.
 - [ ] Final UAT signed off.
-
-## 5/5 definition
-A module is 5/5 only when implemented, permission-safe, recoverable, observable, data-safe, tested on supported platforms, resilient to expected device/network failures, and free of open P0/P1 defects. ARI SMART RO is **not yet declared 5/5 complete**.
-
-## Next execution order
-1. Build/verify the isolated restored-database migration rehearsal workflow and evidence bundle without touching production.
-2. Run tenant ownership + duplicate invoice rehearsal only against an isolated production-like copy when such a copy is available/authorized.
-3. Verify Render PITR and execute the isolated restore drill before production migration approval.
-4. Continue remaining business-write idempotency audit and close retry/race gaps.
-5. Certify Attendance + GPS on the required real-device matrix.
-6. Verify production media durability and crash telemetry.
-7. Continue 38-module certification, performance/memory, rollback/checksum and final UAT work.
