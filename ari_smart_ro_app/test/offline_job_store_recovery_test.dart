@@ -20,7 +20,7 @@ void main() {
     }
   });
 
-  test('corrupt primary is quarantined and last-known-good backup recovers', () async {
+  test('corrupt primary recovers every committed pending action', () async {
     await store.queueAction(
       type: 'STATUS',
       jobId: 101,
@@ -45,8 +45,8 @@ void main() {
     await primary.writeAsString('{broken-json', flush: true);
 
     final recovered = await store.pendingActions();
-    expect(recovered, hasLength(1));
-    expect(recovered.single['id'], 'action-1');
+    expect(recovered.map((row) => row['id']).toSet(),
+        equals(<String>{'action-1', 'action-2'}));
 
     final quarantine = Directory('${tempDir.path}/corrupt_state');
     expect(await quarantine.exists(), isTrue);
@@ -59,6 +59,27 @@ void main() {
     final event = jsonDecode(events.last) as Map<String, dynamic>;
     expect(event['reason'], 'PRIMARY_STATE_CORRUPT');
     expect(event['recovered_from'], 'offline_job_state_v1.backup.json');
+  });
+
+  test('missing primary after restart recovers the complete backup queue', () async {
+    await store.queueAction(
+      type: 'STATUS',
+      jobId: 102,
+      payload: const <String, dynamic>{'status': 'ACCEPTED'},
+      actionId: 'durable-first',
+    );
+    await store.queueAction(
+      type: 'GPS',
+      jobId: 102,
+      payload: const <String, dynamic>{'latitude': 28.61},
+      actionId: 'durable-second',
+    );
+    await File('${tempDir.path}/offline_job_state_v1.json').delete();
+
+    final restarted = OfflineJobStore(rootDirectoryOverride: tempDir);
+    expect((await restarted.pendingActions()).map((row) => row['id']).toSet(),
+        equals(<String>{'durable-first', 'durable-second'}));
+    expect(await File('${tempDir.path}/offline_job_state_v1.json').exists(), isTrue);
   });
 
   test('corrupt primary without backup is preserved before clean fallback', () async {

@@ -33,6 +33,24 @@ This verification includes the database-safe visible-ID concurrency/rollback gat
 
 **No production deployment, Render branch change, production database migration, production data mutation, `main` merge or release was performed during this cycle.**
 
+## 2026-09-29 continuation (verification pending on new code head)
+
+- CI #753 / `5ab3f6e` remains the last verified **code-bearing** baseline.
+- The subsequent `19f1f764` commit updated this status document only.
+- The Render connector listed one workspace (`My Workspace`) but required explicit
+  workspace selection before database inspection. No instance metadata, PITR
+  availability, backup or restored copy has yet been verified in this session.
+- The isolated restore, off-provider export, command and evidence procedure is
+  prepared in `docs/MAX_PRO_ISOLATED_RESTORE_REHEARSAL.md`. Its commands have
+  **not** been executed against a production-like restored database.
+- Offline queue audit found that the backup stored the preceding state, so a
+  corrupt primary could discard the latest committed pending action. A code
+  change and restart/corruption regressions are prepared; new exact-head CI
+  evidence must be recorded before marking this fix verified.
+- The broader service/complaint, inventory, purchase and wallet retry audit
+  remains open. No real restore rehearsal counts are available; do not infer
+  zero values for any category.
+
 ## Phase 0 — Release safety
 - [x] Identify actually deployed Render branch and live commit.
 - [x] Base hardening on live production state.

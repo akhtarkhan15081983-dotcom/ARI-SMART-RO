@@ -209,7 +209,18 @@ class OfflineJobStore {
       return tempState;
     }
 
-    if (!await file.exists()) return _emptyState();
+    if (!await file.exists() && !await temp.exists()) {
+      final recovered = await _readValidFile(await _backupFile());
+      if (recovered != null) {
+        await _recordRecoveryEvent(
+          reason: 'PRIMARY_STATE_MISSING',
+          recoveredFrom: _backupFileName,
+        );
+        await _writeState(recovered, preserveExistingAsBackup: false);
+        return recovered;
+      }
+      return _emptyState();
+    }
 
     final quarantinedPath = await _quarantineCorruptFile(file);
     final backup = await _backupFile();
@@ -245,14 +256,14 @@ class OfflineJobStore {
       throw const FileSystemException('Offline job state validation failed.');
     }
 
-    if (preserveExistingAsBackup && await file.exists()) {
-      final existing = await _readValidFile(file);
-      if (existing != null) {
-        final backupTemp = File('${backup.path}.tmp');
-        await backupTemp.writeAsString(jsonEncode(existing), flush: true);
-        if (await backup.exists()) await backup.delete();
-        await backupTemp.rename(backup.path);
-      }
+    // The backup must contain the new committed queue, not the previous
+    // snapshot. Otherwise a corrupt primary loses the last acknowledged
+    // local write. Publish the duplicate before replacing the primary.
+    if (preserveExistingAsBackup) {
+      final backupTemp = File('${backup.path}.tmp');
+      await backupTemp.writeAsString(payload, flush: true);
+      if (await backup.exists()) await backup.delete();
+      await backupTemp.rename(backup.path);
     }
 
     if (await file.exists()) await file.delete();
@@ -450,15 +461,16 @@ class OfflineJobStore {
             continue;
           }
 
-          changed = true;
           try {
             await deadLetters.append(
               action: action,
               reason: reason,
               detail: filePath.isEmpty ? null : filePath,
             );
+            changed = true;
           } catch (_) {
-            // Diagnostic failure does not permanently block later valid work.
+            // Until the dead letter is durable this action is still pending.
+            valid.add(action);
           }
         }
 
