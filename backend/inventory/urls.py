@@ -8,11 +8,11 @@ from .security_views import (
     TenantScopedEngineerBagIssueAPIView,
     TenantScopedMyBagAPIView,
     TenantScopedAdminEngineerBagAPIView,
-    TenantScopedMyPartRequestsAPIView,
     TenantScopedPartRequestApprovalInboxAPIView,
     TenantScopedPartRequestReviewAPIView,
     TenantScopedPartRequestFulfilAPIView,
 )
+from .idempotent_views import IdempotentTenantScopedMyPartRequestsAPIView
 from .strict_receive_view import StrictTenantScopedInventoryReceiveAPIView
 from .warehouse_security_views import (
     TenantScopedInventoryReceivingQueueAPIView,
@@ -31,7 +31,7 @@ urlpatterns = [
     path("inventory/my-bag/", TenantScopedMyBagAPIView.as_view(), name="my-bag"),
     path("inventory/admin/engineer-bags/", TenantScopedAdminEngineerBagAPIView.as_view(), name="admin-engineer-bags"),
     path("inventory/parts/", PartCatalogAPIView.as_view(), name="part-catalog"),
-    path("inventory/part-requests/", TenantScopedMyPartRequestsAPIView.as_view(), name="my-part-requests"),
+    path("inventory/part-requests/", IdempotentTenantScopedMyPartRequestsAPIView.as_view(), name="my-part-requests"),
     path("inventory/workflow/requests/", TenantScopedPartRequestApprovalInboxAPIView.as_view(), name="part-request-approval-inbox"),
     path("inventory/workflow/requests/<int:request_id>/review/", TenantScopedPartRequestReviewAPIView.as_view(), name="part-request-review"),
     path("inventory/workflow/requests/<int:request_id>/fulfil/", TenantScopedPartRequestFulfilAPIView.as_view(), name="part-request-fulfil"),
