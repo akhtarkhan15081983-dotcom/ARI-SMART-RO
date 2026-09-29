@@ -8,6 +8,3 @@ class TenancyConfig(AppConfig):
 
     def ready(self):
         from . import signals  # noqa: F401
-        from .id_sequences import install_human_readable_id_hardening
-
-        install_human_readable_id_hardening()
