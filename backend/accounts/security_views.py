@@ -15,7 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User
 from .serializers import UserSerializer
 from .services.sms import SMSDeliveryError, send_admin_login_otp
-from .views import LoginAPIView, ProductionScopedRateThrottle
+from .views import LoginAPIView, ProductionScopedRateThrottle, _security_event
 
 
 ADMIN_MFA_SALT = "ari-admin-login-mfa-v1"
@@ -37,9 +37,41 @@ def _mask_phone(phone):
 
 
 class SecureLoginAPIView(LoginAPIView):
-    """Normal login for users, plus optional second factor for Admin."""
+    """Normal login for users, plus employee device enforcement and Admin MFA."""
 
     def post(self, request):
+        # Employee phone migration is admin-controlled only. Never allow a
+        # client-supplied legacy device identifier to transfer the binding.
+        phone = str(request.data.get("phone") or "").strip()
+        candidate = User.objects.filter(phone=phone).first() if phone else None
+        if (
+            candidate is not None
+            and candidate.role not in {"ADMIN", "CUSTOMER"}
+            and not candidate.is_superuser
+            and candidate.active_login_device_id
+        ):
+            supplied_device = str(
+                request.headers.get("X-ARI-Device-ID", "") or ""
+            ).strip()[:64]
+            if supplied_device and supplied_device != candidate.active_login_device_id:
+                _security_event(
+                    request,
+                    "LOGIN_DEVICE_BLOCKED",
+                    user=candidate,
+                    reason="ADMIN_RESET_REQUIRED_FOR_NEW_PHONE",
+                )
+                return Response(
+                    {
+                        "success": False,
+                        "code": "EMPLOYEE_DEVICE_ALREADY_BOUND",
+                        "message": (
+                            "This employee ID is already active on another phone. "
+                            "Ask Admin to reset the login device before using a new phone."
+                        ),
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         response = super().post(request)
         if response.status_code != status.HTTP_200_OK:
             return response
