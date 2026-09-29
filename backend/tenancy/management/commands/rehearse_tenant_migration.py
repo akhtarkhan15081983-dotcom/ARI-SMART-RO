@@ -28,6 +28,27 @@ def _counts(models):
     return result
 
 
+def _projected_counts(models, decisions):
+    before = _counts(models)
+    resolved_by_model = {}
+    for decision in decisions:
+        if decision.status == "RESOLVED":
+            resolved_by_model[decision.model] = resolved_by_model.get(decision.model, 0) + 1
+
+    projected = {}
+    for model in models:
+        name = model.__name__
+        resolved = resolved_by_model.get(name, 0)
+        row = before[name]
+        projected[name] = {
+            "total": row["total"],
+            "owned": row["owned"] + resolved,
+            "unowned": max(0, row["unowned"] - resolved),
+            "resolved_by_rehearsal": resolved,
+        }
+    return projected
+
+
 def _mismatch(row, source, left_id, right_id):
     if left_id is None or right_id is None or left_id == right_id:
         return None
@@ -133,6 +154,10 @@ class Command(BaseCommand):
             "before_counts": {
                 "operational": _counts(OPERATIONAL_MODELS),
                 "warehouse": _counts(WAREHOUSE_MODELS),
+            },
+            "projected_after_counts": {
+                "operational": _projected_counts(OPERATIONAL_MODELS, operational_plan),
+                "warehouse": _projected_counts(WAREHOUSE_MODELS, inventory_plan),
             },
             "projected_backfill": {
                 "operational": summarize_plan(operational_plan),
