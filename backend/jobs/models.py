@@ -1,10 +1,12 @@
-from django.db import models
+from django.db import models, transaction
 
 from customers.models import Customer
 from employees.models import EmployeeProfile
 from assets.models import ROAsset
 from random import randint
 from django.conf import settings
+from django.utils import timezone
+from tenancy.id_allocator import acquire_allocator_lock, next_visible_number
 
 
 class Job(models.Model):
@@ -72,17 +74,15 @@ class Job(models.Model):
         verbose_name_plural = "Jobs"
 
     def save(self, *args, **kwargs):
-        from django.utils import timezone
-        if not self.job_id:
-            year = timezone.now().year
-            last_job = Job.objects.filter(job_id__startswith=f"JOB-{year}").order_by("id").last()
-            if last_job:
-                last_number = int(last_job.job_id.split("-")[-1])
-                new_number = last_number + 1
-            else:
-                new_number = 1
-            self.job_id = f"JOB-{year}-{new_number:06d}"
-        super().save(*args, **kwargs)
+        if self.job_id:
+            return super().save(*args, **kwargs)
+
+        year = timezone.now().year
+        with transaction.atomic():
+            acquire_allocator_lock(f"job:{year}")
+            number = next_visible_number(Job, "job_id", "JOB", year)
+            self.job_id = f"JOB-{year}-{number:06d}"
+            return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.job_id or f"Job {self.pk}"
