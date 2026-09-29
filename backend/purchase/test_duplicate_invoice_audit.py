@@ -3,9 +3,13 @@ import json
 from datetime import date
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
-from purchase.management.commands.audit_duplicate_supplier_invoices import duplicate_invoice_groups
+from purchase.management.commands.audit_duplicate_supplier_invoices import (
+    build_duplicate_invoice_report,
+    duplicate_invoice_groups,
+)
 from purchase.models import Purchase, Supplier
 from tenancy.models import Company
 
@@ -70,8 +74,60 @@ class DuplicateSupplierInvoiceAuditTests(TestCase):
         self.assertEqual(report["unique_identity_count"], 2)
         self.assertEqual(report["duplicate_group_count"], 1)
         self.assertEqual(report["duplicate_row_count"], 2)
+        self.assertEqual(report["blocking_issue_count"], 1)
+        self.assertEqual(report["rehearsal_status"], "BLOCKED")
+        self.assertFalse(report["constraint_ready"])
         self.assertEqual(
             report["duplicate_groups"][0]["purchase_ids"],
             [first.id, second.id],
         )
         self.assertIn("normalized invoice key", report["future_constraint_design"])
+
+    def test_clean_rehearsal_is_machine_verifiable(self):
+        self._purchase(self.company_a, self.supplier_a, "INV-001")
+        self._purchase(self.company_a, self.supplier_a2, "INV-001")
+        self._purchase(self.company_b, self.supplier_b, "INV-001")
+
+        report = build_duplicate_invoice_report()
+
+        self.assertEqual(report["duplicate_group_count"], 0)
+        self.assertEqual(report["blank_identity_row_count"], 0)
+        self.assertEqual(report["unresolved_company_row_count"], 0)
+        self.assertEqual(report["blocking_issue_count"], 0)
+        self.assertEqual(report["rehearsal_status"], "CLEAN")
+        self.assertTrue(report["constraint_ready"])
+
+        output = io.StringIO()
+        call_command(
+            "audit_duplicate_supplier_invoices",
+            fail_on_conflict=True,
+            stdout=output,
+        )
+        self.assertEqual(json.loads(output.getvalue())["rehearsal_status"], "CLEAN")
+
+    def test_fail_on_conflict_blocks_duplicate_identity(self):
+        self._purchase(self.company_a, self.supplier_a, "INV 200")
+        self._purchase(self.company_a, self.supplier_a, "inv200")
+
+        with self.assertRaises(CommandError):
+            call_command(
+                "audit_duplicate_supplier_invoices",
+                fail_on_conflict=True,
+                stdout=io.StringIO(),
+            )
+
+    def test_blank_identity_and_unresolved_company_are_explicit_blockers(self):
+        blank = self._purchase(self.company_a, self.supplier_a, "   ")
+        legacy_supplier = Supplier.objects.create(company=None, name="Legacy Supplier")
+        unresolved = self._purchase(None, legacy_supplier, "LEGACY-001")
+
+        report = build_duplicate_invoice_report()
+
+        self.assertEqual(report["duplicate_group_count"], 0)
+        self.assertEqual(report["blank_identity_purchase_ids"], [blank.id])
+        self.assertEqual(report["unresolved_company_purchase_ids"], [unresolved.id])
+        self.assertEqual(report["blank_identity_row_count"], 1)
+        self.assertEqual(report["unresolved_company_row_count"], 1)
+        self.assertEqual(report["blocking_issue_count"], 2)
+        self.assertEqual(report["rehearsal_status"], "BLOCKED")
+        self.assertFalse(report["constraint_ready"])
