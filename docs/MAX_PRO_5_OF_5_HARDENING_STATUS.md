@@ -10,11 +10,11 @@ ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 and certificatio
 
 ## Latest exact code-bearing verification
 
-**Verified code SHA:** `6961bf8f7f4181a1b80af10353cea200bd486606`
-**CI:** #758
-**Run ID:** `36538291546`
+**Verified code SHA:** `3c7338c464555be778a32c05fb1d9451d98dfd45`
+**CI:** #763
+**Run ID:** `36550641895`
 
-CI #758 passed all required exact-head code-bearing gates:
+CI #763 passed all required exact-head code-bearing gates:
 
 - Django deployment/migration checks: PASS
 - full PostgreSQL-backed backend regression: PASS
@@ -72,6 +72,35 @@ This verification includes the database-safe visible-ID concurrency/rollback gat
   disk. This metadata does not expose the instance's Recovery page, available
   PITR timestamps, or exports. Those capabilities remain unverified for this
   particular instance. No restored instance was listed or used in this check.
+- Commit `705493f3` added receipt-backed retries for inventory return and
+  part-request fulfilment. Tests cover replay ACK and no second movement/event,
+  including a late return retry after that physical item has been reissued.
+  Exact-head CI #760 (run `36548450938`) passed all four jobs. CI #761 was
+  cancelled by a subsequent hardening-branch push; it is not cited as a pass.
+- Commit `6bc3b4d2` added receipt-backed manual and OCR Purchase creation;
+  retries with the same action ID no longer generate a second NO-BILL Purchase
+  and stock rows. Changed payload with the same action ID returns conflict. Commit
+  `b8953b86` made Service completion preserve its original timestamp and
+  Complaint resolve/close retries preserve terminal state. Full CI #762
+  (run `36549723096`) passed all four jobs for both commits together.
+- Commit `3c7338c4` added wallet redemption action receipts and an owner lock
+  plus a duplicate-reference debit guard for non-rent transactions. The
+  regression covers replay, one debit, and changed action ID on the same bill.
+  Exact-head CI #763 (run `36550641895`) passed all four jobs.
+- `docs/MAX_PRO_RESTORE_REHEARSAL_EVIDENCE_TEMPLATE.json` explicitly keeps
+  unrehearsed counts null and the gate OPEN. All three Bash blocks in the
+  isolated restore runbook passed syntax checking. This environment has no
+  `pg_dump`, `pg_restore`, or `psql`; no export, restore, or SQL rehearsal ran.
+- Offline action tests cover ACK removal only after success, restart recovery,
+  corrupt-state quarantine, duplicate local IDs, concurrent enqueue, and
+  preservation of unrelated valid pending actions. Device kill/reboot and
+  extended offline field tests remain open.
+- End-to-end inventory and purchase retry certification is still OPEN: the
+  current Flutter `InventoryWorkflowService` does not yet send stable
+  `X-ARI-Action-ID` values for purchase, OCR confirm, fulfil or receiving.
+  The server receipt tests establish protection only for requests carrying
+  that header. A lost response from the current app can still be retried as
+  a distinct write, especially for blank-invoice Purchases.
 - The broader service/complaint, inventory, purchase and wallet retry audit
   remains open. No real restore rehearsal counts are available; do not infer
   zero values for any category.
@@ -81,7 +110,7 @@ This verification includes the database-safe visible-ID concurrency/rollback gat
 - [x] Base hardening on live production state.
 - [x] Keep work isolated on hardening branch.
 - [x] CI gates enabled on `hardening/**`.
-- [x] Latest exact code-bearing integrity state verified by CI #758.
+- [x] Latest exact code-bearing integrity state verified by CI #763.
 - [ ] Protect final release branch from direct unverified changes.
 - [ ] Consolidate intentionally retained divergent Windows work before final RC.
 - [ ] Produce one immutable Release Candidate commit, release notes and checksums.

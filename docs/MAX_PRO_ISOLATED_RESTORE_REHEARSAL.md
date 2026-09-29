@@ -98,6 +98,10 @@ unchanged. Any unexplained mismatch blocks the gate.
 
 ## Evidence manifest
 
+Start from `docs/MAX_PRO_RESTORE_REHEARSAL_EVIDENCE_TEMPLATE.json` and keep
+unknown values `null`. Keep raw command JSON and row identifiers in restricted
+operator storage; publish only redacted aggregate evidence.
+
 Record: UTC time; branch and commit; source backup time and checksum; source
 and target instance IDs (redacted for public report); PostgreSQL versions;
 restore duration; schema migration heads; command lines, exit codes and JSON
