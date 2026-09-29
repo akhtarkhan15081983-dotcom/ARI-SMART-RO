@@ -14,7 +14,7 @@ ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 item below is ve
 - [x] Rebase hardening baseline to the live production commit.
 - [x] Create isolated hardening branch.
 - [x] Enable CI gates on `hardening/**`: backend checks/tests, Flutter analyze/tests, Android debug compile, container build and Windows build/installer.
-- [x] Code-bearing hardening CI #624 passed all required jobs at `ee11b4e27596865509f09fcccd17f4e57c95ef8c`: backend, Flutter analyze/tests, Android debug APK compile/upload, production container, Windows release/safe-build/startup smoke/installer. Windows Authenticode steps were skipped because trusted signing credentials are not configured.
+- [x] Tenant-ownership hardening CI #653 passed all required jobs at `7c21d4edd65403f79af94a62a03a0d59f5f81c4d`: Django deployment/migration checks, 411 backend tests, Flutter analyze/tests, Android debug APK compile/upload, production container, Windows release/safe-build/startup smoke/installer. Windows Authenticode steps were skipped because trusted signing credentials are not configured.
 - [ ] Protect final release branch from direct unverified changes.
 - [ ] Consolidate intentionally retained divergent Windows work before final RC.
 - [ ] Produce a single Release Candidate commit and immutable release notes.
@@ -29,7 +29,7 @@ ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 item below is ve
 - [ ] Failed background/offline work survives app restart and network loss on device.
 - [ ] Offline location history retained for at least 24 hours at normal cadence — implementation and CI verification complete; real-device 24h/reboot/app-killed verification pending.
 - [ ] Offline location queue drains safely after reconnect without starving current tracking — implementation and CI verification complete; device stress verification pending.
-- [ ] Synced business actions use idempotency/acknowledgement — GPS, jobs/installation and rent-payment retry paths now have idempotency foundations; remaining business actions still require audit.
+- [ ] Synced business actions use idempotency/acknowledgement — GPS, jobs/installation and rent-payment retry paths have idempotency foundations; remaining business actions still require audit.
 - [ ] Corrupt local queue/state preserved for diagnostics rather than silently discarded where recoverable.
 
 ### Current verified facts
@@ -38,51 +38,82 @@ ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 item below is ve
 - Flutter crash/error telemetry exists and sanitizes sensitive tokens/password-like values.
 - Offline jobs/photos/signatures have local queue/storage support.
 - Live location cadence is 20 seconds.
-- Durable mobile GPS queue now uses append-only JSONL in app-support storage instead of putting thousands of points in secure key-value storage.
-- Queue retains up to 6000 valid points, approximately 33 hours at the normal 20-second cadence; compaction is periodic rather than performed on every GPS append.
-- Reconnect draining uploads a bounded 200-point batch per tracking tick so backlog replay cannot starve current-position capture.
-- New backend batch endpoint accepts up to 500 delayed points per request, validates coordinate/time/shift boundaries, and stores route-history points idempotently without moving the current live marker backwards.
-- Backend batch backfill window is bounded to 72 hours.
-- Regression tests cover delayed-point persistence, duplicate retry idempotency and rejection outside the attendance window.
-- Legacy 30-point secure-storage backlog is migrated into the durable queue.
-- Rent payment POST now supports `X-ARI-Action-ID`; the server atomically claims/completes a receipt with the payment and replays a completed response on retry instead of inserting a second ledger transaction.
-- Flutter rent payment sends a stable action ID and performs one transient timeout/client retry with the same ID, covering the response-lost-after-commit scenario.
+- Durable mobile GPS queue uses append-only JSONL in app-support storage, retains up to 6000 valid points (about 33 hours at 20-second cadence), and drains a bounded 200-point batch per tracking tick.
+- Backend delayed-location batch accepts up to 500 points, validates coordinate/time/shift boundaries, has a 72-hour backfill limit, persists route points idempotently and does not move current live marker backwards.
+- Rent payment supports `X-ARI-Action-ID`; server receipt + ledger write are atomic and Flutter retries a transient lost-response case once with the same ID.
 - Production Render Postgres currently reports status `available`, PostgreSQL 18, Singapore, 1 GB disk, `0.1c-256mb`, no HA and no read replica.
 - Backup/PITR availability is not yet marked verified because the actual Recovery page / restore drill has not been proven.
 - Recovery runbook: `docs/PRODUCTION_BACKUP_RECOVERY_RUNBOOK.md`.
 - Max-Pro recovery targets: database RPO <= 15 minutes once PITR is verified; RTO <= 2 hours; daily off-Render logical backup; monthly restore drill.
 
+## Explicit tenant ownership — implemented on hardening branch only
+Nullable indexed `company` ownership now exists in model/migration state for:
+
+- `Customer`
+- `Job`
+- `Service`
+- `Complaint`
+
+This is an expand-only hardening-branch schema. **No production migration has been run.**
+
+### Safe backfill tooling
+`python manage.py backfill_tenant_ownership` is dry-run by default.
+
+- no phone-number ownership inference;
+- evidence is derived from explicit employee/company, linked operational records and unambiguous active memberships;
+- `RESOLVED` rows are eligible for write only with explicit `--apply`;
+- `UNRESOLVED` rows stay unchanged;
+- conflicting company evidence is reported as `CONFLICT` and stays unchanged;
+- optional JSON audit report is supported;
+- tests cover resolved, unresolved, conflict, dry-run/no-write and apply-only-resolved behavior.
+
+### Dual-write / transition guards
+- staff-created customers receive current workspace ownership;
+- bulk-imported customers receive current workspace ownership;
+- customer assignment can stamp a legacy null-owned customer only into the authenticated workspace;
+- Walk-In Customer + Installation Job inherit the logged-in engineer workspace; tenant-less legacy actors remain restricted to tenant-less records;
+- Service company is server-controlled/read-only in serializer input and is dual-written from authenticated workspace;
+- Complaint creation preserves original customer GPS-copy and engineer-assignment behavior while enforcing workspace ownership;
+- Service/Complaint workflow-generated Jobs inherit and validate source company ownership;
+- Rent management, rent writes and rent-history reads prefer explicit customer company ownership with narrow null+same-assignment legacy fallback;
+- customer QR guessed-ID access is workspace-guarded.
+
 ## Phase 2 — Core operational certification
 - [ ] Attendance
 - [ ] Employee Live Location / Route History — implementation/CI strong; field certification pending.
 - [ ] Face & Device Security
-- [ ] Customer Management — cross-company assignment guards added; explicit tenant ownership migration still pending.
-- [ ] My Jobs / Secure Field Work — engineer mutation paths assignment-scoped; admin emergency OTP tenant-scoped.
-- [ ] Service — customer shared-phone isolation and engineer/company write guards added; explicit tenant ownership migration still pending.
-- [ ] Complaint Management — assigned-engineer visibility, shared-phone isolation, cross-company assignment and generic workflow-bypass guards added; explicit tenant ownership migration still pending.
-- [ ] Rent Management — company-bound staff list is fail-closed to customers assigned inside the active workspace until `Customer.company` exists.
-- [ ] Payment History / Ledger — tenant-scoped reads/direct-ID writes plus atomic rent-payment retry idempotency implemented and CI-covered.
-- [ ] Inventory Control — engineer issue/bag/part-request workflows tenant-scoped; stock/purchase/report tenant ownership remains a structural P1.
-- [ ] Engineer Bag / Part Request — company-scoped issue/list/review/fulfil guards implemented and CI-covered by the full backend suite.
+- [ ] Customer Management — explicit nullable ownership + backfill tooling/dual-write implemented and CI-green; migration rehearsal/cutover pending.
+- [ ] My Jobs / Secure Field Work — assignment scope + explicit nullable Job ownership implemented; migration rehearsal pending.
+- [ ] Service — shared-phone isolation, company write guards and explicit nullable ownership implemented; migration rehearsal pending.
+- [ ] Complaint Management — assignment/workflow guards, GPS behavior preservation and explicit nullable ownership implemented; migration rehearsal pending.
+- [ ] Rent Management — explicit Customer company preferred; cross-tenant direct-ID reads/writes fail closed; production migration rehearsal pending.
+- [ ] Payment History / Ledger — tenant-scoped reads/direct-ID writes plus atomic retry idempotency implemented and CI-covered.
+- [ ] Inventory Control — engineer issue/bag/part-request flows tenant-scoped; purchase/warehouse root ownership remains a structural P1.
+- [ ] Engineer Bag / Part Request — company-scoped issue/list/review/fulfil guards implemented and CI-covered.
 
 ## Tenant / RBAC hardening evidence
 - Customer assignment cannot target an active employee in another company.
 - Admin emergency Job OTP cannot be retrieved by guessed primary key when the job engineer belongs to another company.
-- Service customer access no longer uses phone number alone when duplicate/shared phone records exist; durable `Customer.user` linkage is preferred and legacy claiming is deterministic.
-- Service staff writes validate the target engineer workspace; engineers cannot rewrite service ownership/link fields through generic updates.
-- Complaint assignment validates the engineer workspace; generic complaint updates cannot bypass customer/status/job/service workflow ownership protections.
-- Rent management hides other-company customers using an interim fail-closed assigned-engineer scope.
-- Rent payment write/history endpoints apply tenant scope before customer-ID filtering.
-- Inventory engineer-bag issue/list and part-request inbox/review/fulfil endpoints are workspace-scoped.
+- Service customer access no longer relies on shared phone number alone; durable `Customer.user` linkage is preferred and legacy claiming is deterministic.
+- Service staff writes validate target workspace; engineers cannot rewrite service ownership/link fields through generic updates.
+- Complaint assignment validates workspace; generic update cannot bypass customer/status/job/service workflow ownership rules.
+- Rent management/payment/history use explicit ownership first and narrow same-workspace legacy fallback only when company is null.
+- Inventory engineer-bag and part-request operational paths are workspace-scoped.
 - Legacy pre-tenancy compatibility is intentionally narrow: tenant-less actors may only target tenant-less records; there is no all-company fallback.
-- Regression coverage includes cross-tenant customer assignment, complaint assignment/update bypass, admin job OTP, rent visibility/direct-ID payment isolation, shared-phone complaint isolation and rent-payment replay idempotency.
+- CI #653 validates the full 411-test backend suite after tenant ownership changes.
 
-## Structural P1 — explicit tenant ownership
-`Customer`, `Job`, `Service` and `Complaint` do not yet have a consistent direct `company` ownership key. `Purchase`, `PurchaseItem`/purchase-root stock and `InventoryItem` also lack direct tenant ownership. Interim assignment-derived guards reduce exposure but cannot safely classify unassigned customers or warehouse stock.
+## Structural P1 — purchasing / warehouse tenant ownership
+The operational Customer/Job/Service/Complaint schema now has nullable explicit company ownership on the hardening branch, but production data has not been rehearsed/backfilled/cut over.
 
-Safe migration design: `docs/MAX_PRO_TENANT_OWNERSHIP_MIGRATION_PLAN.md`.
+`Purchase`, `PurchaseItem`, `InventoryItem`, `Supplier` and warehouse-root reporting still lack explicit tenant ownership. Engineer-bag inference is insufficient because stock exists before issue and after return.
 
-The plan is expand-only first: nullable indexed company keys, dry-run evidence backfill, conflict quarantine, dual writes and tenant-scoped reads, then constraints only after restore rehearsal and reconciliation. No production schema migration has been run.
+Inventory/purchase design: `docs/MAX_PRO_INVENTORY_TENANT_OWNERSHIP_PLAN.md`.
+Tenant migration design: `docs/MAX_PRO_TENANT_OWNERSHIP_MIGRATION_PLAN.md`.
+
+Required next step is an isolated restored-database rehearsal before any production schema action.
+
+## Additional data-integrity P1
+Operational human-readable ID generation for Customer/Job/Service/Complaint still uses a "read last number then +1" pattern. Concurrent creates can race. This needs a database-safe sequence/allocation strategy and concurrency tests before final 5/5 certification.
 
 ## Phase 3 — Corporate modules
 - [ ] Employee HRMS
@@ -104,7 +135,7 @@ The plan is expand-only first: nullable indexed company keys, dry-run evidence b
 - [ ] App-killed/reboot/background-location/permission-change tests passed.
 - [ ] Offline→online sync stress test passed.
 - [ ] Database backup + restore drill passed.
-- [ ] Security/RBAC regression passed on a migration-ready explicit-tenant schema.
+- [ ] Security/RBAC regression passed after production-like migration rehearsal.
 - [ ] Migration rehearsal passed on production-like data.
 - [ ] Performance/memory checks passed.
 - [x] Windows build/installer CI path verified; trusted Authenticode signing remains separately open.
@@ -116,10 +147,11 @@ The plan is expand-only first: nullable indexed company keys, dry-run evidence b
 A feature existing in code is not enough. A module is 5/5 only when implemented, permission-safe, recoverable, observable, tested on supported platforms, resilient to expected network/device failures, data-safe, and free of P0/P1 defects.
 
 ## Next actions
-1. Rehearse the explicit tenant-ownership migration on an isolated restored copy before any production schema change.
-2. Extend tenant ownership to purchasing/warehouse stock roots, then scope inventory receiving/QR/summary/Excel reporting without inference.
-3. Verify Render/PostgreSQL PITR on the actual production Recovery page and perform an isolated restore drill.
-4. Verify production media persistence/object storage.
-5. Certify Attendance + Location on real devices, including app-killed, reboot, long-offline and reconnect stress tests.
-6. Harden corrupt offline job-state recovery/quarantine and continue idempotency audit for remaining offline business actions.
-7. Continue core certification through Customer → Jobs/Service/Complaint → Rent/Payments → Inventory after the tenant migration rehearsal.
+1. Rehearse the explicit Customer/Job/Service/Complaint tenant migration on an isolated restored production-like database; do not touch production.
+2. Replace race-prone Customer/Job/Service/Complaint human-readable ID allocation with a database-safe strategy and add concurrency tests.
+3. Implement expand-first Purchase/Supplier/PurchaseItem/InventoryItem tenant ownership on the hardening branch, then dry-run conflict/backfill tests.
+4. Scope inventory receiving/code generation/QR/summary/Excel reports by explicit warehouse company ownership after that schema exists.
+5. Verify Render/PostgreSQL PITR and perform an isolated restore drill before any production migration approval.
+6. Verify production media persistence/object storage.
+7. Certify Attendance + Location on real Vivo S20/Vivo T3/Redmi 8A-class devices, including app-killed, reboot, long-offline and reconnect stress tests.
+8. Continue remaining offline/idempotency and 38-module certification work.
