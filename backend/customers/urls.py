@@ -3,7 +3,7 @@ from django.urls import path
 from .bulk_import import CustomerBulkImportAPIView, CustomerQRCodeAPIView
 from .edit_views import CustomerUpdateAPIView
 from .rent_management_optimized import RentManagementAPIView
-from .security_views import TenantScopedAssignCustomerAPIView
+from .security_views import TenantScopedAssignCustomerAPIView, TenantScopedRentPaymentCreateAPIView
 from .views import (
     CustomerListAPIView,
     MyCustomersAPIView,
@@ -13,7 +13,6 @@ from .views import (
     CustomerSearchAPIView,
     WalkInCustomerAPIView,
     CustomerRentAPIView,
-    RentPaymentCreateAPIView,
     RentPaymentHistoryAPIView,
     CustomerProfileAPIView,
     MyROAPIView,
@@ -46,6 +45,6 @@ urlpatterns = [
     path("<int:pk>/assign/", TenantScopedAssignCustomerAPIView.as_view(), name="customer-assign"),
     path("rent/", CustomerRentAPIView.as_view(), name="customer-rent"),
     path("rent-management/", RentManagementAPIView.as_view(), name="rent-management"),
-    path("rent-management/payment/", RentPaymentCreateAPIView.as_view(), name="rent-management-payment"),
+    path("rent-management/payment/", TenantScopedRentPaymentCreateAPIView.as_view(), name="rent-management-payment"),
     path("rent-management/payments/", RentPaymentHistoryAPIView.as_view(), name="rent-management-payment-history"),
 ]
