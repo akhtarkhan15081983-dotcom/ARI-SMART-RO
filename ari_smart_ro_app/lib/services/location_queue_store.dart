@@ -14,6 +14,8 @@ class LocationQueueStore {
   static const String _fileName = 'pending_location_points_v2.jsonl';
   static const int maxRetainedPoints = 6000; // ~33h at a 20-second cadence.
   static const int defaultBatchSize = 200;
+  static const int _compactEveryAppends = 250;
+  static int _appendsSinceCompactionCheck = 0;
 
   static Future<File> _queueFile() async {
     final root = await getApplicationSupportDirectory();
@@ -31,7 +33,12 @@ class LocationQueueStore {
       mode: FileMode.append,
       flush: true,
     );
-    await _trimIfNeeded(file);
+
+    _appendsSinceCompactionCheck++;
+    if (_appendsSinceCompactionCheck >= _compactEveryAppends) {
+      _appendsSinceCompactionCheck = 0;
+      await _trimIfNeeded(file);
+    }
   }
 
   static Future<List<Map<String, dynamic>>> readBatch({
