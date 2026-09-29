@@ -5,7 +5,6 @@ from .views import (
     EmployeeProfileAPIView,
     EngineerListAPIView,
     AssignmentEmployeeListAPIView,
-    FaceEnrollmentAPIView,
     AdminFaceEnrollmentListAPIView,
     EmployeeManagementAPIView,
     EmployeeCustomerEditPermissionAPIView,
@@ -21,6 +20,7 @@ from .views import (
 from .reliability import (
     AttendanceAwareLiveLocationAPIView,
     CombinedFaceEnrollmentControlAPIView,
+    SecureFaceEnrollmentAPIView,
 )
 from .location_batch import EmployeeLocationBatchAPIView
 from .route_history import EmployeeDayRouteAPIView
@@ -131,7 +131,7 @@ urlpatterns = [
     ),
     path(
         "employees/face-enrollment/",
-        FaceEnrollmentAPIView.as_view(),
+        SecureFaceEnrollmentAPIView.as_view(),
         name="face-enrollment",
     ),
     path(
