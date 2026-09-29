@@ -6,217 +6,290 @@
 **Started:** 2026-09-29
 
 ## Non-negotiable release rule
-ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 item below is verified with test evidence. `main` and live production branches are not active development branches.
+ARI SMART RO must not be declared 5/5 Max-Pro until every P0/P1 and certification gate is verified with evidence. Code existence or a green CI run alone is not sufficient for overall 5/5. `main` and live production are not active hardening branches.
+
+## Latest exact code-bearing verification
+
+**Verified code SHA:** `769f04041d1df5acee07e554efbf85f3292fff9e`  
+**CI:** #750  
+**Run ID:** `36530880757`
+
+CI #750 passed all required code-bearing gates:
+
+- Django deployment checks: PASS
+- migration drift check (`makemigrations --check --dry-run`): PASS / no changes detected
+- full PostgreSQL-backed backend regression: PASS — **450 tests, 0 failures**
+- Flutter analyze: PASS
+- Flutter tests: PASS
+- Android debug APK compile: PASS
+- shareable APK preparation/upload: PASS
+- production container build: PASS
+- Windows release build: PASS
+- Windows safe-build verification: PASS
+- Windows startup smoke: PASS
+- Setup.exe build/upload: PASS
+- Windows Authenticode install/sign/verify steps: SKIPPED because trusted signing credentials are not configured
+
+The previous #749 backend failure was a test-fixture problem caused by `reset_sequences=True` combined with CI `--keepdb`; it occurred before inventory business code ran. The fixture was made sequence-agnostic and the corrected exact-head suite passed in #750.
+
+**No production deployment, Render branch change, production database migration, production data mutation, `main` merge or release was performed during this cycle.**
 
 ## Phase 0 — Release safety
-- [x] Identify the actually deployed Render branch.
-- [x] Confirm live Render production is one commit newer than `deploy/v1.0.48-production`.
-- [x] Rebase hardening baseline to the live production commit.
-- [x] Create isolated hardening branch.
-- [x] Enable CI gates on `hardening/**`: backend checks/tests, Flutter analyze/tests, Android debug compile, container build and Windows build/installer.
-- [x] Latest code-bearing integrity CI #734 / run `36527660460` passed all required jobs at `c4c40622063c28949f85004e85256bfb8b8678ce`: Django deployment/migration checks, full backend suite, Flutter analyze/tests, Android debug APK compile/upload, production container, Windows release/safe-build/startup smoke/installer. Windows Authenticode steps were skipped because trusted signing credentials are not configured.
+- [x] Identify actually deployed Render branch and live commit.
+- [x] Base hardening on live production state.
+- [x] Keep work isolated on hardening branch.
+- [x] CI gates enabled on `hardening/**`.
+- [x] Latest exact code-bearing integrity state verified by CI #750.
 - [ ] Protect final release branch from direct unverified changes.
 - [ ] Consolidate intentionally retained divergent Windows work before final RC.
-- [ ] Produce a single Release Candidate commit and immutable release notes.
+- [ ] Produce one immutable Release Candidate commit, release notes and checksums.
 
 ## Phase 1 — Crash, data and recovery safety
 - [ ] PostgreSQL automated backups/PITR verified on the actual production Recovery page.
 - [ ] Restore drill completed from a real backup into an isolated DB.
-- [x] Define/document Max-Pro RPO/RTO targets.
-- [ ] Media storage verified persistent/object storage; no critical file on ephemeral disk.
-- [ ] Backup/restore procedure tested before destructive migrations.
-- [ ] Client/server crash telemetry verified end-to-end.
-- [ ] Failed background/offline work survives app restart and network loss on a real device.
-- [ ] Offline location history retained for at least 24 hours at normal cadence — implementation and CI verification complete; real-device 24h/reboot/app-killed verification pending.
-- [ ] Offline location queue drains safely after reconnect without starving current tracking — implementation and CI verification complete; device stress verification pending.
-- [ ] Synced business actions use idempotency/acknowledgement — GPS, jobs/installation, rent payment and Part Request create retry paths have idempotency coverage; remaining business writes still require audit.
-- [x] Corrupt offline job state is quarantined/reported instead of silently discarded where recoverable; valid `.tmp` crash state and last-known-good backup recovery are CI-covered.
-- [x] Offline job-state read/modify/write is serialized inside one Dart process and across store/process instances using a per-root in-process mutation queue plus OS file lock; same-instance and two-store concurrency tests are CI-green.
-- [x] Offline ACK removal test proves only the confirmed action ID is removed; unrelated pending actions remain queued.
+- [x] Max-Pro RPO/RTO targets documented.
+- [ ] Production media persistence/object storage verified.
+- [ ] Backup/restore procedure demonstrated before destructive production migrations.
+- [ ] Client/server crash telemetry verified end-to-end on real devices.
+- [ ] Failed background/offline work survives real-device restart/network loss certification.
+- [ ] 24h location queue and reconnect drain verified on real devices; implementation/CI evidence exists.
+- [x] Corrupt offline job state quarantine/recovery implemented and CI-covered.
+- [x] Offline job-state mutation serialization/locking implemented and CI-covered.
+- [x] Offline ACK regression proves unrelated pending actions remain queued.
 
-### Current verified facts
-- Production settings require configured DB when DEBUG is disabled; SQLite is development-only.
-- Production media requires explicit persistent filesystem or S3-style storage.
-- Flutter crash/error telemetry exists and sanitizes sensitive tokens/password-like values.
-- Offline jobs/photos/signatures have local queue/storage support.
-- Live location cadence is 20 seconds.
-- Durable mobile GPS queue uses append-only JSONL in app-support storage, retains up to 6000 valid points (about 33 hours at 20-second cadence), and drains a bounded 200-point batch per tracking tick.
-- Backend delayed-location batch accepts up to 500 points, validates coordinate/time/shift boundaries, has a 72-hour backfill limit, persists route points idempotently and does not move current live marker backwards.
-- Rent payment supports `X-ARI-Action-ID`; server receipt + ledger write are atomic and Flutter retries a transient lost-response case once with the same ID.
-- Part Request create now supports `X-ARI-Action-ID`; a lost-response retry replays the first successful response and does not create a second request row.
-- Rent integrity regression coverage includes partial payment consistency, overpayment rollback, failed action-ID reuse and rejection of a second payment that exceeds the remaining balance.
-- `CustomerRentHistory` has a database uniqueness rule for `(customer, rent_month)`.
-- Production Render Postgres currently reports status `available`, PostgreSQL 18, Singapore, 1 GB disk, `0.1c-256mb`, no HA and no read replica.
-- Backup/PITR availability is not yet marked verified because the actual Recovery page / restore drill has not been proven.
-- Recovery runbook: `docs/PRODUCTION_BACKUP_RECOVERY_RUNBOOK.md`.
-- Max-Pro recovery targets: database RPO <= 15 minutes once PITR is verified; RTO <= 2 hours; daily off-Render logical backup; monthly restore drill.
+### Current recovery facts
+- production mode requires configured PostgreSQL; SQLite is development-only;
+- production media requires persistent filesystem or S3-style storage;
+- recovery runbook: `docs/PRODUCTION_BACKUP_RECOVERY_RUNBOOK.md`;
+- target DB RPO <= 15 minutes once PITR is verified;
+- target core RTO <= 2 hours;
+- daily off-provider logical backup and monthly restore drill are required;
+- PITR and a real restore drill are still not marked verified.
 
-## Human-readable operational ID integrity — CI verified
-Customer, Job, Service and Complaint visible IDs no longer rely on an unlocked "last row + 1" read.
+# Exact completion gate: database-safe visible IDs — PASS
 
+Customer, Job, Service and Complaint visible-ID allocation no longer relies on an unlocked `last + 1` read.
+
+Implementation:
 - allocation occurs inside `transaction.atomic()`;
-- PostgreSQL transaction advisory locks serialize each visible-ID namespace/year;
-- the allocator scans the existing visible high-water mark under the lock, preserving imported/legacy IDs and avoiding reuse/collision;
-- existing external formats remain unchanged: `CUS-YYYY-NNNNNN`, `ARI-YYYY-NNNNNN`, `JOB-YYYY-NNNNNN`, `SER-YYYY-NNNNNN`, `CMP-YYYY-NNNNNN`;
-- CI #734 includes direct simultaneous-create regression tests for Customer, Job, Service and Complaint and verifies no duplicate visible IDs under concurrent creation;
-- Customer high-water regression verifies allocation starts above an imported legacy identifier.
+- PostgreSQL transaction advisory locks serialize each namespace/year;
+- allocation reads the existing visible high-water mark while locked;
+- imported/legacy identifiers are preserved;
+- no new production sequence table is required.
 
-This implementation remains schema-free; no new production sequence table is required.
+External formats remain unchanged:
+- Customer: `CUS-YYYY-NNNNNN`
+- Customer card: `ARI-YYYY-NNNNNN`
+- Job: `JOB-YYYY-NNNNNN`
+- Service: `SER-YYYY-NNNNNN`
+- Complaint: `CMP-YYYY-NNNNNN`
 
-## Explicit operational tenant ownership — implemented on hardening branch only
-Nullable indexed `company` ownership exists in model/migration state for:
+Exact CI #750 evidence:
+- **20 simultaneous Customer creates**: all visible IDs unique and all card IDs unique;
+- **20 simultaneous Job creates**: all visible IDs unique;
+- **20 simultaneous Service creates**: all visible IDs unique;
+- **20 simultaneous Complaint creates**: all visible IDs unique;
+- each concurrency test mixes two tenants 10 + 10 and preserves the correct company on every created row;
+- exact visible prefix/format checks pass;
+- forced transaction rollback is tested for all four models;
+- rolled-back visible IDs do not leave persisted rows and may be safely reused only because the entire allocation transaction rolled back;
+- legacy high-water regression proves new Customer/card allocation starts above an imported high identifier;
+- no duplicate visible-ID `IntegrityError` escaped the tested create paths.
 
-- `Customer`
-- `Job`
-- `Service`
-- `Complaint`
+**Visible-ID race completion gate: PASS.**
 
-This is an expand-only hardening-branch schema. **No production migration has been run.**
+# Explicit operational tenant ownership — implemented, production rehearsal pending
+Nullable indexed `company` ownership exists in hardening-branch model/migration state for:
+- Customer
+- Job
+- Service
+- Complaint
 
-### Safe operational backfill tooling
-`python manage.py backfill_tenant_ownership` is dry-run by default.
+`python manage.py backfill_tenant_ownership` is dry-run by default:
+- never infers ownership from phone number;
+- reports `ALREADY_OWNED`, `RESOLVED`, `UNRESOLVED` and `CONFLICT` cases;
+- writes only explicit resolved rows when `--apply` is supplied;
+- unresolved/conflicting rows remain unchanged;
+- JSON evidence output is supported.
 
-- no phone-number ownership inference;
-- evidence is derived from explicit employee/company, linked operational records and unambiguous active memberships;
-- `RESOLVED` rows are eligible for write only with explicit `--apply`;
-- `UNRESOLVED` rows stay unchanged;
-- conflicting company evidence is reported as `CONFLICT` and stays unchanged;
-- optional JSON audit report is supported;
-- tests cover resolved, unresolved, conflict, dry-run/no-write and apply-only-resolved behavior.
+**No production migration has been run.**
 
-## Explicit purchase / warehouse tenant ownership — implemented on hardening branch only
-Expand-only nullable indexed `company` ownership exists for:
+# Explicit purchase / warehouse tenant ownership — implemented, production rehearsal pending
+Nullable indexed `company` ownership exists for:
+- Supplier
+- Purchase
+- PurchaseItem
+- InventoryItem
+- EngineerBagItem
+- InventoryAuditLog
+- PartRequest
 
-- `Supplier`
-- `Purchase`
-- `PurchaseItem`
-- `InventoryItem`
-- `EngineerBagItem`
-- `InventoryAuditLog`
-- `PartRequest`
-
-Migrations:
+Expand migrations:
 - `purchase/0004_tenant_ownership_expand.py`
 - `inventory/0009_tenant_ownership_expand.py`
 
-**Neither migration has been run on production.**
+`python manage.py backfill_inventory_tenant_ownership` is dry-run by default and propagates authoritative conflicts rather than silently choosing a tenant.
 
-### Safe warehouse backfill tooling
-`python manage.py backfill_inventory_tenant_ownership` is dry-run by default.
+`python manage.py rehearse_tenant_migration` provides read-only combined operational/warehouse ownership evidence, before/projected counts and relationship inconsistencies.
 
-- no phone-number ownership inference;
-- ownership evidence flows from explicit purchase/supplier/verifier membership and warehouse/engineer relations;
-- conflicting evidence propagates downstream rather than silently picking one tenant;
-- `RESOLVED` rows are eligible for write only with `--apply`;
-- unresolved/conflicting rows remain unchanged;
-- optional JSON audit report is supported;
-- tests cover clean purchase-chain resolution, unresolved suppliers, cross-company bag conflicts, dry-run/no-write and apply-only-resolved behavior.
+**These migrations/backfills have not been run on production.**
 
-### Migration rehearsal tooling — code verified, real rehearsal pending
-`python manage.py rehearse_tenant_migration` is read-only and performs no writes.
+# Exact completion gate: Inventory financial/data integrity — PASS for code/CI scope
 
-It combines operational and warehouse ownership plans and reports:
-- before owned/unowned/total counts;
-- projected post-backfill counts;
-- resolved, unresolved and conflict counts;
-- relation inconsistencies across operational and warehouse chains;
-- optional JSON evidence output.
+Financial source of truth reconciles PurchaseItem quantity/cost with physical InventoryItem state using Decimal arithmetic.
 
-CI verifies the tooling path. **It has not yet been run against an isolated restored production-like database, so migration rehearsal is not marked complete.**
-
-### Purchase duplicate audit — code verified, production-like audit pending
-`python manage.py audit_duplicate_supplier_invoices` is a read-only duplicate audit.
-
-- identity is scoped by tenant + supplier + normalized invoice number;
-- normalization trims/case-normalizes/whitespace-normalizes without silently collapsing punctuation identity;
-- duplicate groups report raw invoice values, row IDs and counts;
-- optional JSON report is supported;
-- no data is modified;
-- future database uniqueness remains intentionally deferred until a production-like duplicate audit/rehearsal is clean.
-
-### Purchase / warehouse runtime guards
-- Supplier, Purchase and PurchaseItem APIs are workspace-scoped.
-- Supplier/Purchase/PurchaseItem company ownership is server-controlled; clients cannot spoof company input.
-- PurchaseItem direct mutation endpoint is read-only; nested items inherit Purchase company.
-- Manual purchase creation locks the supplier row and checks duplicate invoice number inside the transaction.
-- OCR invoice analysis matches suppliers and detects duplicate invoices only inside the active workspace.
-- OCR invoice confirmation locks the same supplier row before duplicate check/create, serializing concurrent manual/OCR posting for that supplier.
-- Purchase-created InventoryItems inherit Purchase company.
-- Inventory receiving queue, serialized receive, photo receive, code generation, QR PDF, summary and Excel report routes are explicitly company-scoped.
-- Cross-workspace serial collisions fail closed without exposing the other tenant.
-- Engineer bag issue, My Bag/Admin Bag, PartRequest create/inbox/review/fulfil require matching explicit company ownership.
-- Bag, stock and inventory audit rows are dual-written with company ownership on secured workflows.
-- Company-bound users do not see unresolved `company=NULL` warehouse records.
-
-## Inventory financial integrity — CI verified
-Financial/reporting calculations are reconciled to physical `InventoryItem` units rather than summing PurchaseItem unit prices as if every purchase line represented one unit.
-
+Verified rules:
 - purchase value = `PurchaseItem.quantity × purchase_price`;
-- physical inventory counts come from actual serialized/unit InventoryItem rows;
-- received units/value exclude only `PENDING_RECEIPT` stock;
-- warehouse balance/value includes `IN_STOCK + RETURNED` physical units;
-- `ISSUED`, `INSTALLED` and `SCRAP` units/value are reported separately;
-- purchased-vs-physical unit gap is explicit rather than hidden;
-- Excel Purchase lines include quantity-aware Line Total;
-- regression tests verify a 5 × ₹125.50 purchase line = ₹627.50 and validate received/issued/installed/returned value transitions plus missing-unit variance.
+- physical inventory count comes from InventoryItem rows;
+- `PENDING_RECEIPT` is not received stock;
+- warehouse-available value counts physical `IN_STOCK` and reconciled returned stock semantics;
+- `ISSUED`, `INSTALLED` and `SCRAP` values are separated;
+- installed stock is not counted as available warehouse stock;
+- purchased-vs-physical unit variance is explicit instead of hidden;
+- tenant financial snapshots exclude other-company stock/value;
+- Excel Purchase lines are quantity-aware;
+- API summary, Excel Executive Summary and DB financial snapshot are compared field-by-field.
 
-## Phase 2 — Core operational certification
-- [ ] Attendance
+Exact regression evidence in CI #750 covers:
+- serialized inventory;
+- non-serialized inventory;
+- zero-price inventory;
+- 5 × ₹125.50 purchase line = ₹627.50;
+- ₹0.00 reconciliation difference for fully represented purchase states;
+- pending, received/in-stock, issued, installed, returned and missing-unit variance;
+- cross-tenant stock/value exclusion;
+- API ↔ Excel ↔ database money/count parity;
+- duplicate receiving is rejected by the warehouse workflow;
+- installed physical stock cannot be reused as available stock;
+- two simultaneous engineers attempting to issue the same physical unit produce exactly one active assignment.
+
+## Safe return/reissue lifecycle
+A missing workflow was found and fixed rather than faking the `RETURNED` state:
+
+- new tenant-safe `/api/inventory/return/` action is transactionally locked;
+- only currently issued same-company physical stock can be returned;
+- EngineerBagItem history becomes `RETURNED` and records `return_date`;
+- physical InventoryItem returns to `IN_STOCK`, restoring available warehouse value;
+- duplicate return is rejected;
+- audit log records the issued → warehouse return transition;
+- the existing OneToOne bag row is safely reused when the same physical unit is later reissued;
+- reissue can move the physical unit to another same-company engineer without creating a second bag row;
+- serialized parts still require a serial number.
+
+Exact regression evidence:
+- issue changes warehouse value from ₹350.00 to ₹0.00;
+- return restores warehouse value to exactly ₹350.00;
+- duplicate return returns conflict;
+- returned physical item can be reissued;
+- exactly one EngineerBagItem row remains for that physical item;
+- simultaneous issue race yields one successful active assignment.
+
+**Inventory financial/data-integrity code+CI completion gate: PASS.**  
+A production-like inventory ownership migration/reconciliation rehearsal is still a separate open release gate.
+
+# Exact completion gate: duplicate supplier invoices — code/test gate PASS, real rehearsal OPEN
+
+Canonical runtime/audit identity is now shared:
+
+`company + supplier + normalized invoice number`
+
+Normalization:
+- trim surrounding whitespace;
+- uppercase;
+- remove whitespace differences;
+- preserve punctuation identity.
+
+This closes the previous mismatch where the audit could classify `"INV 100"` and `"inv100"` as the same logical invoice while runtime `iexact` checks could allow separate writes.
+
+Runtime protection:
+- manual Purchase create locks the supplier row inside `transaction.atomic()`;
+- OCR Confirm locks the same supplier row before duplicate check/create;
+- manual and OCR paths use the same canonical identity helper;
+- supplier/company workspace scope remains server-controlled.
+
+Exact concurrency tests in CI #750:
+- **20 parallel manual Purchase submissions** using whitespace/case variants of the same logical invoice create exactly **1 Purchase**;
+- **20 parallel OCR Confirm submissions** using whitespace/case variants create exactly **1 Purchase**.
+
+Read-only command:
+`python manage.py audit_duplicate_supplier_invoices`
+
+Report includes:
+- `DRY_RUN_ONLY` mode;
+- normalization rule;
+- total purchase count;
+- unique identity count;
+- duplicate group count;
+- duplicate row count;
+- company ID;
+- supplier ID/name;
+- normalized invoice number;
+- raw invoice values;
+- affected Purchase IDs;
+- per-group count;
+- optional JSON output;
+- future normalized-key database uniqueness design.
+
+Tests prove the command does not modify Purchase rows and keeps duplicate identity tenant+supplier local, allowing the same external invoice string in a different tenant/supplier scope.
+
+**Duplicate-invoice code/concurrency gate: PASS.**  
+**Actual isolated restored production-like duplicate audit: NOT YET RUN, therefore the rehearsal/release gate remains OPEN.**
+
+The future database uniqueness constraint remains intentionally deferred until that real rehearsal identifies/cleans any legacy conflicts. It must not be applied to production without explicit approval.
+
+# Phase 2 — Core operational certification
+- [ ] Attendance — implementation strong; real-device certification pending.
 - [ ] Employee Live Location / Route History — implementation/CI strong; field certification pending.
-- [ ] Face & Device Security
-- [ ] Customer Management — explicit nullable ownership + backfill tooling/dual-write implemented and CI-green; production-like migration rehearsal/cutover pending.
-- [ ] My Jobs / Secure Field Work — assignment scope + explicit nullable Job ownership implemented; migration rehearsal pending.
-- [ ] Service — shared-phone isolation, company write guards and explicit nullable ownership implemented; migration rehearsal pending.
-- [ ] Complaint Management — assignment/workflow guards, GPS behavior preservation and explicit nullable ownership implemented; migration rehearsal pending.
-- [ ] Rent Management — explicit Customer company preferred; cross-tenant direct-ID reads/writes fail closed; production migration rehearsal pending.
-- [ ] Payment History / Ledger — tenant-scoped reads/direct-ID writes plus atomic retry idempotency and payment-integrity regression coverage implemented.
-- [ ] Inventory Control — explicit nullable warehouse ownership, scoped receiving/QR/summary/reporting, financial reconciliation and conflict-aware backfill implemented; migration rehearsal/cutover pending.
-- [ ] Engineer Bag / Part Request — explicit company ownership + company-scoped issue/list/review/fulfil + create idempotency implemented and CI-green.
+- [ ] Face & Device Security — code hardening present; full device/integrity certification pending.
+- [ ] Customer Management — explicit ownership/backfill + visible-ID race gate passed; production-like migration rehearsal pending.
+- [ ] My Jobs / Secure Field Work — assignment/tenant scope + visible-ID race gate passed; migration rehearsal pending.
+- [ ] Service — shared-phone/tenant guards + visible-ID race gate passed; migration rehearsal pending.
+- [ ] Complaint Management — tenant/workflow guards + visible-ID race gate passed; migration rehearsal pending.
+- [ ] Rent Management — tenant scope/idempotency/payment integrity covered; production migration rehearsal pending.
+- [ ] Payment History / Ledger — tenant reads/writes + atomic retry idempotency covered.
+- [ ] Inventory Control — tenant ownership, financial reconciliation, return/reissue, concurrent issue protection CI-green; migration rehearsal pending.
+- [ ] Engineer Bag / Part Request — company scope + create idempotency + return/reissue lifecycle CI-green.
 
-## Tenant / RBAC hardening evidence
-- Customer assignment cannot target an active employee in another company.
-- Admin emergency Job OTP cannot be retrieved by guessed primary key when the job engineer belongs to another company.
-- Service customer access no longer relies on shared phone number alone; durable `Customer.user` linkage is preferred and legacy claiming is deterministic.
-- Service staff writes validate target workspace; engineers cannot rewrite service ownership/link fields through generic updates.
-- Complaint assignment validates workspace; generic update cannot bypass customer/status/job/service workflow ownership rules.
-- Rent management/payment/history use explicit ownership first and narrow same-workspace legacy fallback only when company is null.
-- Supplier/Purchase lists and writes are scoped to active workspace; foreign supplier IDs are rejected.
-- OCR purchase analysis cannot match another tenant's supplier.
-- Warehouse summary/receiving/issue/My Bag paths are protected by explicit company ownership.
-- Legacy pre-tenancy compatibility is intentionally narrow; there is no all-company fallback.
-- CI #734 validates the latest complete code-bearing integrity state.
+# Tenant / RBAC evidence
+Verified hardening includes:
+- cross-company customer assignment blocked;
+- guessed-ID Admin Job OTP cross-tenant access blocked;
+- shared-phone Service/Complaint customer ambiguity hardened with durable linkage;
+- Service ownership fields cannot be rewritten by engineer generic updates;
+- Complaint assignment/workflow relations enforce workspace rules;
+- Rent management/payment/history fail closed across tenants;
+- Supplier/Purchase lists/writes and OCR supplier matching are workspace-scoped;
+- warehouse receiving/summary/reporting/issue/bag paths are company-scoped;
+- company-bound users do not gain all-company fallback through legacy compatibility.
 
-## Remaining migration / schema P1
-The hardening branch contains explicit nullable ownership across operational and warehouse roots, but production data has **not** been rehearsed, backfilled or cut over.
+# Remaining migration/schema/recovery P1 blockers
+No CI-detected P0 defect is open at CI #750, but overall Max-Pro remains blocked by material P1/certification work:
 
-Before production schema action:
-1. verify backup/PITR and produce an off-provider logical backup;
-2. restore a production-like copy in isolation;
-3. run `rehearse_tenant_migration` and both backfill commands in dry-run mode;
-4. run duplicate supplier-invoice audit;
-5. resolve/quarantine every ownership conflict, unresolved active record and duplicate invoice identity;
-6. rehearse `--apply` on the isolated copy and reconcile counts;
-7. only then consider non-null ownership constraints and tenant-local unique constraints.
+1. **Actual isolated restored production-like rehearsal** for Customer/Job/Service/Complaint ownership.
+2. **Actual isolated restored production-like rehearsal** for Supplier/Purchase/PurchaseItem/Inventory ownership.
+3. Run `audit_duplicate_supplier_invoices` on that isolated production-like copy and resolve/quarantine every legacy duplicate identity before any DB unique constraint.
+4. Verify Render/PostgreSQL PITR/Recovery availability and perform a real isolated restore drill.
+5. Verify production media persistence/object storage.
+6. Certify Attendance/GPS on real Vivo S20, Vivo T3 and Redmi 8A-class devices: app killed, reboot, permission/battery changes, 24h tracking, long offline and reconnect.
+7. Verify crash telemetry end-to-end on real devices.
+8. Continue idempotency audit for remaining retryable/destructive business writes.
+9. Continue Android root/emulator/mock/fake-camera/liveness strengthening with older-device compatibility fallback.
+10. Obtain/configure trusted Windows Authenticode signing and verify signatures.
+11. Map/certify all 38 modules, performance/memory, rollback rehearsal, checksums and final UAT.
 
-A database unique constraint for supplier invoice identity is intentionally not added yet because existing production-like data has not been duplicate-rehearsed. Current manual/OCR write paths use a transaction plus supplier-row lock to prevent concurrent duplicate posting. A database constraint remains a post-rehearsal hardening target.
+# Production migration gate
+Before any production schema/cutover action:
+1. verify PITR and create an off-provider logical backup;
+2. restore a production-like DB copy in isolation;
+3. run `rehearse_tenant_migration` read-only;
+4. run both tenant backfill commands in dry-run mode;
+5. run duplicate supplier-invoice audit;
+6. reconcile every unresolved/conflict/duplicate result;
+7. rehearse `--apply` only on the isolated copy;
+8. prove before/after object counts and relationship consistency;
+9. only then propose production migration/constraints for explicit approval.
 
-Inventory/purchase design: `docs/MAX_PRO_INVENTORY_TENANT_OWNERSHIP_PLAN.md`.  
-Tenant migration design: `docs/MAX_PRO_TENANT_OWNERSHIP_MIGRATION_PLAN.md`.
-
-## Remaining P0/P1 blockers
-No new CI-detected P0 defect is open at CI #734, but Max-Pro completion still has material P1/certification blockers:
-
-- actual isolated restored production-like tenant migration + duplicate-invoice rehearsal;
-- production PostgreSQL PITR/Recovery verification and a real isolated restore drill;
-- production media persistence/object-storage verification;
-- real-device Attendance/GPS 24h, app-killed, reboot, long-offline, reconnect and permission/battery stress certification on supported low-memory devices;
-- client/server crash telemetry live-device end-to-end verification;
-- continued idempotency audit for remaining business write endpoints beyond the currently protected paths;
-- stronger Android integrity/root/emulator/fake-camera/liveness controls where compatible with older supported devices;
-- trusted Windows Authenticode certificate/signature verification;
-- all 38 modules mapped/certified, performance/memory checks, rollback rehearsal, checksums and final UAT.
-
-## Phase 3 — Corporate modules
+# Phase 3 — Corporate modules
 - [ ] Employee HRMS
 - [ ] Training/certification
 - [ ] Work Calendar
@@ -228,30 +301,31 @@ No new CI-detected P0 defect is open at CI #734, but Max-Pro completion still ha
 - [ ] Digital RO Passport / My RO
 - [ ] Remaining blueprint modules
 
-## Phase 4 — Final certification
+# Phase 4 — Final certification
 - [ ] All 38 blueprint modules mapped to tests.
 - [ ] Zero open P0 blockers.
 - [ ] Zero open P1 blockers.
-- [ ] Android device matrix passed, including low-memory ARI devices.
+- [ ] Android device matrix passed including low-memory devices.
 - [ ] App-killed/reboot/background-location/permission-change tests passed.
 - [ ] Offline→online sync stress test passed on device.
 - [ ] Database backup + restore drill passed.
 - [ ] Security/RBAC regression passed after production-like migration rehearsal.
 - [ ] Migration rehearsal passed on production-like data.
+- [ ] Duplicate invoice rehearsal passed on production-like data.
 - [ ] Performance/memory checks passed.
-- [x] Windows build/installer CI path verified; trusted Authenticode signing remains separately open.
+- [x] Windows unsigned build/installer CI path verified; trusted Authenticode signing remains separately open.
 - [ ] Release checksums recorded.
 - [ ] Rollback procedure tested.
 - [ ] Final UAT signed off.
 
 ## 5/5 definition
-A feature existing in code is not enough. A module is 5/5 only when implemented, permission-safe, recoverable, observable, tested on supported platforms, resilient to expected network/device failures, data-safe, and free of P0/P1 defects.
+A module is 5/5 only when implemented, permission-safe, recoverable, observable, data-safe, tested on supported platforms, resilient to expected device/network failures, and free of open P0/P1 defects. ARI SMART RO is **not yet declared 5/5 complete**.
 
-## Next actions
-1. Run tenant ownership + duplicate supplier-invoice rehearsal on an isolated restored production-like database only; do not touch production.
-2. Verify Render/PostgreSQL PITR and execute a real isolated restore drill before any production migration approval.
-3. Verify production media persistence/object storage.
-4. Continue business-write idempotency audit, prioritizing inventory receiving/issue/fulfil, complaint/service transitions, customer import/edit and other retryable mobile actions.
-5. Certify Attendance + Location on real Vivo S20/Vivo T3/Redmi 8A-class devices, including app-killed, reboot, long-offline and reconnect stress tests.
-6. Verify crash telemetry end-to-end on real devices and continue device integrity/root/emulator/fake-camera/liveness hardening with compatibility fallbacks.
-7. Continue 38-module certification, performance/memory/rollback/checksum/final-UAT work.
+## Next execution order
+1. Build/verify the isolated restored-database migration rehearsal workflow and evidence bundle without touching production.
+2. Run tenant ownership + duplicate invoice rehearsal only against an isolated production-like copy when such a copy is available/authorized.
+3. Verify Render PITR and execute the isolated restore drill before production migration approval.
+4. Continue remaining business-write idempotency audit and close retry/race gaps.
+5. Certify Attendance + GPS on the required real-device matrix.
+6. Verify production media durability and crash telemetry.
+7. Continue 38-module certification, performance/memory, rollback/checksum and final UAT work.
