@@ -6,12 +6,35 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsStaffOperator
+from products.models import ROModel
 from purchase.models import Purchase, PurchaseItem, Supplier
 
 from .financials import inventory_financial_snapshot
 from .models import InventoryAuditLog, InventoryItem, PartRequest
 from .reports import _sheet
 from .warehouse_security_views import _company_id
+
+
+def _shop_ro_stock():
+    rows = list(
+        ROModel.objects.filter(is_active=True)
+        .select_related("category")
+        .order_by("category__name", "model_name", "id")
+    )
+    return [
+        {
+            "id": row.id,
+            "category": row.category.name,
+            "model_name": row.model_name,
+            "capacity": row.capacity,
+            "stock_quantity": row.stock_quantity,
+            "available_for_sale": row.available_for_sale,
+            "available_for_rent": row.available_for_rent,
+            "selling_price": row.selling_price,
+            "monthly_rent": row.monthly_rent,
+        }
+        for row in rows
+    ]
 
 
 class ReconciledInventorySummaryAPIView(APIView):
@@ -21,6 +44,7 @@ class ReconciledInventorySummaryAPIView(APIView):
         company_id = _company_id(request)
         snapshot = inventory_financial_snapshot(company_id)
         requests = PartRequest.objects.filter(company_id=company_id)
+        shop_ro_stock = _shop_ro_stock()
         return Response({
             "success": True,
             "summary": {
@@ -28,7 +52,10 @@ class ReconciledInventorySummaryAPIView(APIView):
                 "total_units": snapshot["physical_units"],
                 "pending_requests": requests.filter(status="PENDING").count(),
                 "approved_requests": requests.filter(status="APPROVED").count(),
+                "shop_ro_models": len(shop_ro_stock),
+                "shop_ro_units": sum(row["stock_quantity"] for row in shop_ro_stock),
             },
+            "shop_ro_stock": shop_ro_stock,
         })
 
 
