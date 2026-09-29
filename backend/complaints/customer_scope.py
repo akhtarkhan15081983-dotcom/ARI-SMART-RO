@@ -1,6 +1,7 @@
 from rest_framework.exceptions import ValidationError
 
 from customers.models import Customer
+from tenancy.access import request_company
 
 from .models import Complaint
 from .views import (
@@ -87,18 +88,35 @@ class SecureComplaintSearchAPIView(ComplaintSearchAPIView):
 
 class SecureComplaintCreateAPIView(ComplaintCreateAPIView):
     def perform_create(self, serializer):
-        if getattr(self.request.user, "role", None) != "CUSTOMER":
-            return super().perform_create(serializer)
+        if getattr(self.request.user, "role", None) == "CUSTOMER":
+            customer = linked_customer_for_complaints(self.request.user)
+            if customer is None:
+                raise ValidationError({
+                    "customer": ["Customer account is not linked to a customer record."]
+                })
+            serializer.save(
+                customer=customer,
+                company=customer.company,
+                engineer=None,
+                priority="NORMAL",
+                latitude=customer.latitude,
+                longitude=customer.longitude,
+            )
+            return
 
-        customer = linked_customer_for_complaints(self.request.user)
-        if customer is None:
+        company = request_company(self.request)
+        if company is None:
+            raise ValidationError({"detail": "Active company workspace not found."})
+
+        customer = serializer.validated_data.get("customer")
+        engineer = serializer.validated_data.get("engineer")
+        customer_company_id = getattr(customer, "company_id", None)
+        if customer_company_id is None and getattr(customer, "assigned_engineer_id", None):
+            customer_company_id = customer.assigned_engineer.company_id
+        if customer_company_id != company.id:
             raise ValidationError({
-                "customer": ["Customer account is not linked to a customer record."]
+                "customer": ["Customer ownership is unresolved or outside the active workspace."]
             })
-        serializer.save(
-            customer=customer,
-            engineer=None,
-            priority="NORMAL",
-            latitude=customer.latitude,
-            longitude=customer.longitude,
-        )
+        if engineer is not None and engineer.company_id != company.id:
+            raise ValidationError({"engineer": ["Engineer is outside the active workspace."]})
+        serializer.save(company=company)
