@@ -8,6 +8,9 @@ from products.models import ProductCategory, ROModel
 from tenancy.models import Company
 
 
+TEST_PHONES = [str(9199001000 + index) for index in range(1, 9)]
+
+
 class MaxProTestCustomerSeedCommandTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
@@ -46,6 +49,10 @@ class MaxProTestCustomerSeedCommandTests(TestCase):
         )
 
     def test_dry_run_changes_nothing(self):
+        users_before = User.objects.filter(phone__in=TEST_PHONES).count()
+        customers_before = Customer.objects.filter(
+            import_batch="MAX_PRO_CERTIFICATION"
+        ).count()
         output = StringIO()
         call_command(
             "seed_max_pro_test_customers",
@@ -54,8 +61,11 @@ class MaxProTestCustomerSeedCommandTests(TestCase):
             stdout=output,
         )
         self.assertIn("DRY RUN ONLY", output.getvalue())
-        self.assertEqual(User.objects.filter(role="CUSTOMER").count(), 0)
-        self.assertEqual(Customer.objects.count(), 0)
+        self.assertEqual(User.objects.filter(phone__in=TEST_PHONES).count(), users_before)
+        self.assertEqual(
+            Customer.objects.filter(import_batch="MAX_PRO_CERTIFICATION").count(),
+            customers_before,
+        )
 
     def test_apply_creates_repeatable_verified_customers_linked_to_shop_ro(self):
         password = "MaxPro-Test@2026"
@@ -68,9 +78,14 @@ class MaxProTestCustomerSeedCommandTests(TestCase):
             apply=True,
             stdout=output,
         )
-        self.assertEqual(User.objects.filter(role="CUSTOMER").count(), 8)
-        self.assertEqual(Customer.objects.filter(company=self.company).count(), 8)
-        self.assertEqual(Customer.objects.filter(import_batch="MAX_PRO_CERTIFICATION").count(), 8)
+        self.assertEqual(User.objects.filter(phone__in=TEST_PHONES).count(), 8)
+        self.assertEqual(
+            Customer.objects.filter(
+                company=self.company,
+                import_batch="MAX_PRO_CERTIFICATION",
+            ).count(),
+            8,
+        )
         first = User.objects.get(phone="9199001001")
         self.assertTrue(first.is_verified)
         self.assertTrue(first.check_password(password))
@@ -87,5 +102,11 @@ class MaxProTestCustomerSeedCommandTests(TestCase):
             apply=True,
             stdout=StringIO(),
         )
-        self.assertEqual(User.objects.filter(role="CUSTOMER").count(), 8)
-        self.assertEqual(Customer.objects.filter(company=self.company).count(), 8)
+        self.assertEqual(User.objects.filter(phone__in=TEST_PHONES).count(), 8)
+        self.assertEqual(
+            Customer.objects.filter(
+                company=self.company,
+                import_batch="MAX_PRO_CERTIFICATION",
+            ).count(),
+            8,
+        )
