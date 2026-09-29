@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -18,6 +19,7 @@ class OfflineJobStore {
   static const _mediaFolderName = 'pending_media';
   static const _quarantineFolderName = 'corrupt_state';
   static const _lockFileName = '.offline_job_state.lock';
+  static final Map<String, Future<void>> _mutationTails = <String, Future<void>>{};
 
   final Directory? _rootDirectoryOverride;
 
@@ -46,6 +48,13 @@ class OfflineJobStore {
 
   Future<T> _withMutationLock<T>(Future<T> Function() action) async {
     final root = await _rootDirectory();
+    final key = root.absolute.path;
+    final previous = _mutationTails[key] ?? Future<void>.value();
+    final gate = Completer<void>();
+    final tail = previous.then<void>((_) => gate.future);
+    _mutationTails[key] = tail;
+
+    await previous;
     final lockFile = File('${root.path}/$_lockFileName');
     final handle = await lockFile.open(mode: FileMode.append);
     await handle.lock(FileLock.exclusive);
@@ -56,6 +65,10 @@ class OfflineJobStore {
         await handle.unlock();
       } finally {
         await handle.close();
+        if (!gate.isCompleted) gate.complete();
+        if (identical(_mutationTails[key], tail)) {
+          _mutationTails.remove(key);
+        }
       }
     }
   }
