@@ -134,9 +134,8 @@ class DuplicateSupplierInvoiceAuditTests(TestCase):
         self.assertFalse(report["constraint_ready"])
 
     def test_single_company_projection_resolves_legacy_purchase_without_writing(self):
-        Company.objects.exclude(pk=self.company_a.pk).delete()
         self.supplier_b.delete()
-        self.supplier_a2.delete()
+        Company.objects.exclude(pk=self.company_a.pk).delete()
         self.supplier_a.company = None
         self.supplier_a.save(update_fields=["company"])
 
