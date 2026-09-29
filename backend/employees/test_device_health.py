@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.models import SystemAuditEvent, User
 from tenancy.models import Company, CompanyMembership
 from .models import EmployeeDeviceHealth, EmployeeProfile
 
@@ -59,8 +59,8 @@ class DeviceHealthTests(TestCase):
             "/api/employees/device-health/",
             {
                 "platform": "ANDROID",
-                "app_version": "1.0.34",
-                "app_build": "34",
+                "app_version": "1.0.48",
+                "app_build": "48",
                 "os_version": "16",
                 "android_sdk": 36,
                 "manufacturer": "Example",
@@ -84,16 +84,53 @@ class DeviceHealthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         row = EmployeeDeviceHealth.objects.get(employee=self.engineer)
         self.assertEqual(row.device_id, "device-health-test-1")
-        self.assertEqual(row.app_version, "1.0.34")
+        self.assertEqual(row.app_version, "1.0.48")
         self.assertEqual(row.pending_job_actions, 3)
         self.assertEqual(row.pending_location_points, 2)
         self.assertTrue(row.background_location_granted)
+        self.assertEqual(response.data["risk_level"], "CLEAR")
+
+    def test_risky_device_report_is_visible_and_audited(self):
+        self.client.force_authenticate(user=self.engineer_user)
+        response = self.client.post(
+            "/api/employees/device-health/",
+            {
+                "platform": "ANDROID",
+                "app_version": "1.0.48",
+                "root_risk_detected": True,
+                "emulator_detected": True,
+                "mock_location_detected": True,
+            },
+            format="json",
+            HTTP_X_ARI_DEVICE_ID="risky-device",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["risk_level"], "HIGH")
+        self.assertEqual(
+            set(response.data["security_risks"]),
+            {"ROOT_RISK", "EMULATOR", "MOCK_LOCATION"},
+        )
+        row = EmployeeDeviceHealth.objects.get(employee=self.engineer)
+        self.assertIn("SECURITY_RISK[", row.last_error)
+        self.assertTrue(
+            SystemAuditEvent.objects.filter(
+                action="DEVICE_SECURITY_RISK_REPORTED",
+                entity_id=str(row.id),
+            ).exists()
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        admin_response = self.client.get("/api/employees/admin/device-health/")
+        self.assertEqual(admin_response.status_code, 200)
+        self.assertEqual(admin_response.data[0]["risk_level"], "HIGH")
+        self.assertIn("ROOT_RISK", admin_response.data[0]["security_risks"])
+        self.assertFalse(admin_response.data[0]["health"]["last_error"].startswith("SECURITY_RISK["))
 
     def test_admin_can_view_company_device_health(self):
         EmployeeDeviceHealth.objects.create(
             employee=self.engineer,
             device_id="device-health-test-2",
-            app_version="1.0.34",
+            app_version="1.0.48",
             os_version="16",
             location_permission="GRANTED",
         )
@@ -103,8 +140,43 @@ class DeviceHealthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["employee_code"], "EMP-HEALTH-001")
-        self.assertEqual(response.data[0]["health"]["app_version"], "1.0.34")
+        self.assertEqual(response.data[0]["health"]["app_version"], "1.0.48")
         self.assertIn(response.data[0]["status"], {"HEALTHY", "STALE"})
+        self.assertEqual(response.data[0]["risk_level"], "CLEAR")
+
+    def test_admin_face_list_is_tenant_scoped(self):
+        other_company = Company.objects.create(
+            name="Other Company",
+            slug="other-company-device-test",
+            phone="9888888888",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_user = User.objects.create_user(
+            phone="9100000003",
+            password="Test@12345",
+            first_name="Other",
+            role="ENGINEER",
+            is_verified=True,
+            is_active=True,
+        )
+        EmployeeProfile.objects.create(
+            company=other_company,
+            user=other_user,
+            employee_id="EMP-OTHER-001",
+            gender="MALE",
+            joining_date=date(2026, 1, 1),
+            designation="ENGINEER",
+            salary=Decimal("25000.00"),
+            is_active=True,
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/employees/admin/face-enrollments/")
+        self.assertEqual(response.status_code, 200)
+        codes = {row["employee_id"] for row in response.data}
+        self.assertIn("EMP-HEALTH-001", codes)
+        self.assertNotIn("EMP-OTHER-001", codes)
 
     def test_device_health_requires_authentication(self):
         response = self.client.post("/api/employees/device-health/", {}, format="json")
