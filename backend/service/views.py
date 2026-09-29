@@ -10,8 +10,38 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsOperationsUser, IsStaffOperator, STAFF_ROLES, user_role
+from customers.models import Customer
 from .models import Service
 from .serializers import ServiceSerializer
+
+
+def _linked_customer_for(user):
+    """Resolve exactly one customer record for a verified customer account.
+
+    Shared/duplicate phone numbers are valid ARI business data, so phone alone
+    must never grant access to every record with that number. Prefer the durable
+    user link; legacy records can claim only the first deterministic unlinked row.
+    """
+    if user_role(user) != "CUSTOMER" or not user.is_verified or not user.is_active:
+        return None
+
+    linked = Customer.objects.filter(user=user, is_active=True).first()
+    if linked is not None:
+        return linked
+
+    legacy = (
+        Customer.objects.filter(
+            phone=user.phone,
+            user__isnull=True,
+            is_active=True,
+        )
+        .order_by("id")
+        .first()
+    )
+    if legacy is not None:
+        legacy.user = user
+        legacy.save(update_fields=["user"])
+    return legacy
 
 
 def _service_queryset_for(user, include_customer=True):
@@ -28,7 +58,8 @@ def _service_queryset_for(user, include_customer=True):
     if role == "ENGINEER":
         return queryset.filter(engineer__user=user)
     if include_customer and role == "CUSTOMER":
-        return queryset.filter(customer__phone=user.phone)
+        customer = _linked_customer_for(user)
+        return queryset.filter(customer=customer) if customer is not None else queryset.none()
     return queryset.none()
 
 
