@@ -3,6 +3,7 @@ from django.urls import path
 from .bulk_import import CustomerBulkImportAPIView, CustomerQRCodeAPIView
 from .edit_views import CustomerUpdateAPIView
 from .rent_management_optimized import RentManagementAPIView
+from .security_views import TenantScopedAssignCustomerAPIView
 from .views import (
     CustomerListAPIView,
     MyCustomersAPIView,
@@ -11,7 +12,6 @@ from .views import (
     CustomerServiceHistoryAPIView,
     CustomerSearchAPIView,
     WalkInCustomerAPIView,
-    AssignCustomerAPIView,
     CustomerRentAPIView,
     RentPaymentCreateAPIView,
     RentPaymentHistoryAPIView,
@@ -25,135 +25,27 @@ from .views import (
 )
 
 urlpatterns = [
-    path(
-        "public-requests/",
-        PublicCustomerRequestAPIView.as_view(),
-        name="public-customer-request",
-    ),
-    path(
-        "calling-desk/",
-        CallingDeskAPIView.as_view(),
-        name="calling-desk",
-    ),
-    path(
-        "edit-permission/",
-        CustomerEditPermissionAPIView.as_view(),
-        name="customer-edit-permission",
-    ),
-    path(
-        "calling-desk/<int:pk>/",
-        CallingDeskAPIView.as_view(),
-        name="calling-desk-detail",
-    ),
-    path(
-        "<int:pk>/capture-location/",
-        CustomerLocationCaptureAPIView.as_view(),
-        name="customer-capture-location",
-    ),
-    path(
-        "<int:pk>/lifecycle/",
-        CustomerLifecycleAPIView.as_view(),
-        name="customer-lifecycle",
-    ),
-    path(
-        "profile/",
-        CustomerProfileAPIView.as_view(),
-        name="customer-profile",
-    ),
-
-    path(
-        "my-ro/",
-        MyROAPIView.as_view(),
-        name="my-ro",
-    ),
-
-    path(
-        "my-customers/",
-        MyCustomersAPIView.as_view(),
-        name="my-customers",
-    ),
-
-    path(
-        "bulk-import/",
-        CustomerBulkImportAPIView.as_view(),
-        name="customer-bulk-import",
-    ),
-
-    path(
-        "",
-        CustomerListAPIView.as_view(),
-        name="customer-list",
-    ),
-
-    path(
-        "create/",
-        CustomerCreateAPIView.as_view(),
-        name="customer-create",
-    ),
-
-    path(
-        "<int:pk>/qr/",
-        CustomerQRCodeAPIView.as_view(),
-        name="customer-qr",
-    ),
-
-    path(
-        "<int:pk>/",
-        CustomerDetailAPIView.as_view(),
-        name="customer-detail",
-    ),
-
-    path(
-        "<int:pk>/service-history/",
-        CustomerServiceHistoryAPIView.as_view(),
-        name="customer-service-history",
-    ),
-
-    path(
-        "search/",
-        CustomerSearchAPIView.as_view(),
-        name="customer-search",
-    ),
-
-    path(
-        "<int:pk>/update/",
-        CustomerUpdateAPIView.as_view(),
-        name="customer-update",
-    ),
-
-    path(
-        "walk-in/",
-        WalkInCustomerAPIView.as_view(),
-        name="walk_in_customer",
-    ),
-
-    path(
-        "<int:pk>/assign/",
-        AssignCustomerAPIView.as_view(),
-        name="customer-assign",
-    ),
-
-    path(
-        "rent/",
-        CustomerRentAPIView.as_view(),
-        name="customer-rent",
-    ),
-
-    path(
-        "rent-management/",
-        RentManagementAPIView.as_view(),
-        name="rent-management",
-    ),
-
-    path(
-        "rent-management/payment/",
-        RentPaymentCreateAPIView.as_view(),
-        name="rent-management-payment",
-    ),
-
-    path(
-        "rent-management/payments/",
-        RentPaymentHistoryAPIView.as_view(),
-        name="rent-management-payment-history",
-    ),
+    path("public-requests/", PublicCustomerRequestAPIView.as_view(), name="public-customer-request"),
+    path("calling-desk/", CallingDeskAPIView.as_view(), name="calling-desk"),
+    path("edit-permission/", CustomerEditPermissionAPIView.as_view(), name="customer-edit-permission"),
+    path("calling-desk/<int:pk>/", CallingDeskAPIView.as_view(), name="calling-desk-detail"),
+    path("<int:pk>/capture-location/", CustomerLocationCaptureAPIView.as_view(), name="customer-capture-location"),
+    path("<int:pk>/lifecycle/", CustomerLifecycleAPIView.as_view(), name="customer-lifecycle"),
+    path("profile/", CustomerProfileAPIView.as_view(), name="customer-profile"),
+    path("my-ro/", MyROAPIView.as_view(), name="my-ro"),
+    path("my-customers/", MyCustomersAPIView.as_view(), name="my-customers"),
+    path("bulk-import/", CustomerBulkImportAPIView.as_view(), name="customer-bulk-import"),
+    path("", CustomerListAPIView.as_view(), name="customer-list"),
+    path("create/", CustomerCreateAPIView.as_view(), name="customer-create"),
+    path("<int:pk>/qr/", CustomerQRCodeAPIView.as_view(), name="customer-qr"),
+    path("<int:pk>/", CustomerDetailAPIView.as_view(), name="customer-detail"),
+    path("<int:pk>/service-history/", CustomerServiceHistoryAPIView.as_view(), name="customer-service-history"),
+    path("search/", CustomerSearchAPIView.as_view(), name="customer-search"),
+    path("<int:pk>/update/", CustomerUpdateAPIView.as_view(), name="customer-update"),
+    path("walk-in/", WalkInCustomerAPIView.as_view(), name="walk_in_customer"),
+    path("<int:pk>/assign/", TenantScopedAssignCustomerAPIView.as_view(), name="customer-assign"),
+    path("rent/", CustomerRentAPIView.as_view(), name="customer-rent"),
+    path("rent-management/", RentManagementAPIView.as_view(), name="rent-management"),
+    path("rent-management/payment/", RentPaymentCreateAPIView.as_view(), name="rent-management-payment"),
+    path("rent-management/payments/", RentPaymentHistoryAPIView.as_view(), name="rent-management-payment-history"),
 ]
