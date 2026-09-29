@@ -13,7 +13,82 @@ from attendance.work_hours import reconcile_open_attendance, regular_shift_end
 from tenancy.access import request_company
 
 from .models import EmployeeProfile
-from .views import UpdateLiveLocationAPIView
+from .views import FaceEnrollmentAPIView, UpdateLiveLocationAPIView
+
+
+class SecureFaceEnrollmentAPIView(FaceEnrollmentAPIView):
+    """Face/device enrollment bound to the same authenticated app installation."""
+
+    def post(self, request):
+        try:
+            employee = request.user.employee_profile
+        except EmployeeProfile.DoesNotExist:
+            return Response(
+                {"success": False, "message": "Employee profile not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        supplied_device_id = str(request.data.get("device_id") or "").strip()
+        login_device_id = str(request.user.active_login_device_id or "").strip()
+        header_device_id = str(request.headers.get("X-ARI-Device-ID", "") or "").strip()
+
+        if not login_device_id:
+            return Response(
+                {
+                    "success": False,
+                    "code": "LOGIN_DEVICE_NOT_BOUND",
+                    "message": "Sign in on the approved phone before face/device enrollment.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if (
+            not supplied_device_id
+            or supplied_device_id != login_device_id
+            or (header_device_id and header_device_id != login_device_id)
+        ):
+            write_audit_event(
+                request=request,
+                action="FACE_ENROLLMENT_DEVICE_MISMATCH_BLOCKED",
+                entity_type="EmployeeProfile",
+                entity_id=employee.id,
+                company=getattr(employee, "company", None),
+                reason="Face/device enrollment attempted with a device other than the authenticated login device.",
+                metadata={
+                    "employee_id": employee.employee_id,
+                    "login_device_bound": bool(login_device_id),
+                    "supplied_device_matches": supplied_device_id == login_device_id,
+                    "header_device_matches": (
+                        not header_device_id or header_device_id == login_device_id
+                    ),
+                },
+            )
+            return Response(
+                {
+                    "success": False,
+                    "code": "FACE_ENROLLMENT_DEVICE_MISMATCH",
+                    "message": (
+                        "Face/device enrollment must be completed on the same approved phone. "
+                        "Ask Admin to reset the device before moving to a new phone."
+                    ),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        response = super().post(request)
+        if response.status_code in {status.HTTP_200_OK, status.HTTP_201_CREATED}:
+            write_audit_event(
+                request=request,
+                action="FACE_DEVICE_ENROLLMENT_COMPLETED",
+                entity_type="EmployeeProfile",
+                entity_id=employee.id,
+                company=getattr(employee, "company", None),
+                metadata={
+                    "employee_id": employee.employee_id,
+                    "device_matches_login_binding": True,
+                },
+            )
+        return response
 
 
 class CombinedFaceEnrollmentControlAPIView(APIView):
@@ -154,10 +229,6 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
                 ended_at__isnull=True,
             ).exists()
 
-        # Preserve the legacy location endpoint for employees who have not
-        # checked in yet. This keeps location validation, queued-point handling,
-        # device diagnostics and operations-map behavior backward compatible.
-        # Only an actual attendance record that has ended may stop tracking.
         if (
             request.data.get("tracking_active") is not False
             and attendance is not None
@@ -180,9 +251,6 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
         response = super().post(request)
         if isinstance(getattr(response, "data", None), dict):
             if attendance is None:
-                # No attendance record means the location API remains usable for
-                # pre-check-in diagnostics/operations without telling the phone
-                # background service to stop itself.
                 response.data["shift_active"] = None
             else:
                 response.data["shift_active"] = bool(
