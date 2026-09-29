@@ -1,8 +1,9 @@
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 import uuid
 
 from accounts.models import User
+from tenancy.id_allocator import acquire_allocator_lock, next_visible_number
 
 
 def public_request_number():
@@ -335,30 +336,21 @@ class Customer(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
+        if self.customer_id:
+            return super().save(*args, **kwargs)
 
-        if not self.customer_id:
-            year = timezone.now().year
-
-            last_customer = Customer.objects.order_by("-id").first()
-
-            if last_customer:
-                try:
-                    last_number = int(last_customer.customer_id.split("-")[-1])
-                except (ValueError, IndexError):
-                    last_number = 0
-            else:
-                last_number = 0
-
-            new_number = last_number + 1
-
+        year = timezone.now().year
+        with transaction.atomic():
+            acquire_allocator_lock(f"customer:{year}")
+            new_number = next_visible_number(Customer, "customer_id", "CUS", year)
             self.customer_id = f"CUS-{year}-{new_number:06d}"
-
-            self.card_number = f"ARI-{year}-{new_number:06d}"
-
-        super().save(*args, **kwargs)
+            if not self.card_number:
+                self.card_number = f"ARI-{year}-{new_number:06d}"
+            return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
+
 
 class CustomerRentHistory(models.Model):
 
@@ -444,6 +436,7 @@ class CustomerRentHistory(models.Model):
             f"{self.rent_month} - "
             f"{self.paid_amount}"
         )
+
 
 class CustomerRentPayment(models.Model):
 
