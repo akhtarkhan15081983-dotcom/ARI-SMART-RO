@@ -161,7 +161,11 @@ class InvoiceConfirmAPIView(APIView):
         invoice_number = _clean(payload.get("invoice_number"))
         if not supplier_id or not invoice_number:
             return Response({"message": "Supplier and invoice number are required."}, status=400)
-        supplier = Supplier.objects.filter(
+
+        # The supplier row is the serialization point for invoice creation.
+        # Two concurrent manual/OCR posts for the same supplier cannot both
+        # pass duplicate detection before either transaction commits.
+        supplier = Supplier.objects.select_for_update().filter(
             pk=supplier_id,
             company_id=company_id,
             is_active=True,
@@ -185,7 +189,7 @@ class InvoiceConfirmAPIView(APIView):
             context={"request": request},
         )
         serializer.is_valid(raise_exception=True)
-        purchase = serializer.save(company=company)
+        purchase = serializer.save(company=company, supplier=supplier)
         purchase.invoice_image = request.FILES.get("invoice_image")
         purchase.entry_source = "INVOICE_OCR"
         purchase.ocr_text = str(request.data.get("ocr_text", ""))[:50000]
