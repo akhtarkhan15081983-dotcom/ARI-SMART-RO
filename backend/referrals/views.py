@@ -1,12 +1,16 @@
+import hashlib
+import json
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
+from jobs.idempotency import action_id_from_request, replay_response, remember_response
 
 from .models import Referral, WalletReward, WalletLedgerEntry
 from .serializers import (
@@ -150,6 +154,7 @@ class WalletQuoteAPIView(APIView):
 class WalletRedeemAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request):
         try:
             bill = Decimal(str(request.data.get("bill_amount"))).quantize(Decimal("0.01"))
@@ -160,6 +165,18 @@ class WalletRedeemAPIView(APIView):
         reference_id = str(request.data.get("reference_id", "")).strip()
         if category not in {"RENT", "PURCHASE", "PARTS", "SERVICE"} or not reference_type or not reference_id:
             return Response({"success": False, "message": "category, reference_type and reference_id are required."}, status=400)
+        identity = json.dumps(
+            [str(bill), category, reference_type, reference_id], separators=(",", ":"),
+        )
+        action_type = "wallet_redeem:" + hashlib.sha256(identity.encode()).hexdigest()[:16]
+        action_id = action_id_from_request(request)
+        if action_id:
+            # Lock before receipt lookup so concurrent identical retries cannot
+            # both debit the wallet before one receipt becomes visible.
+            type(request.user).objects.select_for_update().get(pk=request.user.pk)
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
         try:
             result = redeem_wallet(
                 user=request.user,
@@ -171,7 +188,13 @@ class WalletRedeemAPIView(APIView):
         except Exception as exc:
             detail = getattr(exc, "detail", str(exc))
             return Response({"success": False, "message": detail}, status=400)
-        return Response({"success": True, **result})
+        response = Response({"success": True, **result})
+        if action_id:
+            response.data = json.loads(json.dumps(response.data, cls=DjangoJSONEncoder))
+        return remember_response(
+            request=request, action_id=action_id,
+            action_type=action_type, response=response,
+        )
 
 
 class QualifyReferralAPIView(APIView):
