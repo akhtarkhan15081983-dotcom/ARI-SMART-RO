@@ -12,6 +12,7 @@ from .serializers import EngineerBagIssueSerializer
 from .views import (
     AdminEngineerBagAPIView,
     EngineerBagIssueAPIView,
+    MyBagAPIView,
     MyPartRequestsAPIView,
     PartRequestApprovalInboxAPIView,
     PartRequestFulfilAPIView,
@@ -106,6 +107,16 @@ class TenantScopedEngineerBagIssueAPIView(EngineerBagIssueAPIView):
             remarks=request.data.get("remarks", ""),
         )
         return Response(EngineerBagIssueSerializer(bag_item).data, status=status.HTTP_201_CREATED)
+
+
+class TenantScopedMyBagAPIView(MyBagAPIView):
+    def get_queryset(self):
+        expected_company_id = _expected_company_id(self.request)
+        return super().get_queryset().filter(
+            company_id=expected_company_id,
+            engineer__company_id=expected_company_id,
+            inventory_item__company_id=expected_company_id,
+        )
 
 
 class TenantScopedAdminEngineerBagAPIView(AdminEngineerBagAPIView):
