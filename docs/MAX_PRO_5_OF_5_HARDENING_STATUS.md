@@ -33,7 +33,7 @@ This verification includes the database-safe visible-ID concurrency/rollback gat
 
 **No production deployment, Render branch change, production database migration, production data mutation, `main` merge or release was performed during this cycle.**
 
-## 2026-09-29 continuation (verification pending on new code head)
+## 2026-09-29 continuation
 
 - CI #753 / `5ab3f6e` remains the last verified **code-bearing** baseline.
 - The subsequent `19f1f764` commit updated this status document only.
@@ -44,9 +44,16 @@ This verification includes the database-safe visible-ID concurrency/rollback gat
   prepared in `docs/MAX_PRO_ISOLATED_RESTORE_REHEARSAL.md`. Its commands have
   **not** been executed against a production-like restored database.
 - Offline queue audit found that the backup stored the preceding state, so a
-  corrupt primary could discard the latest committed pending action. A code
-  change and restart/corruption regressions are prepared; new exact-head CI
-  evidence must be recorded before marking this fix verified.
+  corrupt primary could discard the latest committed pending action. Commit
+  `7599b378cb1507638058160b0a72ddd8d2bb06a2` preserves the committed
+  queue in the backup and tests corruption/restart recovery. Exact-head CI
+  #755 (run `36535545551`) passed backend deployment/migrations and tests,
+  Flutter analyze/tests and Android compile/upload, production container,
+  Windows release/safe-build/startup/installer. Trusted signing remains open.
+- Inventory receiving audit found that a lost response followed by the same
+  QR/photo request could consume another pending physical unit. The locked
+  purchase-item/action-receipt fix and two-unit regression are prepared for
+  a separate exact-head CI run; do not count it as verified until that passes.
 - The broader service/complaint, inventory, purchase and wallet retry audit
   remains open. No real restore rehearsal counts are available; do not infer
   zero values for any category.

@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsStaffOperator
+from jobs.idempotency import replay_response, remember_response
 from purchase.models import PurchaseItem
 from tenancy.access import request_company
 
@@ -29,6 +30,7 @@ class StrictTenantScopedInventoryReceiveAPIView(APIView):
 
         purchase_item = (
             PurchaseItem.objects.filter(company_id=company_id, pk=purchase_item_id)
+            .select_for_update()
             .select_related("purchase", "part")
             .first()
         )
@@ -42,6 +44,11 @@ class StrictTenantScopedInventoryReceiveAPIView(APIView):
                 {"success": False, "message": "This item uses photo receipt, not QR scanning."},
                 status=400,
             )
+
+        action_type = f"INVENTORY_QR_RECEIVE:{purchase_item.id}"
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
 
         # Serial numbers are globally unique physical identifiers. Never reveal
         # which other workspace owns a collision.
@@ -97,7 +104,7 @@ class StrictTenantScopedInventoryReceiveAPIView(APIView):
             serial_number=code,
             remarks=f"Received against invoice {purchase_item.purchase.invoice_number}",
         )
-        return Response(
+        response = Response(
             {
                 "success": True,
                 "message": "Part received into stock.",
@@ -107,3 +114,5 @@ class StrictTenantScopedInventoryReceiveAPIView(APIView):
             },
             status=201,
         )
+        return remember_response(request=request, action_id=replay.action_id,
+                                 action_type=action_type, response=response)

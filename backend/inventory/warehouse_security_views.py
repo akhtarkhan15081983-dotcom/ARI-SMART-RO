@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsStaffOperator
+from jobs.idempotency import replay_response, remember_response
 from purchase.models import Purchase, PurchaseItem, Supplier
 from tenancy.access import request_company
 
@@ -81,6 +82,7 @@ class TenantScopedInventoryReceiveAPIView(APIView):
             return Response({"success": False, "message": "Scan or enter a valid QR/serial code."}, status=400)
         purchase_item = (
             _scoped_purchase_items(request)
+            .select_for_update()
             .select_related("purchase", "part")
             .filter(pk=purchase_item_id)
             .first()
@@ -89,6 +91,10 @@ class TenantScopedInventoryReceiveAPIView(APIView):
             return Response({"success": False, "message": "Purchase item not found in this workspace."}, status=404)
         if not purchase_item.part.is_serialized:
             return Response({"success": False, "message": "This item uses photo receipt, not QR scanning."}, status=400)
+        action_type = f"INVENTORY_QR_RECEIVE:{purchase_item.id}"
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
         if InventoryItem.objects.exclude(company_id=company_id).filter(
             serial_number=code
         ).exists():
@@ -136,13 +142,15 @@ class TenantScopedInventoryReceiveAPIView(APIView):
             serial_number=code,
             remarks=f"Received against invoice {purchase_item.purchase.invoice_number}",
         )
-        return Response({
+        response = Response({
             "success": True,
             "message": "Part received into stock.",
             "inventory_item_id": inventory_item.id,
             "part": inventory_item.part.name,
             "serial_number": code,
         }, status=201)
+        return remember_response(request=request, action_id=replay.action_id,
+                                 action_type=action_type, response=response)
 
 
 class TenantScopedInventoryPhotoReceiveAPIView(APIView):
@@ -155,9 +163,13 @@ class TenantScopedInventoryPhotoReceiveAPIView(APIView):
         photo = request.FILES.get("photo")
         if not photo:
             return Response({"success": False, "message": "Item photo is required."}, status=400)
-        purchase_item = _scoped_purchase_items(request).filter(pk=purchase_item_id).first()
+        purchase_item = _scoped_purchase_items(request).select_for_update().filter(pk=purchase_item_id).first()
         if purchase_item is None:
             return Response({"success": False, "message": "Purchase item not found in this workspace."}, status=404)
+        action_type = f"INVENTORY_PHOTO_RECEIVE:{purchase_item.id}"
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
         inventory_item = (
             _scoped_inventory(request)
             .select_for_update()
@@ -186,7 +198,10 @@ class TenantScopedInventoryPhotoReceiveAPIView(APIView):
             serial_number="",
             remarks=f"Photo-verified receipt against invoice {inventory_item.purchase_item.purchase.invoice_number}",
         )
-        return Response({"success": True, "message": "Photo verified and item added to stock."}, status=201)
+        response = Response({"success": True, "message": "Photo verified and item added to stock.",
+                             "inventory_item_id": inventory_item.id}, status=201)
+        return remember_response(request=request, action_id=replay.action_id,
+                                 action_type=action_type, response=response)
 
 
 class TenantScopedInventoryCodeGenerationAPIView(APIView):

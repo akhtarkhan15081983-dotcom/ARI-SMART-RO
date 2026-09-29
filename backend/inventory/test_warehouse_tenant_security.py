@@ -2,11 +2,12 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from employees.models import EmployeeProfile
-from inventory.models import EngineerBagItem, InventoryItem, PartRequest
+from inventory.models import EngineerBagItem, InventoryAuditLog, InventoryItem, PartRequest
 from partmaster.models import PartCategory, PartMaster
 from purchase.models import Purchase, PurchaseItem, Supplier
 from tenancy.models import Company, CompanyMembership
@@ -180,6 +181,55 @@ class WarehouseTenantSecurityTests(TestCase):
         self.stock_b.refresh_from_db()
         self.assertEqual(self.stock_b.status, "PENDING_RECEIPT")
         self.assertEqual(self.stock_b.serial_number, "TEN-B-001")
+
+    def test_qr_receive_retry_does_not_consume_another_pending_unit(self):
+        self.stock_a.status = "PENDING_RECEIPT"
+        self.stock_a.serial_number = None
+        self.stock_a.barcode = None
+        self.stock_a.save(update_fields=["status", "serial_number", "barcode"])
+        InventoryItem.objects.create(
+            company=self.company_a, purchase_item=self.item_a, part=self.part,
+            status="PENDING_RECEIPT",
+        )
+        payload = {"purchase_item_id": self.item_a.id, "code": "RETRY-QR-1"}
+        first = self.client.post("/api/inventory/workflow/receive/", payload,
+                                 format="json", HTTP_X_ARI_ACTION_ID="receipt-qr-1")
+        second = self.client.post("/api/inventory/workflow/receive/", payload,
+                                  format="json", HTTP_X_ARI_ACTION_ID="receipt-qr-1")
+        self.assertEqual((first.status_code, second.status_code), (201, 201))
+        self.assertEqual(first.data["inventory_item_id"], second.data["inventory_item_id"])
+        self.assertTrue(second.data["idempotent_replay"])
+        self.assertEqual(InventoryItem.objects.filter(company=self.company_a,
+                        status="PENDING_RECEIPT").count(), 1)
+        self.assertEqual(InventoryAuditLog.objects.filter(company=self.company_a,
+                         action="RECEIVED").count(), 1)
+
+    def test_photo_receive_retry_does_not_consume_another_pending_unit(self):
+        self.part.is_serialized = False
+        self.part.save(update_fields=["is_serialized"])
+        self.stock_a.status = "PENDING_RECEIPT"
+        self.stock_a.serial_number = None
+        self.stock_a.barcode = None
+        self.stock_a.save(update_fields=["status", "serial_number", "barcode"])
+        InventoryItem.objects.create(
+            company=self.company_a, purchase_item=self.item_a, part=self.part,
+            status="PENDING_RECEIPT",
+        )
+
+        def post():
+            photo = SimpleUploadedFile("receipt.jpg", b"receipt-evidence", content_type="image/jpeg")
+            return self.client.post("/api/inventory/workflow/receive-photo/",
+                                    {"purchase_item_id": self.item_a.id, "photo": photo},
+                                    format="multipart", HTTP_X_ARI_ACTION_ID="receipt-photo-1")
+
+        first, second = post(), post()
+        self.assertEqual((first.status_code, second.status_code), (201, 201))
+        self.assertEqual(first.data["inventory_item_id"], second.data["inventory_item_id"])
+        self.assertTrue(second.data["idempotent_replay"])
+        self.assertEqual(InventoryItem.objects.filter(company=self.company_a,
+                        status="PENDING_RECEIPT").count(), 1)
+        self.assertEqual(InventoryAuditLog.objects.filter(company=self.company_a,
+                         action="RECEIVED").count(), 1)
 
     def test_issue_rejects_other_company_stock_id(self):
         response = self.client.post(
