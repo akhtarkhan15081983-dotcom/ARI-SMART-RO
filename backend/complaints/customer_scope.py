@@ -49,6 +49,33 @@ def secure_complaint_queryset(queryset, user):
     return restrict_complaints_for_user(queryset, user)
 
 
+def _effective_customer_company_id(customer):
+    if customer is None:
+        return None
+    if customer.company_id is not None:
+        return customer.company_id
+    if customer.assigned_engineer_id:
+        return customer.assigned_engineer.company_id
+    return None
+
+
+def _validate_workspace(company, customer, engineer=None):
+    customer_company_id = _effective_customer_company_id(customer)
+    if company is None:
+        if customer_company_id is not None:
+            raise ValidationError({"customer": ["Customer belongs to a company workspace."]})
+        if engineer is not None and engineer.company_id is not None:
+            raise ValidationError({"engineer": ["Engineer belongs to a company workspace."]})
+        return
+
+    if customer_company_id != company.id:
+        raise ValidationError({
+            "customer": ["Customer ownership is unresolved or outside the active workspace."]
+        })
+    if engineer is not None and engineer.company_id != company.id:
+        raise ValidationError({"engineer": ["Engineer is outside the active workspace."]})
+
+
 class SecureComplaintListAPIView(ComplaintListAPIView):
     def get_queryset(self):
         queryset = Complaint.objects.select_related(
@@ -87,8 +114,12 @@ class SecureComplaintSearchAPIView(ComplaintSearchAPIView):
 
 
 class SecureComplaintCreateAPIView(ComplaintCreateAPIView):
+    """Preserve original complaint workflow while enforcing explicit tenant ownership."""
+
     def perform_create(self, serializer):
-        if getattr(self.request.user, "role", None) == "CUSTOMER":
+        role = getattr(self.request.user, "role", None)
+
+        if role == "CUSTOMER":
             customer = linked_customer_for_complaints(self.request.user)
             if customer is None:
                 raise ValidationError({
@@ -106,30 +137,36 @@ class SecureComplaintCreateAPIView(ComplaintCreateAPIView):
 
         company = request_company(self.request)
         customer = serializer.validated_data.get("customer")
-        engineer = serializer.validated_data.get("engineer")
-        customer_company_id = getattr(customer, "company_id", None)
-        if customer_company_id is None and getattr(customer, "assigned_engineer_id", None):
-            customer_company_id = customer.assigned_engineer.company_id
 
-        if company is None:
-            # Narrow pre-tenancy compatibility only. A tenant-less actor may
-            # operate only on tenant-less customer/engineer records and never
-            # fall through to a real company workspace.
-            if customer_company_id is not None:
+        if role == "ENGINEER":
+            employee = getattr(self.request.user, "employee_profile", None)
+            if (
+                customer is None
+                or employee is None
+                or customer.assigned_engineer_id != employee.id
+            ):
                 raise ValidationError({
-                    "customer": ["Customer belongs to a company workspace."]
+                    "customer": ["You can create complaints only for customers assigned to you."]
                 })
-            if engineer is not None and engineer.company_id is not None:
-                raise ValidationError({
-                    "engineer": ["Engineer belongs to a company workspace."]
-                })
-            serializer.save(company=None)
+            _validate_workspace(company, customer, employee)
+            location = {}
+            if serializer.validated_data.get("latitude") is None:
+                location["latitude"] = customer.latitude
+            if serializer.validated_data.get("longitude") is None:
+                location["longitude"] = customer.longitude
+            serializer.save(
+                company=company,
+                engineer=employee,
+                **location,
+            )
             return
 
-        if customer_company_id != company.id:
-            raise ValidationError({
-                "customer": ["Customer ownership is unresolved or outside the active workspace."]
-            })
-        if engineer is not None and engineer.company_id != company.id:
-            raise ValidationError({"engineer": ["Engineer is outside the active workspace."]})
-        serializer.save(company=company)
+        engineer = serializer.validated_data.get("engineer")
+        _validate_workspace(company, customer, engineer)
+        location = {}
+        if customer is not None:
+            if serializer.validated_data.get("latitude") is None:
+                location["latitude"] = customer.latitude
+            if serializer.validated_data.get("longitude") is None:
+                location["longitude"] = customer.longitude
+        serializer.save(company=company, **location)
