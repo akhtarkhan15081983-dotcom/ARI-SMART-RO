@@ -70,6 +70,7 @@ class DuplicateSupplierInvoiceAuditTests(TestCase):
         self.assertEqual(after, before)
         report = json.loads(output.getvalue())
         self.assertEqual(report["mode"], "DRY_RUN_ONLY")
+        self.assertEqual(report["ownership_source"], "projected inventory tenant ownership; no database writes")
         self.assertEqual(report["total_purchase_count"], 3)
         self.assertEqual(report["unique_identity_count"], 2)
         self.assertEqual(report["duplicate_group_count"], 1)
@@ -131,3 +132,23 @@ class DuplicateSupplierInvoiceAuditTests(TestCase):
         self.assertEqual(report["blocking_issue_count"], 2)
         self.assertEqual(report["rehearsal_status"], "BLOCKED")
         self.assertFalse(report["constraint_ready"])
+
+    def test_single_company_projection_resolves_legacy_purchase_without_writing(self):
+        Company.objects.exclude(pk=self.company_a.pk).delete()
+        self.supplier_b.delete()
+        self.supplier_a2.delete()
+        self.supplier_a.company = None
+        self.supplier_a.save(update_fields=["company"])
+
+        legacy = self._purchase(None, self.supplier_a, "LEGACY-ONLY-001")
+        before_company_id = legacy.company_id
+
+        report = build_duplicate_invoice_report()
+
+        legacy.refresh_from_db()
+        self.assertIsNone(before_company_id)
+        self.assertIsNone(legacy.company_id)
+        self.assertEqual(report["unresolved_company_row_count"], 0)
+        self.assertEqual(report["blocking_issue_count"], 0)
+        self.assertEqual(report["rehearsal_status"], "CLEAN")
+        self.assertTrue(report["constraint_ready"])
