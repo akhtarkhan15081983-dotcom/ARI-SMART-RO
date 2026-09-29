@@ -5,12 +5,15 @@ from .views import (
     PartCatalogAPIView,
 )
 from .security_views import (
-    TenantScopedEngineerBagIssueAPIView,
     TenantScopedMyBagAPIView,
     TenantScopedAdminEngineerBagAPIView,
     TenantScopedPartRequestApprovalInboxAPIView,
     TenantScopedPartRequestReviewAPIView,
     TenantScopedPartRequestFulfilAPIView,
+)
+from .lifecycle_views import (
+    ReissuableTenantScopedEngineerBagIssueAPIView,
+    TenantScopedEngineerBagReturnAPIView,
 )
 from .idempotent_views import IdempotentTenantScopedMyPartRequestsAPIView
 from .strict_receive_view import StrictTenantScopedInventoryReceiveAPIView
@@ -26,7 +29,8 @@ from .financial_views import (
 )
 
 urlpatterns = [
-    path("inventory/issue/", TenantScopedEngineerBagIssueAPIView.as_view(), name="inventory-issue"),
+    path("inventory/issue/", ReissuableTenantScopedEngineerBagIssueAPIView.as_view(), name="inventory-issue"),
+    path("inventory/return/", TenantScopedEngineerBagReturnAPIView.as_view(), name="inventory-return"),
     path("inventory/verify/", OCRVerifyAPIView.as_view(), name="inventory-verify"),
     path("inventory/my-bag/", TenantScopedMyBagAPIView.as_view(), name="my-bag"),
     path("inventory/admin/engineer-bags/", TenantScopedAdminEngineerBagAPIView.as_view(), name="admin-engineer-bags"),
