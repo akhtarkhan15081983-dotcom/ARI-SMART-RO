@@ -135,6 +135,9 @@ class MainActivity : FlutterActivity() {
                             "background_location_granted" to backgroundLocation,
                             "notification_permission_granted" to notificationGranted,
                             "battery_optimization_ignored" to powerManager.isIgnoringBatteryOptimizations(packageName),
+                            "emulator_detected" to isLikelyEmulator(),
+                            "root_risk_detected" to hasRootRiskIndicators(),
+                            "mock_location_detected" to (fineLocation && lastKnownLocationIsMocked(locationManager)),
                         )
                     )
                 }
@@ -162,6 +165,51 @@ class MainActivity : FlutterActivity() {
             } catch (error: Exception) {
                 result.error("SAVE_FAILED", error.message ?: "Unable to save report.", null)
             }
+        }
+    }
+
+    private fun isLikelyEmulator(): Boolean {
+        val fingerprint = Build.FINGERPRINT.lowercase()
+        val model = Build.MODEL.lowercase()
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        val brand = Build.BRAND.lowercase()
+        val device = Build.DEVICE.lowercase()
+        val product = Build.PRODUCT.lowercase()
+        return fingerprint.startsWith("generic") ||
+            fingerprint.contains("emulator") ||
+            model.contains("google_sdk") ||
+            model.contains("emulator") ||
+            model.contains("android sdk built for") ||
+            manufacturer.contains("genymotion") ||
+            (brand.startsWith("generic") && device.startsWith("generic")) ||
+            product.contains("sdk") || product.contains("emulator")
+    }
+
+    private fun hasRootRiskIndicators(): Boolean {
+        if ((Build.TAGS ?: "").contains("test-keys")) return true
+        val paths = arrayOf(
+            "/system/app/Superuser.apk",
+            "/system/xbin/su",
+            "/system/bin/su",
+            "/sbin/su",
+            "/vendor/bin/su",
+            "/data/local/xbin/su",
+            "/data/local/bin/su",
+        )
+        return paths.any { File(it).exists() }
+    }
+
+    private fun lastKnownLocationIsMocked(locationManager: LocationManager): Boolean {
+        return try {
+            locationManager.getProviders(true).any { provider ->
+                val location = locationManager.getLastKnownLocation(provider) ?: return@any false
+                @Suppress("DEPRECATION")
+                location.isFromMockProvider
+            }
+        } catch (_: SecurityException) {
+            false
+        } catch (_: Exception) {
+            false
         }
     }
 
