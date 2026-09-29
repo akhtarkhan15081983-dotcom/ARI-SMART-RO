@@ -1,0 +1,98 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:ari_smart_ro_app/services/offline_job_store.dart';
+
+void main() {
+  late Directory tempDir;
+  late OfflineJobStore store;
+
+  setUp(() async {
+    tempDir = await Directory.systemTemp.createTemp('ari-offline-job-test-');
+    store = OfflineJobStore(rootDirectoryOverride: tempDir);
+  });
+
+  tearDown(() async {
+    if (await tempDir.exists()) {
+      await tempDir.delete(recursive: true);
+    }
+  });
+
+  test('corrupt primary is quarantined and last-known-good backup recovers', () async {
+    await store.queueAction(
+      type: 'STATUS',
+      jobId: 101,
+      payload: const <String, dynamic>{'status': 'ACCEPTED'},
+      actionId: 'action-1',
+    );
+    await store.queueAction(
+      type: 'GPS',
+      jobId: 101,
+      payload: const <String, dynamic>{
+        'latitude': 28.61,
+        'longitude': 77.20,
+      },
+      actionId: 'action-2',
+    );
+
+    final primary = File('${tempDir.path}/offline_job_state_v1.json');
+    final backup = File('${tempDir.path}/offline_job_state_v1.backup.json');
+    expect(await primary.exists(), isTrue);
+    expect(await backup.exists(), isTrue);
+
+    await primary.writeAsString('{broken-json', flush: true);
+
+    final recovered = await store.pendingActions();
+    expect(recovered, hasLength(1));
+    expect(recovered.single['id'], 'action-1');
+
+    final quarantine = Directory('${tempDir.path}/corrupt_state');
+    expect(await quarantine.exists(), isTrue);
+    expect(await quarantine.list().where((item) => item is File).isEmpty, isFalse);
+
+    final log = File('${tempDir.path}/offline_job_recovery_events.jsonl');
+    expect(await log.exists(), isTrue);
+    final events = await log.readAsLines();
+    expect(events, isNotEmpty);
+    final event = jsonDecode(events.last) as Map<String, dynamic>;
+    expect(event['reason'], 'PRIMARY_STATE_CORRUPT');
+    expect(event['recovered_from'], 'offline_job_state_v1.backup.json');
+  });
+
+  test('corrupt primary without backup is preserved before clean fallback', () async {
+    final primary = File('${tempDir.path}/offline_job_state_v1.json');
+    await primary.writeAsString('not-json', flush: true);
+
+    final pending = await store.pendingActions();
+    expect(pending, isEmpty);
+
+    final quarantine = Directory('${tempDir.path}/corrupt_state');
+    final quarantined = await quarantine.list().where((item) => item is File).toList();
+    expect(quarantined, hasLength(1));
+    expect(await (quarantined.single as File).readAsString(), 'not-json');
+
+    final log = File('${tempDir.path}/offline_job_recovery_events.jsonl');
+    final event = jsonDecode((await log.readAsLines()).last) as Map<String, dynamic>;
+    expect(event['reason'], 'PRIMARY_STATE_CORRUPT_NO_VALID_BACKUP');
+  });
+
+  test('duplicate offline action id remains idempotent after state hardening', () async {
+    await store.queueAction(
+      type: 'STATUS',
+      jobId: 202,
+      payload: const <String, dynamic>{'status': 'STARTED'},
+      actionId: 'stable-retry-id',
+    );
+    await store.queueAction(
+      type: 'STATUS',
+      jobId: 202,
+      payload: const <String, dynamic>{'status': 'STARTED'},
+      actionId: 'stable-retry-id',
+    );
+
+    final pending = await store.pendingActions();
+    expect(pending, hasLength(1));
+    expect(pending.single['id'], 'stable-retry-id');
+  });
+}
