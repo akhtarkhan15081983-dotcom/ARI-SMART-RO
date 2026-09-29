@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/job_model.dart';
+import 'offline_action_dead_letter_store.dart';
 
 class OfflineJobStore {
   OfflineJobStore({Directory? rootDirectoryOverride})
@@ -154,8 +155,6 @@ class OfflineJobStore {
     final primary = await _readValidFile(file);
     if (primary != null) return primary;
 
-    // Never silently overwrite damaged offline work. Preserve the raw file first
-    // so support can inspect it later, then attempt last-known-good recovery.
     final quarantinedPath = await _quarantineCorruptFile(file);
     final backup = await _backupFile();
     final recovered = await _readValidFile(backup);
@@ -351,11 +350,66 @@ class OfflineJobStore {
 
   Future<List<Map<String, dynamic>>> pendingActions() async {
     final state = await _readState();
-    return List<Map<String, dynamic>>.from(
+    final queue = List<Map<String, dynamic>>.from(
       (state['queue'] as List? ?? const <dynamic>[])
           .whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row)),
     );
+    if (queue.isEmpty) return queue;
+
+    final valid = <Map<String, dynamic>>[];
+    final deadLetters = OfflineActionDeadLetterStore(
+      rootDirectoryOverride: _rootDirectoryOverride,
+    );
+    var changed = false;
+
+    for (final action in queue) {
+      final type = (action['type'] ?? '').toString().trim().toUpperCase();
+      if (type != 'PHOTO' && type != 'SIGNATURE') {
+        valid.add(action);
+        continue;
+      }
+
+      final filePath = (action['file_path'] ?? '').toString().trim();
+      String? reason;
+      if (filePath.isEmpty) {
+        reason = 'MEDIA_PATH_MISSING';
+      } else {
+        final file = File(filePath);
+        try {
+          if (!await file.exists()) {
+            reason = 'MEDIA_FILE_MISSING';
+          } else if (await file.length() <= 0) {
+            reason = 'MEDIA_FILE_EMPTY';
+          }
+        } catch (_) {
+          reason = 'MEDIA_FILE_UNREADABLE';
+        }
+      }
+
+      if (reason == null) {
+        valid.add(action);
+        continue;
+      }
+
+      changed = true;
+      try {
+        await deadLetters.append(
+          action: action,
+          reason: reason,
+          detail: filePath.isEmpty ? null : filePath,
+        );
+      } catch (_) {
+        // Do not allow a diagnostic write failure to keep the whole sync queue
+        // permanently blocked. The state backup still preserves prior history.
+      }
+    }
+
+    if (changed) {
+      state['queue'] = valid;
+      await _writeState(state);
+    }
+    return valid;
   }
 
   Future<int> pendingCount({int? jobId}) async {
