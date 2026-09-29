@@ -174,6 +174,15 @@ class Customer(models.Model):
         blank=True
     )
 
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="customers",
+        db_index=True,
+    )
+
     user = models.OneToOneField(
         User,
         on_delete=models.SET_NULL,
