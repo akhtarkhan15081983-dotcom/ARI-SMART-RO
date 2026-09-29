@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ari_smart_ro_app/services/attendance_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,6 +42,50 @@ void main() {
       expect(attendance, isNotNull);
       expect(attendance!.employeeName, 'Rajkumar');
       expect(attendance.workingHours, 4.5);
+    });
+
+    test('checkIn sends mocked-location integrity signal', () async {
+      final temp = await Directory.systemTemp.createTemp('ari-attendance-test-');
+      final selfie = File('${temp.path}/selfie.jpg');
+      await selfie.writeAsBytes(<int>[1, 2, 3, 4]);
+
+      try {
+        final client = MockClient((request) async {
+          expect(request, isA<http.MultipartRequest>());
+          final multipart = request as http.MultipartRequest;
+          expect(multipart.fields['latitude'], '27.149028');
+          expect(multipart.fields['longitude'], '78.045');
+          expect(multipart.fields['device_id'], 'test-device');
+          expect(multipart.fields['is_mocked'], 'true');
+          return http.Response(
+            jsonEncode({'success': false, 'code': 'MOCK_LOCATION_DETECTED'}),
+            403,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+
+        final service = AttendanceService(
+          client: client,
+          baseUrl: 'https://example.test/api',
+          headersProvider: () async => {
+            'Authorization': 'Bearer test-token',
+            'Content-Type': 'application/json',
+          },
+          deviceIdProvider: () async => 'test-device',
+          mockLocationProvider: () async => true,
+        );
+
+        final result = await service.checkIn(
+          latitude: 27.149028,
+          longitude: 78.045,
+          selfiePath: selfie.path,
+        );
+
+        expect(result.success, isFalse);
+        expect(result.statusCode, 403);
+      } finally {
+        await temp.delete(recursive: true);
+      }
     });
 
     test('checkOut returns stable offline result on network failure', () async {
