@@ -19,8 +19,10 @@ from .warehouse_security_views import (
     TenantScopedInventoryPhotoReceiveAPIView,
     TenantScopedInventoryCodeGenerationAPIView,
     TenantScopedInventoryQrLabelsPdfAPIView,
-    TenantScopedInventorySummaryAPIView,
-    TenantScopedInventoryExcelReportAPIView,
+)
+from .financial_views import (
+    ReconciledInventorySummaryAPIView,
+    ReconciledInventoryExcelReportAPIView,
 )
 
 urlpatterns = [
@@ -38,6 +40,6 @@ urlpatterns = [
     path("inventory/workflow/receive-photo/", TenantScopedInventoryPhotoReceiveAPIView.as_view(), name="inventory-photo-receive"),
     path("inventory/workflow/generate-codes/", TenantScopedInventoryCodeGenerationAPIView.as_view(), name="inventory-generate-codes"),
     path("inventory/workflow/qr-labels.pdf", TenantScopedInventoryQrLabelsPdfAPIView.as_view(), name="inventory-qr-labels"),
-    path("inventory/workflow/summary/", TenantScopedInventorySummaryAPIView.as_view(), name="inventory-summary"),
-    path("inventory/workflow/reports/inventory.xlsx", TenantScopedInventoryExcelReportAPIView.as_view(), name="inventory-excel-report"),
+    path("inventory/workflow/summary/", ReconciledInventorySummaryAPIView.as_view(), name="inventory-summary"),
+    path("inventory/workflow/reports/inventory.xlsx", ReconciledInventoryExcelReportAPIView.as_view(), name="inventory-excel-report"),
 ]
