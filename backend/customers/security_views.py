@@ -2,6 +2,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from employees.models import EmployeeProfile
@@ -10,7 +11,22 @@ from jobs.models import ClientActionReceipt
 from tenancy.access import request_company
 
 from .models import Customer, CustomerRentPayment
-from .views import AssignCustomerAPIView, RentPaymentCreateAPIView, RentPaymentHistoryAPIView
+from .views import (
+    AssignCustomerAPIView,
+    CustomerCreateAPIView,
+    RentPaymentCreateAPIView,
+    RentPaymentHistoryAPIView,
+)
+
+
+class TenantScopedCustomerCreateAPIView(CustomerCreateAPIView):
+    """New staff-created customers always receive explicit workspace ownership."""
+
+    def perform_create(self, serializer):
+        company = request_company(self.request)
+        if company is None:
+            raise ValidationError({"detail": "Active company workspace not found."})
+        serializer.save(company=company)
 
 
 class TenantScopedAssignCustomerAPIView(AssignCustomerAPIView):
@@ -42,6 +58,17 @@ class TenantScopedAssignCustomerAPIView(AssignCustomerAPIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        customer = Customer.objects.filter(pk=pk).first()
+        if customer is not None and company is not None:
+            if customer.company_id not in (None, company.id):
+                return Response(
+                    {"message": "Customer not found in this workspace."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if customer.company_id is None:
+                customer.company = company
+                customer.save(update_fields=["company"])
+
         return super().post(request, pk)
 
 
@@ -64,10 +91,12 @@ class TenantScopedRentPaymentCreateAPIView(RentPaymentCreateAPIView):
             )
 
         company = request_company(request)
+        explicit_company_id = customer.company_id
         assigned_company_id = customer.assigned_engineer.company_id if customer.assigned_engineer_id else None
+        effective_company_id = explicit_company_id or assigned_company_id
 
         if company is not None:
-            if assigned_company_id is None:
+            if effective_company_id is None:
                 return Response(
                     {
                         "success": False,
@@ -79,12 +108,15 @@ class TenantScopedRentPaymentCreateAPIView(RentPaymentCreateAPIView):
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
-            if assigned_company_id != company.id:
+            if effective_company_id != company.id:
                 return Response(
                     {"success": False, "message": "Customer not found in this workspace."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
-        elif assigned_company_id is not None:
+            if customer.company_id is None:
+                customer.company = company
+                customer.save(update_fields=["company"])
+        elif effective_company_id is not None:
             return Response(
                 {"success": False, "message": "Customer not found in the legacy workspace."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -135,8 +167,6 @@ class TenantScopedRentPaymentCreateAPIView(RentPaymentCreateAPIView):
                 receipt.completed_at = timezone.now()
                 receipt.save(update_fields=["response_status", "response_payload", "completed_at"])
             elif created:
-                # Validation/business-rule failures are not durable client
-                # actions; remove the claim so a corrected retry can reuse ID.
                 receipt.delete()
 
         return response
@@ -157,9 +187,14 @@ class TenantScopedRentPaymentHistoryAPIView(RentPaymentHistoryAPIView):
             "collected_by__user",
         )
         if company is not None:
-            payments = payments.filter(customer__assigned_engineer__company=company)
+            payments = payments.filter(
+                Q(customer__company=company)
+                | Q(customer__company__isnull=True, customer__assigned_engineer__company=company)
+            )
         else:
             payments = payments.filter(
+                customer__company__isnull=True,
+            ).filter(
                 Q(customer__assigned_engineer__isnull=True)
                 | Q(customer__assigned_engineer__company__isnull=True)
             )
