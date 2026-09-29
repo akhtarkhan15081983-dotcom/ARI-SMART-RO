@@ -16,8 +16,6 @@ from tenancy.models import Company, CompanyMembership
 
 
 class InventoryReturnLifecycleTests(TransactionTestCase):
-    reset_sequences = True
-
     def setUp(self):
         User = get_user_model()
         self.company = Company.objects.create(
