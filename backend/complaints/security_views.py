@@ -1,10 +1,11 @@
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from employees.models import EmployeeProfile
 from tenancy.access import request_company
 
-from .views import ComplaintAssignEngineerAPIView
+from .views import ComplaintAssignEngineerAPIView, ComplaintUpdateAPIView
 
 
 class TenantScopedComplaintAssignEngineerAPIView(ComplaintAssignEngineerAPIView):
@@ -22,7 +23,6 @@ class TenantScopedComplaintAssignEngineerAPIView(ComplaintAssignEngineerAPIView)
         try:
             engineer_id = int(engineer_id)
         except (TypeError, ValueError):
-            # Preserve the base view's detailed validation response.
             return super().patch(request, pk)
 
         if not EmployeeProfile.objects.filter(
@@ -32,11 +32,36 @@ class TenantScopedComplaintAssignEngineerAPIView(ComplaintAssignEngineerAPIView)
             user__is_active=True,
             designation="ENGINEER",
         ).exists():
-            # Deliberately do not reveal whether the supplied ID belongs to a
-            # different tenant.
             return Response(
                 {"success": False, "message": "Active engineer not found in this workspace."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         return super().patch(request, pk)
+
+
+class SecureComplaintUpdateAPIView(ComplaintUpdateAPIView):
+    """Allow note/schedule edits without bypassing secured complaint workflow endpoints."""
+
+    protected_fields = {
+        "customer",
+        "engineer",
+        "status",
+        "resolved_date",
+        "job",
+        "linked_service",
+    }
+
+    def perform_update(self, serializer):
+        attempted = sorted(
+            field for field in self.protected_fields if field in serializer.validated_data
+        )
+        if attempted:
+            raise ValidationError({
+                "detail": (
+                    "Complaint ownership, assignment and workflow state must be changed "
+                    "through the dedicated secured endpoints."
+                ),
+                "protected_fields": attempted,
+            })
+        serializer.save()
