@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from customers.models import Customer
@@ -7,6 +7,7 @@ from assets.models import ROAsset
 from jobs.models import Job
 from partmaster.models import PartMaster
 from inventory.models import InventoryItem
+from tenancy.id_allocator import acquire_allocator_lock, next_visible_number
 
 
 class Service(models.Model):
@@ -52,12 +53,15 @@ class Service(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        if not self.service_id:
-            year = timezone.now().year
-            last = Service.objects.filter(service_id__startswith=f"SER-{year}").order_by("id").last()
-            number = int(last.service_id.split("-")[-1]) + 1 if last else 1
+        if self.service_id:
+            return super().save(*args, **kwargs)
+
+        year = timezone.now().year
+        with transaction.atomic():
+            acquire_allocator_lock(f"service:{year}")
+            number = next_visible_number(Service, "service_id", "SER", year)
             self.service_id = f"SER-{year}-{number:06d}"
-        super().save(*args, **kwargs)
+            return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.service_id
