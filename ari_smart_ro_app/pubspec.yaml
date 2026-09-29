@@ -25,6 +25,7 @@ dependencies:
   mobile_scanner: ^5.2.3
   signature: ^5.5.0
   path_provider: ^2.1.5
+  synchronized: ^3.4.0
   google_maps_flutter: ^2.12.3
   flutter_map: ^8.2.1
   latlong2: ^0.9.1
