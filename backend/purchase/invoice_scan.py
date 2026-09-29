@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsStaffOperator
 from partmaster.models import PartMaster
+from tenancy.access import request_company
 
 from .models import Purchase, Supplier
 from .serializers import PurchaseSerializer
@@ -49,9 +50,11 @@ def _invoice_number(text):
     return ""
 
 
-def _supplier_match(text):
+def _supplier_match(text, company_id):
     normalized = text.lower()
-    suppliers = list(Supplier.objects.filter(is_active=True).order_by("name"))
+    suppliers = list(
+        Supplier.objects.filter(is_active=True, company_id=company_id).order_by("name")
+    )
     for supplier in suppliers:
         candidates = [supplier.name, supplier.gst_number, supplier.phone]
         if any(value and value.lower() in normalized for value in candidates):
@@ -79,30 +82,42 @@ def _part_lines(text):
             except (InvalidOperation, ValueError):
                 pass
         results.append({
-            "part": part.id, "part_code": part.code, "part_name": part.name,
-            "quantity": quantity, "purchase_price": str(price), "source_line": line,
+            "part": part.id,
+            "part_code": part.code,
+            "part_name": part.name,
+            "quantity": quantity,
+            "purchase_price": str(price),
+            "source_line": line,
         })
         used.add(part.id)
     return results
 
 
-def analyze(text):
+def analyze(text, company_id=None):
     text = str(text or "")[:50000]
-    supplier = _supplier_match(text)
+    supplier = _supplier_match(text, company_id)
     invoice = _invoice_number(text)
     invoice_date = _date_from_text(text)
     items = _part_lines(text)
     checks = [bool(supplier), bool(invoice), bool(items), invoice_date != date.today()]
     confidence = round(sum(checks) / len(checks) * 100, 2)
-    duplicate = bool(invoice and Purchase.objects.filter(
-        invoice_number__iexact=invoice,
-        **({"supplier": supplier} if supplier else {}),
-    ).exists())
+    duplicate = bool(
+        invoice
+        and Purchase.objects.filter(
+            company_id=company_id,
+            invoice_number__iexact=invoice,
+            **({"supplier": supplier} if supplier else {}),
+        ).exists()
+    )
     warnings = []
-    if not supplier: warnings.append("Supplier could not be matched; please select it.")
-    if not invoice: warnings.append("Invoice number needs manual confirmation.")
-    if not items: warnings.append("No catalog parts were matched; add invoice lines manually.")
-    if duplicate: warnings.append("Possible duplicate invoice detected. It cannot be posted twice.")
+    if not supplier:
+        warnings.append("Supplier could not be matched in this workspace; please select it.")
+    if not invoice:
+        warnings.append("Invoice number needs manual confirmation.")
+    if not items:
+        warnings.append("No catalog parts were matched; add invoice lines manually.")
+    if duplicate:
+        warnings.append("Possible duplicate invoice detected. It cannot be posted twice.")
     return {
         "supplier": supplier.id if supplier else None,
         "supplier_name": supplier.name if supplier else "",
@@ -123,7 +138,11 @@ class InvoiceAnalyzeAPIView(APIView):
         text = request.data.get("ocr_text", "")
         if len(_clean(text)) < 10:
             return Response({"message": "Invoice text could not be read. Retake a clear, flat photo."}, status=400)
-        return Response({"success": True, "draft": analyze(text)})
+        company = request_company(request)
+        return Response({
+            "success": True,
+            "draft": analyze(text, company.id if company is not None else None),
+        })
 
 
 class InvoiceConfirmAPIView(APIView):
@@ -132,6 +151,8 @@ class InvoiceConfirmAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
+        company = request_company(request)
+        company_id = company.id if company is not None else None
         try:
             payload = json.loads(request.data.get("payload", "{}"))
         except json.JSONDecodeError:
@@ -140,17 +161,31 @@ class InvoiceConfirmAPIView(APIView):
         invoice_number = _clean(payload.get("invoice_number"))
         if not supplier_id or not invoice_number:
             return Response({"message": "Supplier and invoice number are required."}, status=400)
-        if Purchase.objects.filter(supplier_id=supplier_id, invoice_number__iexact=invoice_number).exists():
+        supplier = Supplier.objects.filter(
+            pk=supplier_id,
+            company_id=company_id,
+            is_active=True,
+        ).first()
+        if supplier is None:
+            return Response({"message": "Supplier not found in this workspace."}, status=404)
+        if Purchase.objects.filter(
+            company_id=company_id,
+            supplier=supplier,
+            invoice_number__iexact=invoice_number,
+        ).exists():
             return Response({"message": "This supplier invoice already exists. Duplicate posting blocked."}, status=409)
-        serializer = PurchaseSerializer(data={
-            "supplier": supplier_id,
-            "invoice_number": invoice_number,
-            "invoice_date": payload.get("invoice_date"),
-            "remarks": _clean(payload.get("remarks")),
-            "items": payload.get("items", []),
-        })
+        serializer = PurchaseSerializer(
+            data={
+                "supplier": supplier.id,
+                "invoice_number": invoice_number,
+                "invoice_date": payload.get("invoice_date"),
+                "remarks": _clean(payload.get("remarks")),
+                "items": payload.get("items", []),
+            },
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
-        purchase = serializer.save()
+        purchase = serializer.save(company=company)
         purchase.invoice_image = request.FILES.get("invoice_image")
         purchase.entry_source = "INVOICE_OCR"
         purchase.ocr_text = str(request.data.get("ocr_text", ""))[:50000]
@@ -164,4 +199,8 @@ class InvoiceConfirmAPIView(APIView):
             "invoice_image", "entry_source", "ocr_text", "ocr_confidence",
             "verified_by", "verified_at",
         ))
-        return Response({"success": True, "purchase_id": purchase.id, "message": "Invoice verified and purchase created."}, status=201)
+        return Response({
+            "success": True,
+            "purchase_id": purchase.id,
+            "message": "Invoice verified and purchase created.",
+        }, status=201)
