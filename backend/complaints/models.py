@@ -1,9 +1,10 @@
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from customers.models import Customer
 from employees.models import EmployeeProfile
 from service.models import Service
+from tenancy.id_allocator import acquire_allocator_lock, next_visible_number
 
 
 class Complaint(models.Model):
@@ -82,27 +83,20 @@ class Complaint(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        if not self.complaint_id:
-            year = timezone.now().year
-            last = (
-                Complaint.objects.filter(complaint_id__startswith=f"CMP-{year}")
-                .order_by("id")
-                .last()
-            )
-            if last:
-                try:
-                    number = int(last.complaint_id.split("-")[-1]) + 1
-                except (ValueError, IndexError):
-                    number = 1
-            else:
-                number = 1
-            self.complaint_id = f"CMP-{year}-{number:06d}"
-
         if self.status == "RESOLVED" and self.resolved_date is None:
             self.resolved_date = timezone.now()
         if self.status not in ["RESOLVED", "CLOSED"]:
             self.resolved_date = None
-        super().save(*args, **kwargs)
+
+        if self.complaint_id:
+            return super().save(*args, **kwargs)
+
+        year = timezone.now().year
+        with transaction.atomic():
+            acquire_allocator_lock(f"complaint:{year}")
+            number = next_visible_number(Complaint, "complaint_id", "CMP", year)
+            self.complaint_id = f"CMP-{year}-{number:06d}"
+            return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.complaint_id
