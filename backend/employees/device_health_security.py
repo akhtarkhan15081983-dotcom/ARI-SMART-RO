@@ -52,6 +52,15 @@ class SecurityAwareEmployeeDeviceHealthAPIView(EmployeeDeviceHealthAPIView):
     """Persist normalized device-integrity diagnostics without blocking field work."""
 
     def post(self, request):
+        # The base health endpoint historically treats all numeric values as
+        # nullable. Pending sync counters are DB non-null fields, however, so a
+        # partial/older client payload could otherwise attempt to persist NULL
+        # and turn a best-effort health report into a 500. Normalize only these
+        # counters before delegating; optional memory/SDK metrics remain nullable.
+        payload = request.data if isinstance(request.data, dict) else {}
+        payload.setdefault("pending_job_actions", 0)
+        payload.setdefault("pending_location_points", 0)
+
         response = super().post(request)
         if response.status_code < 200 or response.status_code >= 300:
             return response
@@ -60,7 +69,6 @@ class SecurityAwareEmployeeDeviceHealthAPIView(EmployeeDeviceHealthAPIView):
         if employee is None:
             return response
 
-        payload = request.data if isinstance(request.data, dict) else {}
         risks = _risk_tags(payload)
         row = EmployeeDeviceHealth.objects.filter(employee=employee).first()
         if row is None:
