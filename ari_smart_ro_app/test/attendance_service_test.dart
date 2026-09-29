@@ -6,6 +6,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+class _InspectingBaseClient extends http.BaseClient {
+  _InspectingBaseClient(this.handler);
+
+  final Future<http.StreamedResponse> Function(http.BaseRequest request) handler;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) => handler(request);
+}
+
 void main() {
   group('AttendanceService', () {
     test('todayAttendance parses successful response', () async {
@@ -50,15 +59,27 @@ void main() {
       await selfie.writeAsBytes(<int>[1, 2, 3, 4]);
 
       try {
-        final client = MockClient((request) async {
+        final client = _InspectingBaseClient((request) async {
           expect(request, isA<http.MultipartRequest>());
           final multipart = request as http.MultipartRequest;
+          expect(multipart.url.toString(), 'https://example.test/api/attendance/check-in/');
           expect(multipart.fields['latitude'], '27.149028');
           expect(multipart.fields['longitude'], '78.045');
           expect(multipart.fields['device_id'], 'test-device');
           expect(multipart.fields['is_mocked'], 'true');
-          return http.Response(
-            jsonEncode({'success': false, 'code': 'MOCK_LOCATION_DETECTED'}),
+          expect(multipart.files, hasLength(1));
+          expect(multipart.files.single.field, 'selfie');
+
+          return http.StreamedResponse(
+            Stream<List<int>>.value(
+              utf8.encode(
+                jsonEncode({
+                  'success': false,
+                  'code': 'MOCK_LOCATION_DETECTED',
+                  'message': 'Mock/fake GPS location detected. Attendance is blocked.',
+                }),
+              ),
+            ),
             403,
             headers: {'content-type': 'application/json'},
           );
@@ -83,6 +104,7 @@ void main() {
 
         expect(result.success, isFalse);
         expect(result.statusCode, 403);
+        expect(result.message, contains('Mock/fake GPS'));
       } finally {
         await temp.delete(recursive: true);
       }
