@@ -11,6 +11,7 @@ from .views import AdminDeviceHealthAPIView, EmployeeDeviceHealthAPIView
 
 
 RISK_PREFIX = "SECURITY_RISK["
+ATTENDANCE_PENDING_PREFIX = "ATTENDANCE_PENDING["
 
 
 def _risk_tags(payload):
@@ -48,6 +49,47 @@ def _stored_risks(value):
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
+def _pending_attendance(value):
+    text = str(value or "")
+    start = text.find(ATTENDANCE_PENDING_PREFIX)
+    if start < 0:
+        return 0
+    end = text.find("]", start)
+    if end < 0:
+        return 0
+    raw = text[start + len(ATTENDANCE_PENDING_PREFIX) : end]
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _strip_attendance_pending(value):
+    text = str(value or "")
+    start = text.find(ATTENDANCE_PENDING_PREFIX)
+    if start < 0:
+        return text
+    end = text.find("]", start)
+    if end < 0:
+        return text
+    before = text[:start].rstrip()
+    after = text[end + 1 :].lstrip()
+    if before.endswith("|"):
+        before = before[:-1].rstrip()
+    if after.startswith("|"):
+        after = after[1:].lstrip()
+    return " | ".join(part for part in (before, after) if part)
+
+
+def _with_attendance_pending(value, pending):
+    base = _strip_attendance_pending(value).strip()
+    marker = f"{ATTENDANCE_PENDING_PREFIX}{max(0, int(pending))}]"
+    if not base:
+        return marker
+    max_base = max(0, 500 - len(marker) - 3)
+    return f"{base[:max_base]} | {marker}"
+
+
 class SecurityAwareEmployeeDeviceHealthAPIView(EmployeeDeviceHealthAPIView):
     """Persist normalized device-integrity diagnostics without blocking field work."""
 
@@ -55,6 +97,7 @@ class SecurityAwareEmployeeDeviceHealthAPIView(EmployeeDeviceHealthAPIView):
         payload = request.data if isinstance(request.data, dict) else {}
         payload.setdefault("pending_job_actions", 0)
         payload.setdefault("pending_location_points", 0)
+        payload.setdefault("pending_attendance_actions", 0)
 
         response = super().post(request)
         if response.status_code < 200 or response.status_code >= 300:
@@ -64,12 +107,22 @@ class SecurityAwareEmployeeDeviceHealthAPIView(EmployeeDeviceHealthAPIView):
         if employee is None:
             return response
 
+        try:
+            pending_attendance = max(
+                0,
+                int(payload.get("pending_attendance_actions") or 0),
+            )
+        except (TypeError, ValueError):
+            pending_attendance = 0
+
         risks = _risk_tags(payload)
         row = EmployeeDeviceHealth.objects.filter(employee=employee).first()
         if row is None:
             return response
 
-        client_error = _strip_risk_prefix(payload.get("last_error"))[:380]
+        client_error = _strip_attendance_pending(
+            _strip_risk_prefix(payload.get("last_error"))
+        )[:380]
         if risks:
             summary = f"{RISK_PREFIX}{','.join(risks)}]"
             row.last_error = f"{summary} | {client_error}"[:500] if client_error else summary
@@ -85,10 +138,13 @@ class SecurityAwareEmployeeDeviceHealthAPIView(EmployeeDeviceHealthAPIView):
             )
         elif row.last_error.startswith(RISK_PREFIX):
             row.last_error = client_error
-            row.save(update_fields=["last_error", "reported_at"])
+
+        row.last_error = _with_attendance_pending(row.last_error, pending_attendance)
+        row.save(update_fields=["last_error", "reported_at"])
 
         response.data["security_risks"] = risks
         response.data["risk_level"] = "HIGH" if risks else "CLEAR"
+        response.data["pending_attendance_actions"] = pending_attendance
         return response
 
 
@@ -106,8 +162,12 @@ class SecurityAwareAdminDeviceHealthAPIView(AdminDeviceHealthAPIView):
                 item["security_risks"] = []
                 item["risk_level"] = "UNKNOWN"
                 continue
-            risks = _stored_risks(health.get("last_error"))
-            health["last_error"] = _strip_risk_prefix(health.get("last_error"))
+            stored_error = health.get("last_error")
+            risks = _stored_risks(stored_error)
+            health["pending_attendance_actions"] = _pending_attendance(stored_error)
+            health["last_error"] = _strip_attendance_pending(
+                _strip_risk_prefix(stored_error)
+            )
             item["security_risks"] = risks
             item["risk_level"] = "HIGH" if risks else "CLEAR"
         return response
