@@ -243,6 +243,24 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
             check_in__isnull=False,
         ).first()
 
+        # A stop signal must always be accepted, including before check-in or
+        # after checkout. New location points, however, are valid only inside a
+        # real attendance shift. Returning 2xx + shift_active=false deliberately
+        # tells the mobile foreground service to stop without retry-queuing the
+        # rejected point.
+        if request.data.get("tracking_active") is not False and attendance is None:
+            if employee.is_online:
+                employee.is_online = False
+                employee.save(update_fields=["is_online"])
+            return Response(
+                {
+                    "message": "Check in before live work-location tracking can start.",
+                    "online": False,
+                    "shift_active": False,
+                    "reason": "NO_CHECK_IN",
+                }
+            )
+
         active_overtime = False
         if attendance is not None:
             active_overtime = OvertimeRequest.objects.filter(
@@ -266,6 +284,7 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
                     "message": "Work shift is not active. Live tracking stopped on the server.",
                     "online": False,
                     "shift_active": False,
+                    "reason": "SHIFT_ENDED",
                     "auto_checked_out": attendance.auto_checked_out,
                     "check_out": attendance.check_out,
                 }
