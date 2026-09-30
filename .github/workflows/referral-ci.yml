@@ -101,13 +101,24 @@ jobs:
         run: >-
           flutter build apk --debug
           --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+      - name: Prepare shareable APK
+        shell: bash
+        run: cp build/app/outputs/flutter-apk/app-debug.apk "build/app/outputs/flutter-apk/ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest.apk"
+      - name: Upload latest Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest
+          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest.apk
+          if-no-files-found: error
+          retention-days: 30
       - name: Android emulator startup smoke test
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_6
-          disable-animations: true
+          emulator-boot-timeout: 900
+          disable-animations: false
           script: |
             adb install -r ari_smart_ro_app/build/app/outputs/flutter-apk/app-debug.apk
             adb shell am force-stop com.arismartro.app.posthogtest
@@ -120,16 +131,6 @@ jobs:
               exit 1
             fi
             echo "ARI SMART RO Android startup smoke test passed with PID $PID."
-      - name: Prepare shareable APK
-        shell: bash
-        run: cp build/app/outputs/flutter-apk/app-debug.apk "build/app/outputs/flutter-apk/ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest.apk"
-      - name: Upload latest Android APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest
-          path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest.apk
-          if-no-files-found: error
-          retention-days: 30
 
   container:
     runs-on: ubuntu-latest
