@@ -1,10 +1,10 @@
 from django.urls import path
 
+from .customer_alarm_refresh import ROAlarmAccessibleRefreshAPIView
 from .views import (
     ROAlarmAssetListAPIView,
     ROAlarmAssetSettingsAPIView,
     ROAlarmListCreateAPIView,
-    ROAlarmRefreshAPIView,
     ROAlarmStatusAPIView,
     ROAssetListAPIView,
 )
@@ -32,7 +32,7 @@ urlpatterns = [
     ),
     path(
         "ro-alarms/refresh/",
-        ROAlarmRefreshAPIView.as_view(),
+        ROAlarmAccessibleRefreshAPIView.as_view(),
         name="ro-alarm-refresh",
     ),
     path(

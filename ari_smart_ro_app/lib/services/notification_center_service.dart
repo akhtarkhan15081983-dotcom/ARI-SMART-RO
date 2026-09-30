@@ -17,7 +17,27 @@ class NotificationCenterData {
 class NotificationCenterService {
   const NotificationCenterService();
 
+  Future<void> _syncCustomerRoAlarms() async {
+    try {
+      final role = (await ApiService.getRole() ?? '')
+          .trim()
+          .toUpperCase()
+          .replaceAll('ROLE_', '');
+      if (role != 'CUSTOMER') return;
+      await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/assets/ro-alarms/refresh/'),
+            headers: await ApiService.authHeaders(),
+            body: jsonEncode({'horizon_days': 7}),
+          )
+          .timeout(const Duration(seconds: 20));
+    } catch (_) {
+      // Alarm sync must never block the notification center.
+    }
+  }
+
   Future<NotificationCenterData> fetch() async {
+    await _syncCustomerRoAlarms();
     final response = await http
         .get(
           Uri.parse('${ApiService.baseUrl}/auth/notifications/'),

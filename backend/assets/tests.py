@@ -153,14 +153,46 @@ class ROAlarmCenterTests(APITestCase):
             1,
         )
 
-    def test_customer_cannot_run_system_refresh(self):
+    def test_customer_can_refresh_only_own_ro_alarms(self):
+        other_company = Company.objects.create(
+            name="Other Sync",
+            slug="other-sync-ro-alarm",
+            phone="8777777777",
+        )
+        other_customer = Customer.objects.create(
+            company=other_company,
+            name="Other Sync Customer",
+            phone="8222222222",
+            address="Other",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+            ro_model="Other RO",
+        )
+        other_asset = ROAsset.objects.create(
+            ro_model=self.asset.ro_model,
+            serial_number="ALARM-TEST-OTHER-SYNC",
+            status="INSTALLED",
+            current_customer=other_customer,
+            next_filter_change_date=timezone.localdate(),
+        )
+
         self.client.force_authenticate(self.customer_user)
         response = self.client.post(
             "/api/assets/ro-alarms/refresh/",
-            {},
+            {"horizon_days": 7},
             format="json",
         )
-        self.assertEqual(response.status_code, 403)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["scanned_assets"], 1)
+        self.assertTrue(
+            ROAlarm.objects.filter(
+                ro_asset=self.asset,
+                alarm_type="FILTER_DUE",
+            ).exists()
+        )
+        self.assertFalse(ROAlarm.objects.filter(ro_asset=other_asset).exists())
 
     def test_staff_can_acknowledge_and_resolve_alarm(self):
         alarm = ROAlarm.objects.create(
