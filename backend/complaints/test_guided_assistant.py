@@ -11,6 +11,7 @@ from products.models import ProductCategory, ROModel
 from tenancy.models import Company
 
 from .guidance import SYMPTOM_GUIDANCE, complaint_guidance
+from .models import Complaint
 
 
 class ComplaintGuidanceSafetyTests(SimpleTestCase):
@@ -32,6 +33,11 @@ class ComplaintGuidanceSafetyTests(SimpleTestCase):
             "OTHER",
         }
         self.assertEqual(set(SYMPTOM_GUIDANCE), expected)
+
+    def test_every_guided_symptom_maps_to_supported_complaint_type(self):
+        allowed = {value for value, _ in Complaint.COMPLAINT_TYPES}
+        mapped = {value["complaint_type"] for value in SYMPTOM_GUIDANCE.values()}
+        self.assertTrue(mapped.issubset(allowed), mapped - allowed)
 
     def test_leakage_is_high_priority_and_never_gives_internal_repair_steps(self):
         guidance = complaint_guidance("LEAKAGE")
@@ -146,3 +152,18 @@ class ComplaintAssistantIsolationTests(TestCase):
             {"symptom": "LEAKAGE", "asset_id": self.other_asset.asset_id},
         )
         self.assertEqual(other.status_code, 404)
+
+    def test_guided_leakage_raise_preserves_emergency_priority(self):
+        response = self.client.post(
+            reverse("complaint-assistant"),
+            {"symptom": "LEAKAGE", "description": "Water is leaking outside."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        complaint = Complaint.objects.get(pk=response.data["complaint"]["id"])
+        self.assertEqual(complaint.customer, self.customer)
+        self.assertEqual(complaint.priority, "EMERGENCY")
+        self.assertEqual(complaint.complaint_type, "WATER_LEAKAGE")
+        self.assertIn("Guided Complaint Context", complaint.description)
+        self.assertIn(self.customer.customer_id, complaint.description)
+        self.assertNotIn(self.customer.phone, complaint.description)
