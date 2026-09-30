@@ -11,6 +11,8 @@ class OfflineAttendanceStore {
 
   static const String _queueFileName = 'pending_attendance_actions_v1.json';
   static const String _backupFileName = 'pending_attendance_actions_v1.backup.json';
+  static const String _snapshotFileName = 'attendance_shift_snapshot_v1.json';
+  static const String _snapshotBackupFileName = 'attendance_shift_snapshot_v1.backup.json';
   static const String _lockFileName = '.pending_attendance_actions_v1.lock';
   static const String _mediaFolderName = 'media';
   static const String _quarantineFolderName = 'corrupt_state';
@@ -66,6 +68,16 @@ class OfflineAttendanceStore {
     return File('${root.path}/$_backupFileName');
   }
 
+  Future<File> _snapshotFile() async {
+    final root = await _rootDirectory();
+    return File('${root.path}/$_snapshotFileName');
+  }
+
+  Future<File> _snapshotBackupFile() async {
+    final root = await _rootDirectory();
+    return File('${root.path}/$_snapshotBackupFileName');
+  }
+
   Future<Directory> _mediaDirectory() async {
     final root = await _rootDirectory();
     final dir = Directory('${root.path}/$_mediaFolderName');
@@ -86,10 +98,29 @@ class OfflineAttendanceStore {
     }
   }
 
+  Map<String, dynamic>? _decodeSnapshot(String raw) {
+    try {
+      final value = jsonDecode(raw);
+      if (value is! Map) return null;
+      return Map<String, dynamic>.from(value);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>?> _readValid(File file) async {
     if (!await file.exists()) return null;
     try {
       return _decode(await file.readAsString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _readValidSnapshot(File file) async {
+    if (!await file.exists()) return null;
+    try {
+      return _decodeSnapshot(await file.readAsString());
     } catch (_) {
       return null;
     }
@@ -115,7 +146,9 @@ class OfflineAttendanceStore {
     if (primary != null) {
       if (await temp.exists()) {
         if (tempState == null) await _quarantine(temp);
-        try { await temp.delete(); } catch (_) {}
+        try {
+          await temp.delete();
+        } catch (_) {}
       }
       return primary;
     }
@@ -139,6 +172,41 @@ class OfflineAttendanceStore {
     return <Map<String, dynamic>>[];
   }
 
+  Future<Map<String, dynamic>?> _readSnapshotUnlocked() async {
+    final file = await _snapshotFile();
+    final temp = File('${file.path}.tmp');
+    final primary = await _readValidSnapshot(file);
+    final tempState = await _readValidSnapshot(temp);
+
+    if (primary != null) {
+      if (await temp.exists()) {
+        if (tempState == null) await _quarantine(temp);
+        try {
+          await temp.delete();
+        } catch (_) {}
+      }
+      return primary;
+    }
+
+    if (tempState != null) {
+      await _quarantine(file);
+      if (await file.exists()) await file.delete();
+      await temp.rename(file.path);
+      return tempState;
+    }
+
+    final backup = await _snapshotBackupFile();
+    final recovered = await _readValidSnapshot(backup);
+    if (recovered != null) {
+      await _quarantine(file);
+      await _writeSnapshotUnlocked(recovered, writeBackup: false);
+      return recovered;
+    }
+
+    await _quarantine(file);
+    return null;
+  }
+
   Future<void> _writeUnlocked(
     List<Map<String, dynamic>> actions, {
     bool writeBackup = true,
@@ -152,8 +220,29 @@ class OfflineAttendanceStore {
       throw const FileSystemException('Offline attendance queue validation failed.');
     }
 
-    // Publish the new committed queue to backup before replacing primary so
-    // an interrupted/corrupt primary cannot lose an acknowledged local write.
+    if (writeBackup) {
+      final backupTemp = File('${backup.path}.tmp');
+      await backupTemp.writeAsString(payload, flush: true);
+      if (await backup.exists()) await backup.delete();
+      await backupTemp.rename(backup.path);
+    }
+    if (await file.exists()) await file.delete();
+    await temp.rename(file.path);
+  }
+
+  Future<void> _writeSnapshotUnlocked(
+    Map<String, dynamic> snapshot, {
+    bool writeBackup = true,
+  }) async {
+    final file = await _snapshotFile();
+    final backup = await _snapshotBackupFile();
+    final temp = File('${file.path}.tmp');
+    final payload = jsonEncode(snapshot);
+    await temp.writeAsString(payload, flush: true);
+    if (_decodeSnapshot(await temp.readAsString()) == null) {
+      throw const FileSystemException('Attendance snapshot validation failed.');
+    }
+
     if (writeBackup) {
       final backupTemp = File('${backup.path}.tmp');
       await backupTemp.writeAsString(payload, flush: true);
@@ -210,6 +299,48 @@ class OfflineAttendanceStore {
 
   Future<int> count() async => (await pending()).length;
 
+  Future<void> saveShiftSnapshot({
+    required DateTime checkIn,
+    DateTime? checkOut,
+  }) async {
+    final localCheckIn = checkIn.toLocal();
+    await _withLock(() async {
+      await _writeSnapshotUnlocked(<String, dynamic>{
+        'date': _localDate(localCheckIn),
+        'check_in': checkIn.toUtc().toIso8601String(),
+        'check_out': checkOut?.toUtc().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    });
+  }
+
+  Future<Map<String, dynamic>?> todayShiftSnapshot({DateTime? now}) async {
+    return _withLock(() async {
+      final snapshot = await _readSnapshotUnlocked();
+      if (snapshot == null) return null;
+      final localNow = (now ?? DateTime.now()).toLocal();
+      if (snapshot['date']?.toString() != _localDate(localNow)) return null;
+      return Map<String, dynamic>.from(snapshot);
+    });
+  }
+
+  Future<void> closeShiftSnapshot(DateTime checkOut) async {
+    await _withLock(() async {
+      final snapshot = await _readSnapshotUnlocked();
+      if (snapshot == null) return;
+      final localNow = checkOut.toLocal();
+      if (snapshot['date']?.toString() != _localDate(localNow)) return;
+      final checkIn = DateTime.tryParse(snapshot['check_in']?.toString() ?? '');
+      if (checkIn == null) return;
+      snapshot['check_out'] = checkOut.toUtc().toIso8601String();
+      snapshot['updated_at'] = DateTime.now().toUtc().toIso8601String();
+      await _writeSnapshotUnlocked(snapshot);
+    });
+  }
+
+  String _localDate(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
   Future<void> remove(String actionId, {bool deleteMedia = true}) async {
     String? mediaPath;
     await _withLock(() async {
@@ -226,7 +357,9 @@ class OfflineAttendanceStore {
     if (deleteMedia && mediaPath != null && mediaPath!.isNotEmpty) {
       final file = File(mediaPath!);
       if (await file.exists()) {
-        try { await file.delete(); } catch (_) {}
+        try {
+          await file.delete();
+        } catch (_) {}
       }
     }
   }
