@@ -112,5 +112,47 @@ void main() {
       expect(pending.single['action_id'], 'backup-recovered');
       expect(jsonDecode(await primary.readAsString()), isA<List<dynamic>>());
     });
+
+    test('today snapshot survives store recreation and checkout closes it', () async {
+      final now = DateTime.now();
+      final checkIn = now.subtract(const Duration(hours: 2));
+      await store.saveShiftSnapshot(checkIn: checkIn);
+
+      final restarted = OfflineAttendanceStore(rootDirectoryOverride: temp);
+      final active = await restarted.todayShiftSnapshot(now: now);
+      expect(active, isNotNull);
+      expect(active!['check_out'], isNull);
+
+      final checkOut = now.subtract(const Duration(minutes: 5));
+      await restarted.closeShiftSnapshot(checkOut);
+      final closed = await restarted.todayShiftSnapshot(now: now);
+      expect(closed, isNotNull);
+      expect(DateTime.parse(closed!['check_out'].toString()).toUtc(), checkOut.toUtc());
+    });
+
+    test('stale snapshot from previous local date is not treated as today', () async {
+      final now = DateTime.now();
+      final yesterday = DateTime(now.year, now.month, now.day).subtract(
+        const Duration(hours: 2),
+      );
+      await store.saveShiftSnapshot(checkIn: yesterday);
+
+      final snapshot = await store.todayShiftSnapshot(now: now);
+      expect(snapshot, isNull);
+    });
+
+    test('snapshot backup recovers committed shift after corrupt primary', () async {
+      final now = DateTime.now();
+      final checkIn = now.subtract(const Duration(hours: 1));
+      await store.saveShiftSnapshot(checkIn: checkIn);
+      final primary = File('${temp.path}/attendance_shift_snapshot_v1.json');
+      await primary.writeAsString('{broken', flush: true);
+
+      final restarted = OfflineAttendanceStore(rootDirectoryOverride: temp);
+      final snapshot = await restarted.todayShiftSnapshot(now: now);
+      expect(snapshot, isNotNull);
+      expect(DateTime.parse(snapshot!['check_in'].toString()).toUtc(), checkIn.toUtc());
+      expect(jsonDecode(await primary.readAsString()), isA<Map<String, dynamic>>());
+    });
   });
 }
