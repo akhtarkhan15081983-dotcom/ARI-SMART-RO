@@ -133,7 +133,7 @@ jobs:
           disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            set -euo pipefail
+            set -eu
             APK="ari_smart_ro_app/build/app/outputs/flutter-apk/app-debug.apk"
             PACKAGE="com.arismartro.app.posthogtest"
 
