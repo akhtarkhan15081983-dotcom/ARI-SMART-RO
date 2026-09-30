@@ -1,7 +1,7 @@
 SYMPTOM_GUIDANCE = {
     "WATER_NOT_COMING": {
         "label": "Water not coming",
-        "complaint_type": "NO_WATER",
+        "complaint_type": "RO_NOT_WORKING",
         "priority": "NORMAL",
         "checks": [
             "Check whether inlet water is available.",
@@ -61,7 +61,7 @@ SYMPTOM_GUIDANCE = {
     },
     "UNUSUAL_SOUND": {
         "label": "Unusual sound",
-        "complaint_type": "NOISE",
+        "complaint_type": "OTHER",
         "priority": "NORMAL",
         "checks": [
             "Check whether inlet water is available and the external valve is open.",
@@ -121,7 +121,7 @@ SYMPTOM_GUIDANCE = {
     },
     "SERVICE_DUE_ALERT": {
         "label": "Filter/service due alert",
-        "complaint_type": "AMC_SERVICE",
+        "complaint_type": "FILTER_PROBLEM",
         "priority": "NORMAL",
         "checks": [
             "Open RO Health to see which configured part or service is due.",
