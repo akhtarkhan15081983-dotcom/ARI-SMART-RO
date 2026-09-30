@@ -20,6 +20,21 @@ from .views import (
 )
 
 
+def _ensure_local_payment_date(request):
+    """Default omitted rent-payment dates to the configured local business day.
+
+    django.utils.timezone.now() is UTC when USE_TZ is enabled. Using
+    timezone.now().date() around India midnight can therefore put a payment in
+    the previous local day/month. Explicit operator-supplied dates are never
+    changed.
+    """
+    if request.data.get("payment_date") not in (None, ""):
+        return
+    payload = request.data.copy()
+    payload["payment_date"] = timezone.localdate().isoformat()
+    request._full_data = payload
+
+
 class TenantScopedCustomerCreateAPIView(CustomerCreateAPIView):
     def perform_create(self, serializer):
         company = request_company(self.request)
@@ -131,6 +146,7 @@ class TenantScopedRentPaymentCreateAPIView(RentPaymentCreateAPIView):
 
     @transaction.atomic
     def post(self, request):
+        _ensure_local_payment_date(request)
         customer_id = request.data.get("customer_id")
         try:
             customer_id = int(customer_id)
