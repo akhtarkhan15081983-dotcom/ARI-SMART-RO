@@ -13,6 +13,7 @@ from attendance.work_hours import reconcile_open_attendance, regular_shift_end
 from tenancy.access import request_company
 
 from .models import EmployeeProfile
+from .serializers import EmployeeLocationSerializer
 from .views import FaceEnrollmentAPIView, UpdateLiveLocationAPIView
 
 
@@ -236,6 +237,22 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
         except EmployeeProfile.DoesNotExist:
             return Response({"error": "Employee profile not found."}, status=404)
 
+        # Preserve the base endpoint's validation and inactive-user semantics
+        # before applying shift policy. A malformed GPS point must be rejected as
+        # malformed even if the employee has not checked in yet.
+        if not employee.is_active or not request.user.is_active:
+            return Response(
+                {"error": "Inactive employee cannot share location."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if request.data.get("tracking_active") is False:
+            return super().post(request)
+
+        validator = EmployeeLocationSerializer(employee, data=request.data, partial=True)
+        if not validator.is_valid():
+            return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
+
         reconcile_open_attendance(employee=employee)
         attendance = Attendance.objects.filter(
             employee=employee,
@@ -243,12 +260,10 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
             check_in__isnull=False,
         ).first()
 
-        # A stop signal must always be accepted, including before check-in or
-        # after checkout. New location points, however, are valid only inside a
-        # real attendance shift. Returning 2xx + shift_active=false deliberately
-        # tells the mobile foreground service to stop without retry-queuing the
-        # rejected point.
-        if request.data.get("tracking_active") is not False and attendance is None:
+        # New location points are valid only inside a real attendance shift.
+        # Returning 2xx + shift_active=false deliberately tells the mobile
+        # foreground service to stop without retry-queuing the rejected point.
+        if attendance is None:
             if employee.is_online:
                 employee.is_online = False
                 employee.save(update_fields=["is_online"])
@@ -261,21 +276,14 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
                 }
             )
 
-        active_overtime = False
-        if attendance is not None:
-            active_overtime = OvertimeRequest.objects.filter(
-                attendance=attendance,
-                status="APPROVED",
-                started_at__isnull=False,
-                ended_at__isnull=True,
-            ).exists()
+        active_overtime = OvertimeRequest.objects.filter(
+            attendance=attendance,
+            status="APPROVED",
+            started_at__isnull=False,
+            ended_at__isnull=True,
+        ).exists()
 
-        if (
-            request.data.get("tracking_active") is not False
-            and attendance is not None
-            and attendance.check_out
-            and not active_overtime
-        ):
+        if attendance.check_out and not active_overtime:
             if employee.is_online:
                 employee.is_online = False
                 employee.save(update_fields=["is_online"])
@@ -292,12 +300,9 @@ class AttendanceAwareLiveLocationAPIView(UpdateLiveLocationAPIView):
 
         response = super().post(request)
         if isinstance(getattr(response, "data", None), dict):
-            if attendance is None:
-                response.data["shift_active"] = None
-            else:
-                response.data["shift_active"] = bool(
-                    attendance.check_out is None or active_overtime
-                )
-                response.data["regular_shift_end_at"] = regular_shift_end(attendance)
-                response.data["auto_checked_out"] = attendance.auto_checked_out
+            response.data["shift_active"] = bool(
+                attendance.check_out is None or active_overtime
+            )
+            response.data["regular_shift_end_at"] = regular_shift_end(attendance)
+            response.data["auto_checked_out"] = attendance.auto_checked_out
         return response
