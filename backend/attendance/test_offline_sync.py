@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -116,6 +117,39 @@ class OfflineAttendanceSyncTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         row.refresh_from_db()
+        self.assertLess(abs((row.check_out - captured_out).total_seconds()), 1)
+        self.assertEqual(row.checkout_reason, "MANUAL")
+        self.assertFalse(row.auto_checked_out)
+
+    def test_offline_check_out_can_close_previous_local_day_shift(self):
+        local_tz = timezone.get_current_timezone()
+        check_in = timezone.make_aware(
+            datetime(2026, 9, 30, 23, 0, 0),
+            local_tz,
+        )
+        captured_out = check_in + timedelta(hours=1, minutes=30)
+        server_now = captured_out + timedelta(minutes=5)
+        row = Attendance.objects.create(
+            employee=self.employee,
+            date=timezone.localtime(check_in).date(),
+            check_in=check_in,
+            status="PRESENT",
+        )
+
+        with patch("attendance.offline_views.timezone.now", return_value=server_now):
+            response = self.client.post(
+                "/api/attendance/offline-sync/",
+                {
+                    "action_id": "offline-cross-midnight-0001",
+                    "action": "CHECK_OUT",
+                    "captured_at": captured_out.isoformat(),
+                },
+                format="multipart",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        row.refresh_from_db()
+        self.assertEqual(row.date, timezone.localtime(check_in).date())
         self.assertLess(abs((row.check_out - captured_out).total_seconds()), 1)
         self.assertEqual(row.checkout_reason, "MANUAL")
         self.assertFalse(row.auto_checked_out)
