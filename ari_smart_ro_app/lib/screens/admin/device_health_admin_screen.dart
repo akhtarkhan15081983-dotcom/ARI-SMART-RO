@@ -118,6 +118,10 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                           : const <String>[];
                       final pendingJobs =
                           int.tryParse(health['pending_job_actions']?.toString() ?? '') ?? 0;
+                      final pendingAttendance = int.tryParse(
+                            health['pending_attendance_actions']?.toString() ?? '',
+                          ) ??
+                          0;
                       final pendingLocations =
                           int.tryParse(health['pending_location_points']?.toString() ?? '') ?? 0;
                       return Card(
@@ -208,7 +212,8 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                                   _Metric(
                                     icon: Icons.sync,
                                     label: 'Pending Sync',
-                                    value: '$pendingJobs jobs • $pendingLocations GPS',
+                                    value:
+                                        '$pendingAttendance attendance • $pendingJobs jobs • $pendingLocations GPS',
                                   ),
                                   _Metric(
                                     icon: Icons.memory,
