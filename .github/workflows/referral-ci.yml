@@ -124,13 +124,9 @@ jobs:
             adb shell am force-stop com.arismartro.app.posthogtest
             adb shell monkey -p com.arismartro.app.posthogtest -c android.intent.category.LAUNCHER 1
             sleep 8
-            PID=$(adb shell pidof com.arismartro.app.posthogtest | tr -d '\r')
-            if [ -z "$PID" ]; then
-              echo "ARI SMART RO Android process is not running after launch."
-              adb logcat -d -t 500
-              exit 1
-            fi
-            echo "ARI SMART RO Android startup smoke test passed with PID $PID."
+            adb shell pidof com.arismartro.app.posthogtest | grep -q .
+            adb shell pidof com.arismartro.app.posthogtest
+            echo "ARI SMART RO Android startup smoke test passed."
 
   container:
     runs-on: ubuntu-latest
