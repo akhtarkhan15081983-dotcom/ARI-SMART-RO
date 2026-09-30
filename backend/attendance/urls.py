@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .offline_views import OfflineAttendanceSyncAPIView
 from .security_views import SecureCheckInAPIView
 from .tenant_security import (
     TenantScopedAttendanceDeviceOverrideAPIView,
@@ -19,6 +20,7 @@ from .views import (
 urlpatterns = [
     path("check-in/", SecureCheckInAPIView.as_view(), name="attendance-check-in"),
     path("check-out/", CheckOutAPIView.as_view(), name="attendance-check-out"),
+    path("offline-sync/", OfflineAttendanceSyncAPIView.as_view(), name="attendance-offline-sync"),
     path("today/", TodayAttendanceAPIView.as_view(), name="attendance-today"),
     path("history/", AttendanceHistoryAPIView.as_view(), name="attendance-history"),
     path("overtime/", OvertimeRequestAPIView.as_view(), name="attendance-overtime-request"),
