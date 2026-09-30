@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .offline_views import OfflineAttendanceSyncAPIView
+from .offline_hardened import OfflineAttendanceSyncAPIView
 from .security_views import SecureCheckInAPIView
 from .tenant_security import (
     TenantScopedAttendanceDeviceOverrideAPIView,
