@@ -204,6 +204,152 @@ void main() {
       }
     });
 
+    test('successful today read refreshes durable snapshot for offline restart', () async {
+      final temp = await Directory.systemTemp.createTemp('ari-attendance-read-refresh-');
+      final store = OfflineAttendanceStore(rootDirectoryOverride: temp);
+      final checkInAt = DateTime.now().subtract(const Duration(minutes: 25));
+      final localCheckIn = checkInAt.toLocal();
+      final date =
+          '${localCheckIn.year.toString().padLeft(4, '0')}-${localCheckIn.month.toString().padLeft(2, '0')}-${localCheckIn.day.toString().padLeft(2, '0')}';
+
+      try {
+        final client = MockClient((request) async {
+          expect(request.url.path, '/api/attendance/today/');
+          return http.Response(
+            jsonEncode({
+              'id': 88,
+              'employee_name': 'Restart Safe',
+              'date': date,
+              'check_in': checkInAt.toUtc().toIso8601String(),
+              'working_hours': '0.40',
+              'regular_working_hours': '0.40',
+              'overtime_working_hours': '0.00',
+              'status': 'PRESENT',
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+        final service = AttendanceService(
+          client: client,
+          baseUrl: 'https://example.test/api',
+          headersProvider: () async => {'Authorization': 'Bearer test-token'},
+          offlineStore: store,
+        );
+
+        final online = await service.todayAttendance();
+        expect(online, isNotNull);
+
+        final snapshot = await OfflineAttendanceStore(
+          rootDirectoryOverride: temp,
+        ).todayShiftSnapshot(now: DateTime.now());
+        expect(snapshot, isNotNull);
+        expect(
+          DateTime.parse(snapshot!['check_in'].toString()).toUtc(),
+          checkInAt.toUtc(),
+        );
+
+        final offlineService = AttendanceService(
+          client: MockClient((request) async => throw Exception('network down')),
+          baseUrl: 'https://example.test/api',
+          headersProvider: () async => {'Authorization': 'Bearer test-token'},
+          offlineStore: OfflineAttendanceStore(rootDirectoryOverride: temp),
+          requestTimeout: const Duration(milliseconds: 50),
+        );
+        final restored = await offlineService.todayAttendance();
+        expect(restored, isNotNull);
+        expect(restored!.remarks, contains('Recovered'));
+      } finally {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    test('stale successful today response cannot overwrite current local snapshot', () async {
+      final temp = await Directory.systemTemp.createTemp('ari-attendance-stale-read-');
+      final store = OfflineAttendanceStore(rootDirectoryOverride: temp);
+      final now = DateTime.now();
+      final currentCheckIn = now.subtract(const Duration(hours: 1));
+      final staleCheckIn = DateTime(now.year, now.month, now.day)
+          .subtract(const Duration(hours: 2));
+      final staleLocal = staleCheckIn.toLocal();
+      final staleDate =
+          '${staleLocal.year.toString().padLeft(4, '0')}-${staleLocal.month.toString().padLeft(2, '0')}-${staleLocal.day.toString().padLeft(2, '0')}';
+
+      try {
+        await store.saveShiftSnapshot(checkIn: currentCheckIn);
+        final client = MockClient((request) async => http.Response(
+              jsonEncode({
+                'id': 89,
+                'employee_name': 'Stale Server Row',
+                'date': staleDate,
+                'check_in': staleCheckIn.toUtc().toIso8601String(),
+                'working_hours': '1.00',
+                'regular_working_hours': '1.00',
+                'overtime_working_hours': '0.00',
+                'status': 'PRESENT',
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            ));
+        final service = AttendanceService(
+          client: client,
+          baseUrl: 'https://example.test/api',
+          headersProvider: () async => {'Authorization': 'Bearer test-token'},
+          offlineStore: store,
+        );
+
+        await service.todayAttendance();
+
+        final snapshot = await store.todayShiftSnapshot(now: now);
+        expect(snapshot, isNotNull);
+        expect(
+          DateTime.parse(snapshot!['check_in'].toString()).toUtc(),
+          currentCheckIn.toUtc(),
+        );
+      } finally {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    test('successful online checkout closes durable local snapshot', () async {
+      final temp = await Directory.systemTemp.createTemp('ari-attendance-online-checkout-');
+      final store = OfflineAttendanceStore(rootDirectoryOverride: temp);
+      final checkInAt = DateTime.now().subtract(const Duration(hours: 1));
+      final checkOutAt = DateTime.now();
+
+      try {
+        await store.saveShiftSnapshot(checkIn: checkInAt);
+        final client = MockClient((request) async {
+          expect(request.method, 'POST');
+          expect(request.url.path, '/api/attendance/check-out/');
+          return http.Response(
+            jsonEncode({'check_out': checkOutAt.toUtc().toIso8601String()}),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+        final service = AttendanceService(
+          client: client,
+          baseUrl: 'https://example.test/api',
+          headersProvider: () async => {'Authorization': 'Bearer test-token'},
+          offlineStore: store,
+        );
+
+        final result = await service.checkOut();
+        expect(result.success, isTrue);
+        expect(result.queuedOffline, isFalse);
+
+        final snapshot = await store.todayShiftSnapshot(now: checkOutAt);
+        expect(snapshot, isNotNull);
+        expect(
+          DateTime.parse(snapshot!['check_out'].toString()).toUtc(),
+          checkOutAt.toUtc(),
+        );
+      } finally {
+        await temp.delete(recursive: true);
+      }
+    });
+
     test('history tolerates malformed success payload', () async {
       final client = MockClient((request) async => http.Response('{}', 200));
 

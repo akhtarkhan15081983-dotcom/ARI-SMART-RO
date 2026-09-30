@@ -371,7 +371,10 @@ class AttendanceService {
   Future<void> _refreshSnapshotFromAttendance(AttendanceModel attendance) async {
     final checkIn = DateTime.tryParse(attendance.checkIn ?? '');
     if (checkIn == null) return;
+    final localCheckIn = checkIn.toLocal();
+    if (!_sameLocalDay(localCheckIn, DateTime.now())) return;
     final checkOut = DateTime.tryParse(attendance.checkOut ?? '');
+    if (checkOut != null && checkOut.isBefore(checkIn)) return;
     await _persistSnapshotSafely(checkIn: checkIn, checkOut: checkOut);
   }
 
