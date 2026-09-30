@@ -70,7 +70,7 @@ jobs:
 
   flutter:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: ari_smart_ro_app
@@ -111,6 +111,18 @@ jobs:
           path: ari_smart_ro_app/build/app/outputs/flutter-apk/ARI-SMART-RO-v${{ steps.app_version.outputs.version }}-latest.apk
           if-no-files-found: error
           retention-days: 30
+      - name: Enable Linux KVM acceleration
+        shell: bash
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "::error title=Android emulator infrastructure failure::/dev/kvm is unavailable on this GitHub runner."
+            exit 86
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
       - name: Android emulator startup smoke test
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
@@ -119,14 +131,51 @@ jobs:
           profile: pixel_6
           emulator-boot-timeout: 900
           disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            adb install -r ari_smart_ro_app/build/app/outputs/flutter-apk/app-debug.apk
-            adb shell am force-stop com.arismartro.app.posthogtest
-            adb shell monkey -p com.arismartro.app.posthogtest -c android.intent.category.LAUNCHER 1
-            sleep 8
-            adb shell pidof com.arismartro.app.posthogtest | grep -q .
-            adb shell pidof com.arismartro.app.posthogtest
-            echo "ARI SMART RO Android startup smoke test passed."
+            set -euo pipefail
+            APK="ari_smart_ro_app/build/app/outputs/flutter-apk/app-debug.apk"
+            PACKAGE="com.arismartro.app.posthogtest"
+
+            adb wait-for-device
+            echo "Waiting for Android package service readiness..."
+            PACKAGE_READY=0
+            for attempt in $(seq 1 30); do
+              if adb shell cmd package list packages >/tmp/ari-packages.txt 2>/tmp/ari-package-error.txt; then
+                PACKAGE_READY=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$PACKAGE_READY" -ne 1 ]; then
+              echo "::error title=Android emulator infrastructure failure::Android package service never became healthy after emulator boot."
+              cat /tmp/ari-package-error.txt || true
+              adb shell service check package || true
+              adb logcat -d -t 300 || true
+              exit 86
+            fi
+
+            if ! adb install -r "$APK"; then
+              if ! adb shell cmd package list packages >/dev/null 2>&1; then
+                echo "::error title=Android emulator infrastructure failure::APK install could not reach a healthy Android package service."
+                adb shell service check package || true
+              else
+                echo "::error title=Android APK install failure::Android package service is healthy but the APK install command failed."
+              fi
+              adb logcat -d -t 300 || true
+              exit 87
+            fi
+
+            adb shell am force-stop "$PACKAGE"
+            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
+            sleep 10
+            PID="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
+            if [ -z "$PID" ]; then
+              echo "::error title=Android application runtime failure::APK installed and launch was attempted, but the app process did not survive the smoke window."
+              adb logcat -d -t 500 || true
+              exit 1
+            fi
+            echo "ARI SMART RO Android startup smoke test passed with PID $PID."
 
   container:
     runs-on: ubuntu-latest
