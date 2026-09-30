@@ -89,6 +89,35 @@ class AttendanceDeviceReliabilityTests(TestCase):
         self.assertFalse(response.data["login_device_bound"])
         self.assertFalse(response.data["attendance_device_bound"])
 
+    def test_live_location_is_blocked_until_employee_checks_in(self):
+        self.employee.is_online = True
+        self.employee.last_latitude = Decimal("27.1000000")
+        self.employee.last_longitude = Decimal("78.1000000")
+        self.employee.save(
+            update_fields=["is_online", "last_latitude", "last_longitude"]
+        )
+
+        client = APIClient()
+        client.force_authenticate(self.employee_user)
+        response = client.post(
+            "/api/employees/live-location/",
+            {
+                "live_latitude": "28.8386480",
+                "live_longitude": "78.7733280",
+                "accuracy": "10",
+                "captured_at": timezone.now().isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.employee.refresh_from_db()
+        self.assertFalse(self.employee.is_online)
+        self.assertEqual(self.employee.last_latitude, Decimal("27.1000000"))
+        self.assertEqual(self.employee.last_longitude, Decimal("78.1000000"))
+        self.assertFalse(response.data["shift_active"])
+        self.assertEqual(response.data["reason"], "NO_CHECK_IN")
+
     def test_live_location_reconciles_and_stops_after_eight_hour_shift(self):
         check_in = timezone.now() - timedelta(hours=9)
         attendance = Attendance.objects.create(
