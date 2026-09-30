@@ -149,6 +149,7 @@ class ServiceIntervalPolicy(models.Model):
             models.UniqueConstraint(
                 fields=["company", "part", "ro_model", "configuration_key"],
                 name="uniq_ro_service_interval_policy",
+                nulls_distinct=False,
             ),
         ]
         ordering = ["part__name", "ro_model__model_name", "configuration_key"]
