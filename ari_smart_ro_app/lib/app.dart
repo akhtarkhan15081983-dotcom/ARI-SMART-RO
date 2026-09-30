@@ -4,6 +4,7 @@ import 'core/app_theme.dart';
 import 'screens/splash/splash_screen.dart';
 import 'screens/login/customer_onboarding_screen.dart';
 import 'services/referral_link_service.dart';
+import 'widgets/ro_filter_alarm_guard.dart';
 
 class AriSmartROApp extends StatefulWidget {
   const AriSmartROApp({super.key});
@@ -43,7 +44,9 @@ class _AriSmartROAppState extends State<AriSmartROApp> {
             context,
           ).clamp(minScaleFactor: 0.9, maxScaleFactor: 1.4),
         ),
-        child: child ?? const SizedBox.shrink(),
+        child: ROFilterAlarmGuard(
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
       home: const SplashScreen(),
     );
