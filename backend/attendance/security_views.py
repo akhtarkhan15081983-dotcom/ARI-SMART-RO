@@ -1,3 +1,5 @@
+from django.db import transaction
+
 from rest_framework import status
 from rest_framework.response import Response
 
@@ -11,11 +13,12 @@ _TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
 class SecureCheckInAPIView(CheckInAPIView):
-    """Attendance check-in with a device-reported mock-location fraud gate.
+    """Attendance check-in with anti-fraud and same-day concurrency guards.
 
-    The existing server geofence, face/device enrollment and emergency-override
-    checks remain authoritative. This adds another anti-fraud signal from the
-    mobile OS without weakening any existing check-in behavior.
+    The employee row is locked for the full authoritative check-in path. The
+    inherited view therefore re-checks same-day attendance and creates the row
+    inside the same transaction, serializing simultaneous/retried check-ins
+    without requiring a new production schema migration.
     """
 
     def post(self, request):
@@ -46,4 +49,12 @@ class SecureCheckInAPIView(CheckInAPIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        return super().post(request)
+        with transaction.atomic():
+            try:
+                EmployeeProfile.objects.select_for_update().get(user=request.user)
+            except EmployeeProfile.DoesNotExist:
+                return Response(
+                    {"success": False, "message": "Employee Profile Not Found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            return super().post(request)
