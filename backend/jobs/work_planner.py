@@ -33,6 +33,13 @@ def aware(day, hour=9):
     )
 
 
+def local_day(value):
+    """Return the configured business-calendar date for a datetime."""
+    if timezone.is_aware(value):
+        return timezone.localtime(value).date()
+    return value.date()
+
+
 def employee_data(employee):
     return {
         "id": employee.id,
@@ -137,7 +144,8 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
             override = overrides.get(key)
             if override:
                 scheduled, employee = override.scheduled_date, override.employee
-            if not first <= scheduled.date() <= last:
+            scheduled_day = local_day(scheduled)
+            if not first <= scheduled_day <= last:
                 return
             if selected and employee.id != selected.id:
                 return
@@ -146,7 +154,7 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
                 "type": kind,
                 "title": title,
                 "scheduled_at": scheduled.isoformat(),
-                "date": scheduled.date().isoformat(),
+                "date": scheduled_day.isoformat(),
                 "status": work_status,
                 "priority": priority,
                 "amount": str(amount) if amount is not None else None,
@@ -191,7 +199,7 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
         for key, override in overrides.items():
             if not key.startswith("RENT:") or key in current_rent_keys:
                 continue
-            if not first <= override.scheduled_date.date() <= last:
+            if not first <= local_day(override.scheduled_date) <= last:
                 continue
             try:
                 customer_id = int(key.split(":")[1])
