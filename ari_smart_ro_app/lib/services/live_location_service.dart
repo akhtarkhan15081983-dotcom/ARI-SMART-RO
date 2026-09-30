@@ -12,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart' as permissions;
 
 import 'api_service.dart';
+import 'attendance_service.dart';
 import 'location_queue_store.dart';
 
 const String _trackingEnabledKey = 'ari_live_location_tracking_enabled';
@@ -173,12 +174,25 @@ class LiveLocationService {
 
   Future<void> sendCurrentLocation() async {
     if (!isSupportedPlatform) return;
+    await _syncPendingAttendanceBeforeLocation();
     await _flushPendingLocations();
+    final stillEnabled = await _storage.read(key: _trackingEnabledKey) == 'true';
+    if (!stillEnabled) return;
     final point = await _capturePoint();
     if (point == null) return;
     final sent = await _sendPoint(point);
     if (!sent) {
       await _queuePoint(point);
+    }
+  }
+
+  static Future<void> _syncPendingAttendanceBeforeLocation() async {
+    try {
+      await AttendanceService().syncPendingOfflineActions();
+    } catch (_) {
+      // Attendance sync is best-effort here. A transient failure must not discard
+      // queued attendance or location evidence. The server-side shift gate remains
+      // authoritative and will stop tracking once it can be reached.
     }
   }
 
@@ -363,6 +377,7 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
         return;
       }
 
+      await LiveLocationService._syncPendingAttendanceBeforeLocation();
       await LiveLocationService._flushPendingLocations();
       final stillEnabledAfterFlush =
           await storage.read(key: _trackingEnabledKey) == 'true';
