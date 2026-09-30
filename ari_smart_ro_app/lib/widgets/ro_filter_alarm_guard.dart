@@ -58,7 +58,7 @@ class ROFilterAlarmGuard extends StatefulWidget {
 
 class _ROFilterAlarmGuardState extends State<ROFilterAlarmGuard>
     with WidgetsBindingObserver {
-  static const Duration _refreshEvery = Duration(minutes: 1);
+  static const Duration _refreshEvery = Duration(minutes: 15);
 
   final ROAlarmService _alarmService = const ROAlarmService();
   final ComplaintService _complaintService = ComplaintService();
@@ -367,7 +367,7 @@ class _ROFilterAlarmReminderService {
       FlutterLocalNotificationsPlugin();
   static Future<void>? _initialization;
   static const String _scheduledKey = 'ro_filter_alarm_scheduled_ids_v2';
-  static const int _slots = 8; // Eight daily slots maintain a 3-hour cadence.
+  static const int _slots = 8;
 
   Future<void> sync(List<Map<String, dynamic>> active) async {
     if (!_isAndroid) return;
