@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/customer_model.dart';
 import '../../services/customer_service.dart';
 import '../../services/job_service.dart';
+import 'ro_health_customer_card.dart';
 import 'ro_parts_passport_customer_card.dart';
 
 class MyROScreen extends StatefulWidget {
@@ -71,6 +72,14 @@ class _MyROScreenState extends State<MyROScreen> {
                 _engineerVisitCard(),
                 _otpCard(),
                 _roHeader(customer),
+                const SizedBox(height: 18),
+                _sectionTitle(
+                  'ARI RO Health & Smart Care',
+                  Icons.health_and_safety_outlined,
+                ),
+                ROHealthCustomerCard(
+                  key: ValueKey<String>('ro-health-$_passportVersion'),
+                ),
                 const SizedBox(height: 18),
                 _sectionTitle('RO Visual Parts Passport', Icons.document_scanner_outlined),
                 ROPartsPassportCustomerCard(
