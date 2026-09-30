@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../services/api_service.dart';
 import '../../services/notification_center_service.dart';
+import '../admin/admin_ro_passport_screen.dart';
 import '../customer/referral_screen.dart';
 import '../customer/ro_alarm_screen.dart';
 import '../rent/rent_payment_screen.dart';
@@ -19,6 +21,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
   final _service = const NotificationCenterService();
   bool _loading = true;
   int _unread = 0;
+  String _role = 'CUSTOMER';
   List<Map<String, dynamic>> _items = const [];
 
   @override
@@ -30,9 +33,14 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      final role = (await ApiService.getRole() ?? 'CUSTOMER')
+          .trim()
+          .toUpperCase()
+          .replaceAll('ROLE_', '');
       final data = await _service.fetch();
       if (!mounted) return;
       setState(() {
+        _role = role;
         _items = data.items;
         _unread = data.unreadCount;
       });
@@ -71,6 +79,13 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const ROAlarmScreen()));
+  }
+
+  void _openAdminDigitalRO() {
+    if (_role != 'ADMIN') return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AdminROPassportScreen()),
+    );
   }
 
   void _openAction(Map<String, dynamic> row) {
@@ -127,6 +142,12 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
     appBar: AppBar(
       title: Text(_unread > 0 ? 'Notifications ($_unread)' : 'Notifications'),
       actions: [
+        if (_role == 'ADMIN')
+          IconButton(
+            tooltip: 'Admin Digital RO Registry',
+            onPressed: _openAdminDigitalRO,
+            icon: const Icon(Icons.document_scanner_outlined),
+          ),
         IconButton(
           tooltip: 'RO Alarm Center',
           onPressed: _openRoAlarms,
