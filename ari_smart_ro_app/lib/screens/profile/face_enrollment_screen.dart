@@ -21,31 +21,90 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
   XFile? _photo;
   bool _saving = false;
   bool _capturing = false;
-  bool? _lowMemoryDevice;
+  bool _recovering = true;
+  DevicePerformanceProfile _profile = DevicePerformanceProfile.standard;
+
+  bool get _lowMemoryDevice => _profile == DevicePerformanceProfile.lowRam;
 
   @override
   void initState() {
     super.initState();
-    _loadDeviceCapability();
+    _initializeEnrollment();
   }
 
-  Future<void> _loadDeviceCapability() async {
-    final lowMemory = await DeviceCapabilityService.isLowMemoryDevice();
-    if (!mounted) return;
-    setState(() => _lowMemoryDevice = lowMemory);
+  Future<void> _initializeEnrollment() async {
+    final profile = await DeviceCapabilityService.performanceProfile();
+    if (mounted) setState(() => _profile = profile);
+    await _recoverLostCapture();
+  }
+
+  Future<void> _recoverLostCapture() async {
+    try {
+      final response = await _picker.retrieveLostData();
+      if (response.isEmpty) return;
+      final files = response.files;
+      if (files == null || files.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The camera was interrupted before the selfie finished. Please try again.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final recovered = files.first;
+      final result = await SelfieQualityService.validate(recovered.path);
+      if (!mounted) {
+        await _deleteCapture(recovered);
+        return;
+      }
+      if (!result.isValid) {
+        await _deleteCapture(recovered);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Recovered camera photo needs to be retaken. ${result.message}',
+            ),
+          ),
+        );
+        return;
+      }
+      setState(() => _photo = recovered);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Your interrupted selfie was recovered safely. Review it and continue enrollment.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Enrollment recovery could not restore the previous camera attempt. Please retake the selfie.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _recovering = false);
+    }
   }
 
   Future<void> _capture() async {
-    if (_capturing || _saving) return;
+    if (_capturing || _saving || _recovering) return;
     setState(() => _capturing = true);
 
     XFile? newPhoto;
     try {
-      final lowMemory = _lowMemoryDevice ??
-          await DeviceCapabilityService.isLowMemoryDevice();
-      if (mounted && _lowMemoryDevice != lowMemory) {
-        setState(() => _lowMemoryDevice = lowMemory);
+      final profile = await DeviceCapabilityService.performanceProfile();
+      if (mounted && _profile != profile) {
+        setState(() => _profile = profile);
       }
+      final lowMemory = profile == DevicePerformanceProfile.lowRam;
 
       newPhoto = await _picker.pickImage(
         source: ImageSource.camera,
@@ -78,7 +137,7 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
       if (oldPhoto != null && oldPhoto.path != newPhoto.path) {
         await _deleteCapture(oldPhoto);
       }
-    } catch (error) {
+    } catch (_) {
       if (newPhoto != null && newPhoto.path != _photo?.path) {
         await _deleteCapture(newPhoto);
       }
@@ -107,7 +166,7 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
 
   Future<void> _enroll() async {
     final photo = _photo;
-    if (photo == null || _saving || _capturing) return;
+    if (photo == null || _saving || _capturing || _recovering) return;
     setState(() => _saving = true);
     try {
       final deviceId = await DeviceIdentityService.getOrCreate();
@@ -142,7 +201,7 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final lowMemory = _lowMemoryDevice == true;
+    final lowMemory = _lowMemoryDevice;
     return Scaffold(
       appBar: AppBar(title: const Text('Face Enrollment')),
       body: SafeArea(
@@ -162,7 +221,16 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
               if (lowMemory) ...[
                 const SizedBox(height: 8),
                 const Text(
-                  'Low-memory safe camera mode is active for this phone.',
+                  'Lite Compatibility Mode is active for this low-memory phone.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF687386)),
+                ),
+              ],
+              if (_recovering) ...[
+                const SizedBox(height: 8),
+                const LinearProgressIndicator(),
+                const SizedBox(height: 6),
+                const Text(
+                  'Checking for an interrupted camera attempt…',
                   style: TextStyle(fontSize: 12, color: Color(0xFF687386)),
                 ),
               ],
@@ -189,7 +257,7 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
               ),
               const SizedBox(height: 18),
               OutlinedButton.icon(
-                onPressed: _saving || _capturing ? null : _capture,
+                onPressed: _saving || _capturing || _recovering ? null : _capture,
                 icon: _capturing
                     ? const SizedBox(
                         width: 18,
@@ -207,7 +275,7 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
               ),
               const SizedBox(height: 10),
               FilledButton.icon(
-                onPressed: _photo == null || _saving || _capturing
+                onPressed: _photo == null || _saving || _capturing || _recovering
                     ? null
                     : _enroll,
                 icon: _saving
