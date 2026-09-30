@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -12,7 +13,9 @@ class OfflineAttendanceStore {
   static const String _backupFileName = 'pending_attendance_actions_v1.backup.json';
   static const String _lockFileName = '.pending_attendance_actions_v1.lock';
   static const String _mediaFolderName = 'media';
+  static const String _quarantineFolderName = 'corrupt_state';
   static const int maxPendingActions = 20;
+  static final Map<String, Future<void>> _mutationTails = <String, Future<void>>{};
 
   final Directory? _rootDirectoryOverride;
 
@@ -30,6 +33,13 @@ class OfflineAttendanceStore {
 
   Future<T> _withLock<T>(Future<T> Function() action) async {
     final root = await _rootDirectory();
+    final key = root.absolute.path;
+    final previous = _mutationTails[key] ?? Future<void>.value();
+    final gate = Completer<void>();
+    final tail = previous.then<void>((_) => gate.future);
+    _mutationTails[key] = tail;
+    await previous;
+
     final lock = File('${root.path}/$_lockFileName');
     final handle = await lock.open(mode: FileMode.append);
     await handle.lock(FileLock.exclusive);
@@ -40,6 +50,8 @@ class OfflineAttendanceStore {
         await handle.unlock();
       } finally {
         await handle.close();
+        if (!gate.isCompleted) gate.complete();
+        if (identical(_mutationTails[key], tail)) _mutationTails.remove(key);
       }
     }
   }
@@ -61,41 +73,95 @@ class OfflineAttendanceStore {
     return dir;
   }
 
-  List<Map<String, dynamic>> _decode(String raw) {
+  List<Map<String, dynamic>>? _decode(String raw) {
     try {
       final value = jsonDecode(raw);
-      if (value is! List) return <Map<String, dynamic>>[];
+      if (value is! List) return null;
       return value
           .whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row))
           .toList(growable: true);
     } catch (_) {
-      return <Map<String, dynamic>>[];
+      return null;
     }
+  }
+
+  Future<List<Map<String, dynamic>>?> _readValid(File file) async {
+    if (!await file.exists()) return null;
+    try {
+      return _decode(await file.readAsString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _quarantine(File file) async {
+    if (!await file.exists()) return;
+    try {
+      final root = await _rootDirectory();
+      final dir = Directory('${root.path}/$_quarantineFolderName');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final stamp = DateTime.now().toUtc().microsecondsSinceEpoch;
+      await file.copy('${dir.path}/attendance-$stamp.corrupt.json');
+    } catch (_) {}
   }
 
   Future<List<Map<String, dynamic>>> _readUnlocked() async {
     final file = await _queueFile();
-    if (await file.exists()) {
-      final decoded = _decode(await file.readAsString());
-      if (decoded.isNotEmpty || (await file.readAsString()).trim() == '[]') {
-        return decoded;
+    final temp = File('${file.path}.tmp');
+    final primary = await _readValid(file);
+    final tempState = await _readValid(temp);
+
+    if (primary != null) {
+      if (await temp.exists()) {
+        if (tempState == null) await _quarantine(temp);
+        try { await temp.delete(); } catch (_) {}
       }
+      return primary;
     }
+
+    if (tempState != null) {
+      await _quarantine(file);
+      if (await file.exists()) await file.delete();
+      await temp.rename(file.path);
+      return tempState;
+    }
+
     final backup = await _backupFile();
-    if (await backup.exists()) return _decode(await backup.readAsString());
+    final recovered = await _readValid(backup);
+    if (recovered != null) {
+      await _quarantine(file);
+      await _writeUnlocked(recovered, writeBackup: false);
+      return recovered;
+    }
+
+    await _quarantine(file);
     return <Map<String, dynamic>>[];
   }
 
-  Future<void> _writeUnlocked(List<Map<String, dynamic>> actions) async {
+  Future<void> _writeUnlocked(
+    List<Map<String, dynamic>> actions, {
+    bool writeBackup = true,
+  }) async {
     final file = await _queueFile();
     final backup = await _backupFile();
     final temp = File('${file.path}.tmp');
     final payload = jsonEncode(actions);
     await temp.writeAsString(payload, flush: true);
+    if (_decode(await temp.readAsString()) == null) {
+      throw const FileSystemException('Offline attendance queue validation failed.');
+    }
+
+    // Publish the new committed queue to backup before replacing primary so
+    // an interrupted/corrupt primary cannot lose an acknowledged local write.
+    if (writeBackup) {
+      final backupTemp = File('${backup.path}.tmp');
+      await backupTemp.writeAsString(payload, flush: true);
+      if (await backup.exists()) await backup.delete();
+      await backupTemp.rename(backup.path);
+    }
     if (await file.exists()) await file.delete();
     await temp.rename(file.path);
-    await backup.writeAsString(payload, flush: true);
   }
 
   String newActionId() {
@@ -135,11 +201,9 @@ class OfflineAttendanceStore {
   Future<List<Map<String, dynamic>>> pending() async {
     return _withLock(() async {
       final actions = await _readUnlocked();
-      actions.sort(
-        (a, b) => (a['captured_at'] ?? '')
-            .toString()
-            .compareTo((b['captured_at'] ?? '').toString()),
-      );
+      actions.sort((a, b) => (a['captured_at'] ?? '')
+          .toString()
+          .compareTo((b['captured_at'] ?? '').toString()));
       return actions;
     });
   }
@@ -162,9 +226,7 @@ class OfflineAttendanceStore {
     if (deleteMedia && mediaPath != null && mediaPath!.isNotEmpty) {
       final file = File(mediaPath!);
       if (await file.exists()) {
-        try {
-          await file.delete();
-        } catch (_) {}
+        try { await file.delete(); } catch (_) {}
       }
     }
   }
