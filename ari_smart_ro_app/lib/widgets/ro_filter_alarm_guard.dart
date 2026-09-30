@@ -18,14 +18,27 @@ class ROFilterAlarmPolicy {
 
   static String complaintMarker(int alarmId) => '[RO-ALARM:$alarmId]';
 
+  static bool complaintFieldsStopReminder({
+    required String complaintType,
+    required String status,
+    required String description,
+    required int alarmId,
+  }) {
+    if (status.trim().toUpperCase() == 'CANCELLED') return false;
+    return complaintType.trim().toUpperCase() == 'FILTER_PROBLEM' &&
+        description.contains(complaintMarker(alarmId));
+  }
+
   static bool complaintStopsReminder(
     ComplaintModel complaint,
     int alarmId,
-  ) {
-    if (complaint.status == 'CANCELLED') return false;
-    return complaint.complaintType == 'FILTER_PROBLEM' &&
-        complaint.description.contains(complaintMarker(alarmId));
-  }
+  ) =>
+      complaintFieldsStopReminder(
+        complaintType: complaint.complaintType,
+        status: complaint.status,
+        description: complaint.description,
+        alarmId: alarmId,
+      );
 
   static bool isActiveFilterAlarm(Map<String, dynamic> alarm) {
     final type = (alarm['alarm_type'] ?? '').toString().toUpperCase();
@@ -126,8 +139,8 @@ class _ROFilterAlarmGuardState extends State<ROFilterAlarmGuard>
         _actionError = null;
       });
     } catch (_) {
-      // Alarm monitoring must not block login/dashboard when offline or when
-      // the server is temporarily unavailable. The next periodic sync retries.
+      // Alarm monitoring must never block login/dashboard when offline or when
+      // the server is temporarily unavailable. The next sync retries.
     } finally {
       _syncing = false;
     }
@@ -215,112 +228,117 @@ class _ROFilterAlarmGuardState extends State<ROFilterAlarmGuard>
           Material(
             color: const Color(0xFFE00000),
             child: SafeArea(
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      size: 88,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'FILTER CHANGE ALERT',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: MediaQuery.sizeOf(context).height - 48,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        size: 88,
                         color: Colors.white,
-                        fontSize: 30,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      (alarm['title'] ?? 'RO filter change is due.').toString(),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _warningDetails(alarm),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: .22),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Text(
-                        'Mobile reminder sound will repeat every 3 hours until a filter-change complaint is registered.',
+                      const SizedBox(height: 18),
+                      const Text(
+                        'FILTER CHANGE ALERT',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
                         ),
                       ),
-                    ),
-                    if (_actionError != null) ...[
                       const SizedBox(height: 12),
                       Text(
-                        _actionError!,
+                        (alarm['title'] ?? 'RO filter change is due.').toString(),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFFB00000),
-                        ),
-                        onPressed: _raisingComplaint ? null : _raiseComplaint,
-                        icon: _raisingComplaint
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.build_circle_outlined),
-                        label: Text(
-                          _raisingComplaint
-                              ? 'REGISTERING...'
-                              : 'RAISE FILTER COMPLAINT',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: _raisingComplaint ? null : _dismissWarning,
-                      child: const Text(
-                        'CONTINUE TO APP',
-                        style: TextStyle(
-                          color: Colors.white,
+                          fontSize: 20,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      Text(
+                        _warningDetails(alarm),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: .22),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Text(
+                          'Mobile reminder sound repeats about every 3 hours until a filter-change complaint is registered.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      if (_actionError != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _actionError!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFFB00000),
+                          ),
+                          onPressed: _raisingComplaint ? null : _raiseComplaint,
+                          icon: _raisingComplaint
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.build_circle_outlined),
+                          label: Text(
+                            _raisingComplaint
+                                ? 'REGISTERING...'
+                                : 'RAISE FILTER COMPLAINT',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextButton(
+                        onPressed: _raisingComplaint ? null : _dismissWarning,
+                        child: const Text(
+                          'CONTINUE TO APP',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -348,8 +366,8 @@ class _ROFilterAlarmReminderService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static Future<void>? _initialization;
-  static const String _scheduledKey = 'ro_filter_alarm_scheduled_ids_v1';
-  static const int _slots = 56; // 7 days at a 3-hour cadence.
+  static const String _scheduledKey = 'ro_filter_alarm_scheduled_ids_v2';
+  static const int _slots = 8; // Eight daily slots maintain a 3-hour cadence.
 
   Future<void> sync(List<Map<String, dynamic>> active) async {
     if (!_isAndroid) return;
@@ -360,16 +378,19 @@ class _ROFilterAlarmReminderService {
         .whereType<int>()
         .toSet();
     final previous = await _readScheduledIds();
+
     for (final stale in previous.difference(activeIds)) {
       await cancelAlarm(stale);
     }
 
+    final newlyActive = activeIds.difference(previous);
     for (final alarm in active) {
       final alarmId = (alarm['id'] as num?)?.toInt();
-      if (alarmId == null) continue;
-      await _showImmediateIfDue(alarmId, alarm);
+      if (alarmId == null || !newlyActive.contains(alarmId)) continue;
+      await _showImmediate(alarmId, alarm);
       await _scheduleThreeHourly(alarmId, alarm);
     }
+
     await _storage.write(
       key: _scheduledKey,
       value: activeIds.join(','),
@@ -383,33 +404,22 @@ class _ROFilterAlarmReminderService {
     for (var slot = 0; slot < _slots; slot++) {
       await _plugin.cancel(_notificationId(alarmId, slot));
     }
-    await _storage.delete(key: _lastBeepKey(alarmId));
 
     final ids = await _readScheduledIds();
     ids.remove(alarmId);
     await _storage.write(key: _scheduledKey, value: ids.join(','));
   }
 
-  Future<void> _showImmediateIfDue(
+  Future<void> _showImmediate(
     int alarmId,
     Map<String, dynamic> alarm,
   ) async {
-    final raw = await _storage.read(key: _lastBeepKey(alarmId));
-    final last = DateTime.tryParse(raw ?? '');
-    final now = DateTime.now();
-    if (last != null && now.difference(last) < const Duration(hours: 3)) {
-      return;
-    }
     await _plugin.show(
       _notificationId(alarmId, 99),
       'FILTER CHANGE ALERT',
       _notificationBody(alarm),
       _details,
       payload: 'ro-filter-alarm:$alarmId',
-    );
-    await _storage.write(
-      key: _lastBeepKey(alarmId),
-      value: now.toIso8601String(),
     );
   }
 
@@ -419,8 +429,8 @@ class _ROFilterAlarmReminderService {
   ) async {
     final now = tz.TZDateTime.now(tz.local);
     for (var slot = 0; slot < _slots; slot++) {
-      await _plugin.cancel(_notificationId(alarmId, slot));
       final when = now.add(Duration(hours: 3 * (slot + 1)));
+      await _plugin.cancel(_notificationId(alarmId, slot));
       await _plugin.zonedSchedule(
         _notificationId(alarmId, slot),
         'FILTER CHANGE ALERT',
@@ -429,6 +439,7 @@ class _ROFilterAlarmReminderService {
         _details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         payload: 'ro-filter-alarm:$alarmId',
+        matchDateTimeComponents: DateTimeComponents.time,
       );
     }
   }
@@ -479,8 +490,6 @@ class _ROFilterAlarmReminderService {
 
   int _notificationId(int alarmId, int slot) =>
       500000 + ((alarmId % 4000) * 100) + slot;
-
-  String _lastBeepKey(int alarmId) => 'ro_filter_alarm_last_beep_$alarmId';
 
   String _notificationBody(Map<String, dynamic> alarm) {
     final asset = (alarm['asset_id'] ?? 'your RO').toString();
