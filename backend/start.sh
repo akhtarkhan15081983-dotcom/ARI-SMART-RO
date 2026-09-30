@@ -2,6 +2,13 @@
 set -eu
 
 python manage.py migrate --noinput
+
+if [ "${ARI_MAXPRO_PRODUCTION_ROLLOUT:-0}" = "1" ]; then
+  python manage.py maxpro_production_rollout \
+    --confirm-production-db \
+    --expected-database-name ari_smart_ro
+fi
+
 python manage.py bootstrap_admin
 python manage.py collectstatic --noinput
 
