@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ari_smart_ro_app/services/attendance_service.dart';
+import 'package:ari_smart_ro_app/services/offline_attendance_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -130,6 +131,77 @@ void main() {
       expect(result.success, isFalse);
       expect(result.statusCode, 0);
       expect(result.message, contains('Unable to connect'));
+    });
+
+    test('online check-in survives restart offline and offline checkout closes shift', () async {
+      final temp = await Directory.systemTemp.createTemp('ari-attendance-restart-');
+      final selfie = File('${temp.path}/selfie.jpg');
+      await selfie.writeAsBytes(<int>[1, 2, 3, 4]);
+      final store = OfflineAttendanceStore(rootDirectoryOverride: temp);
+      final checkInAt = DateTime.now().subtract(const Duration(minutes: 10));
+
+      try {
+        final onlineClient = _InspectingBaseClient((request) async {
+          expect(request.url.path, '/api/attendance/check-in/');
+          return http.StreamedResponse(
+            Stream<List<int>>.value(
+              utf8.encode(jsonEncode({
+                'success': true,
+                'message': 'Check In Successful',
+                'attendance': {
+                  'check_in': checkInAt.toUtc().toIso8601String(),
+                },
+              })),
+            ),
+            201,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+        final onlineService = AttendanceService(
+          client: onlineClient,
+          baseUrl: 'https://example.test/api',
+          headersProvider: () async => {'Authorization': 'Bearer test-token'},
+          deviceIdProvider: () async => 'test-device',
+          mockLocationProvider: () async => false,
+          offlineStore: store,
+        );
+
+        final checkIn = await onlineService.checkIn(
+          latitude: 27.149028,
+          longitude: 78.045,
+          selfiePath: selfie.path,
+        );
+        expect(checkIn.success, isTrue);
+        expect(checkIn.queuedOffline, isFalse);
+
+        final offlineClient = MockClient((request) async {
+          throw Exception('network down');
+        });
+        final restartedService = AttendanceService(
+          client: offlineClient,
+          baseUrl: 'https://example.test/api',
+          headersProvider: () async => {'Authorization': 'Bearer test-token'},
+          offlineStore: OfflineAttendanceStore(rootDirectoryOverride: temp),
+          requestTimeout: const Duration(milliseconds: 50),
+        );
+
+        final restored = await restartedService.todayAttendance();
+        expect(restored, isNotNull);
+        expect(restored!.checkIn, isNotNull);
+        expect(restored.checkOut, isNull);
+        expect(restored.remarks, contains('Recovered'));
+
+        final checkOut = await restartedService.checkOut();
+        expect(checkOut.success, isTrue);
+        expect(checkOut.queuedOffline, isTrue);
+
+        final closed = await restartedService.todayAttendance();
+        expect(closed, isNotNull);
+        expect(closed!.checkOut, isNotNull);
+        expect(await store.count(), 1);
+      } finally {
+        await temp.delete(recursive: true);
+      }
     });
 
     test('history tolerates malformed success payload', () async {
