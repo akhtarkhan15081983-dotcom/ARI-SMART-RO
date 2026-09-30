@@ -241,7 +241,7 @@ def asset_health(company, ro_asset, configuration_key="", today=None):
 @transaction.atomic
 def record_replacement_cycle(service_part):
     locked = (
-        ServicePart.objects.select_for_update()
+        ServicePart.objects.select_for_update(of=("self",))
         .select_related(
             "service",
             "service__company",
