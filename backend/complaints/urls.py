@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .assistant_views import ComplaintAssistantAPIView
 from .views import (
     ComplaintStartAPIView,
     ComplaintResolveAPIView,
@@ -19,6 +20,7 @@ from .security_views import (
 
 urlpatterns = [
     path("", SecureComplaintListAPIView.as_view(), name="complaint-list"),
+    path("assistant/", ComplaintAssistantAPIView.as_view(), name="complaint-assistant"),
     path("create/", SecureComplaintCreateAPIView.as_view(), name="complaint-create"),
     path("<int:pk>/", SecureComplaintDetailAPIView.as_view(), name="complaint-detail"),
     path("<int:pk>/update/", SecureComplaintUpdateAPIView.as_view(), name="complaint-update"),
