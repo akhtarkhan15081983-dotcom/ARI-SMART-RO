@@ -6,6 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from attendance.models import Attendance
 from .models import EmployeeProfile
 from tenancy.models import Company, CompanyMembership, CompanySubscription, SubscriptionPlan
 from django.utils import timezone
@@ -110,6 +111,14 @@ class EmployeeAPITests(TestCase):
 
         self.client.force_authenticate(
             user=self.engineer_user
+        )
+
+    def create_active_attendance(self, employee):
+        return Attendance.objects.create(
+            employee=employee,
+            date=timezone.localdate(),
+            check_in=timezone.now(),
+            status="PRESENT",
         )
 
     # ========================================================
@@ -408,6 +417,7 @@ class EmployeeAPITests(TestCase):
 
     def test_engineer_can_update_live_location(self):
 
+        self.create_active_attendance(self.engineer)
         self.authenticate_engineer()
 
         response = self.client.post(
@@ -450,6 +460,7 @@ class EmployeeAPITests(TestCase):
         )
 
     def test_non_engineer_employee_can_update_live_location(self):
+        self.create_active_attendance(self.office)
         self.client.force_authenticate(user=self.office_user)
 
         response = self.client.post(
@@ -485,6 +496,7 @@ class EmployeeAPITests(TestCase):
         self.assertFalse(response.data["online"])
 
     def test_older_queued_location_does_not_replace_newer_point(self):
+        self.create_active_attendance(self.engineer)
         latest = timezone.now()
         self.engineer.last_latitude = Decimal("28.7000000")
         self.engineer.last_longitude = Decimal("77.3000000")
