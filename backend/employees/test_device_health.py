@@ -75,6 +75,7 @@ class DeviceHealthTests(TestCase):
                 "battery_optimization_ignored": True,
                 "live_location_tracking": True,
                 "pending_job_actions": 3,
+                "pending_attendance_actions": 4,
                 "pending_location_points": 2,
             },
             format="json",
@@ -89,6 +90,20 @@ class DeviceHealthTests(TestCase):
         self.assertEqual(row.pending_location_points, 2)
         self.assertTrue(row.background_location_granted)
         self.assertEqual(response.data["risk_level"], "CLEAR")
+        self.assertEqual(response.data["pending_attendance_actions"], 4)
+        self.assertIn("ATTENDANCE_PENDING[4]", row.last_error)
+
+        self.client.force_authenticate(user=self.admin)
+        admin_response = self.client.get("/api/employees/admin/device-health/")
+        self.assertEqual(admin_response.status_code, 200)
+        self.assertEqual(
+            admin_response.data[0]["health"]["pending_attendance_actions"],
+            4,
+        )
+        self.assertNotIn(
+            "ATTENDANCE_PENDING[",
+            admin_response.data[0]["health"]["last_error"],
+        )
 
     def test_risky_device_report_is_visible_and_audited(self):
         self.client.force_authenticate(user=self.engineer_user)
@@ -100,6 +115,7 @@ class DeviceHealthTests(TestCase):
                 "root_risk_detected": True,
                 "emulator_detected": True,
                 "mock_location_detected": True,
+                "pending_attendance_actions": 2,
             },
             format="json",
             HTTP_X_ARI_DEVICE_ID="risky-device",
@@ -112,6 +128,7 @@ class DeviceHealthTests(TestCase):
         )
         row = EmployeeDeviceHealth.objects.get(employee=self.engineer)
         self.assertIn("SECURITY_RISK[", row.last_error)
+        self.assertIn("ATTENDANCE_PENDING[2]", row.last_error)
         self.assertTrue(
             SystemAuditEvent.objects.filter(
                 action="DEVICE_SECURITY_RISK_REPORTED",
@@ -124,7 +141,15 @@ class DeviceHealthTests(TestCase):
         self.assertEqual(admin_response.status_code, 200)
         self.assertEqual(admin_response.data[0]["risk_level"], "HIGH")
         self.assertIn("ROOT_RISK", admin_response.data[0]["security_risks"])
+        self.assertEqual(
+            admin_response.data[0]["health"]["pending_attendance_actions"],
+            2,
+        )
         self.assertFalse(admin_response.data[0]["health"]["last_error"].startswith("SECURITY_RISK["))
+        self.assertNotIn(
+            "ATTENDANCE_PENDING[",
+            admin_response.data[0]["health"]["last_error"],
+        )
 
     def test_admin_can_view_company_device_health(self):
         EmployeeDeviceHealth.objects.create(
@@ -141,6 +166,7 @@ class DeviceHealthTests(TestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["employee_code"], "EMP-HEALTH-001")
         self.assertEqual(response.data[0]["health"]["app_version"], "1.0.48")
+        self.assertEqual(response.data[0]["health"]["pending_attendance_actions"], 0)
         self.assertIn(response.data[0]["status"], {"HEALTHY", "STALE"})
         self.assertEqual(response.data[0]["risk_level"], "CLEAR")
 
