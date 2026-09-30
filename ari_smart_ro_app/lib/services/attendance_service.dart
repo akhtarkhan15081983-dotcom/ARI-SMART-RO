@@ -100,6 +100,7 @@ class AttendanceService {
       final success = response.statusCode == 200 || response.statusCode == 201;
       String message = success ? 'Checked in successfully.' : 'Check-in failed.';
       double? distanceMeters;
+      DateTime? serverCheckIn;
 
       try {
         final decoded = jsonDecode(body);
@@ -110,11 +111,20 @@ class AttendanceService {
           }
           final distance = decoded['distance_from_office_meters'];
           if (distance is num) distanceMeters = distance.toDouble();
+          final attendance = decoded['attendance'];
+          if (attendance is Map) {
+            serverCheckIn = DateTime.tryParse(
+              attendance['check_in']?.toString() ?? '',
+            );
+          }
         }
       } catch (_) {
         // Keep the fallback for non-JSON proxy/server responses.
       }
 
+      if (success) {
+        await _persistSnapshotSafely(checkIn: serverCheckIn ?? capturedAt);
+      }
       return AttendanceActionResult(
         success: success,
         message: message,
@@ -141,6 +151,7 @@ class AttendanceService {
           'is_mocked': false,
           'selfie_path': preservedSelfie,
         });
+        await _persistSnapshotSafely(checkIn: capturedAt);
         return const AttendanceActionResult(
           success: true,
           queuedOffline: true,
@@ -162,6 +173,18 @@ class AttendanceService {
     try {
       final response = await _post('/attendance/check-out/');
       final success = response.statusCode == 200 || response.statusCode == 201;
+      DateTime? serverCheckOut;
+      if (success) {
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map) {
+            serverCheckOut = DateTime.tryParse(
+              decoded['check_out']?.toString() ?? '',
+            );
+          }
+        } catch (_) {}
+        await _closeSnapshotSafely(serverCheckOut ?? capturedAt);
+      }
       return AttendanceActionResult(
         success: success,
         message: _message(
@@ -178,6 +201,7 @@ class AttendanceService {
           'action': 'CHECK_OUT',
           'captured_at': capturedAt.toUtc().toIso8601String(),
         });
+        await _closeSnapshotSafely(capturedAt);
         return const AttendanceActionResult(
           success: true,
           queuedOffline: true,
@@ -224,6 +248,7 @@ class AttendanceService {
         final response = await _client.send(request).timeout(_uploadTimeout);
         final body = await response.stream.bytesToString().timeout(_requestTimeout);
         if (response.statusCode == 200 || response.statusCode == 201) {
+          await _applyActionToSnapshot(action);
           await _offlineStore.remove(actionId);
           synced++;
           continue;
@@ -252,6 +277,17 @@ class AttendanceService {
       }
     }
     return OfflineAttendanceSyncResult(synced: synced, rejected: rejected);
+  }
+
+  Future<void> _applyActionToSnapshot(Map<String, dynamic> action) async {
+    final captured = DateTime.tryParse(action['captured_at']?.toString() ?? '');
+    if (captured == null) return;
+    final type = action['action']?.toString().toUpperCase();
+    if (type == 'CHECK_IN') {
+      await _persistSnapshotSafely(checkIn: captured);
+    } else if (type == 'CHECK_OUT') {
+      await _closeSnapshotSafely(captured);
+    }
   }
 
   Future<Map<String, dynamic>> overtimeStatus() async {
@@ -318,24 +354,39 @@ class AttendanceService {
       await syncPendingOfflineActions();
       final response = await _get('/attendance/today/');
       if (response.statusCode == 200) {
-        return AttendanceModel.fromJson(
+        final attendance = AttendanceModel.fromJson(
           Map<String, dynamic>.from(jsonDecode(response.body) as Map),
         );
+        await _refreshSnapshotFromAttendance(attendance);
+        return attendance;
       }
     } on AttendanceServiceException {
-      // Fall back to local pending state below.
+      // Fall back to durable local state below.
     } catch (_) {
-      // Fall back to local pending state below.
+      // Fall back to durable local state below.
     }
     return _offlineAttendanceFallback();
   }
 
+  Future<void> _refreshSnapshotFromAttendance(AttendanceModel attendance) async {
+    final checkIn = DateTime.tryParse(attendance.checkIn ?? '');
+    if (checkIn == null) return;
+    final checkOut = DateTime.tryParse(attendance.checkOut ?? '');
+    await _persistSnapshotSafely(checkIn: checkIn, checkOut: checkOut);
+  }
+
   Future<AttendanceModel?> _offlineAttendanceFallback() async {
     try {
-      final pending = await _offlineStore.pending();
       final now = DateTime.now();
-      DateTime? checkIn;
-      DateTime? checkOut;
+      final snapshot = await _offlineStore.todayShiftSnapshot(now: now);
+      DateTime? checkIn = DateTime.tryParse(
+        snapshot?['check_in']?.toString() ?? '',
+      )?.toLocal();
+      DateTime? checkOut = DateTime.tryParse(
+        snapshot?['check_out']?.toString() ?? '',
+      )?.toLocal();
+
+      final pending = await _offlineStore.pending();
       for (final action in pending) {
         final capturedRaw = action['captured_at']?.toString();
         if (capturedRaw == null) continue;
@@ -350,7 +401,10 @@ class AttendanceService {
       final elapsed = effectiveEnd.isAfter(checkIn)
           ? effectiveEnd.difference(checkIn)
           : Duration.zero;
-      final cappedSeconds = elapsed.inSeconds.clamp(0, const Duration(hours: 8).inSeconds);
+      final cappedSeconds = elapsed.inSeconds.clamp(
+        0,
+        const Duration(hours: 8).inSeconds,
+      );
       final hours = cappedSeconds / 3600.0;
       return AttendanceModel(
         id: 0,
@@ -362,11 +416,36 @@ class AttendanceService {
         regularWorkingHours: hours,
         regularShiftEndAt: checkIn.add(const Duration(hours: 8)).toIso8601String(),
         status: 'PRESENT',
-        remarks: 'Pending secure offline attendance sync.',
+        remarks: pending.isEmpty
+            ? 'Recovered from secure local attendance snapshot.'
+            : 'Pending secure offline attendance sync.',
         identityReviewStatus: 'PENDING',
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<void> _persistSnapshotSafely({
+    required DateTime checkIn,
+    DateTime? checkOut,
+  }) async {
+    try {
+      await _offlineStore.saveShiftSnapshot(
+        checkIn: checkIn,
+        checkOut: checkOut,
+      );
+    } catch (_) {
+      // A local persistence issue must not turn a confirmed server action into
+      // a false failure; pending actions still provide an additional fallback.
+    }
+  }
+
+  Future<void> _closeSnapshotSafely(DateTime checkOut) async {
+    try {
+      await _offlineStore.closeShiftSnapshot(checkOut);
+    } catch (_) {
+      // Preserve server success even if local health/storage is degraded.
     }
   }
 
