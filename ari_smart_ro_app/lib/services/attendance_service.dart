@@ -6,6 +6,8 @@ import '../models/attendance_model.dart';
 import 'api_service.dart';
 import 'attendance_integrity_service.dart';
 import 'device_identity_service.dart';
+import 'offline_action_dead_letter_store.dart';
+import 'offline_attendance_store.dart';
 
 typedef AttendanceHeadersProvider = Future<Map<String, String>> Function();
 typedef AttendanceDeviceIdProvider = Future<String> Function();
@@ -17,6 +19,8 @@ class AttendanceService {
     AttendanceHeadersProvider? headersProvider,
     AttendanceDeviceIdProvider? deviceIdProvider,
     AttendanceMockLocationProvider? mockLocationProvider,
+    OfflineAttendanceStore? offlineStore,
+    OfflineActionDeadLetterStore? deadLetterStore,
     String? baseUrl,
     Duration requestTimeout = const Duration(seconds: 15),
     Duration uploadTimeout = const Duration(seconds: 30),
@@ -25,6 +29,8 @@ class AttendanceService {
        _deviceIdProvider = deviceIdProvider ?? DeviceIdentityService.getOrCreate,
        _mockLocationProvider =
            mockLocationProvider ?? AttendanceIntegrityService.isCurrentLocationMocked,
+       _offlineStore = offlineStore ?? OfflineAttendanceStore(),
+       _deadLetterStore = deadLetterStore ?? OfflineActionDeadLetterStore(),
        _baseUrl = (baseUrl ?? ApiService.baseUrl).replaceFirst(RegExp(r'/$'), ''),
        _requestTimeout = requestTimeout,
        _uploadTimeout = uploadTimeout;
@@ -33,6 +39,8 @@ class AttendanceService {
   final AttendanceHeadersProvider _headersProvider;
   final AttendanceDeviceIdProvider _deviceIdProvider;
   final AttendanceMockLocationProvider _mockLocationProvider;
+  final OfflineAttendanceStore _offlineStore;
+  final OfflineActionDeadLetterStore _deadLetterStore;
   final String _baseUrl;
   final Duration _requestTimeout;
   final Duration _uploadTimeout;
@@ -70,6 +78,10 @@ class AttendanceService {
     required double longitude,
     required String selfiePath,
   }) async {
+    final capturedAt = DateTime.now();
+    final actionId = _offlineStore.newActionId();
+    final deviceId = await _deviceIdProvider();
+    final isMocked = await _mockLocationProvider();
     final request = http.MultipartRequest('POST', _uri('/attendance/check-in/'));
 
     final headers = await _headers();
@@ -78,25 +90,22 @@ class AttendanceService {
 
     request.fields['latitude'] = latitude.toString();
     request.fields['longitude'] = longitude.toString();
-    request.fields['device_id'] = await _deviceIdProvider();
-    request.fields['is_mocked'] = (await _mockLocationProvider()) ? 'true' : 'false';
+    request.fields['device_id'] = deviceId;
+    request.fields['is_mocked'] = isMocked ? 'true' : 'false';
     request.files.add(await http.MultipartFile.fromPath('selfie', selfiePath));
 
     try {
       final response = await _client.send(request).timeout(_uploadTimeout);
-      final body =
-          await response.stream.bytesToString().timeout(_requestTimeout);
+      final body = await response.stream.bytesToString().timeout(_requestTimeout);
       final success = response.statusCode == 200 || response.statusCode == 201;
-      String message =
-          success ? 'Checked in successfully.' : 'Check-in failed.';
+      String message = success ? 'Checked in successfully.' : 'Check-in failed.';
       double? distanceMeters;
 
       try {
         final decoded = jsonDecode(body);
         if (decoded is Map<String, dynamic>) {
           final serverMessage = decoded['message'] ?? decoded['detail'];
-          if (serverMessage != null &&
-              serverMessage.toString().trim().isNotEmpty) {
+          if (serverMessage != null && serverMessage.toString().trim().isNotEmpty) {
             message = serverMessage.toString().trim();
           }
           final distance = decoded['distance_from_office_meters'];
@@ -113,16 +122,43 @@ class AttendanceService {
         distanceFromOfficeMeters: distanceMeters,
       );
     } catch (_) {
-      return const AttendanceActionResult(
-        success: false,
-        message:
-            'Unable to connect to the server. Check the network and try again.',
-        statusCode: 0,
-      );
+      if (isMocked) {
+        return const AttendanceActionResult(
+          success: false,
+          message: 'Mock/fake GPS location is not allowed for attendance.',
+          statusCode: 403,
+        );
+      }
+      try {
+        final preservedSelfie = await _offlineStore.preserveSelfie(selfiePath, actionId);
+        await _offlineStore.enqueue({
+          'action_id': actionId,
+          'action': 'CHECK_IN',
+          'captured_at': capturedAt.toUtc().toIso8601String(),
+          'latitude': latitude,
+          'longitude': longitude,
+          'device_id': deviceId,
+          'is_mocked': false,
+          'selfie_path': preservedSelfie,
+        });
+        return const AttendanceActionResult(
+          success: true,
+          queuedOffline: true,
+          message: 'No network. Check-in saved securely on this phone and will sync automatically.',
+          statusCode: 202,
+        );
+      } catch (_) {
+        return const AttendanceActionResult(
+          success: false,
+          message: 'Unable to connect and the offline check-in could not be saved safely. Please try again.',
+          statusCode: 0,
+        );
+      }
     }
   }
 
   Future<AttendanceActionResult> checkOut() async {
+    final capturedAt = DateTime.now();
     try {
       final response = await _post('/attendance/check-out/');
       final success = response.statusCode == 200 || response.statusCode == 201;
@@ -135,12 +171,87 @@ class AttendanceService {
         statusCode: response.statusCode,
       );
     } on AttendanceServiceException catch (error) {
-      return AttendanceActionResult(
-        success: false,
-        message: error.message,
-        statusCode: 0,
-      );
+      try {
+        final actionId = _offlineStore.newActionId();
+        await _offlineStore.enqueue({
+          'action_id': actionId,
+          'action': 'CHECK_OUT',
+          'captured_at': capturedAt.toUtc().toIso8601String(),
+        });
+        return const AttendanceActionResult(
+          success: true,
+          queuedOffline: true,
+          message: 'No network. Check-out saved securely and will sync automatically.',
+          statusCode: 202,
+        );
+      } catch (_) {
+        return AttendanceActionResult(
+          success: false,
+          message: error.message,
+          statusCode: 0,
+        );
+      }
     }
+  }
+
+  Future<OfflineAttendanceSyncResult> syncPendingOfflineActions() async {
+    List<Map<String, dynamic>> pending;
+    try {
+      pending = await _offlineStore.pending();
+    } catch (_) {
+      return const OfflineAttendanceSyncResult();
+    }
+
+    var synced = 0;
+    var rejected = 0;
+    for (final action in pending) {
+      final actionId = (action['action_id'] ?? '').toString();
+      if (actionId.isEmpty) continue;
+      final request = http.MultipartRequest('POST', _uri('/attendance/offline-sync/'));
+      try {
+        final headers = await _headers();
+        headers.removeWhere((key, _) => key.toLowerCase() == 'content-type');
+        request.headers.addAll(headers);
+        for (final entry in action.entries) {
+          if (entry.key == 'selfie_path' || entry.value == null) continue;
+          request.fields[entry.key] = entry.value.toString();
+        }
+        final selfiePath = action['selfie_path']?.toString();
+        if (selfiePath != null && selfiePath.isNotEmpty) {
+          request.files.add(await http.MultipartFile.fromPath('selfie', selfiePath));
+        }
+
+        final response = await _client.send(request).timeout(_uploadTimeout);
+        final body = await response.stream.bytesToString().timeout(_requestTimeout);
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          await _offlineStore.remove(actionId);
+          synced++;
+          continue;
+        }
+        if (response.statusCode >= 400 && response.statusCode < 500) {
+          String detail = 'Offline attendance action was rejected by the server.';
+          try {
+            final decoded = jsonDecode(body);
+            if (decoded is Map) {
+              detail = (decoded['message'] ?? decoded['detail'] ?? detail).toString();
+            }
+          } catch (_) {}
+          await _deadLetterStore.append(
+            action: action,
+            reason: 'ATTENDANCE_OFFLINE_SYNC_REJECTED',
+            detail: detail,
+          );
+          await _offlineStore.remove(actionId, deleteMedia: false);
+          rejected++;
+          continue;
+        }
+        break;
+      } catch (_) {
+        // Transient connectivity/server failure: preserve the queue untouched.
+        break;
+      }
+    }
+    return OfflineAttendanceSyncResult(synced: synced, rejected: rejected);
   }
 
   Future<Map<String, dynamic>> overtimeStatus() async {
@@ -198,38 +309,82 @@ class AttendanceService {
       if (data is Map) {
         return (data['detail'] ?? data['message'] ?? fallback).toString();
       }
-    } catch (_) {
-      // Use a stable fallback when a proxy/server returns non-JSON content.
-    }
+    } catch (_) {}
     return fallback;
   }
 
   Future<AttendanceModel?> todayAttendance() async {
     try {
+      await syncPendingOfflineActions();
       final response = await _get('/attendance/today/');
-      if (response.statusCode != 200) return null;
-      return AttendanceModel.fromJson(
-        Map<String, dynamic>.from(jsonDecode(response.body) as Map),
-      );
+      if (response.statusCode == 200) {
+        return AttendanceModel.fromJson(
+          Map<String, dynamic>.from(jsonDecode(response.body) as Map),
+        );
+      }
     } on AttendanceServiceException {
+      // Fall back to local pending state below.
+    } catch (_) {
+      // Fall back to local pending state below.
+    }
+    return _offlineAttendanceFallback();
+  }
+
+  Future<AttendanceModel?> _offlineAttendanceFallback() async {
+    try {
+      final pending = await _offlineStore.pending();
+      final now = DateTime.now();
+      DateTime? checkIn;
+      DateTime? checkOut;
+      for (final action in pending) {
+        final capturedRaw = action['captured_at']?.toString();
+        if (capturedRaw == null) continue;
+        final captured = DateTime.tryParse(capturedRaw)?.toLocal();
+        if (captured == null || !_sameLocalDay(captured, now)) continue;
+        final type = action['action']?.toString().toUpperCase();
+        if (type == 'CHECK_IN') checkIn ??= captured;
+        if (type == 'CHECK_OUT') checkOut ??= captured;
+      }
+      if (checkIn == null) return null;
+      final effectiveEnd = checkOut ?? now;
+      final elapsed = effectiveEnd.isAfter(checkIn)
+          ? effectiveEnd.difference(checkIn)
+          : Duration.zero;
+      final cappedSeconds = elapsed.inSeconds.clamp(0, const Duration(hours: 8).inSeconds);
+      final hours = cappedSeconds / 3600.0;
+      return AttendanceModel(
+        id: 0,
+        employeeName: '',
+        date: _localDate(checkIn),
+        checkIn: checkIn.toIso8601String(),
+        checkOut: checkOut?.toIso8601String(),
+        workingHours: hours,
+        regularWorkingHours: hours,
+        regularShiftEndAt: checkIn.add(const Duration(hours: 8)).toIso8601String(),
+        status: 'PRESENT',
+        remarks: 'Pending secure offline attendance sync.',
+        identityReviewStatus: 'PENDING',
+      );
+    } catch (_) {
       return null;
     }
   }
+
+  bool _sameLocalDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  String _localDate(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
   Future<List<AttendanceModel>> history() async {
     try {
       final response = await _get('/attendance/history/');
       if (response.statusCode != 200) return <AttendanceModel>[];
-
       final decoded = jsonDecode(response.body);
       if (decoded is! List) return <AttendanceModel>[];
       return decoded
           .whereType<Map>()
-          .map(
-            (row) => AttendanceModel.fromJson(
-              Map<String, dynamic>.from(row),
-            ),
-          )
+          .map((row) => AttendanceModel.fromJson(Map<String, dynamic>.from(row)))
           .toList(growable: false);
     } on AttendanceServiceException {
       return <AttendanceModel>[];
@@ -251,11 +406,22 @@ class AttendanceActionResult {
   final String message;
   final int statusCode;
   final double? distanceFromOfficeMeters;
+  final bool queuedOffline;
 
   const AttendanceActionResult({
     required this.success,
     required this.message,
     required this.statusCode,
     this.distanceFromOfficeMeters,
+    this.queuedOffline = false,
   });
+}
+
+class OfflineAttendanceSyncResult {
+  final int synced;
+  final int rejected;
+
+  const OfflineAttendanceSyncResult({this.synced = 0, this.rejected = 0});
+
+  bool get changed => synced > 0 || rejected > 0;
 }
