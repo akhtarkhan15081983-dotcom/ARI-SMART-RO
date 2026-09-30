@@ -35,7 +35,7 @@ class ComplaintGuidanceSafetyTests(SimpleTestCase):
         self.assertEqual(set(SYMPTOM_GUIDANCE), expected)
 
     def test_every_guided_symptom_maps_to_supported_complaint_type(self):
-        allowed = {value for value, _ in Complaint.COMPLAINT_TYPES}
+        allowed = {value for value, _ in Complaint.COMPLAINT_TYPE_CHOICES}
         mapped = {value["complaint_type"] for value in SYMPTOM_GUIDANCE.values()}
         self.assertTrue(mapped.issubset(allowed), mapped - allowed)
 
