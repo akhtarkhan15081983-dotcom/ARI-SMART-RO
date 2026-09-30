@@ -132,50 +132,7 @@ jobs:
           emulator-boot-timeout: 900
           disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            set -eu
-            APK="ari_smart_ro_app/build/app/outputs/flutter-apk/app-debug.apk"
-            PACKAGE="com.arismartro.app.posthogtest"
-
-            adb wait-for-device
-            echo "Waiting for Android package service readiness..."
-            PACKAGE_READY=0
-            for attempt in $(seq 1 30); do
-              if adb shell cmd package list packages >/tmp/ari-packages.txt 2>/tmp/ari-package-error.txt; then
-                PACKAGE_READY=1
-                break
-              fi
-              sleep 2
-            done
-            if [ "$PACKAGE_READY" -ne 1 ]; then
-              echo "::error title=Android emulator infrastructure failure::Android package service never became healthy after emulator boot."
-              cat /tmp/ari-package-error.txt || true
-              adb shell service check package || true
-              adb logcat -d -t 300 || true
-              exit 86
-            fi
-
-            if ! adb install -r "$APK"; then
-              if ! adb shell cmd package list packages >/dev/null 2>&1; then
-                echo "::error title=Android emulator infrastructure failure::APK install could not reach a healthy Android package service."
-                adb shell service check package || true
-              else
-                echo "::error title=Android APK install failure::Android package service is healthy but the APK install command failed."
-              fi
-              adb logcat -d -t 300 || true
-              exit 87
-            fi
-
-            adb shell am force-stop "$PACKAGE"
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
-            sleep 10
-            PID="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
-            if [ -z "$PID" ]; then
-              echo "::error title=Android application runtime failure::APK installed and launch was attempted, but the app process did not survive the smoke window."
-              adb logcat -d -t 500 || true
-              exit 1
-            fi
-            echo "ARI SMART RO Android startup smoke test passed with PID $PID."
+          script: bash .github/scripts/android-runtime-smoke.sh
 
   container:
     runs-on: ubuntu-latest
