@@ -25,6 +25,72 @@ class AdminROPassportService {
     return body;
   }
 
+  Future<Map<String, dynamic>> fetchSetupOptions() async {
+    final response = await http
+        .get(
+          Uri.parse(
+            '${ApiService.baseUrl}/jobs/admin/ro-parts-passports/setup/',
+          ),
+          headers: await ApiService.authHeaders(),
+        )
+        .timeout(const Duration(seconds: 25));
+    final body = _decode(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(
+        body['detail']?.toString() ?? 'Unable to load Digital RO setup options.',
+      );
+    }
+    return body;
+  }
+
+  Future<Map<String, dynamic>> saveInitialBaseline({
+    required int customerId,
+    int? assetId,
+    required int roModelId,
+    required String serialNumber,
+    required String ownershipType,
+    String? saleInstallationDate,
+    required List<String> partKeys,
+    List<String> photoPaths = const [],
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse(
+        '${ApiService.baseUrl}/jobs/admin/ro-parts-passports/setup/',
+      ),
+    );
+    final headers = await ApiService.authHeaders();
+    headers.remove('Content-Type');
+    request.headers.addAll(headers);
+    request.fields['customer_id'] = '$customerId';
+    if (assetId != null) request.fields['asset_id'] = '$assetId';
+    request.fields['ro_model_id'] = '$roModelId';
+    request.fields['serial_number'] = serialNumber.trim();
+    request.fields['ownership_type'] = ownershipType.trim().toUpperCase();
+    if (saleInstallationDate != null &&
+        saleInstallationDate.trim().isNotEmpty) {
+      request.fields['sale_installation_date'] =
+          saleInstallationDate.trim();
+    }
+    request.fields['parts'] = jsonEncode(
+      partKeys.map((key) => {'part_key': key}).toList(),
+    );
+
+    for (final path in photoPaths.take(4)) {
+      request.files.add(await http.MultipartFile.fromPath('photos', path));
+    }
+
+    final streamed = await request.send().timeout(const Duration(seconds: 90));
+    final response = await http.Response.fromStream(streamed);
+    final body = _decode(response.body);
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(
+        body['detail']?.toString() ?? 'Unable to save Digital RO baseline.',
+      );
+    }
+    return body;
+  }
+
   Map<String, dynamic> _decode(String value) {
     if (value.trim().isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(value);

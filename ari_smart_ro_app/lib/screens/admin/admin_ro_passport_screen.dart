@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/admin_ro_passport_service.dart';
+import 'admin_ro_passport_setup_screen.dart';
 
 class AdminROPassportScreen extends StatefulWidget {
   const AdminROPassportScreen({super.key});
@@ -10,9 +11,8 @@ class AdminROPassportScreen extends StatefulWidget {
 }
 
 class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
-  final AdminROPassportService _service = const AdminROPassportService();
-  final TextEditingController _search = TextEditingController();
-
+  final _service = const AdminROPassportService();
+  final _search = TextEditingController();
   bool _loading = true;
   String? _error;
   Map<String, dynamic> _data = const {};
@@ -50,55 +50,139 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
     }
   }
 
+  Future<void> _setup(
+    Map<String, dynamic> customer, [
+    Map<String, dynamic>? asset,
+  ]) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AdminROPassportSetupScreen(
+          customer: customer,
+          asset: asset,
+        ),
+      ),
+    );
+    if (changed == true) await _load();
+  }
+
+  String _text(dynamic value, [String fallback = 'Not recorded']) {
+    final text = (value ?? '').toString().trim();
+    return text.isEmpty ? fallback : text;
+  }
+
   List<Map<String, dynamic>> get _customers =>
       (_data['customers'] as List<dynamic>? ?? const [])
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-  String _text(dynamic value, [String fallback = 'Not recorded']) {
-    final v = (value ?? '').toString().trim();
-    return v.isEmpty ? fallback : v;
-  }
-
-  Widget _summaryCard() {
-    final customers = (_data['customer_count'] as num?)?.toInt() ?? 0;
+  @override
+  Widget build(BuildContext context) {
     final alarms = (_data['active_alarm_count'] as num?)?.toInt() ?? 0;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+    return Scaffold(
+      appBar: AppBar(title: const Text('Admin Digital RO Registry')),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(14),
           children: [
-            Expanded(child: _metric('Customers', '$customers', Icons.people_alt_outlined)),
-            const SizedBox(width: 10),
-            Expanded(child: _metric('Active alarms', '$alarms', Icons.notifications_active_outlined)),
+            TextField(
+              controller: _search,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _load(),
+              decoration: InputDecoration(
+                hintText: 'Search customer, phone, card, model, serial...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  onPressed: _load,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _metric(
+                        'Customers',
+                        '${_data['customer_count'] ?? 0}',
+                        Icons.people_alt_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _metric(
+                        'Active alarms',
+                        '$alarms',
+                        Icons.notifications_active_outlined,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(40),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (_customers.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(28),
+                  child: Center(child: Text('No matching customer found.')),
+                ),
+              )
+            else
+              ..._customers.map(_customerCard),
           ],
         ),
       ),
     );
   }
 
-  Widget _metric(String label, String value, IconData icon) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(icon),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-                  Text(label),
-                ],
-              ),
+  Widget _metric(String label, String value, IconData icon) => Row(
+        children: [
+          Icon(icon),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(label),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       );
 
   Widget _customerCard(Map<String, dynamic> customer) {
@@ -106,19 +190,19 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
-    final alarmCount = (customer['active_alarm_count'] as num?)?.toInt() ?? 0;
+    final alarmCount =
+        (customer['active_alarm_count'] as num?)?.toInt() ?? 0;
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(top: 10),
       child: ExpansionTile(
-        leading: CircleAvatar(
-          child: Text(_text(customer['name'], '?').substring(0, 1).toUpperCase()),
-        ),
+        leading: const CircleAvatar(child: Icon(Icons.person_outline)),
         title: Text(
           _text(customer['name']),
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         subtitle: Text(
-          '${_text(customer['customer_number'])} • ${_text(customer['phone'])}\n'
+          '${_text(customer['customer_number'])} • '
+          '${_text(customer['phone'])}\n'
           '${_text(customer['master_ro_model'])} • ${assets.length} RO',
         ),
         isThreeLine: true,
@@ -127,27 +211,39 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
                 label: Text('$alarmCount'),
                 child: const Icon(Icons.notifications_active_outlined),
               )
-            : const Icon(Icons.keyboard_arrow_down),
+            : null,
         childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
         children: [
-          _info('Card', customer['card_number']),
           _info('Ownership', customer['ownership_type']),
-          _info('Installation', customer['installation_date']),
-          _info('Address', '${_text(customer['address'], '')} ${_text(customer['area'], '')} ${_text(customer['city'], '')}'.trim()),
-          const SizedBox(height: 8),
-          if (assets.isEmpty)
+          _info('Sale / installation', customer['installation_date']),
+          if (assets.isEmpty) ...[
             const ListTile(
+              contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.water_drop_outlined),
-              title: Text('No active RO asset linked'),
-            )
-          else
-            ...assets.map(_assetCard),
+              title: Text('Digital RO baseline not created'),
+              subtitle: Text(
+                'Admin can fill model, current parts, sale date and photos now.',
+              ),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: () => _setup(customer),
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('CREATE DIGITAL RO BASELINE'),
+              ),
+            ),
+          ] else
+            ...assets.map((asset) => _assetCard(customer, asset)),
         ],
       ),
     );
   }
 
-  Widget _assetCard(Map<String, dynamic> asset) {
+  Widget _assetCard(
+    Map<String, dynamic> customer,
+    Map<String, dynamic> asset,
+  ) {
     final parts = (asset['parts'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
@@ -156,14 +252,15 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
-    final alarms = (asset['active_alarms'] as List<dynamic>? ?? const [])
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
     final photos = (asset['photos'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
+    final alarms = (asset['active_alarms'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final editable = asset['manual_setup_allowed'] == true;
 
     return Card(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -174,80 +271,107 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          'Serial: ${_text(asset['serial_number'])} • ${parts.length} current part(s)',
+          'Serial: ${_text(asset['serial_number'])} • '
+          '${parts.length} current part(s)',
         ),
-        childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         children: [
-          _info('RO status', asset['status']),
-          _info('Last verified visual check', asset['last_visual_check']),
+          _info('Sale date', asset['purchase_date']),
+          _info('Last verified check', asset['last_visual_check']),
+          SizedBox(
+            width: double.infinity,
+            child: editable
+                ? FilledButton.tonalIcon(
+                    onPressed: () => _setup(customer, asset),
+                    icon: const Icon(Icons.edit_note),
+                    label: const Text('EDIT INITIAL BASELINE'),
+                  )
+                : Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lock_outline, size: 19),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _text(
+                                asset['manual_setup_message'],
+                                'Automatic history active; baseline locked.',
+                              ),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
           if (alarms.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _heading('Active alarms', Icons.notifications_active_outlined),
+            _heading('Active alarms', Icons.warning_amber_rounded),
             ...alarms.map(
-              (alarm) => ListTile(
+              (a) => ListTile(
                 dense: true,
-                leading: const Icon(Icons.warning_amber_rounded),
-                title: Text(_text(alarm['title'])),
+                title: Text(_text(a['title'])),
                 subtitle: Text(
-                  '${_text(alarm['severity'])} • ${_text(alarm['status'])}'
-                  '${_text(alarm['due_date'], '').isEmpty ? '' : ' • Due ${_text(alarm['due_date'])}'}',
+                  '${_text(a['severity'])} • ${_text(a['status'])}',
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 8),
           _heading('Current fitted parts', Icons.settings_outlined),
           if (parts.isEmpty)
             const ListTile(
               dense: true,
-              title: Text('No verified part baseline yet.'),
+              title: Text('No verified current parts yet.'),
             )
           else
             ...parts.map(
-              (part) => ListTile(
+              (p) => ListTile(
                 dense: true,
                 leading: const Icon(Icons.verified_outlined),
-                title: Text(_text(part['part_name'])),
-                subtitle: Text(_text(part['date_label'])),
+                title: Text(_text(p['part_name'])),
+                subtitle: Text(_text(p['date_label'])),
               ),
             ),
           if (history.isNotEmpty) ...[
             _heading('Replacement history', Icons.history),
             ...history.map(
-              (part) => ListTile(
+              (p) => ListTile(
                 dense: true,
-                leading: const Icon(Icons.change_circle_outlined),
-                title: Text(_text(part['part_name'])),
+                title: Text(_text(p['part_name'])),
                 subtitle: Text(
-                  '${_text(part['date_label'])}${_text(part['engineer'], '').isEmpty ? '' : ' • ${_text(part['engineer'])}'}',
+                  '${_text(p['date_label'])}'
+                  '${_text(p['engineer'], '').isEmpty ? '' : ' • ${_text(p['engineer'])}'}',
                 ),
               ),
             ),
           ],
           if (photos.isNotEmpty) ...[
-            _heading('Latest verified photos', Icons.photo_library_outlined),
+            _heading('Latest photos', Icons.photo_library_outlined),
             SizedBox(
-              height: 120,
+              height: 110,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: photos.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (_, index) {
-                  final photo = photos[index];
-                  final url = _text(photo['url'], '');
+                  final url = _text(photos[index]['url'], '');
                   return ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: SizedBox(
-                      width: 150,
+                      width: 145,
                       child: url.isEmpty
                           ? const ColoredBox(
                               color: Color(0xFFE2E8F0),
-                              child: Icon(Icons.image_not_supported_outlined),
+                              child: Icon(Icons.image_not_supported),
                             )
                           : Image.network(
                               url,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const ColoredBox(
+                              errorBuilder: (_, __, ___) =>
+                                  const ColoredBox(
                                 color: Color(0xFFE2E8F0),
                                 child: Icon(Icons.broken_image_outlined),
                               ),
@@ -264,7 +388,7 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
   }
 
   Widget _heading(String text, IconData icon) => Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 4),
+        padding: const EdgeInsets.only(top: 10, bottom: 4),
         child: Row(
           children: [
             Icon(icon, size: 19),
@@ -278,74 +402,9 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
         dense: true,
         contentPadding: EdgeInsets.zero,
         title: Text(label, style: const TextStyle(fontSize: 12)),
-        subtitle: Text(_text(value), style: const TextStyle(fontWeight: FontWeight.w700)),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Admin Digital RO Registry')),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(14),
-          children: [
-            TextField(
-              controller: _search,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _load(),
-              decoration: InputDecoration(
-                hintText: 'Search customer, phone, card, RO model, serial...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: IconButton(
-                  onPressed: _load,
-                  icon: const Icon(Icons.arrow_forward),
-                ),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(40),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_error != null)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.error_outline, size: 42),
-                      const SizedBox(height: 10),
-                      Text(_error!, textAlign: TextAlign.center),
-                      const SizedBox(height: 12),
-                      FilledButton.icon(
-                        onPressed: _load,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else ...[
-              _summaryCard(),
-              const SizedBox(height: 8),
-              if (_customers.isEmpty)
-                const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(28),
-                    child: Center(child: Text('No matching customer Digital RO record found.')),
-                  ),
-                )
-              else
-                ..._customers.map(_customerCard),
-            ],
-          ],
+        subtitle: Text(
+          _text(value),
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
-      ),
-    );
-  }
+      );
 }

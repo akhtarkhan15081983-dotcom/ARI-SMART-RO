@@ -1,5 +1,12 @@
+import json
+
+from django.db import transaction
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,9 +14,100 @@ from rest_framework.views import APIView
 from accounts.permissions import user_role
 from assets.models.asset import ROAlarm, ROAsset
 from customers.models import Customer
+from products.models import ROModel
 from tenancy.access import request_company
 
+from .ro_parts_ai import PART_CATALOG
+from .ro_parts_models import (
+    ROPartsInspection,
+    ROPartsInspectionPhoto,
+    ROPartsObservation,
+)
 from .ro_parts_views import _asset_passport_payload
+
+
+MAX_PHOTO_BYTES = 10 * 1024 * 1024
+
+
+def _admin_company(request):
+    if user_role(request.user) != "ADMIN":
+        return None, Response(
+            {"detail": "Only admin can manage all customer Digital RO passports."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    company = request_company(request)
+    if company is None:
+        return None, Response(
+            {"detail": "Admin account is not linked to an active company."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return company, None
+
+
+def _manual_setup_state(asset):
+    confirmed = list(
+        ROPartsInspection.objects.filter(ro_asset=asset, status="CONFIRMED")
+        .order_by("confirmed_at", "captured_at", "id")[:2]
+    )
+    if not confirmed:
+        return True, "Initial Digital RO baseline has not been captured yet."
+    if (
+        len(confirmed) == 1
+        and confirmed[0].source == "MANUAL"
+        and confirmed[0].inspection_type == "BASELINE"
+        and confirmed[0].job_id is None
+    ):
+        return True, "Admin baseline can still be corrected before automatic history starts."
+    return (
+        False,
+        "Verified service/inventory history has started. The baseline is locked to protect audit history.",
+    )
+
+
+def _parse_parts(raw):
+    if raw in (None, ""):
+        return []
+    try:
+        decoded = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise ValueError("Current parts must be a valid list.")
+    if not isinstance(decoded, list):
+        raise ValueError("Current parts must be a valid list.")
+
+    result = []
+    seen = set()
+    for item in decoded:
+        if isinstance(item, str):
+            key = item.strip()
+            installed_raw = ""
+        elif isinstance(item, dict):
+            key = str(item.get("part_key") or "").strip()
+            installed_raw = str(item.get("installed_on") or "").strip()
+        else:
+            continue
+        if key not in PART_CATALOG or key in seen:
+            continue
+        installed_on = None
+        if installed_raw:
+            installed_on = parse_date(installed_raw)
+            if installed_on is None:
+                raise ValueError(f"Invalid fitted date for {PART_CATALOG[key]}.")
+        seen.add(key)
+        result.append((key, installed_on))
+    return result
+
+
+def _validate_photos(request):
+    photos = request.FILES.getlist("photos")
+    if len(photos) > 4:
+        raise ValueError("Upload up to 4 RO photos.")
+    for photo in photos:
+        if getattr(photo, "size", 0) > MAX_PHOTO_BYTES:
+            raise ValueError("Each RO photo must be 10 MB or smaller.")
+        content_type = str(getattr(photo, "content_type", "") or "")
+        if content_type and not content_type.startswith("image/"):
+            raise ValueError("Only image files can be used as RO photos.")
+    return photos
 
 
 class AdminROPartsPassportAPIView(APIView):
@@ -18,18 +116,9 @@ class AdminROPartsPassportAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if user_role(request.user) != "ADMIN":
-            return Response(
-                {"detail": "Only admin can view all customer Digital RO passports."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        company = request_company(request)
-        if company is None:
-            return Response(
-                {"detail": "Admin account is not linked to an active company."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        company, denied = _admin_company(request)
+        if denied is not None:
+            return denied
 
         query = str(request.GET.get("q") or "").strip()
         customers = Customer.objects.filter(company=company).order_by("name", "customer_id")
@@ -75,6 +164,11 @@ class AdminROPartsPassportAPIView(APIView):
                         "created_at",
                     )[:20]
                 )
+                setup_allowed, setup_message = _manual_setup_state(asset)
+                payload["ro_model_id"] = asset.ro_model_id
+                payload["purchase_date"] = asset.purchase_date
+                payload["manual_setup_allowed"] = setup_allowed
+                payload["manual_setup_message"] = setup_message
                 payload["active_alarms"] = active_alarms
                 payload["active_alarm_count"] = len(active_alarms)
                 customer_alarm_count += len(active_alarms)
@@ -109,4 +203,282 @@ class AdminROPartsPassportAPIView(APIView):
                 "active_alarm_count": total_active_alarms,
                 "customers": rows,
             }
+        )
+
+
+class AdminROPartsBaselineAPIView(APIView):
+    """Admin-only one-time/correctable Digital RO baseline before automatic history."""
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        company, denied = _admin_company(request)
+        if denied is not None:
+            return denied
+
+        models = (
+            ROModel.objects.filter(is_active=True)
+            .order_by("model_name", "id")
+            .values(
+                "id",
+                "model_name",
+                "capacity",
+                "business_type",
+                "available_for_sale",
+                "available_for_rent",
+            )
+        )
+        return Response(
+            {
+                "company_id": company.id,
+                "models": list(models),
+                "parts": [
+                    {"part_key": key, "part_name": name}
+                    for key, name in PART_CATALOG.items()
+                ],
+                "policy": (
+                    "Admin may create or correct the initial baseline until verified "
+                    "service/inventory history starts. After that, history is locked "
+                    "and future changes must come from normal service/inventory flows."
+                ),
+            }
+        )
+
+    def post(self, request):
+        company, denied = _admin_company(request)
+        if denied is not None:
+            return denied
+
+        try:
+            customer_id = int(request.data.get("customer_id"))
+            model_id = int(request.data.get("ro_model_id"))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Customer and RO model are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        customer = get_object_or_404(
+            Customer.objects.filter(company=company),
+            pk=customer_id,
+        )
+        ro_model = get_object_or_404(
+            ROModel.objects.filter(is_active=True),
+            pk=model_id,
+        )
+
+        ownership_type = str(
+            request.data.get("ownership_type") or customer.ownership_type or "RENTAL"
+        ).strip().upper()
+        if ownership_type not in {"RENTAL", "PURCHASE"}:
+            return Response(
+                {"detail": "Ownership must be RENTAL or PURCHASE."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        date_raw = str(request.data.get("sale_installation_date") or "").strip()
+        setup_date = parse_date(date_raw) if date_raw else None
+        if date_raw and setup_date is None:
+            return Response(
+                {"detail": "Sale / installation date must be YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            parts = _parse_parts(request.data.get("parts"))
+            photos = _validate_photos(request)
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not parts:
+            return Response(
+                {"detail": "Select at least one current fitted RO part."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        asset_id_raw = request.data.get("asset_id")
+        asset = None
+        if asset_id_raw not in (None, ""):
+            try:
+                asset_id = int(asset_id_raw)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "Invalid RO asset."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            asset = get_object_or_404(
+                ROAsset.objects.filter(
+                    current_customer=customer,
+                    current_customer__company=company,
+                    is_active=True,
+                ),
+                pk=asset_id,
+            )
+        else:
+            existing_assets = list(
+                ROAsset.objects.filter(
+                    current_customer=customer,
+                    is_active=True,
+                ).order_by("id")[:2]
+            )
+            if len(existing_assets) == 1:
+                asset = existing_assets[0]
+            elif len(existing_assets) > 1:
+                return Response(
+                    {"detail": "Select which RO asset you want to initialise."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        serial_number = str(request.data.get("serial_number") or "").strip()
+        if not serial_number and asset is not None:
+            serial_number = str(asset.serial_number or "").strip()
+        if not serial_number:
+            return Response(
+                {"detail": "RO serial number is required for the initial Digital RO record."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        conflict = ROAsset.objects.filter(serial_number__iexact=serial_number)
+        if asset is not None:
+            conflict = conflict.exclude(pk=asset.pk)
+        if conflict.exists():
+            return Response(
+                {"detail": "This RO serial number is already linked to another asset."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if asset is not None:
+            setup_allowed, setup_message = _manual_setup_state(asset)
+            if not setup_allowed:
+                return Response(
+                    {"detail": setup_message},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        with transaction.atomic():
+            customer = Customer.objects.select_for_update().get(
+                pk=customer.pk,
+                company=company,
+            )
+            if asset is None:
+                asset = ROAsset.objects.create(
+                    ro_model=ro_model,
+                    serial_number=serial_number,
+                    status="INSTALLED",
+                    current_customer=customer,
+                    purchase_date=setup_date if ownership_type == "PURCHASE" else None,
+                )
+                inspection = ROPartsInspection.objects.create(
+                    ro_asset=asset,
+                    customer=customer,
+                    inspection_type="BASELINE",
+                    source="MANUAL",
+                    status="CONFIRMED",
+                    confirmed_at=timezone.now(),
+                    created_by=request.user,
+                )
+                created = True
+            else:
+                asset = ROAsset.objects.select_for_update().get(pk=asset.pk)
+                asset.ro_model = ro_model
+                asset.serial_number = serial_number
+                asset.status = "INSTALLED"
+                asset.current_customer = customer
+                asset.purchase_date = (
+                    setup_date if ownership_type == "PURCHASE" else None
+                )
+                asset.save(
+                    update_fields=[
+                        "ro_model",
+                        "serial_number",
+                        "status",
+                        "current_customer",
+                        "purchase_date",
+                    ]
+                )
+                inspection = (
+                    ROPartsInspection.objects.select_for_update()
+                    .filter(
+                        ro_asset=asset,
+                        status="CONFIRMED",
+                        source="MANUAL",
+                        inspection_type="BASELINE",
+                        job__isnull=True,
+                    )
+                    .order_by("id")
+                    .first()
+                )
+                if inspection is None:
+                    inspection = ROPartsInspection.objects.create(
+                        ro_asset=asset,
+                        customer=customer,
+                        inspection_type="BASELINE",
+                        source="MANUAL",
+                        status="CONFIRMED",
+                        confirmed_at=timezone.now(),
+                        created_by=request.user,
+                    )
+                else:
+                    inspection.customer = customer
+                    inspection.confirmed_at = timezone.now()
+                    inspection.created_by = request.user
+                    inspection.save(
+                        update_fields=["customer", "confirmed_at", "created_by"]
+                    )
+                    inspection.observations.all().delete()
+                created = False
+
+            customer.ro_model = ro_model.model_name
+            customer.ownership_type = ownership_type
+            if setup_date is not None:
+                customer.installation_date = setup_date
+            customer.save(
+                update_fields=["ro_model", "ownership_type", "installation_date"]
+            )
+
+            for key, installed_on in parts:
+                ROPartsObservation.objects.create(
+                    inspection=inspection,
+                    part_key=key,
+                    part_name=PART_CATALOG[key],
+                    confidence=1,
+                    visible=True,
+                    confirmed=True,
+                    installed_on=installed_on,
+                    date_source="BASELINE_ASSUMED",
+                    evidence_notes="Admin-confirmed initial Digital RO baseline.",
+                )
+
+            if photos:
+                for old_photo in inspection.photos.all():
+                    try:
+                        old_photo.image.delete(save=False)
+                    except Exception:
+                        pass
+                    old_photo.delete()
+                angles = ["admin_front", "admin_inside_left", "admin_inside_right", "admin_overview"]
+                for index, image in enumerate(photos):
+                    ROPartsInspectionPhoto.objects.create(
+                        inspection=inspection,
+                        image=image,
+                        angle=angles[index],
+                    )
+
+        payload = _asset_passport_payload(request, asset)
+        payload["ro_model_id"] = asset.ro_model_id
+        payload["purchase_date"] = asset.purchase_date
+        payload["manual_setup_allowed"] = True
+        return Response(
+            {
+                "message": (
+                    "Digital RO baseline saved. Future verified service and inventory "
+                    "changes will continue the RO history automatically."
+                ),
+                "customer_id": customer.id,
+                "asset": payload,
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )

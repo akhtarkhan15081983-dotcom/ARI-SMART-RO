@@ -25,7 +25,10 @@ from .ro_parts_views import (
     ROPartsConfirmAPIView,
     CustomerROPartsPassportAPIView,
 )
-from .ro_parts_admin_views import AdminROPartsPassportAPIView
+from .ro_parts_admin_views import (
+    AdminROPartsBaselineAPIView,
+    AdminROPartsPassportAPIView,
+)
 
 router = DefaultRouter()
 router.register(r"jobs", JobViewSet, basename="jobs")
@@ -38,6 +41,7 @@ urlpatterns = [
     path("jobs/search/", JobSearchAPIView.as_view(), name="job-search"),
     path("jobs/customer/ro-parts-passport/", CustomerROPartsPassportAPIView.as_view(), name="customer-ro-parts-passport"),
     path("jobs/admin/ro-parts-passports/", AdminROPartsPassportAPIView.as_view(), name="admin-ro-parts-passports"),
+    path("jobs/admin/ro-parts-passports/setup/", AdminROPartsBaselineAPIView.as_view(), name="admin-ro-parts-passport-setup"),
     path("jobs/<int:pk>/ro-parts/scan/", ROPartsScanAPIView.as_view(), name="ro-parts-scan"),
     path("jobs/<int:pk>/ro-parts/inspections/<int:inspection_id>/confirm/", ROPartsConfirmAPIView.as_view(), name="ro-parts-confirm"),
     path("jobs/<int:pk>/accept/", JobAcceptAPIView.as_view(), name="job-accept"),
