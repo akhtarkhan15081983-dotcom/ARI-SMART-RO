@@ -205,7 +205,6 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
           '${_text(customer['phone'])}\n'
           '${_text(customer['master_ro_model'])} • ${assets.length} RO',
         ),
-        isThreeLine: true,
         trailing: alarmCount > 0
             ? Badge(
                 label: Text('$alarmCount'),
