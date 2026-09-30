@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../services/ro_health_service.dart';
 import '../../services/ro_parts_passport_service.dart';
+import '../complaint/complaint_assistant_screen.dart';
 
 class ROHealthCustomerCard extends StatefulWidget {
   const ROHealthCustomerCard({super.key});
@@ -39,6 +40,18 @@ class _ROHealthCustomerCardState extends State<ROHealthCustomerCard> {
     if (!mounted) return;
     setState(() => _future = _load());
     await _future;
+  }
+
+  Future<void> _openCareAssistant() async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const ComplaintAssistantScreen()),
+    );
+    if (created == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Complaint submitted to ARI Care.')),
+      );
+    }
   }
 
   String _label(dynamic raw) {
@@ -126,11 +139,22 @@ class _ROHealthCustomerCardState extends State<ROHealthCustomerCard> {
 
         final assets = snapshot.data ?? const <Map<String, dynamic>>[];
         if (assets.isEmpty) {
-          return const Card(
+          return Card(
             child: Padding(
-              padding: EdgeInsets.all(18),
-              child: Text(
-                'RO Health will appear after a linked RO asset and verified parts record are available.',
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'RO Health will appear after a linked RO asset and verified parts record are available.',
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _openCareAssistant,
+                    icon: const Icon(Icons.support_agent),
+                    label: const Text('Get Help from ARI Care'),
+                  ),
+                ],
               ),
             ),
           );
@@ -205,8 +229,19 @@ class _ROHealthCustomerCardState extends State<ROHealthCustomerCard> {
             ...parts.whereType<Map>().map((raw) {
               return _partTile(Map<String, dynamic>.from(raw));
             }),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _openCareAssistant,
+                icon: const Icon(Icons.support_agent),
+                label: const Text('Problem with this RO? Open ARI Care Assistant'),
+              ),
+            ),
+          ),
           const Padding(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Text(
               'Service intervals are ARI-configured for the specific part/model. The app does not assume one universal replacement period for every RO.',
               style: TextStyle(fontSize: 12),
