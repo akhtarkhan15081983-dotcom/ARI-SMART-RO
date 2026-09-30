@@ -7,9 +7,14 @@ import 'api_service.dart';
 class ROAlarmService {
   const ROAlarmService();
 
+  static const Duration _automaticRefreshInterval = Duration(minutes: 15);
+  static DateTime? _lastAutomaticRefresh;
+  static Future<void>? _automaticRefreshInFlight;
+
   Future<List<Map<String, dynamic>>> fetchAlarms({
     String status = '',
   }) async {
+    await _bestEffortAutomaticRefresh();
     final query = status.trim().isEmpty
         ? ''
         : '?status=${Uri.encodeQueryComponent(status.trim().toUpperCase())}';
@@ -21,6 +26,42 @@ class ROAlarmService {
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) throw Exception(_message(response));
     return _asList(jsonDecode(response.body));
+  }
+
+  Future<void> _bestEffortAutomaticRefresh() async {
+    final now = DateTime.now();
+    final last = _lastAutomaticRefresh;
+    if (last != null && now.difference(last) < _automaticRefreshInterval) {
+      return;
+    }
+
+    final existing = _automaticRefreshInFlight;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+
+    // Throttle before the network call too, so an offline phone does not hit
+    // the refresh endpoint every minute. A later list fetch will retry.
+    _lastAutomaticRefresh = now;
+    final operation = _runBestEffortRefresh();
+    _automaticRefreshInFlight = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_automaticRefreshInFlight, operation)) {
+        _automaticRefreshInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _runBestEffortRefresh() async {
+    try {
+      await refreshSystemAlarms();
+    } catch (_) {
+      // Listing existing alarms must remain available even when automatic
+      // generation cannot refresh because the phone is offline temporarily.
+    }
   }
 
   Future<List<Map<String, dynamic>>> fetchAssets() async {
