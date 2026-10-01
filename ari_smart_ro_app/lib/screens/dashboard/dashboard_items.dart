@@ -128,6 +128,11 @@ class DashboardItems {
       route: "customers",
     ),
     const DashboardItem(
+      title: "RO Alarm Center",
+      icon: Icons.notifications_active_rounded,
+      route: "ro_alarm_center",
+    ),
+    const DashboardItem(
       title: "Rent Management",
       icon: Icons.account_balance_wallet,
       route: "rent_management",
