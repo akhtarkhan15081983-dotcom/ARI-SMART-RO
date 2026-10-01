@@ -31,6 +31,15 @@ class ROAsset(models.Model):
         related_name="assets"
     )
 
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ro_assets",
+        db_index=True,
+    )
+
     serial_number = models.CharField(
         max_length=100,
         unique=True,
