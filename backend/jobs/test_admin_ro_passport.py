@@ -256,6 +256,31 @@ class AdminROPassportTests(APITestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn("locked", response.data["detail"].lower())
 
+    def test_admin_can_update_rent_due_day_from_digital_ro_registry(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(
+            "/api/jobs/admin/ro-parts-passports/",
+            {
+                "customer_id": self.customer.id,
+                "rent_due_day": 12,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.rent_due_day, 12)
+        self.assertEqual(response.data["rent_due_day"], 12)
+
+        registry = self.client.get("/api/jobs/admin/ro-parts-passports/")
+        row = next(
+            item
+            for item in registry.data["customers"]
+            if item["name"] == "Digital RO Customer"
+        )
+        self.assertEqual(row["rent_due_day"], 12)
+        self.assertEqual(row["current_rent_due_date"].day, 12)
+
     def test_admin_cannot_initialise_customer_from_another_company(self):
         other_company = Company.objects.create(
             name="Other Setup Company",
