@@ -15,6 +15,7 @@ from accounts.permissions import (
     user_role,
 )
 from employees.models import EmployeeProfile
+from .identity import unique_unlinked_customer_for_phone
 from .models import CallingActivity, Customer, PublicCustomerRequest
 from .serializers import PublicCustomerRequestSerializer
 
@@ -214,12 +215,7 @@ def _customer_queryset_for(request):
         linked = queryset.filter(user=user)
         if linked.exists():
             return linked
-        first_match = (
-            queryset
-            .filter(phone=user.phone, user__isnull=True)
-            .order_by("id")
-            .first()
-        )
+        first_match = unique_unlinked_customer_for_phone(user.phone, active_only=True)
         return queryset.filter(pk=first_match.pk) if first_match else queryset.none()
 
     if not has_feature_access(request, "customers"):
@@ -298,17 +294,9 @@ class CustomerProfileAPIView(APIView):
 
         if customer is None:
 
-            customer = (
-                Customer.objects
-                .select_related(
-                    "assigned_engineer__user"
-                )
-                .filter(
-                    phone=request.user.phone,
-                    user__isnull=True,
-                )
-                .order_by("id")
-                .first()
+            customer = unique_unlinked_customer_for_phone(
+                request.user.phone,
+                active_only=True,
             )
 
             if customer:
@@ -396,13 +384,9 @@ class CustomerProfileAPIView(APIView):
         # CHECK LEGACY CUSTOMER BY PHONE
         # ----------------------------------------------------
 
-        legacy_customer = (
-            Customer.objects
-            .filter(
-                phone=request.user.phone,
-                user__isnull=True,
-            )
-            .first()
+        legacy_customer = unique_unlinked_customer_for_phone(
+            request.user.phone,
+            active_only=True,
         )
 
         if legacy_customer:
