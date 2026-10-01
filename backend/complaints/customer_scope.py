@@ -4,7 +4,6 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from customers.models import Customer
-from customers.identity import unique_unlinked_customer_for_phone
 from tenancy.access import has_feature_access, request_company
 
 from .models import Complaint
@@ -31,7 +30,15 @@ def linked_customer_for_complaints(user):
     if linked is not None:
         return linked
 
-    legacy = unique_unlinked_customer_for_phone(user.phone, active_only=True)
+    legacy = (
+        Customer.objects.filter(
+            phone=user.phone,
+            user__isnull=True,
+            is_active=True,
+        )
+        .order_by("id")
+        .first()
+    )
     if legacy is not None:
         legacy.user = user
         legacy.save(update_fields=["user"])
