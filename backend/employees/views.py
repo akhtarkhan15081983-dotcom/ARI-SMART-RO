@@ -686,8 +686,16 @@ class EngineerListAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     def get(self, request):
+        company = _request_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=403,
+            )
         engineers = EmployeeProfile.objects.filter(
-            designation="ENGINEER", is_active=True,
+            company=company,
+            designation="ENGINEER",
+            is_active=True,
         ).select_related("user")
         return Response([{
             "id": e.id,
@@ -705,8 +713,16 @@ class AssignmentEmployeeListAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     def get(self, request):
+        company = _request_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=403,
+            )
         employees = EmployeeProfile.objects.filter(
-            designation__in=["ENGINEER", "OFFICE"], is_active=True,
+            company=company,
+            designation__in=["ENGINEER", "OFFICE"],
+            is_active=True,
         ).select_related("user").order_by(
             "designation", "user__first_name", "user__last_name",
         )
