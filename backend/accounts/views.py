@@ -17,6 +17,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from .models import AuthSecurityEvent, PasswordResetRequest, SystemAuditEvent, User
 from customers.models import Customer
+from customers.identity import unique_unlinked_customer_for_phone
 from tenancy.models import CompanyMembership
 from .permissions import IsAdmin
 
@@ -306,14 +307,10 @@ class VerifyOTPAPIView(APIView):
 
         # Existing/imported customers activate their own record by proving
         # ownership of the exact registered phone number.
-        customer = Customer.objects.filter(phone=user.phone).first()
-        if customer is not None:
-            if customer.user_id not in (None, user.id):
-                return Response(
-                    {"success": False, "message": "This customer record is already linked to another account."},
-                    status=status.HTTP_409_CONFLICT,
-                )
-            if customer.user_id is None:
+        customer = Customer.objects.filter(user=user, is_active=True).first()
+        if customer is None:
+            customer = unique_unlinked_customer_for_phone(user.phone, active_only=True)
+            if customer is not None:
                 customer.user = user
                 customer.save(update_fields=["user"])
 
