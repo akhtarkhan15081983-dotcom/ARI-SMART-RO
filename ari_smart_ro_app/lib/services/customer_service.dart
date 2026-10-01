@@ -7,6 +7,45 @@ import '../models/customer_model.dart';
 import 'api_service.dart';
 
 class CustomerService {
+  Future<Map<String, dynamic>> getMyProfile() async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/customers/profile/"),
+      headers: await ApiService.authHeaders(),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map) {
+      return Map<String, dynamic>.from(
+        (decoded['profile'] as Map?) ?? const <String, dynamic>{},
+      );
+    }
+    throw Exception(
+      decoded is Map
+          ? (decoded['message'] ?? decoded['detail'] ?? 'Unable to load profile.').toString()
+          : 'Unable to load profile.',
+    );
+  }
+
+  Future<Map<String, dynamic>> updateMyProfile(
+    Map<String, dynamic> values,
+  ) async {
+    final response = await http.patch(
+      Uri.parse("${ApiService.baseUrl}/customers/profile/"),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode(values),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map) {
+      return Map<String, dynamic>.from(
+        (decoded['profile'] as Map?) ?? const <String, dynamic>{},
+      );
+    }
+    throw Exception(
+      decoded is Map
+          ? (decoded['message'] ?? decoded['errors'] ?? 'Unable to update profile.').toString()
+          : 'Unable to update profile.',
+    );
+  }
+
   // ============================================================
   // GET ALL CUSTOMERS
   // ============================================================
