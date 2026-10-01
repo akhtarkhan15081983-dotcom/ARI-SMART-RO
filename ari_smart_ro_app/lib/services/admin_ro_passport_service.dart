@@ -25,6 +25,31 @@ class AdminROPassportService {
     return body;
   }
 
+  Future<Map<String, dynamic>> updateRentDueDay({
+    required int customerId,
+    required int rentDueDay,
+  }) async {
+    final response = await http
+        .patch(
+          Uri.parse(
+            '${ApiService.baseUrl}/jobs/admin/ro-parts-passports/',
+          ),
+          headers: await ApiService.authHeaders(),
+          body: jsonEncode({
+            'customer_id': customerId,
+            'rent_due_day': rentDueDay,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    final body = _decode(response.body);
+    if (response.statusCode != 200) {
+      throw Exception(
+        body['detail']?.toString() ?? 'Unable to update RO rent due date.',
+      );
+    }
+    return body;
+  }
+
   Future<Map<String, dynamic>> fetchSetupOptions() async {
     final response = await http
         .get(
