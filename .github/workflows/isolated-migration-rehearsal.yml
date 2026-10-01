@@ -45,11 +45,11 @@ jobs:
             echo "Refusing to run outside the approved hardening branch."
             exit 1
           fi
-          if [ "$DB_NAME" = "ari-smart-ro-db" ]; then
+          if [ "$DB_NAME" = "ari_smart_ro" ]; then
             echo "Refusing to run against the production database."
             exit 1
           fi
-          if [ "$DB_NAME" != "ari-smart-ro-maxpro-rehearsal-2026-09-29" ]; then
+          if [ "$DB_NAME" != "ari_smart_ro_szws" ]; then
             echo "Refusing to run against any database except the approved isolated rehearsal database."
             exit 1
           fi
