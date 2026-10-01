@@ -2907,6 +2907,16 @@ class RentPaymentHistoryAPIView(APIView):
             "customer_id"
         )
 
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Active company workspace not found.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         payments = (
             CustomerRentPayment.objects
             .select_related(
@@ -2914,6 +2924,14 @@ class RentPaymentHistoryAPIView(APIView):
                 "rent_history",
                 "collected_by__user",
             )
+            .filter(
+                Q(customer__company=company)
+                | Q(
+                    customer__company__isnull=True,
+                    customer__assigned_engineer__company=company,
+                )
+            )
+            .distinct()
             .order_by(
                 "-payment_date",
                 "-id",
