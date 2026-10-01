@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from employees.models import EmployeeProfile
 from jobs.idempotency import action_id_from_request
 from jobs.models import ClientActionReceipt, Job
-from tenancy.access import request_company
+from tenancy.access import request_company, has_feature_access
 
 from .models import Customer, CustomerRentPayment
 from .views import (
@@ -246,8 +246,11 @@ class TenantScopedRentPaymentHistoryAPIView(RentPaymentHistoryAPIView):
     """Restrict rent ledger reads to the active workspace."""
 
     def get(self, request):
-        if request.user.role not in self.ALLOWED_ROLES:
-            return super().get(request)
+        if not has_feature_access(request, "payment_history"):
+            return Response(
+                {"success": False, "message": "Payment history permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         company = request_company(request)
         payments = CustomerRentPayment.objects.select_related(
