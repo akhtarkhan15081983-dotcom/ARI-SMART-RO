@@ -37,22 +37,20 @@ def _offer_creator_scope_q(customer):
 
 
 def offer_audience_q_for_user(user):
-    criteria = (
-        Q(audience="ALL", target_user__isnull=True)
-        | Q(audience="TARGETED", target_user=user)
-    )
+    targeted = Q(audience="TARGETED", target_user=user)
+    broad = Q(audience="ALL", target_user__isnull=True)
 
     customer = customer_for_user(user)
     if customer is not None:
         if customer.is_active:
-            criteria |= Q(audience="ACTIVE", target_user__isnull=True)
+            broad |= Q(audience="ACTIVE", target_user__isnull=True)
         else:
-            criteria |= Q(audience="INACTIVE", target_user__isnull=True)
+            broad |= Q(audience="INACTIVE", target_user__isnull=True)
         creator_scope = _offer_creator_scope_q(customer)
         if creator_scope:
-            criteria = criteria & creator_scope
+            broad &= creator_scope
 
-    return criteria
+    return targeted | broad
 
 
 def customer_user(customer):
@@ -68,11 +66,17 @@ def customer_user(customer):
     if not phone:
         return None
 
-    return User.objects.filter(
+    candidate = User.objects.filter(
         phone=phone,
         role="CUSTOMER",
         is_active=True,
     ).first()
+    if candidate is None:
+        return None
+    linked_customer = getattr(candidate, "customer_profile", None)
+    if linked_customer is not None and linked_customer.pk != customer.pk:
+        return None
+    return candidate
 
 
 def users_for_customer_status(is_active, company=None):
@@ -102,4 +106,14 @@ def users_for_customer_status(is_active, company=None):
             ).values_list("id", flat=True)
         )
 
-    return User.objects.filter(id__in=user_ids, role="CUSTOMER", is_active=True)
+    users = User.objects.filter(
+        id__in=user_ids,
+        role="CUSTOMER",
+        is_active=True,
+    )
+    if company is not None:
+        users = users.filter(
+            Q(customer_profile__company=company)
+            | Q(customer_profile__isnull=True)
+        )
+    return users
