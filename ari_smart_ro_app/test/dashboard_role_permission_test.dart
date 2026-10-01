@@ -40,4 +40,41 @@ void main() {
       isFalse,
     );
   });
+
+  test('every grantable dashboard feature has a card candidate', () {
+    const grantableCardRoutes = <String>{
+      'attendance',
+      'hrms',
+      'training',
+      'work_calendar',
+      'work_route',
+      'jobs',
+      'assigned_customers',
+      'customers',
+      'walkin',
+      'service',
+      'bag',
+      'request',
+      'qr',
+      'rent_management',
+      'payment_history',
+      'complaint',
+      'referral',
+      'profile',
+      'reports',
+      'downloads',
+      'inventory_workflow',
+      'calling_desk',
+      'map',
+      'engineer_map',
+      'employee_management',
+    };
+
+    final candidates = DashboardItems.permissionCandidates()
+        .map((item) => item.route)
+        .toSet();
+
+    expect(candidates.containsAll(grantableCardRoutes), isTrue);
+  });
+
 }
