@@ -10,6 +10,8 @@ from customers.models import Customer, CustomerRentPayment
 from employees.models import EmployeeProfile
 from jobs.models import Job
 from service.views import _linked_customer_for
+from complaints.customer_scope import linked_customer_for_complaints
+from jobs.views import _customer_for_user
 from tenancy.models import Company, CompanyMembership
 
 
@@ -219,7 +221,7 @@ class SharedPhoneCustomerScopeTests(TestCase):
         )
         return first, second
 
-    def test_service_customer_resolution_claims_one_deterministic_legacy_record(self):
+    def test_shared_phone_does_not_auto_claim_legacy_customer(self):
         user = User.objects.create_user(
             phone="9800000001",
             password="CustomerStrong@123",
@@ -229,14 +231,14 @@ class SharedPhoneCustomerScopeTests(TestCase):
         )
         first, second = self._legacy_pair(user.phone)
 
-        resolved = _linked_customer_for(user)
+        self.assertIsNone(_linked_customer_for(user))
+        self.assertIsNone(linked_customer_for_complaints(user))
+        self.assertIsNone(_customer_for_user(user))
 
-        self.assertEqual(resolved.id, first.id)
         first.refresh_from_db()
         second.refresh_from_db()
-        self.assertEqual(first.user_id, user.id)
+        self.assertIsNone(first.user_id)
         self.assertIsNone(second.user_id)
-        self.assertEqual(_linked_customer_for(user).id, first.id)
 
     def test_complaint_list_does_not_expose_second_shared_phone_customer(self):
         user = User.objects.create_user(
