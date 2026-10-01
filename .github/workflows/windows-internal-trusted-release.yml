@@ -1,0 +1,395 @@
+name: ARI SMART RO Windows Internal Trusted Release
+
+on:
+  push:
+    branches:
+      - windows-signing/internal-v1.0.52-2026-10-01
+    paths:
+      - .github/workflows/windows-internal-trusted-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-sign-publish:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: ari_smart_ro_app
+
+    env:
+      RELEASE_TAG: v1.0.52-windows-internal
+      TARGET_SHA: 85fe142b0271e5e3c6b1d8bcc20e5f681e5edced
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve and freeze Windows package version
+        shell: pwsh
+        run: |
+          $line = (Select-String -Path "pubspec.yaml" -Pattern "^version:").Line
+          if (-not $line) { throw "pubspec version not found" }
+          $raw = ($line -split '\s+')[1]
+          $parts = $raw -split '\+'
+          if ($parts.Count -ne 2) { throw "pubspec version must include +build" }
+          if ($parts[0] -ne "1.0.52" -or $parts[1] -ne "52") {
+            throw "Internal Windows release is frozen to v1.0.52+52."
+          }
+          "ARI_APP_VERSION=$($parts[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ARI_APP_BUILD=$($parts[1])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify production main target has not changed
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $currentMain = gh api "repos/${env:GITHUB_REPOSITORY}/git/ref/heads/main" --jq ".object.sha"
+          if ($currentMain -ne $env:TARGET_SHA) {
+            throw "main moved from the approved v1.0.52 release commit. Refusing to publish."
+          }
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: >-
+          flutter build windows --release
+          --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+
+      - name: Verify Windows Safe Build
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          $blockedPatterns = @(
+            "*file_selector*",
+            "*flutter_secure_storage*",
+            "*geolocator*",
+            "*permission_handler*",
+            "*record_windows*",
+            "*url_launcher*",
+            "*local_notifications*",
+            "dartjni.dll"
+          )
+          foreach ($pattern in $blockedPatterns) {
+            $found = Get-ChildItem $release -Filter $pattern -ErrorAction SilentlyContinue
+            if ($found) {
+              throw "Unsafe native plugin present in Windows Safe Build: $($found.Name -join ', ')"
+            }
+          }
+          Write-Host "Windows Safe Build verified."
+
+      - name: Create ARI SMART RO internal code-signing certificate
+        shell: pwsh
+        run: |
+          $params = @{
+            Type = "CodeSigningCert"
+            Subject = "CN=ARI SMART RO Internal Code Signing"
+            FriendlyName = "ARI SMART RO Internal Code Signing"
+            CertStoreLocation = "Cert:\CurrentUser\My"
+            KeyAlgorithm = "RSA"
+            KeyLength = 3072
+            HashAlgorithm = "SHA256"
+            KeyExportPolicy = "NonExportable"
+            NotAfter = (Get-Date).AddYears(3)
+          }
+          $cert = New-SelfSignedCertificate @params
+
+          if (-not $cert.HasPrivateKey) {
+            throw "Generated certificate does not have a private key."
+          }
+
+          $certDir = "build\windows\internal-trust"
+          New-Item -ItemType Directory -Path $certDir -Force | Out-Null
+          $cerPath = Join-Path $certDir "ARI-SMART-RO-Internal-Code-Signing.cer"
+          Export-Certificate -Cert $cert -FilePath $cerPath -Force | Out-Null
+
+          "ARI_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $cert.Thumbprint | Set-Content (Join-Path $certDir "CERTIFICATE-THUMBPRINT.txt")
+          Write-Host "Created non-exportable internal code-signing certificate."
+          Write-Host "Thumbprint: $($cert.Thumbprint)"
+
+      - name: Trust internal certificate on CI runner for verification
+        shell: pwsh
+        run: |
+          $cer = "build\windows\internal-trust\ARI-SMART-RO-Internal-Code-Signing.cer"
+          Import-Certificate -FilePath $cer -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher" | Out-Null
+          Write-Host "Internal certificate trusted on ephemeral CI runner."
+
+      - name: Sign ARI_SMART_RO.exe
+        shell: pwsh
+        run: |
+          $cert = Get-Item "Cert:\CurrentUser\My\$env:ARI_CERT_THUMBPRINT"
+          $exe = "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          if (!(Test-Path $exe)) { throw "ARI_SMART_RO.exe not found." }
+
+          $signParams = @{
+            FilePath = $exe
+            Certificate = $cert
+            HashAlgorithm = "SHA256"
+            TimestampServer = "http://timestamp.digicert.com"
+          }
+          $signed = Set-AuthenticodeSignature @signParams
+
+          Write-Host "Sign result: $($signed.Status)"
+          if ($signed.Status -ne "Valid") {
+            throw "ARI_SMART_RO.exe signing did not validate."
+          }
+
+      - name: Verify ARI_SMART_RO.exe Authenticode status
+        shell: pwsh
+        run: |
+          $exe = "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          $signature = Get-AuthenticodeSignature $exe
+          Write-Host "ARI_SMART_RO.exe signature status: $($signature.Status)"
+          Write-Host "Signer subject: $($signature.SignerCertificate.Subject)"
+          Write-Host "Signer thumbprint: $($signature.SignerCertificate.Thumbprint)"
+          if ($signature.Status -ne "Valid") {
+            throw "ARI_SMART_RO.exe Authenticode signature is not Valid."
+          }
+          if ($signature.SignerCertificate.Thumbprint -ne $env:ARI_CERT_THUMBPRINT) {
+            throw "ARI_SMART_RO.exe was not signed with the generated ARI internal certificate."
+          }
+
+      - name: Smoke test signed Windows app startup
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) {
+            throw "ARI_SMART_RO.exe exited during startup smoke test with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+          Write-Host "Signed ARI SMART RO remained running during startup smoke test."
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Setup.exe from signed application
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found." }
+          & $iscc "/DMyAppVersion=$env:ARI_APP_VERSION" "/DMyAppBuild=$env:ARI_APP_BUILD" "installer\ari_smart_ro.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
+
+      - name: Sign Setup.exe
+        shell: pwsh
+        run: |
+          $cert = Get-Item "Cert:\CurrentUser\My\$env:ARI_CERT_THUMBPRINT"
+          $setup = "build\windows\installer\ARI-SMART-RO-Setup-v1.0.52.exe"
+          if (!(Test-Path $setup)) { throw "Setup.exe not found." }
+
+          $signParams = @{
+            FilePath = $setup
+            Certificate = $cert
+            HashAlgorithm = "SHA256"
+            TimestampServer = "http://timestamp.digicert.com"
+          }
+          $signed = Set-AuthenticodeSignature @signParams
+
+          Write-Host "Setup sign result: $($signed.Status)"
+          if ($signed.Status -ne "Valid") {
+            throw "Setup.exe signing did not validate."
+          }
+
+      - name: Verify Setup.exe Authenticode status
+        shell: pwsh
+        run: |
+          $setup = "build\windows\installer\ARI-SMART-RO-Setup-v1.0.52.exe"
+          $signature = Get-AuthenticodeSignature $setup
+          Write-Host "Setup.exe signature status: $($signature.Status)"
+          Write-Host "Signer subject: $($signature.SignerCertificate.Subject)"
+          Write-Host "Signer thumbprint: $($signature.SignerCertificate.Thumbprint)"
+          if ($signature.Status -ne "Valid") {
+            throw "Setup.exe Authenticode signature is not Valid."
+          }
+          if ($signature.SignerCertificate.Thumbprint -ne $env:ARI_CERT_THUMBPRINT) {
+            throw "Setup.exe was not signed with the generated ARI internal certificate."
+          }
+
+      - name: Prepare internal trust installation helper
+        shell: pwsh
+        run: |
+          $trustDir = "build\windows\internal-trust"
+
+          @'
+          param(
+            [string]$CertificatePath = (Join-Path $PSScriptRoot "ARI-SMART-RO-Internal-Code-Signing.cer")
+          )
+
+          $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+            [Security.Principal.WindowsBuiltInRole]::Administrator
+          )
+
+          if (-not $isAdmin) {
+            Write-Host "Administrator permission is required."
+            Write-Host "Open PowerShell as Administrator and run this script again."
+            exit 1
+          }
+
+          if (!(Test-Path $CertificatePath)) {
+            throw "Certificate file not found: $CertificatePath"
+          }
+
+          $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertificatePath)
+          Import-Certificate -FilePath $CertificatePath -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
+          Import-Certificate -FilePath $CertificatePath -CertStoreLocation "Cert:\LocalMachine\TrustedPublisher" | Out-Null
+
+          Write-Host "ARI SMART RO internal certificate installed."
+          Write-Host "Thumbprint: $($cert.Thumbprint)"
+          Write-Host "This trusts ARI SMART RO v1.0.52 internal-signed binaries on this managed PC."
+          '@ | Set-Content (Join-Path $trustDir "Install-ARI-SMART-RO-Internal-Certificate.ps1")
+
+          @'
+          ARI SMART RO v1.0.52 - INTERNAL TRUST ONLY
+          ===========================================
+
+          This Windows build is NOT signed by a public Certificate Authority.
+          It is signed with an ARI SMART RO self-signed internal code-signing certificate.
+
+          Use only on ARI-managed/company Windows PCs.
+
+          BEFORE RUNNING SETUP.EXE:
+          1. Keep these files together:
+             - ARI-SMART-RO-Internal-Code-Signing.cer
+             - Install-ARI-SMART-RO-Internal-Certificate.ps1
+             - ARI-SMART-RO-Setup-v1.0.52.exe
+          2. Open Windows PowerShell AS ADMINISTRATOR.
+          3. Run:
+             Set-ExecutionPolicy -Scope Process Bypass
+          4. Run:
+             .\Install-ARI-SMART-RO-Internal-Certificate.ps1
+          5. Confirm the certificate installs successfully.
+          6. Then run:
+             ARI-SMART-RO-Setup-v1.0.52.exe
+
+          MANUAL CERTIFICATE INSTALL OPTION:
+          - Double-click ARI-SMART-RO-Internal-Code-Signing.cer
+          - Install Certificate
+          - Local Machine
+          - Import into Trusted Root Certification Authorities
+          - Import the same certificate into Trusted Publishers
+          - Then run Setup.exe
+
+          IMPORTANT:
+          - Do not install this certificate on customer/public PCs unless they are intentionally managed by ARI.
+          - Public Windows trust/SmartScreen reputation requires a public CA certificate and is NOT provided by this internal build.
+          - The private signing key is never distributed and is destroyed with the CI runner after this build.
+          '@ | Set-Content (Join-Path $trustDir "INSTALL-INTERNAL-TRUST.txt")
+
+      - name: Prepare final internal Windows package and checksums
+        shell: pwsh
+        run: |
+          $package = "build\windows\ARI-SMART-RO-Windows-v1.0.52-INTERNAL-TRUST"
+          if (Test-Path $package) { Remove-Item $package -Recurse -Force }
+          New-Item -ItemType Directory -Path $package | Out-Null
+
+          Copy-Item "build\windows\installer\ARI-SMART-RO-Setup-v1.0.52.exe" $package
+          Copy-Item "build\windows\internal-trust\ARI-SMART-RO-Internal-Code-Signing.cer" $package
+          Copy-Item "build\windows\internal-trust\CERTIFICATE-THUMBPRINT.txt" $package
+          Copy-Item "build\windows\internal-trust\Install-ARI-SMART-RO-Internal-Certificate.ps1" $package
+          Copy-Item "build\windows\internal-trust\INSTALL-INTERNAL-TRUST.txt" $package
+
+          $setup = Join-Path $package "ARI-SMART-RO-Setup-v1.0.52.exe"
+          $cer = Join-Path $package "ARI-SMART-RO-Internal-Code-Signing.cer"
+          $setupHash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          $cerHash = (Get-FileHash $cer -Algorithm SHA256).Hash.ToLower()
+
+          @(
+            "$setupHash  ARI-SMART-RO-Setup-v1.0.52.exe",
+            "$cerHash  ARI-SMART-RO-Internal-Code-Signing.cer"
+          ) | Set-Content (Join-Path $package "SHA256SUMS.txt")
+
+          Compress-Archive -Path "$package\*" -DestinationPath "$package.zip" -Force
+
+          $zipHash = (Get-FileHash "$package.zip" -Algorithm SHA256).Hash.ToLower()
+          "$zipHash  ARI-SMART-RO-Windows-v1.0.52-INTERNAL-TRUST.zip" |
+            Set-Content "build\windows\PACKAGE-SHA256.txt"
+
+      - name: Upload final internal Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Windows-v1.0.52-INTERNAL-TRUST
+          path: ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v1.0.52-INTERNAL-TRUST.zip
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload internal Setup.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Setup-v1.0.52-INTERNAL-TRUST
+          path: ari_smart_ro_app/build/windows/installer/ARI-SMART-RO-Setup-v1.0.52.exe
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload internal public certificate and instructions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-v1.0.52-INTERNAL-TRUST-CERT
+          path: |
+            ari_smart_ro_app/build/windows/internal-trust/ARI-SMART-RO-Internal-Code-Signing.cer
+            ari_smart_ro_app/build/windows/internal-trust/CERTIFICATE-THUMBPRINT.txt
+            ari_smart_ro_app/build/windows/internal-trust/Install-ARI-SMART-RO-Internal-Certificate.ps1
+            ari_smart_ro_app/build/windows/internal-trust/INSTALL-INTERNAL-TRUST.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish internal Windows prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null) {
+            throw "Release tag $env:RELEASE_TAG already exists; refusing to overwrite."
+          }
+
+          $notes = @"
+          # ARI SMART RO v1.0.52 - Windows Internal Trust
+
+          This is the zero-cost internal company Windows release.
+
+          - App version: 1.0.52+52
+          - Target production code: 85fe142b0271e5e3c6b1d8bcc20e5f681e5edced
+          - ARI_SMART_RO.exe Authenticode: Valid on a machine that trusts the included ARI internal certificate
+          - Setup.exe Authenticode: Valid on a machine that trusts the included ARI internal certificate
+          - Signed app startup smoke test: PASS
+          - Public CA trust: NO
+          - SmartScreen public reputation: NOT CLAIMED
+          - Intended use: ARI-managed/company Windows PCs only
+
+          Install the included certificate into Trusted Root Certification Authorities and Trusted Publishers before running Setup.exe.
+
+          The signing private key was non-exportable and existed only on the ephemeral GitHub Actions runner. It is not included in this release.
+          "@
+
+          $notes | Set-Content "..\windows-internal-release-notes.md"
+
+          gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --target $env:TARGET_SHA --title "ARI SMART RO v1.0.52 - Windows Internal Trust" --notes-file "..\windows-internal-release-notes.md" --prerelease "build\windows\ARI-SMART-RO-Windows-v1.0.52-INTERNAL-TRUST.zip#Internal trusted Windows package" "build\windows\installer\ARI-SMART-RO-Setup-v1.0.52.exe#Internal signed Setup.exe" "build\windows\internal-trust\ARI-SMART-RO-Internal-Code-Signing.cer#ARI internal public certificate" "build\windows\internal-trust\Install-ARI-SMART-RO-Internal-Certificate.ps1#Certificate installer helper" "build\windows\internal-trust\INSTALL-INTERNAL-TRUST.txt#Installation instructions" "build\windows\PACKAGE-SHA256.txt#Package SHA-256"
+
+      - name: Verify published internal release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,url,assets
+
+      - name: Publish job summary
+        shell: pwsh
+        run: |
+          "### ARI SMART RO Windows Internal Trust v1.0.52" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Status: BUILT, INTERNALLY SIGNED, VERIFIED, PUBLISHED" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Public CA trusted: NO" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Authenticode: Valid after installing the included ARI internal certificate on the managed PC" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
