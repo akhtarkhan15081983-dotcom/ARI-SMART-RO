@@ -42,7 +42,6 @@ from datetime import timedelta
 from accounts.services.sms import SMSDeliveryError, send_customer_verification_otp
 from accounts.models import AuthSecurityEvent
 from customers.models import Customer
-from customers.identity import unique_unlinked_customer_for_phone
 from tenancy.access import HasRequiredFeature
 
 
@@ -978,7 +977,10 @@ def _job_otp_payload(job):
 def _customer_for_user(user):
     customer = Customer.objects.filter(user=user).first()
     if customer is None:
-        customer = unique_unlinked_customer_for_phone(user.phone, active_only=True)
+        customer = Customer.objects.filter(
+            phone=user.phone,
+            user__isnull=True,
+        ).first()
     return customer
 
 
