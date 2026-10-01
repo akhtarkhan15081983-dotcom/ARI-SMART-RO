@@ -229,6 +229,12 @@ class RoleFeaturePermissionTests(TestCase):
             role="ENGINEER",
             is_verified=True,
         )
+        self.calling = User.objects.create_user(
+            phone="9000099003",
+            password="StrongPass123!",
+            role="CALLING",
+            is_verified=True,
+        )
         CompanyMembership.objects.create(
             company=self.company,
             user=self.admin,
@@ -238,6 +244,12 @@ class RoleFeaturePermissionTests(TestCase):
         CompanyMembership.objects.create(
             company=self.company,
             user=self.engineer,
+            role="STAFF",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.calling,
             role="STAFF",
             is_active=True,
         )
@@ -278,6 +290,31 @@ class RoleFeaturePermissionTests(TestCase):
 
         direct = self.client.get("/api/employees/hrms/dashboard/")
         self.assertEqual(direct.status_code, 403)
+
+    def test_admin_can_grant_calling_rent_management_and_api_honours_it(self):
+        self.client.force_authenticate(self.calling)
+        blocked = self.client.get("/api/customers/rent-management/")
+        self.assertEqual(blocked.status_code, 403)
+
+        self.client.force_authenticate(self.admin)
+        changed = self.client.post(
+            "/api/saas/role-permissions/",
+            {
+                "role": "CALLING",
+                "feature_key": "rent_management",
+                "is_allowed": True,
+            },
+            format="json",
+        )
+        self.assertEqual(changed.status_code, 200)
+
+        self.client.force_authenticate(self.calling)
+        matrix = self.client.get("/api/saas/role-permissions/?role=CALLING")
+        self.assertEqual(matrix.status_code, 200)
+        self.assertIn("rent_management", matrix.data["allowed_features"])
+
+        allowed = self.client.get("/api/customers/rent-management/")
+        self.assertEqual(allowed.status_code, 200)
 
     def test_non_admin_cannot_change_role_permissions(self):
         self.client.force_authenticate(self.engineer)
