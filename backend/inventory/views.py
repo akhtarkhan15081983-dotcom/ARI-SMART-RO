@@ -122,6 +122,21 @@ def _company_id_for(user):
     return membership.company_id if membership else None
 
 
+def _page_window(request, *, default_size=100, max_size=250):
+    requested = "page" in request.query_params or "page_size" in request.query_params
+    try:
+        page = max(1, int(request.query_params.get("page") or 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.query_params.get("page_size") or default_size)
+    except (TypeError, ValueError):
+        page_size = default_size
+    page_size = min(max(page_size, 1), max_size)
+    start = (page - 1) * page_size
+    return requested, page, page_size, start, start + page_size
+
+
 def _request_payload(part_request):
     return {
         "id": part_request.id,
@@ -153,7 +168,21 @@ class PartRequestApprovalInboxAPIView(APIView):
         status_filter = str(request.query_params.get("status", "")).upper()
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-        return Response({"success": True, "requests": [_request_payload(row) for row in queryset[:250]]})
+
+        paginated, page, page_size, start, end = _page_window(request)
+        total_count = queryset.count()
+        rows = [_request_payload(row) for row in queryset[start:end]]
+        if not paginated:
+            return Response({"success": True, "requests": rows})
+        return Response({
+            "success": True,
+            "requests": rows,
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "has_more": end < total_count,
+            "next_page": page + 1 if end < total_count else None,
+        })
 
 
 class PartRequestReviewAPIView(APIView):
@@ -192,21 +221,38 @@ class InventoryReceivingQueueAPIView(APIView):
     required_feature = "inventory_workflow"
 
     def get(self, request):
-        items = PurchaseItem.objects.select_related("purchase__supplier", "part").order_by("-purchase__invoice_date")
+        items = PurchaseItem.objects.select_related(
+            "purchase__supplier",
+            "part",
+        ).filter(
+            inventory_items__status="PENDING_RECEIPT",
+        ).distinct().order_by("-purchase__invoice_date", "-id")
+
+        paginated, page, page_size, start, end = _page_window(request)
+        total_count = items.count()
         rows = []
-        for item in items[:250]:
+        for item in items[start:end]:
             pending = item.inventory_items.filter(status="PENDING_RECEIPT").count()
             received = item.inventory_items.exclude(status="PENDING_RECEIPT").count()
-            if pending:
-                rows.append({
-                    "purchase_item_id": item.id, "invoice_number": item.purchase.invoice_number,
-                    "invoice_date": item.purchase.invoice_date, "supplier": item.purchase.supplier.name,
-                    "part_name": item.part.name, "part_code": item.part.code,
-                    "is_serialized": item.part.is_serialized,
-                    "receipt_mode": "QR" if item.part.is_serialized else "PHOTO",
-                    "quantity": item.quantity, "pending_count": pending, "received_count": received,
-                })
-        return Response({"success": True, "items": rows})
+            rows.append({
+                "purchase_item_id": item.id, "invoice_number": item.purchase.invoice_number,
+                "invoice_date": item.purchase.invoice_date, "supplier": item.purchase.supplier.name,
+                "part_name": item.part.name, "part_code": item.part.code,
+                "is_serialized": item.part.is_serialized,
+                "receipt_mode": "QR" if item.part.is_serialized else "PHOTO",
+                "quantity": item.quantity, "pending_count": pending, "received_count": received,
+            })
+        if not paginated:
+            return Response({"success": True, "items": rows})
+        return Response({
+            "success": True,
+            "items": rows,
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "has_more": end < total_count,
+            "next_page": page + 1 if end < total_count else None,
+        })
 
 
 class InventoryReceiveAPIView(APIView):
