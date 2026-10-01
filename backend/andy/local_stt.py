@@ -31,6 +31,7 @@ class LocalSTT:
         self.remote_url = os.getenv("ANDY_STT_URL", "").strip()
         self.service_token = os.getenv("ANDY_AI_SERVICE_TOKEN", "").strip()
         self.remote_timeout = int(os.getenv("ANDY_STT_TIMEOUT", "90"))
+        self.remote_retries = max(0, min(int(os.getenv("ANDY_AI_REMOTE_RETRIES", "1")), 1))
         self.model_name = os.getenv("ANDY_STT_MODEL", "small")
         self.device = os.getenv("ANDY_STT_DEVICE", "cpu")
         self.compute_type = os.getenv("ANDY_STT_COMPUTE_TYPE", "int8")
@@ -147,15 +148,30 @@ class LocalSTT:
             },
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.remote_timeout) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raise LocalSTTError(
-                f"ANDY speech service returned HTTP {exc.code}."
-            ) from exc
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
-            raise LocalSTTError("ANDY speech recognition service is unavailable.") from exc
+        attempts = self.remote_retries + 1
+        payload = None
+        last_error = None
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(request, timeout=self.remote_timeout) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                if exc.code in {502, 503, 504} and attempt + 1 < attempts:
+                    continue
+                raise LocalSTTError(
+                    f"ANDY speech service returned HTTP {exc.code}."
+                ) from exc
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                last_error = exc
+                if attempt + 1 < attempts:
+                    continue
+                raise LocalSTTError("ANDY speech recognition service is unavailable.") from exc
+            except ValueError as exc:
+                raise LocalSTTError("ANDY speech service returned invalid JSON.") from exc
+        if payload is None:
+            raise LocalSTTError("ANDY speech recognition service is unavailable.") from last_error
 
         text = str(payload.get("text") or "").strip()
         if not text:
