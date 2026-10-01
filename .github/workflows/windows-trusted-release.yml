@@ -1,0 +1,242 @@
+name: ARI SMART RO Windows Trusted Release
+
+on:
+  push:
+    branches:
+      - windows-signing/esigner-v1.0.52-2026-10-01
+    paths:
+      - .github/workflows/windows-trusted-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trusted-windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ari_smart_ro_app
+    env:
+      SSL_ES_USERNAME: ${{ secrets.SSL_ES_USERNAME }}
+      SSL_ES_PASSWORD: ${{ secrets.SSL_ES_PASSWORD }}
+      SSL_ES_CREDENTIAL_ID: ${{ secrets.SSL_ES_CREDENTIAL_ID }}
+      SSL_ES_TOTP_SECRET: ${{ secrets.SSL_ES_TOTP_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve Windows package version
+        shell: pwsh
+        run: |
+          $line = (Select-String -Path "pubspec.yaml" -Pattern "^version:").Line
+          if (-not $line) { throw "pubspec version not found" }
+          $raw = ($line -split '\s+')[1]
+          $parts = $raw -split '\+'
+          if ($parts.Count -ne 2) { throw "pubspec version must include +build" }
+          if ($parts[0] -ne "1.0.52" -or $parts[1] -ne "52") {
+            throw "This trusted release workflow is frozen to v1.0.52+52."
+          }
+          "ARI_APP_VERSION=$($parts[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ARI_APP_BUILD=$($parts[1])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Check eSigner production credentials
+        shell: pwsh
+        run: |
+          $required = @(
+            $env:SSL_ES_USERNAME,
+            $env:SSL_ES_PASSWORD,
+            $env:SSL_ES_CREDENTIAL_ID,
+            $env:SSL_ES_TOTP_SECRET
+          )
+          if ($required | Where-Object { [string]::IsNullOrWhiteSpace($_) }) {
+            Write-Host "::notice title=Windows signing blocked::SSL.com eSigner production credentials are not configured yet."
+            "ARI_ESIGNER_READY=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            Write-Host "SSL.com eSigner production credentials are configured."
+            "ARI_ESIGNER_READY=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Enable Windows desktop
+        if: env.ARI_ESIGNER_READY == 'true'
+        run: flutter config --enable-windows-desktop
+
+      - name: Install Flutter dependencies
+        if: env.ARI_ESIGNER_READY == 'true'
+        run: flutter pub get
+
+      - name: Build Windows release
+        if: env.ARI_ESIGNER_READY == 'true'
+        run: >-
+          flutter build windows --release
+          --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+
+      - name: Verify Windows Safe Build
+        if: env.ARI_ESIGNER_READY == 'true'
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          $blockedPatterns = @(
+            "*file_selector*",
+            "*flutter_secure_storage*",
+            "*geolocator*",
+            "*permission_handler*",
+            "*record_windows*",
+            "*url_launcher*",
+            "*local_notifications*",
+            "dartjni.dll"
+          )
+          foreach ($pattern in $blockedPatterns) {
+            $found = Get-ChildItem $release -Filter $pattern -ErrorAction SilentlyContinue
+            if ($found) {
+              throw "Unsafe native plugin present in Windows Safe Build: $($found.Name -join ', ')"
+            }
+          }
+
+      - name: Sign ARI SMART RO application with SSL.com eSigner
+        if: env.ARI_ESIGNER_READY == 'true'
+        uses: SSLcom/esigner-codesign@v1.3.2
+        with:
+          command: sign
+          username: ${{ secrets.SSL_ES_USERNAME }}
+          password: ${{ secrets.SSL_ES_PASSWORD }}
+          credential_id: ${{ secrets.SSL_ES_CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.SSL_ES_TOTP_SECRET }}
+          file_path: ${{ github.workspace }}\ari_smart_ro_app\build\windows\x64\runner\Release\ARI_SMART_RO.exe
+          override: true
+          malware_block: false
+          environment_name: PROD
+          program_name: ARI SMART RO
+          clean_logs: true
+
+      - name: Verify application Authenticode signature
+        if: env.ARI_ESIGNER_READY == 'true'
+        shell: pwsh
+        run: |
+          $exe = "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          $signature = Get-AuthenticodeSignature $exe
+          Write-Host "ARI_SMART_RO.exe signature status: $($signature.Status)"
+          Write-Host "Signer subject: $($signature.SignerCertificate.Subject)"
+          if ($signature.Status -ne "Valid") {
+            throw "Application Authenticode signature is not valid."
+          }
+
+      - name: Smoke test signed Windows app startup
+        if: env.ARI_ESIGNER_READY == 'true'
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) {
+            throw "ARI_SMART_RO.exe exited during startup smoke test with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+
+      - name: Install Inno Setup
+        if: env.ARI_ESIGNER_READY == 'true'
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Setup.exe from signed application
+        if: env.ARI_ESIGNER_READY == 'true'
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found." }
+          & $iscc "/DMyAppVersion=$env:ARI_APP_VERSION" "/DMyAppBuild=$env:ARI_APP_BUILD" "installer\ari_smart_ro.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
+
+      - name: Sign Setup.exe with SSL.com eSigner
+        if: env.ARI_ESIGNER_READY == 'true'
+        uses: SSLcom/esigner-codesign@v1.3.2
+        with:
+          command: sign
+          username: ${{ secrets.SSL_ES_USERNAME }}
+          password: ${{ secrets.SSL_ES_PASSWORD }}
+          credential_id: ${{ secrets.SSL_ES_CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.SSL_ES_TOTP_SECRET }}
+          file_path: ${{ github.workspace }}\ari_smart_ro_app\build\windows\installer\ARI-SMART-RO-Setup-v1.0.52.exe
+          override: true
+          malware_block: false
+          environment_name: PROD
+          program_name: ARI SMART RO
+          clean_logs: true
+
+      - name: Verify Setup.exe Authenticode signature
+        if: env.ARI_ESIGNER_READY == 'true'
+        shell: pwsh
+        run: |
+          $setup = "build\windows\installer\ARI-SMART-RO-Setup-v1.0.52.exe"
+          $signature = Get-AuthenticodeSignature $setup
+          Write-Host "Setup signature status: $($signature.Status)"
+          Write-Host "Signer subject: $($signature.SignerCertificate.Subject)"
+          if ($signature.Status -ne "Valid") {
+            throw "Installer Authenticode signature is not valid."
+          }
+
+      - name: Prepare signed portable package and checksums
+        if: env.ARI_ESIGNER_READY == 'true'
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          $package = "build\windows\ARI-SMART-RO-Windows-v1.0.52-SIGNED"
+          if (Test-Path $package) { Remove-Item $package -Recurse -Force }
+          New-Item -ItemType Directory -Path $package | Out-Null
+          Copy-Item "$release\*" $package -Recurse
+          Compress-Archive -Path "$package\*" -DestinationPath "$package.zip" -Force
+
+          $setup = "build\windows\installer\ARI-SMART-RO-Setup-v1.0.52.exe"
+          $zip = "$package.zip"
+          $setupHash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          @(
+            "$setupHash  ARI-SMART-RO-Setup-v1.0.52.exe",
+            "$zipHash  ARI-SMART-RO-Windows-v1.0.52-SIGNED.zip"
+          ) | Set-Content "build\windows\WINDOWS-SHA256SUMS.txt"
+
+      - name: Upload signed Windows portable package
+        if: env.ARI_ESIGNER_READY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Windows-v1.0.52-SIGNED
+          path: ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v1.0.52-SIGNED.zip
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload signed Windows Setup.exe
+        if: env.ARI_ESIGNER_READY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Setup-v1.0.52-SIGNED
+          path: ari_smart_ro_app/build/windows/installer/ARI-SMART-RO-Setup-v1.0.52.exe
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload Windows checksums
+        if: env.ARI_ESIGNER_READY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Windows-v1.0.52-SHA256
+          path: ari_smart_ro_app/build/windows/WINDOWS-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish signing readiness summary
+        shell: pwsh
+        run: |
+          if ($env:ARI_ESIGNER_READY -eq "true") {
+            "### Windows trusted signing" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            "- Status: SIGNED AND VERIFIED" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            "- Version: v1.0.52+52" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          } else {
+            "### Windows trusted signing" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            "- Status: BLOCKED — SSL.com eSigner account/certificate credentials not configured" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            "- Required secrets: SSL_ES_USERNAME, SSL_ES_PASSWORD, SSL_ES_CREDENTIAL_ID, SSL_ES_TOTP_SECRET" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
