@@ -159,6 +159,8 @@ class CustomerSerializer(serializers.ModelSerializer):
 
             "monthly_rent",
 
+            "rent_due_day",
+
             "security_deposit",
 
             "ownership_type",
