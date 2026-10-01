@@ -294,4 +294,42 @@ class DashboardItems {
     ),
     const DashboardItem(title: "Profile", icon: Icons.person, route: "profile"),
   ];
+
+  static List<DashboardItem> permissionCandidates() {
+    final seen = <String>{};
+    return <DashboardItem>[
+      ...admin,
+      ...manager,
+      ...office,
+      ...calling,
+      ...engineer,
+    ].where((item) => seen.add(item.route)).toList(growable: false);
+  }
+
+  static List<DashboardItem> resolvePermissions({
+    required String role,
+    required Set<String> allowedFeatures,
+    required List<DashboardItem> baseItems,
+  }) {
+    final normalizedRole = role.trim().toUpperCase();
+    if (normalizedRole == 'ADMIN' || normalizedRole == 'CUSTOMER') {
+      return List<DashboardItem>.from(baseItems, growable: false);
+    }
+    if (allowedFeatures.isEmpty) return const <DashboardItem>[];
+
+    const alwaysVisible = <String>{'andy'};
+    final seenRoutes = <String>{};
+    return <DashboardItem>[
+      ...baseItems,
+      ...permissionCandidates(),
+    ]
+        .where(
+          (item) =>
+              (alwaysVisible.contains(item.route) ||
+                  allowedFeatures.contains(item.route)) &&
+              seenRoutes.add(item.route),
+        )
+        .toList(growable: false);
+  }
+
 }
