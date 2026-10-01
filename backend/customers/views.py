@@ -39,7 +39,7 @@ from django.db import transaction
 from .models import CustomerLocationLog, CustomerRentHistory, CustomerRentPayment
 from .rent_policy import RENT_GRACE_DAYS, rent_due_date, rent_penalty
 from referrals.services import claim_welcome_reward
-from tenancy.access import has_feature_access, request_company
+from tenancy.access import HasRequiredFeature, has_feature_access, request_company
 
 from referrals.services import (
     calculate_max_redeemable,
@@ -709,15 +709,13 @@ class CustomerListAPIView(generics.ListAPIView):
         return _customer_queryset_for(self.request).order_by("id")
 
 class MyCustomersAPIView(generics.ListAPIView):
-    """Return customers assigned to the logged-in engineer."""
+    """Return customers assigned to the logged-in employee."""
 
     serializer_class = CustomerSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "assigned_customers"
 
     def get_queryset(self):
-        if self.request.user.role not in {"ENGINEER", "OFFICE"}:
-            return Customer.objects.none()
-
         return Customer.objects.filter(
             assigned_engineer__user=self.request.user
         ).select_related(
@@ -1114,7 +1112,8 @@ class CustomerUpdateAPIView(generics.UpdateAPIView):
 
 class WalkInCustomerAPIView(APIView):
 
-    permission_classes = [IsEngineer]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "walkin"
 
     def post(self, request):
 
