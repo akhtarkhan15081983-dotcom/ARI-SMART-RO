@@ -51,7 +51,7 @@ Legend:
 | 36 | Download Center | PLATFORM GATE | Actual Android + Windows external-file opening verification |
 | 37 | SaaS Command Center | STRONG / CI GATE | Exact-head CI + final platform-superuser operational review |
 | 38 | ANDY AI | PLATFORM / EXTERNAL-SERVICE GATE | Exact-head CI + external inference service validation + client field UX |
-| 39 | RO Alarm Center | CERTIFICATION REVIEW | Consolidate alarm lifecycle/ownership/notification platform evidence |
+| 39 | RO Alarm Center | STRONG / CI GATE | Exact-head CI + final mobile/customer notification UX verification |
 
 ## Key hardening already present
 
@@ -64,6 +64,7 @@ Legend:
 - Dedicated guest builds route public requests using `TENANT_SLUG`; public guest requests support company ownership.
 - ANDY heavy LLM/STT/TTS inference stays outside the main Django process, with authenticated external services, bounded retries/timeouts, tenant-scoped reads/knowledge, confirmation-gated actions and normal Job audit history.
 - Download Center file discovery handles supported extensions, disappearing files and read/open failures gracefully.
+- RO Alarm Center has explicit own-RO/customer scoping, cross-company blocking, idempotent automatic refresh, customer/admin notification fan-out, and acknowledge/resolve actor/timestamp lifecycle coverage.
 
 ## Production blockers shared across modules
 
