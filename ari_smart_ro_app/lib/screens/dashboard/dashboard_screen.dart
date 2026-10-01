@@ -247,14 +247,27 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<DashboardItem> _applyRolePermissions(List<DashboardItem> items) {
     if (_role == 'ADMIN' || _role == 'CUSTOMER') return items;
     if (_allowedFeatures.isEmpty) return const [];
+
+    // Role Access Control is the source of truth. A permission granted by
+    // admin must be able to add a dashboard card even when that card was not
+    // part of the role's original static dashboard list.
+    final candidates = <DashboardItem>[
+      ...items,
+      ...DashboardItems.admin,
+      ...DashboardItems.office,
+      ...DashboardItems.calling,
+      ...DashboardItems.engineer,
+    ];
     const alwaysVisible = {'andy'};
-    return items
+    final seenRoutes = <String>{};
+    return candidates
         .where(
           (item) =>
-              alwaysVisible.contains(item.route) ||
-              _allowedFeatures.contains(item.route),
+              (alwaysVisible.contains(item.route) ||
+                  _allowedFeatures.contains(item.route)) &&
+              seenRoutes.add(item.route),
         )
-        .toList();
+        .toList(growable: false);
   }
 
   List<DashboardItem> get _dashboardItems {
