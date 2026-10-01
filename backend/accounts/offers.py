@@ -68,8 +68,23 @@ def customer_offer_user(customer):
         return customer.user
     if not getattr(customer, "phone", ""):
         return None
+
     from .models import User
-    return User.objects.filter(phone=customer.phone, role="CUSTOMER", is_active=True).first()
+
+    candidate = User.objects.filter(
+        phone=customer.phone,
+        role="CUSTOMER",
+        is_active=True,
+    ).first()
+    if candidate is None:
+        return None
+
+    linked_customer = getattr(candidate, "customer_profile", None)
+    if linked_customer is not None and linked_customer.pk != customer.pk:
+        # Shared/duplicate phone: never borrow another customer's account
+        # context for discounts. Explicit account linkage is required.
+        return None
+    return candidate
 
 
 def best_public_offer(scope, base_amount, promo_code=""):
