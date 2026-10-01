@@ -4,7 +4,12 @@ import '../../services/admin_ro_passport_service.dart';
 import 'admin_ro_passport_setup_screen.dart';
 
 class AdminROPassportScreen extends StatefulWidget {
-  const AdminROPassportScreen({super.key});
+  const AdminROPassportScreen({
+    super.key,
+    this.embedded = false,
+  });
+
+  final bool embedded;
 
   @override
   State<AdminROPassportScreen> createState() => _AdminROPassportScreenState();
@@ -79,11 +84,9 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
   @override
   Widget build(BuildContext context) {
     final alarms = (_data['active_alarm_count'] as num?)?.toInt() ?? 0;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Admin Digital RO Registry')),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
+    final content = RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(14),
           children: [
@@ -159,7 +162,12 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
               ..._customers.map(_customerCard),
           ],
         ),
-      ),
+      );
+
+    if (widget.embedded) return content;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Admin Digital RO Registry')),
+      body: content,
     );
   }
 
