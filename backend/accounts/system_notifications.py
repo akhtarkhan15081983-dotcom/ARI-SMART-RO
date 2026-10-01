@@ -108,7 +108,8 @@ def _sync_customer(user):
     customer = getattr(user, "customer_profile", None)
     if customer is None:
         from customers.models import Customer
-        customer = Customer.objects.filter(phone=user.phone, is_active=True).order_by("id").first()
+from customers.identity import unique_unlinked_customer_for_phone
+        customer = unique_unlinked_customer_for_phone(user.phone, active_only=True)
     if customer is None:
         return
 
