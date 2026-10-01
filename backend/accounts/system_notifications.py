@@ -4,6 +4,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from .models import CustomerEngagement, UserNotification
+from customers.identity import unique_unlinked_customer_for_phone
 
 
 def upsert_notification(
@@ -107,8 +108,6 @@ def _sync_employee(user):
 def _sync_customer(user):
     customer = getattr(user, "customer_profile", None)
     if customer is None:
-        from customers.models import Customer
-from customers.identity import unique_unlinked_customer_for_phone
         customer = unique_unlinked_customer_for_phone(user.phone, active_only=True)
     if customer is None:
         return
