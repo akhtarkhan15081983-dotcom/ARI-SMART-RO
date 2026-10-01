@@ -210,6 +210,17 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                                         '${row['location_status'] ?? '-'} • ${health['location_permission'] ?? '-'}',
                                   ),
                                   _Metric(
+                                    icon: Icons.battery_saver_outlined,
+                                    label: 'Background power',
+                                    value: health['battery_optimization_ignored'] == true
+                                        ? 'Unrestricted / allowed'
+                                        : 'Battery optimization ON',
+                                    valueColor:
+                                        health['battery_optimization_ignored'] == true
+                                            ? Colors.green.shade700
+                                            : Colors.orange.shade800,
+                                  ),
+                                  _Metric(
                                     icon: Icons.sync,
                                     label: 'Pending Sync',
                                     value:
