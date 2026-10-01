@@ -240,7 +240,7 @@ class SharedPhoneCustomerScopeTests(TestCase):
         self.assertIsNone(first.user_id)
         self.assertIsNone(second.user_id)
 
-    def test_complaint_list_does_not_expose_second_shared_phone_customer(self):
+    def test_complaint_list_exposes_no_shared_phone_customer_until_linked(self):
         user = User.objects.create_user(
             phone="9800000002",
             password="CustomerStrong@123",
@@ -249,15 +249,15 @@ class SharedPhoneCustomerScopeTests(TestCase):
             is_active=True,
         )
         first, second = self._legacy_pair(user.phone)
-        visible = Complaint.objects.create(
+        Complaint.objects.create(
             customer=first,
             complaint_type="OTHER",
-            description="Visible complaint",
+            description="First complaint",
         )
-        hidden = Complaint.objects.create(
+        Complaint.objects.create(
             customer=second,
             complaint_type="OTHER",
-            description="Hidden complaint",
+            description="Second complaint",
         )
         client = APIClient()
         client.force_authenticate(user=user)
@@ -265,6 +265,4 @@ class SharedPhoneCustomerScopeTests(TestCase):
         response = client.get("/api/complaints/")
 
         self.assertEqual(response.status_code, 200)
-        ids = {row["id"] for row in response.data}
-        self.assertIn(visible.id, ids)
-        self.assertNotIn(hidden.id, ids)
+        self.assertEqual(list(response.data), [])
