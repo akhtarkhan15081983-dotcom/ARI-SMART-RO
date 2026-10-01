@@ -6,7 +6,7 @@ from rest_framework.test import APITestCase
 from customers.models import Customer
 from tenancy.models import Company, CompanyMembership
 from .models import CustomerEngagement, User, UserNotification
-from .offers import best_offer
+from .offers import best_offer, customer_offer_user
 
 
 class NotificationCenterTests(APITestCase):
@@ -168,6 +168,21 @@ class NotificationCenterTests(APITestCase):
         self.assertTrue(
             UserNotification.objects.get(pk=notification_id).is_read
         )
+
+    def test_shared_phone_does_not_borrow_another_customer_offer_account(self):
+        duplicate = Customer.objects.create(
+            company=self.company,
+            name="Duplicate Phone Customer",
+            phone=self.customer_user.phone,
+            address="Duplicate address",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI Test RO",
+            monthly_rent=Decimal("500.00"),
+        )
+
+        self.assertIsNone(customer_offer_user(duplicate))
 
     def test_offer_from_this_company_does_not_discount_other_company_customer(self):
         other_company = Company.objects.create(
