@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsStaffOperator
 from jobs.idempotency import replay_response, remember_response
 from purchase.models import Purchase, PurchaseItem, Supplier
-from tenancy.access import request_company
+from tenancy.access import HasRequiredFeature, request_company
 
 from .models import InventoryAuditLog, InventoryItem, PartRequest
 from .reports import _sheet
@@ -37,7 +37,8 @@ def _scoped_inventory(request):
 
 
 class TenantScopedInventoryReceivingQueueAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
         items = (
@@ -71,7 +72,8 @@ class TenantScopedInventoryReceivingQueueAPIView(APIView):
 
 
 class TenantScopedInventoryReceiveAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     @transaction.atomic
     def post(self, request):
@@ -154,7 +156,8 @@ class TenantScopedInventoryReceiveAPIView(APIView):
 
 
 class TenantScopedInventoryPhotoReceiveAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     @transaction.atomic
     def post(self, request):
@@ -205,7 +208,8 @@ class TenantScopedInventoryPhotoReceiveAPIView(APIView):
 
 
 class TenantScopedInventoryCodeGenerationAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     @transaction.atomic
     def post(self, request):
@@ -253,7 +257,8 @@ class TenantScopedInventoryCodeGenerationAPIView(APIView):
 
 
 class TenantScopedInventoryQrLabelsPdfAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
         queryset = (
@@ -303,7 +308,8 @@ class TenantScopedInventoryQrLabelsPdfAPIView(APIView):
 
 
 class TenantScopedInventorySummaryAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
         inventory = _scoped_inventory(request)
@@ -328,7 +334,8 @@ class TenantScopedInventorySummaryAPIView(APIView):
 
 
 class TenantScopedInventoryExcelReportAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
         company_id = _company_id(request)
