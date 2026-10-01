@@ -198,6 +198,17 @@ jobs:
           }
           Write-Host "Windows Safe Build contains no third-party plugin DLLs."
 
+      - name: Report Windows signing readiness
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PFX_BASE64)) {
+            Write-Warning "Windows code-signing certificate is not configured. This build is TEST-ONLY and may be blocked by Smart App Control."
+            "ARI_WINDOWS_SIGNING_STATUS=UNSIGNED-TEST-ONLY" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            Write-Host "Windows trusted code-signing certificate is configured."
+            "ARI_WINDOWS_SIGNING_STATUS=SIGNED" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
       - name: Install trusted code-signing certificate
         if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
         shell: pwsh
@@ -287,7 +298,7 @@ jobs:
       - name: Upload Windows portable package
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-Windows-v${{ env.ARI_APP_VERSION }}
+          name: ARI-SMART-RO-Windows-v${{ env.ARI_APP_VERSION }}-${{ env.ARI_WINDOWS_SIGNING_STATUS }}
           path: ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v${{ env.ARI_APP_VERSION }}.zip
           if-no-files-found: error
           retention-days: 30
@@ -295,7 +306,7 @@ jobs:
       - name: Upload Windows Setup.exe
         uses: actions/upload-artifact@v4
         with:
-          name: ARI-SMART-RO-Setup-v${{ env.ARI_APP_VERSION }}
+          name: ARI-SMART-RO-Setup-v${{ env.ARI_APP_VERSION }}-${{ env.ARI_WINDOWS_SIGNING_STATUS }}
           path: ari_smart_ro_app/build/windows/installer/ARI-SMART-RO-Setup-v${{ env.ARI_APP_VERSION }}.exe
           if-no-files-found: error
           retention-days: 30
