@@ -33,6 +33,7 @@ import '../walkin/walkin_customer_screen.dart';
 import '../customer/customer_list_screen.dart';
 import '../customer/my_ro_screen.dart';
 import '../customer/customer_history_screen.dart';
+import '../customer/ro_alarm_screen.dart';
 import '../customer/referral_screen.dart';
 import '../rent/rent_payment_screen.dart';
 import '../rent/rent_management_screen.dart';
@@ -529,6 +530,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       case 'customers':
         _push(const CustomerListScreen());
         return;
+      case 'ro_alarm_center':
+        if (_role == 'ADMIN' || _role == 'MANAGER' || _role == 'OFFICE') {
+          _push(const ROAlarmScreen());
+        } else {
+          _showComingSoon('RO Alarm Center permission is required.');
+        }
+        return;
       case 'my_ro':
         _push(const MyROScreen());
         return;
@@ -587,6 +595,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         'map',
         'engineer_map',
         'calling_desk',
+        'ro_alarm_center',
       },
       'Finance': {
         'rent',
