@@ -39,7 +39,7 @@ Legend:
 | 24 | Refer & Wallet | STRONG / CI GATE | Exact-head CI |
 | 25 | My RO | STRONG / CI GATE | Exact-head CI + final customer-device UX verification |
 | 26 | Customer Rent & Payment | STRONG / CI GATE | Exact-head CI |
-| 27 | Customer History | CERTIFICATION REVIEW | Consolidate explicit history/audit regression + platform UX evidence |
+| 27 | Customer History | STRONG / CI GATE | Exact-head CI green; final customer-device history UX verification remains |
 | 28 | Shop | STRONG / CI GATE | Exact-head CI is green; final real-device/customer checkout UX verification remains |
 | 29 | Profile | STRONG / CI GATE | Exact-head CI |
 | 30 | Face & Device Security | PLATFORM GATE | Exact-head CI + remaining field-device compatibility evidence |
@@ -132,3 +132,21 @@ Verified exact-head baseline:
 - Windows release/startup/installer: PASS
 
 This validates the guarded migration-rehearsal workflow changes and the current certification/documentation head. Platform-device and isolated migration execution gates remain separate and must not be inferred as passed from CI.
+
+
+## Customer History certification closure
+
+Verified on exact-head CI #1062 at commit `9fdddc231f3df78a82338d90aea6efcaa46ab652`:
+- Backend tests: PASS
+- Django deployment checks: PASS
+- Flutter analyze/tests: PASS
+- Android debug build/emulator startup: PASS
+- Windows release/startup/installer: PASS
+- Production container: PASS
+
+Customer History evidence:
+- Dedicated Flutter regression verifies the My History hub exposes Rent & Payment History, Service History and Complaint History.
+- Rent/Payment, Service and Complaint underlying flows already have tenant-scoped backend protections and regressions.
+- Customer History is an aggregation/navigation surface over those hardened domains rather than a separate unscoped backend data store.
+
+The prior Customer History CERTIFICATION REVIEW is therefore closed. Final customer-device UX verification remains before 10/10.
