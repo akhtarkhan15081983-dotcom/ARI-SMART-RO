@@ -2544,3 +2544,61 @@ class CustomerRentAPITests(TestCase):
             response.status_code,
             400,
         )
+
+
+    def test_payment_history_excludes_other_company_payments(self):
+        other_company = Company.objects.create(
+            name="Other Rent Company",
+            slug="other-rent-company",
+            phone="9100000199",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_customer = Customer.objects.create(
+            company=other_company,
+            name="Other Rent Customer",
+            phone="9100000010",
+            address="Delhi",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+            ro_model="Other RO",
+            monthly_rent=Decimal("900.00"),
+            is_active=True,
+        )
+        other_rent = CustomerRentHistory.objects.create(
+            customer=other_customer,
+            rent_month=timezone.now().date().replace(day=1),
+            expected_rent=Decimal("900.00"),
+            paid_amount=Decimal("900.00"),
+        )
+        other_payment = CustomerRentPayment.objects.create(
+            customer=other_customer,
+            rent_history=other_rent,
+            amount=Decimal("900.00"),
+            payment_date=timezone.now().date(),
+            payment_mode="CASH",
+        )
+
+        own_rent = CustomerRentHistory.objects.create(
+            customer=self.customer,
+            rent_month=timezone.now().date().replace(day=1),
+            expected_rent=Decimal("500.00"),
+            paid_amount=Decimal("100.00"),
+        )
+        own_payment = CustomerRentPayment.objects.create(
+            customer=self.customer,
+            rent_history=own_rent,
+            amount=Decimal("100.00"),
+            payment_date=timezone.now().date(),
+            payment_mode="UPI",
+            collected_by=self.employee,
+        )
+
+        self.client.force_authenticate(user=self.staff_user)
+        response = self.client.get("/api/customers/rent-management/payments/")
+
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data["payments"]}
+        self.assertIn(own_payment.id, ids)
+        self.assertNotIn(other_payment.id, ids)
