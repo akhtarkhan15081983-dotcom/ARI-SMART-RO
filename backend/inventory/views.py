@@ -45,7 +45,8 @@ class EngineerBagIssueAPIView(generics.CreateAPIView):
 
 class OCRVerifyAPIView(generics.GenericAPIView):
     serializer_class = OCRVerifySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "qr"
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
@@ -69,7 +70,8 @@ class OCRVerifyAPIView(generics.GenericAPIView):
 
 class MyBagAPIView(generics.ListAPIView):
     serializer_class = MyBagSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "bag"
 
     def get_queryset(self):
         return EngineerBagItem.objects.select_related("inventory_item__part", "engineer__user").filter(engineer__user=self.request.user, status="ISSUED", inventory_item__status="ISSUED").order_by("-issue_date")
@@ -100,7 +102,8 @@ class PartCatalogAPIView(generics.ListAPIView):
 
 class MyPartRequestsAPIView(generics.ListCreateAPIView):
     serializer_class = PartRequestSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "request"
 
     def get_queryset(self):
         return PartRequest.objects.select_related("part", "engineer").filter(engineer__user=self.request.user).order_by("-created_at")
