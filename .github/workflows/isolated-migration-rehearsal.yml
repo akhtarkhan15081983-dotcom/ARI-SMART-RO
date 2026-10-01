@@ -7,11 +7,6 @@ on:
         description: 'Type REHEARSE_ISOLATED_DB_ONLY to allow rehearsal DB migrations'
         required: true
         type: string
-      expected_db_name:
-        description: 'Expected isolated rehearsal database name'
-        required: true
-        default: 'ari-smart-ro-maxpro-rehearsal-2026-09-29'
-        type: string
 
 permissions:
   contents: read
@@ -46,12 +41,16 @@ jobs:
             echo "REHEARSAL_DB_NAME secret is not configured."
             exit 1
           fi
+          if [ "${GITHUB_REF_NAME}" != "hardening/max-pro-5of5-2026-09-29" ]; then
+            echo "Refusing to run outside the approved hardening branch."
+            exit 1
+          fi
           if [ "$DB_NAME" = "ari-smart-ro-db" ]; then
             echo "Refusing to run against the production database."
             exit 1
           fi
-          if [ "$DB_NAME" != "${{ inputs.expected_db_name }}" ]; then
-            echo "Configured rehearsal database does not match the expected isolated database name."
+          if [ "$DB_NAME" != "ari-smart-ro-maxpro-rehearsal-2026-09-29" ]; then
+            echo "Refusing to run against any database except the approved isolated rehearsal database."
             exit 1
           fi
 
@@ -76,7 +75,7 @@ jobs:
       - name: Capture pre-migration evidence
         working-directory: backend
         run: |
-          python manage.py shell -c "from assets.models import ROAsset; from customers.models import PublicCustomerRequest, Customer; print('ROASSET_ROWS=', ROAsset.objects.count()); print('ROASSET_LINKED=', ROAsset.objects.filter(current_customer__isnull=False).count()); print('ROASSET_UNASSIGNED=', ROAsset.objects.filter(current_customer__isnull=True).count()); print('PUBLIC_REQUEST_ROWS=', PublicCustomerRequest.objects.count()); print('CUSTOMER_ROWS=', Customer.objects.count()); print('CUSTOMERS_WITH_COMPANY=', Customer.objects.filter(company__isnull=False).count()); print('CUSTOMERS_WITHOUT_COMPANY=', Customer.objects.filter(company__isnull=True).count())"
+          python manage.py shell -c "import json; from pathlib import Path; from assets.models import ROAsset; from customers.models import PublicCustomerRequest, Customer; data={'roasset_rows': ROAsset.objects.count(), 'roasset_linked': ROAsset.objects.filter(current_customer__isnull=False).count(), 'roasset_unassigned': ROAsset.objects.filter(current_customer__isnull=True).count(), 'public_request_rows': PublicCustomerRequest.objects.count(), 'customer_rows': Customer.objects.count(), 'customers_with_company': Customer.objects.filter(company__isnull=False).count(), 'customers_without_company': Customer.objects.filter(company__isnull=True).count()}; Path('/tmp/rehearsal_before.json').write_text(json.dumps(data), encoding='utf-8'); print(json.dumps(data, indent=2))"
 
       - name: Show migration plan
         working-directory: backend
@@ -91,10 +90,10 @@ jobs:
         run: |
           python manage.py shell -c "from django.db import connection; from django.db.migrations.recorder import MigrationRecorder; from assets.models import ROAsset; from customers.models import PublicCustomerRequest; applied=set(MigrationRecorder(connection).migration_qs.values_list('app','name')); assert ('assets','0004_roasset_company') in applied; assert ('customers','0022_publiccustomerrequest_company') in applied; assert ROAsset._meta.get_field('company'); assert PublicCustomerRequest._meta.get_field('company'); print('MIGRATION_ROWS_OK=1'); print('ROASSET_COMPANY_FIELD_OK=1'); print('PUBLIC_REQUEST_COMPANY_FIELD_OK=1')"
 
-      - name: Capture post-migration evidence
+      - name: Capture and verify post-migration evidence
         working-directory: backend
         run: |
-          python manage.py shell -c "from assets.models import ROAsset; from customers.models import PublicCustomerRequest; print('ROASSET_ROWS=', ROAsset.objects.count()); print('ROASSET_WITH_COMPANY=', ROAsset.objects.filter(company__isnull=False).count()); print('ROASSET_WITHOUT_COMPANY=', ROAsset.objects.filter(company__isnull=True).count()); print('PUBLIC_REQUEST_ROWS=', PublicCustomerRequest.objects.count()); print('PUBLIC_REQUESTS_WITH_COMPANY=', PublicCustomerRequest.objects.filter(company__isnull=False).count()); print('PUBLIC_REQUESTS_WITHOUT_COMPANY=', PublicCustomerRequest.objects.filter(company__isnull=True).count())"
+          python manage.py shell -c "import json; from pathlib import Path; from assets.models import ROAsset; from customers.models import PublicCustomerRequest; before=json.loads(Path('/tmp/rehearsal_before.json').read_text(encoding='utf-8')); after={'roasset_rows': ROAsset.objects.count(), 'roasset_with_company': ROAsset.objects.filter(company__isnull=False).count(), 'roasset_without_company': ROAsset.objects.filter(company__isnull=True).count(), 'public_request_rows': PublicCustomerRequest.objects.count(), 'public_requests_with_company': PublicCustomerRequest.objects.filter(company__isnull=False).count(), 'public_requests_without_company': PublicCustomerRequest.objects.filter(company__isnull=True).count()}; assert after['roasset_rows'] == before['roasset_rows'], f\"ROAsset row count changed: {before['roasset_rows']} -> {after['roasset_rows']}\"; assert after['public_request_rows'] == before['public_request_rows'], f\"PublicCustomerRequest row count changed: {before['public_request_rows']} -> {after['public_request_rows']}\"; print(json.dumps(after, indent=2))"
 
       - name: Read-only tenant migration rehearsal
         working-directory: backend
