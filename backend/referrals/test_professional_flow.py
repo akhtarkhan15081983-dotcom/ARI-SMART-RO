@@ -169,19 +169,19 @@ class ProfessionalReferralFlowTests(TestCase):
             is_active=True,
             lifecycle_status="ACTIVE",
         )
-        admin_a = self.User.objects.create_user(
+        admin_a = get_user_model().objects.create_user(
             phone="9555500101",
             password="Test@123",
             role="ADMIN",
             is_verified=True,
         )
-        referrer_b = self.User.objects.create_user(
+        referrer_b = get_user_model().objects.create_user(
             phone="9555500102",
             password="Test@123",
             role="CUSTOMER",
             is_verified=True,
         )
-        referred_b = self.User.objects.create_user(
+        referred_b = get_user_model().objects.create_user(
             phone="9555500103",
             password="Test@123",
             role="CUSTOMER",
