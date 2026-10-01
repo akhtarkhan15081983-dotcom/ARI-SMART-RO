@@ -50,6 +50,9 @@ class AdminROPassportService {
     required String serialNumber,
     required String ownershipType,
     String? saleInstallationDate,
+    String? nextFilterChangeDate,
+    int? outputTdsAttentionLevel,
+    bool alarmMonitoringEnabled = true,
     required List<String> partKeys,
     List<String> photoPaths = const [],
   }) async {
@@ -72,6 +75,17 @@ class AdminROPassportService {
       request.fields['sale_installation_date'] =
           saleInstallationDate.trim();
     }
+    if (nextFilterChangeDate != null &&
+        nextFilterChangeDate.trim().isNotEmpty) {
+      request.fields['next_filter_change_date'] =
+          nextFilterChangeDate.trim();
+    }
+    if (outputTdsAttentionLevel != null) {
+      request.fields['output_tds_attention_level'] =
+          '$outputTdsAttentionLevel';
+    }
+    request.fields['alarm_monitoring_enabled'] =
+        alarmMonitoringEnabled ? 'true' : 'false';
     request.fields['parts'] = jsonEncode(
       partKeys.map((key) => {'part_key': key}).toList(),
     );
