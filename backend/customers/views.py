@@ -1182,6 +1182,7 @@ class WalkInCustomerAPIView(APIView):
                     .select_for_update()
                     .get(
                         id=request.data["asset_id"],
+                        company=company,
                         ro_model=ro_model,
                         is_active=True,
                         status="WAREHOUSE",
