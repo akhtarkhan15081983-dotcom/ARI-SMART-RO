@@ -590,9 +590,14 @@ class _EmployeeLocationSummary extends StatelessWidget {
                             Text(
                               status == 'LIVE'
                                   ? 'Live location'
-                                  : status == 'STALE'
-                                      ? 'Location stale'
-                                      : 'Location missing',
+                                  : employee is Map &&
+                                          employee['attendance_active'] == true
+                                      ? status == 'STALE'
+                                          ? 'Checked in • GPS stale'
+                                          : 'Checked in • GPS missing'
+                                      : status == 'STALE'
+                                          ? 'Location stale'
+                                          : 'Location missing',
                               style: TextStyle(
                                 color: color,
                                 fontSize: 12,
