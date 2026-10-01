@@ -18,6 +18,13 @@ class EmployeeAPITests(TestCase):
     def setUp(self):
 
         self.client = APIClient()
+        self.company = Company.objects.create(
+            name="Employee API Test Company",
+            slug="employee-api-test-company",
+            phone="9200000098",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
 
         # ====================================================
         # ENGINEER USER
@@ -33,7 +40,15 @@ class EmployeeAPITests(TestCase):
             is_verified=True,
         )
 
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.engineer_user,
+            role="STAFF",
+            is_active=True,
+        )
+
         self.engineer = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.engineer_user,
             employee_id="EMP-TEST-0001",
             gender="MALE",
@@ -63,7 +78,15 @@ class EmployeeAPITests(TestCase):
             is_verified=True,
         )
 
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.office_user,
+            role="STAFF",
+            is_active=True,
+        )
+
         self.office = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.office_user,
             employee_id="EMP-TEST-0002",
             gender="FEMALE",
@@ -90,7 +113,15 @@ class EmployeeAPITests(TestCase):
             is_verified=True,
         )
 
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.manager_user,
+            role="STAFF",
+            is_active=True,
+        )
+
         self.manager = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.manager_user,
             employee_id="EMP-TEST-0003",
             gender="MALE",
