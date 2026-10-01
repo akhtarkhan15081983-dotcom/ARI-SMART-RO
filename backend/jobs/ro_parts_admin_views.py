@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from accounts.permissions import user_role
 from assets.models.asset import ROAlarm, ROAsset
 from customers.models import Customer
+from customers.rent_policy import rent_due_date
 from products.models import ROModel
 from tenancy.access import request_company
 
@@ -206,6 +207,11 @@ class AdminROPartsPassportAPIView(APIView):
                     "master_ro_model": customer.ro_model,
                     "ownership_type": customer.ownership_type,
                     "installation_date": customer.installation_date,
+                    "rent_due_day": customer.rent_due_day,
+                    "current_rent_due_date": rent_due_date(
+                        customer,
+                        timezone.localdate().replace(day=1),
+                    ),
                     "is_active": customer.is_active,
                     "active_alarm_count": customer_alarm_count,
                     "assets": asset_rows,
@@ -220,6 +226,47 @@ class AdminROPartsPassportAPIView(APIView):
                 "customer_count": len(rows),
                 "active_alarm_count": total_active_alarms,
                 "customers": rows,
+            }
+        )
+
+
+    def patch(self, request):
+        company, denied = _admin_company(request)
+        if denied is not None:
+            return denied
+
+        try:
+            customer_id = int(request.data.get("customer_id"))
+            due_day = int(request.data.get("rent_due_day"))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Customer and rent due day are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if due_day < 1 or due_day > 31:
+            return Response(
+                {"detail": "Rent due day must be between 1 and 31."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        customer = get_object_or_404(
+            Customer.objects.filter(company=company),
+            pk=customer_id,
+        )
+        customer.rent_due_day = due_day
+        customer.save(update_fields=["rent_due_day"])
+
+        current_due = rent_due_date(
+            customer,
+            timezone.localdate().replace(day=1),
+        )
+        return Response(
+            {
+                "message": "RO rent due date updated.",
+                "customer_id": customer.id,
+                "rent_due_day": customer.rent_due_day,
+                "current_rent_due_date": current_due,
             }
         )
 
