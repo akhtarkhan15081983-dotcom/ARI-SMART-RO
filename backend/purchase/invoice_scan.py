@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsStaffOperator
 from jobs.idempotency import action_id_from_request, replay_response, remember_response
 from partmaster.models import PartMaster
-from tenancy.access import request_company
+from tenancy.access import HasRequiredFeature, request_company
 
 from .invoice_identity import supplier_invoice_exists
 from .models import Purchase, Supplier
@@ -136,7 +136,8 @@ def analyze(text, company_id=None):
 
 
 class InvoiceAnalyzeAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
@@ -151,7 +152,8 @@ class InvoiceAnalyzeAPIView(APIView):
 
 
 class InvoiceConfirmAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
     parser_classes = [MultiPartParser, FormParser]
 
     @transaction.atomic
