@@ -32,7 +32,7 @@ from jobs.models import Job, JobPartUsed
 from purchase.models import PurchaseItem
 from service.models import Service, ServicePart
 from employees.models import EmployeeProfile, Holiday, LeaveRequest, PayrollRecord
-from tenancy.access import request_company
+from tenancy.access import request_company, HasRequiredFeature
 
 from .periods import resolve_period
 from .models import ClientErrorEvent
@@ -1373,7 +1373,8 @@ def build_workbook(data):
 
 
 class ReportsSummaryAPIView(APIView):
-    permission_classes = [IsAdminOrManager]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "reports"
 
     def get(self, request):
         try:
@@ -1391,7 +1392,8 @@ class ReportsSummaryAPIView(APIView):
 
 
 class ReportsExportAPIView(APIView):
-    permission_classes = [IsAdminOrManager]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "reports"
 
     def get(self, request):
         try:
