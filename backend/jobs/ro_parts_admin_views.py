@@ -29,6 +29,15 @@ from .ro_parts_views import _asset_passport_payload
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
 
 
+def _image_url(request, image_field):
+    if not image_field:
+        return ""
+    try:
+        return request.build_absolute_uri(image_field.url)
+    except Exception:
+        return ""
+
+
 def _admin_company(request):
     if user_role(request.user) != "ADMIN":
         return None, Response(
@@ -140,6 +149,7 @@ class AdminROPartsPassportAPIView(APIView):
             assets = (
                 ROAsset.objects.filter(current_customer=customer, is_active=True)
                 .select_related("ro_model")
+                .prefetch_related("ro_model__images")
                 .order_by("asset_id")
             )
             asset_rows = []
@@ -166,7 +176,15 @@ class AdminROPartsPassportAPIView(APIView):
                 )
                 setup_allowed, setup_message = _manual_setup_state(asset)
                 payload["ro_model_id"] = asset.ro_model_id
+                model_image = asset.ro_model.images.first()
+                payload["ro_model_image_url"] = _image_url(
+                    request,
+                    model_image.image if model_image is not None else None,
+                )
                 payload["purchase_date"] = asset.purchase_date
+                payload["next_filter_change_date"] = asset.next_filter_change_date
+                payload["output_tds_attention_level"] = asset.output_tds_attention_level
+                payload["alarm_monitoring_enabled"] = asset.alarm_monitoring_enabled
                 payload["manual_setup_allowed"] = setup_allowed
                 payload["manual_setup_message"] = setup_message
                 payload["active_alarms"] = active_alarms
@@ -217,22 +235,31 @@ class AdminROPartsBaselineAPIView(APIView):
         if denied is not None:
             return denied
 
-        models = (
+        model_rows = []
+        for model in (
             ROModel.objects.filter(is_active=True)
+            .prefetch_related("images")
             .order_by("model_name", "id")
-            .values(
-                "id",
-                "model_name",
-                "capacity",
-                "business_type",
-                "available_for_sale",
-                "available_for_rent",
+        ):
+            first_image = model.images.first()
+            model_rows.append(
+                {
+                    "id": model.id,
+                    "model_name": model.model_name,
+                    "capacity": model.capacity,
+                    "business_type": model.business_type,
+                    "available_for_sale": model.available_for_sale,
+                    "available_for_rent": model.available_for_rent,
+                    "image_url": _image_url(
+                        request,
+                        first_image.image if first_image is not None else None,
+                    ),
+                }
             )
-        )
         return Response(
             {
                 "company_id": company.id,
-                "models": list(models),
+                "models": model_rows,
                 "parts": [
                     {"part_key": key, "part_name": name}
                     for key, name in PART_CATALOG.items()
@@ -284,6 +311,43 @@ class AdminROPartsBaselineAPIView(APIView):
                 {"detail": "Sale / installation date must be YYYY-MM-DD."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        filter_date_raw = str(
+            request.data.get("next_filter_change_date") or ""
+        ).strip()
+        next_filter_change_date = (
+            parse_date(filter_date_raw) if filter_date_raw else None
+        )
+        if filter_date_raw and next_filter_change_date is None:
+            return Response(
+                {"detail": "Next filter-change date must be YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        threshold_raw = str(
+            request.data.get("output_tds_attention_level") or ""
+        ).strip()
+        output_tds_attention_level = None
+        if threshold_raw:
+            try:
+                output_tds_attention_level = int(threshold_raw)
+                if output_tds_attention_level < 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "TDS attention level must be a positive whole number."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        monitoring_raw = str(
+            request.data.get("alarm_monitoring_enabled", "true")
+        ).strip().lower()
+        alarm_monitoring_enabled = monitoring_raw not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
 
         try:
             parts = _parse_parts(request.data.get("parts"))
@@ -370,6 +434,9 @@ class AdminROPartsBaselineAPIView(APIView):
                     status="INSTALLED",
                     current_customer=customer,
                     purchase_date=setup_date if ownership_type == "PURCHASE" else None,
+                    next_filter_change_date=next_filter_change_date,
+                    output_tds_attention_level=output_tds_attention_level,
+                    alarm_monitoring_enabled=alarm_monitoring_enabled,
                 )
                 inspection = ROPartsInspection.objects.create(
                     ro_asset=asset,
@@ -390,6 +457,9 @@ class AdminROPartsBaselineAPIView(APIView):
                 asset.purchase_date = (
                     setup_date if ownership_type == "PURCHASE" else None
                 )
+                asset.next_filter_change_date = next_filter_change_date
+                asset.output_tds_attention_level = output_tds_attention_level
+                asset.alarm_monitoring_enabled = alarm_monitoring_enabled
                 asset.save(
                     update_fields=[
                         "ro_model",
@@ -397,6 +467,9 @@ class AdminROPartsBaselineAPIView(APIView):
                         "status",
                         "current_customer",
                         "purchase_date",
+                        "next_filter_change_date",
+                        "output_tds_attention_level",
+                        "alarm_monitoring_enabled",
                     ]
                 )
                 inspection = (
@@ -469,7 +542,15 @@ class AdminROPartsBaselineAPIView(APIView):
 
         payload = _asset_passport_payload(request, asset)
         payload["ro_model_id"] = asset.ro_model_id
+        first_image = asset.ro_model.images.first()
+        payload["ro_model_image_url"] = _image_url(
+            request,
+            first_image.image if first_image is not None else None,
+        )
         payload["purchase_date"] = asset.purchase_date
+        payload["next_filter_change_date"] = asset.next_filter_change_date
+        payload["output_tds_attention_level"] = asset.output_tds_attention_level
+        payload["alarm_monitoring_enabled"] = asset.alarm_monitoring_enabled
         payload["manual_setup_allowed"] = True
         return Response(
             {
