@@ -1849,6 +1849,30 @@ class CustomerRentAPITests(TestCase):
             403,
         )
 
+    def test_customer_rent_uses_explicit_account_link_when_phone_is_shared(self):
+        duplicate = Customer.objects.create(
+            name="Shared Phone Customer",
+            phone=self.customer_user.phone,
+            address="Other address",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+            ro_model="Other RO",
+            monthly_rent=Decimal("900.00"),
+            is_active=True,
+        )
+
+        self.client.force_authenticate(user=self.customer_user)
+        response = self.client.get("/api/customers/rent/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["customer"]["id"], self.customer.id)
+        self.assertNotEqual(response.data["customer"]["id"], duplicate.id)
+        self.assertEqual(
+            response.data["current_rent"]["expected_rent"],
+            float(self.customer.monthly_rent),
+        )
+
     def test_customer_without_profile_gets_404(self):
 
         User.objects.create_user(
