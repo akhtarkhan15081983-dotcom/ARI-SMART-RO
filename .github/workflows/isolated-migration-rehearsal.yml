@@ -88,7 +88,7 @@ jobs:
       - name: Verify migration rows and schema-visible model fields
         working-directory: backend
         run: |
-          python manage.py shell -c "from django.db import connection; from django.db.migrations.recorder import MigrationRecorder; from assets.models import ROAsset; from customers.models import PublicCustomerRequest; applied=set(MigrationRecorder(connection).migration_qs.values_list('app','name')); assert ('assets','0004_roasset_company') in applied; assert ('customers','0022_publiccustomerrequest_company') in applied; assert ROAsset._meta.get_field('company'); assert PublicCustomerRequest._meta.get_field('company'); print('MIGRATION_ROWS_OK=1'); print('ROASSET_COMPANY_FIELD_OK=1'); print('PUBLIC_REQUEST_COMPANY_FIELD_OK=1')"
+          python manage.py shell -c "from django.db import connection; from django.db.migrations.recorder import MigrationRecorder; from assets.models import ROAsset; from customers.models import PublicCustomerRequest; applied=set(MigrationRecorder(connection).migration_qs.values_list('app','name')); expected={('assets','0003_ro_alarm_center'),('assets','0004_roasset_company'),('customers','0021_customer_rent_due_day'),('customers','0022_publiccustomerrequest_company')}; missing=expected-applied; assert not missing, f'Missing expected migrations: {sorted(missing)}'; assert ROAsset._meta.get_field('company'); assert PublicCustomerRequest._meta.get_field('company'); print('MIGRATION_ROWS_OK=1'); print('ROASSET_COMPANY_FIELD_OK=1'); print('PUBLIC_REQUEST_COMPANY_FIELD_OK=1')"
 
       - name: Capture and verify post-migration evidence
         working-directory: backend
