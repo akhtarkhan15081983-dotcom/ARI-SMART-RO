@@ -1,0 +1,286 @@
+name: ARI SMART RO Windows Download Center Internal Hotfix Release v2
+
+on:
+  push:
+    branches:
+      - hotfix/windows-download-center-open-2026-10-02
+    paths:
+      - .github/workflows/windows-download-center-hotfix-signed-release-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-sign-publish:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: ari_smart_ro_app
+    env:
+      HOTFIX_SHA: 48b92228d7de29955d1c3b47cee86b347e8b1208
+      BASE_MAIN_SHA: 85fe142b0271e5e3c6b1d8bcc20e5f681e5edced
+      RELEASE_TAG: v1.0.52-windows-internal-hotfix1
+      SETUP_SOURCE: build\windows\installer\ARI-SMART-RO-Setup-v1.0.52.exe
+      SETUP_HOTFIX: build\windows\installer\ARI-SMART-RO-Setup-v1.0.52-WINDOWS-HOTFIX1.exe
+
+    steps:
+      - name: Checkout exact validated hotfix source
+        uses: actions/checkout@v4
+        with:
+          ref: 48b92228d7de29955d1c3b47cee86b347e8b1208
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Verify exact source and main guard
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $head = git rev-parse HEAD
+          if ($head -ne $env:HOTFIX_SHA) { throw "Unexpected source SHA: $head" }
+          $main = gh api "repos/${env:GITHUB_REPOSITORY}/git/ref/heads/main" --jq ".object.sha"
+          if ($main -ne $env:BASE_MAIN_SHA) { throw "main moved from approved v1.0.52 base" }
+          $screen = Get-Content "lib\screens\downloads\download_center_screen.dart" -Raw
+          if ($screen -notmatch "rundll32\.exe") { throw "Windows native Download Center opener missing" }
+          if ($screen -notmatch "FileProtocolHandler") { throw "Windows FileProtocolHandler missing" }
+
+      - name: Verify app version
+        shell: pwsh
+        run: |
+          $line = (Select-String -Path "pubspec.yaml" -Pattern "^version:").Line
+          if (-not $line) { throw "pubspec version not found" }
+          $raw = ($line -split '\s+')[1]
+          if ($raw -ne "1.0.52+52") { throw "Expected v1.0.52+52, found $raw" }
+
+      - name: Build Windows release
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          flutter pub get
+          flutter build windows --release --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+
+      - name: Verify Windows Safe Build
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          $blockedPatterns = @(
+            "*file_selector*",
+            "*flutter_secure_storage*",
+            "*geolocator*",
+            "*permission_handler*",
+            "*record_windows*",
+            "*url_launcher*",
+            "*local_notifications*",
+            "dartjni.dll"
+          )
+          foreach ($pattern in $blockedPatterns) {
+            $found = Get-ChildItem $release -Filter $pattern -ErrorAction SilentlyContinue
+            if ($found) { throw "Unsafe native plugin present: $($found.Name -join ', ')" }
+          }
+
+      - name: Locate signtool
+        shell: pwsh
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1).FullName
+          if (-not $signtool) { throw "signtool.exe not found" }
+          "ARI_SIGNTOOL=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Create ARI internal hotfix certificate
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject "CN=ARI SMART RO Internal Code Signing - Windows Hotfix 1" `
+            -FriendlyName "ARI SMART RO Internal Code Signing - Windows Hotfix 1" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -KeyAlgorithm RSA `
+            -KeyLength 3072 `
+            -HashAlgorithm SHA256 `
+            -KeyExportPolicy NonExportable `
+            -NotAfter (Get-Date).AddYears(3)
+          if (-not $cert.HasPrivateKey) { throw "Certificate private key missing" }
+          $dir = "build\windows\internal-trust-hotfix1"
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          $cer = Join-Path $dir "ARI-SMART-RO-Internal-Code-Signing-HOTFIX1.cer"
+          Export-Certificate -Cert $cert -FilePath $cer -Force | Out-Null
+          $cert.Thumbprint | Set-Content (Join-Path $dir "CERTIFICATE-THUMBPRINT.txt")
+          "ARI_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Trust certificate on CI runner
+        shell: pwsh
+        run: |
+          $cer = Resolve-Path "build\windows\internal-trust-hotfix1\ARI-SMART-RO-Internal-Code-Signing-HOTFIX1.cer"
+          & certutil.exe -f -addstore Root $cer
+          if ($LASTEXITCODE -ne 0) { throw "certutil Root import failed: $LASTEXITCODE" }
+          & certutil.exe -f -addstore TrustedPublisher $cer
+          if ($LASTEXITCODE -ne 0) { throw "certutil TrustedPublisher import failed: $LASTEXITCODE" }
+
+      - name: Sign application binaries
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          $targets = Get-ChildItem $release -Recurse -File | Where-Object { $_.Extension -in ".exe", ".dll" }
+          foreach ($target in $targets) {
+            & $env:ARI_SIGNTOOL sign /fd SHA256 /s My /sha1 $env:ARI_CERT_THUMBPRINT /v $target.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed: $($target.FullName)" }
+          }
+
+      - name: Verify ARI_SMART_RO.exe Authenticode Valid
+        shell: pwsh
+        run: |
+          $exe = "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          & $env:ARI_SIGNTOOL verify /pa /v $exe
+          if ($LASTEXITCODE -ne 0) { throw "signtool verification failed for ARI_SMART_RO.exe" }
+          $sig = Get-AuthenticodeSignature $exe
+          Write-Host "ARI_SMART_RO.exe Authenticode status: $($sig.Status)"
+          if ($sig.Status -ne "Valid") { throw "ARI_SMART_RO.exe Authenticode is not Valid" }
+          if ($sig.SignerCertificate.Thumbprint -ne $env:ARI_CERT_THUMBPRINT) { throw "Unexpected app signer" }
+
+      - name: Smoke test signed Windows app startup
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "build\windows\x64\runner\Release\ARI_SMART_RO.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) { throw "Signed app exited during startup smoke test: $($process.ExitCode)" }
+          Stop-Process -Id $process.Id -Force
+          Write-Host "Signed startup smoke PASS"
+
+      - name: Build Setup.exe from signed application
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found" }
+          & $iscc "/DMyAppVersion=1.0.52" "/DMyAppBuild=52" "installer\ari_smart_ro.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed" }
+          if (!(Test-Path $env:SETUP_SOURCE)) { throw "Expected Setup.exe not found" }
+
+      - name: Sign and verify Setup.exe Authenticode Valid
+        shell: pwsh
+        run: |
+          & $env:ARI_SIGNTOOL sign /fd SHA256 /s My /sha1 $env:ARI_CERT_THUMBPRINT /v $env:SETUP_SOURCE
+          if ($LASTEXITCODE -ne 0) { throw "Setup.exe signing failed" }
+          & $env:ARI_SIGNTOOL verify /pa /v $env:SETUP_SOURCE
+          if ($LASTEXITCODE -ne 0) { throw "Setup.exe signtool verification failed" }
+          $sig = Get-AuthenticodeSignature $env:SETUP_SOURCE
+          Write-Host "Setup.exe Authenticode status: $($sig.Status)"
+          if ($sig.Status -ne "Valid") { throw "Setup.exe Authenticode is not Valid" }
+          if ($sig.SignerCertificate.Thumbprint -ne $env:ARI_CERT_THUMBPRINT) { throw "Unexpected Setup signer" }
+          Copy-Item $env:SETUP_SOURCE $env:SETUP_HOTFIX -Force
+          $copySig = Get-AuthenticodeSignature $env:SETUP_HOTFIX
+          if ($copySig.Status -ne "Valid") { throw "Renamed hotfix Setup signature is not Valid" }
+
+      - name: Prepare certificate installer and instructions
+        shell: pwsh
+        run: |
+          $dir = "build\windows\internal-trust-hotfix1"
+          @'
+          param(
+            [string]$CertificatePath = (Join-Path $PSScriptRoot "ARI-SMART-RO-Internal-Code-Signing-HOTFIX1.cer")
+          )
+          $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+            [Security.Principal.WindowsBuiltInRole]::Administrator
+          )
+          if (-not $isAdmin) { throw "Run PowerShell as Administrator." }
+          if (!(Test-Path $CertificatePath)) { throw "Certificate file not found: $CertificatePath" }
+          & certutil.exe -f -addstore Root $CertificatePath
+          if ($LASTEXITCODE -ne 0) { throw "Root certificate install failed" }
+          & certutil.exe -f -addstore TrustedPublisher $CertificatePath
+          if ($LASTEXITCODE -ne 0) { throw "TrustedPublisher certificate install failed" }
+          Write-Host "ARI SMART RO Windows Hotfix 1 internal certificate installed successfully."
+          '@ | Set-Content (Join-Path $dir "Install-ARI-SMART-RO-HOTFIX1-Internal-Certificate.ps1")
+
+          @'
+          ARI SMART RO v1.0.52 - WINDOWS DOWNLOAD CENTER HOTFIX 1
+          =======================================================
+          INTERNAL TRUST ONLY - NOT PUBLIC CA TRUSTED.
+
+          FIX INCLUDED:
+          - Download Center PDF/XLSX/CSV files open via the Windows native default-app handler.
+          - No url_launcher_windows native plugin is required in the Windows Safe Build.
+
+          INSTALL:
+          1. Extract the complete HOTFIX1 ZIP.
+          2. Open Windows PowerShell as Administrator.
+          3. Change directory to the extracted folder.
+          4. Run: Set-ExecutionPolicy -Scope Process Bypass
+          5. Run: .\Install-ARI-SMART-RO-HOTFIX1-Internal-Certificate.ps1
+          6. Run: ARI-SMART-RO-Setup-v1.0.52-WINDOWS-HOTFIX1.exe
+          7. After installation, open Download Center and test one PDF and one XLSX/CSV file.
+
+          This certificate is for ARI-managed/company PCs only. SmartScreen public reputation is not claimed.
+          '@ | Set-Content (Join-Path $dir "INSTALL-WINDOWS-HOTFIX1.txt")
+
+      - name: Prepare hotfix package and SHA-256
+        shell: pwsh
+        run: |
+          $package = "build\windows\ARI-SMART-RO-Windows-v1.0.52-INTERNAL-HOTFIX1"
+          if (Test-Path $package) { Remove-Item $package -Recurse -Force }
+          New-Item -ItemType Directory -Path $package | Out-Null
+          Copy-Item $env:SETUP_HOTFIX $package
+          Copy-Item "build\windows\internal-trust-hotfix1\ARI-SMART-RO-Internal-Code-Signing-HOTFIX1.cer" $package
+          Copy-Item "build\windows\internal-trust-hotfix1\CERTIFICATE-THUMBPRINT.txt" $package
+          Copy-Item "build\windows\internal-trust-hotfix1\Install-ARI-SMART-RO-HOTFIX1-Internal-Certificate.ps1" $package
+          Copy-Item "build\windows\internal-trust-hotfix1\INSTALL-WINDOWS-HOTFIX1.txt" $package
+          $setupName = "ARI-SMART-RO-Setup-v1.0.52-WINDOWS-HOTFIX1.exe"
+          $cerName = "ARI-SMART-RO-Internal-Code-Signing-HOTFIX1.cer"
+          $setupHash = (Get-FileHash (Join-Path $package $setupName) -Algorithm SHA256).Hash.ToLower()
+          $cerHash = (Get-FileHash (Join-Path $package $cerName) -Algorithm SHA256).Hash.ToLower()
+          @(
+            "$setupHash  $setupName",
+            "$cerHash  $cerName"
+          ) | Set-Content (Join-Path $package "SHA256SUMS.txt")
+          Compress-Archive -Path "$package\*" -DestinationPath "$package.zip" -Force
+          $zipHash = (Get-FileHash "$package.zip" -Algorithm SHA256).Hash.ToLower()
+          "$zipHash  ARI-SMART-RO-Windows-v1.0.52-INTERNAL-HOTFIX1.zip" | Set-Content "build\windows\HOTFIX1-PACKAGE-SHA256.txt"
+
+      - name: Upload hotfix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARI-SMART-RO-Windows-v1.0.52-INTERNAL-HOTFIX1
+          path: |
+            ari_smart_ro_app/build/windows/ARI-SMART-RO-Windows-v1.0.52-INTERNAL-HOTFIX1.zip
+            ari_smart_ro_app/build/windows/installer/ARI-SMART-RO-Setup-v1.0.52-WINDOWS-HOTFIX1.exe
+            ari_smart_ro_app/build/windows/internal-trust-hotfix1/ARI-SMART-RO-Internal-Code-Signing-HOTFIX1.cer
+            ari_smart_ro_app/build/windows/internal-trust-hotfix1/Install-ARI-SMART-RO-HOTFIX1-Internal-Certificate.ps1
+            ari_smart_ro_app/build/windows/internal-trust-hotfix1/INSTALL-WINDOWS-HOTFIX1.txt
+            ari_smart_ro_app/build/windows/HOTFIX1-PACKAGE-SHA256.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish new internal Windows hotfix prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          @'
+          # ARI SMART RO v1.0.52 - Windows Internal Hotfix 1
+
+          Fix: Download Center PDF/XLSX/CSV opening on Windows.
+
+          - Exact app source: 48b92228d7de29955d1c3b47cee86b347e8b1208
+          - Validation CI 36910079204: SUCCESS
+          - Internal Authenticode signing: verified
+          - Signed startup smoke: PASS
+          - Public CA trusted: NO
+          - Intended for ARI-managed/company Windows PCs only
+          '@ | Set-Content "..\windows-hotfix1-release-notes.md"
+
+          gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --target $env:HOTFIX_SHA --title "ARI SMART RO v1.0.52 - Windows Internal Hotfix 1" --notes-file "..\windows-hotfix1-release-notes.md" --prerelease "build\windows\ARI-SMART-RO-Windows-v1.0.52-INTERNAL-HOTFIX1.zip#Internal Windows Download Center hotfix package" "build\windows\installer\ARI-SMART-RO-Setup-v1.0.52-WINDOWS-HOTFIX1.exe#Internal signed hotfix Setup.exe" "build\windows\internal-trust-hotfix1\ARI-SMART-RO-Internal-Code-Signing-HOTFIX1.cer#Hotfix internal public certificate" "build\windows\internal-trust-hotfix1\Install-ARI-SMART-RO-HOTFIX1-Internal-Certificate.ps1#Hotfix certificate installer" "build\windows\internal-trust-hotfix1\INSTALL-WINDOWS-HOTFIX1.txt#Hotfix installation instructions" "build\windows\HOTFIX1-PACKAGE-SHA256.txt#Hotfix package SHA-256"
+
+      - name: Verify published hotfix prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,url,assets,targetCommitish
