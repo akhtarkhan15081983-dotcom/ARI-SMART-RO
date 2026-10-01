@@ -152,3 +152,40 @@ class ProfessionalCallingDeskTests(APITestCase):
             format="json",
         )
         self.assertEqual(create_for_other.status_code, 404)
+
+
+    def test_calling_desk_lists_company_owned_unassigned_guest_lead(self):
+        owned = PublicCustomerRequest.objects.create(
+            company=self.company,
+            request_type="PURCHASE",
+            customer_name="Owned Guest Lead",
+            phone="9876500020",
+            address="Agra",
+            city="Agra",
+            state="UP",
+            pincode="282001",
+        )
+        other_company = Company.objects.create(
+            name="Other Guest Lead Company",
+            slug="other-guest-lead-company",
+            phone="9876500021",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        hidden = PublicCustomerRequest.objects.create(
+            company=other_company,
+            request_type="PURCHASE",
+            customer_name="Hidden Guest Lead",
+            phone="9876500022",
+            address="Delhi",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+        )
+
+        response = self.client.get("/api/customers/calling-desk/")
+
+        self.assertEqual(response.status_code, 200)
+        lead_ids = {row["id"] for row in response.data["leads"]}
+        self.assertIn(owned.id, lead_ids)
+        self.assertNotIn(hidden.id, lead_ids)
