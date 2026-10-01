@@ -32,7 +32,6 @@ class EngineerBagIssueSerializer(serializers.ModelSerializer):
 
 
 class OCRVerifySerializer(serializers.Serializer):
-    engineer = serializers.PrimaryKeyRelatedField(queryset=EmployeeProfile.objects.all())
     serial_number = serializers.CharField(max_length=50)
 
 
