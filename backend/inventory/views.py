@@ -50,10 +50,17 @@ class OCRVerifyAPIView(generics.GenericAPIView):
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        engineer = serializer.validated_data["engineer"]
+        engineer = EmployeeProfile.objects.filter(
+            user=request.user,
+            is_active=True,
+            user__is_active=True,
+        ).first()
+        if engineer is None:
+            return Response(
+                {"verified": False, "message": "Active employee profile is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serial_number = serializer.validated_data["serial_number"].strip()
-        if engineer.user_id != request.user.id:
-            return Response({"verified": False, "message": "You cannot verify a part for another engineer."}, status=status.HTTP_403_FORBIDDEN)
         bag_item = EngineerBagItem.objects.select_related("inventory_item", "inventory_item__part", "engineer__user").filter(engineer=engineer, inventory_item__serial_number=serial_number, inventory_item__status="ISSUED", status="ISSUED").first()
         if not bag_item:
             return Response({"verified": False, "message": "This part is not currently issued to this engineer."}, status=status.HTTP_400_BAD_REQUEST)
