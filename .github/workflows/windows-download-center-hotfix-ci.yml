@@ -1,0 +1,80 @@
+name: Windows Download Center Hotfix CI
+
+on:
+  push:
+    branches:
+      - hotfix/windows-download-center-open-2026-10-02
+    paths:
+      - ari_smart_ro_app/**
+      - .github/workflows/windows-download-center-hotfix-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ari_smart_ro_app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Flutter analyze
+        shell: pwsh
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          if ($LASTEXITCODE -ne 0) { throw "flutter analyze failed" }
+
+      - name: Flutter tests
+        run: flutter test
+
+      - name: Build Windows release
+        run: >-
+          flutter build windows --release
+          --dart-define=API_BASE_URL=https://ari-smart-ro-api.onrender.com/api
+
+      - name: Verify Windows Safe Build
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          if (!(Test-Path "$release\ARI_SMART_RO.exe")) {
+            throw "ARI_SMART_RO.exe missing from Windows release build"
+          }
+          $blockedPatterns = @(
+            "*file_selector*",
+            "*flutter_secure_storage*",
+            "*geolocator*",
+            "*permission_handler*",
+            "*record_windows*",
+            "*url_launcher*",
+            "*local_notifications*",
+            "dartjni.dll"
+          )
+          foreach ($pattern in $blockedPatterns) {
+            $found = Get-ChildItem $release -Filter $pattern -ErrorAction SilentlyContinue
+            if ($found) {
+              throw "Unsafe native plugin present in Windows Safe Build: $($found.Name -join ', ')"
+            }
+          }
+          Write-Host "Windows Safe Build verified."
+
+      - name: Verify Download Center Windows opener source
+        shell: pwsh
+        run: |
+          $screen = Get-Content "lib\screens\downloads\download_center_screen.dart" -Raw
+          if ($screen -notmatch "Platform\.isWindows") { throw "Windows-specific open path missing" }
+          if ($screen -notmatch "rundll32\.exe") { throw "Native Windows file opener missing" }
+          if ($screen -notmatch "url\.dll,FileProtocolHandler") { throw "Windows file protocol handler missing" }
+          Write-Host "Download Center Windows native opener source verified."
