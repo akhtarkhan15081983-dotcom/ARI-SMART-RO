@@ -15,6 +15,8 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
+import androidx.core.content.FileProvider
+import android.webkit.MimeTypeMap
 
 class MainActivity : FlutterActivity() {
     private val downloadsChannel = "com.arismartro.app/downloads"
@@ -149,21 +151,36 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             downloadsChannel,
         ).setMethodCallHandler { call, result ->
-            if (call.method != "saveFile") {
-                result.notImplemented()
-                return@setMethodCallHandler
-            }
-            val filename = call.argument<String>("filename")
-            val mimeType = call.argument<String>("mimeType")
-            val bytes = call.argument<ByteArray>("bytes")
-            if (filename.isNullOrBlank() || mimeType.isNullOrBlank() || bytes == null) {
-                result.error("INVALID_FILE", "Filename, MIME type and bytes are required.", null)
-                return@setMethodCallHandler
-            }
-            try {
-                result.success(saveToDownloads(filename, mimeType, bytes))
-            } catch (error: Exception) {
-                result.error("SAVE_FAILED", error.message ?: "Unable to save report.", null)
+            when (call.method) {
+                "saveFile" -> {
+                    val filename = call.argument<String>("filename")
+                    val mimeType = call.argument<String>("mimeType")
+                    val bytes = call.argument<ByteArray>("bytes")
+                    if (filename.isNullOrBlank() || mimeType.isNullOrBlank() || bytes == null) {
+                        result.error("INVALID_FILE", "Filename, MIME type and bytes are required.", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        result.success(saveToDownloads(filename, mimeType, bytes))
+                    } catch (error: Exception) {
+                        result.error("SAVE_FAILED", error.message ?: "Unable to save report.", null)
+                    }
+                }
+                "openFile" -> {
+                    val path = call.argument<String>("path")
+                    if (path.isNullOrBlank()) {
+                        result.error("INVALID_FILE", "File path is required.", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        result.success(openAppFile(path))
+                    } catch (error: SecurityException) {
+                        result.error("OPEN_DENIED", "The selected file is outside ARI SMART RO storage.", null)
+                    } catch (error: Exception) {
+                        result.error("OPEN_FAILED", error.message ?: "Unable to open file.", null)
+                    }
+                }
+                else -> result.notImplemented()
             }
         }
     }
@@ -225,6 +242,39 @@ class MainActivity : FlutterActivity() {
         val uri = sourceIntent?.data ?: return null
         if (uri.scheme != "arismartro" || uri.host != "referral") return null
         return uri.getQueryParameter("code")?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun openAppFile(path: String): Boolean {
+        val file = File(path).canonicalFile
+        if (!file.exists() || !file.isFile) return false
+
+        val allowedRoots = buildList {
+            add(filesDir.canonicalFile)
+            add(cacheDir.canonicalFile)
+            getExternalFilesDir(null)?.canonicalFile?.let { add(it) }
+        }
+        if (allowedRoots.none { root ->
+                file.path == root.path || file.path.startsWith(root.path + File.separator)
+            }) {
+            throw SecurityException("File is outside application storage.")
+        }
+
+        val extension = file.extension.lowercase()
+        val mimeType = MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(extension)
+            ?: "application/octet-stream"
+        val uri = FileProvider.getUriForFile(
+            this,
+            "${packageName}.fileprovider",
+            file,
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        if (intent.resolveActivity(packageManager) == null) return false
+        startActivity(intent)
+        return true
     }
 
     private fun saveToDownloads(filename: String, mimeType: String, bytes: ByteArray): String {
