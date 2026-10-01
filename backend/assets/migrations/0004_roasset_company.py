@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("assets", "0003_ro_alarm_center"),
-        ("tenancy", "0001_initial"),
+        ("customers", "0020_customer_company"),
     ]
 
     operations = [
