@@ -129,23 +129,21 @@ class Installation(models.Model):
 
             self.installation_id = f"INS-{year}-{new_number:06d}"
 
-        super().save(*args, **kwargs) 
+        super().save(*args, **kwargs)
 
-        @property
-        def job_customer(self):
-            return self.job.customer if self.job else self.customer
+    @property
+    def job_customer(self):
+        return self.job.customer if self.job else self.customer
+
+    @property
+    def job_engineer(self):
+        return self.job.engineer if self.job else self.engineer
+
+    @property
+    def job_ro_asset(self):
+        return self.job.ro_asset if self.job else self.ro_asset
 
 
-        @property
-        def job_engineer(self):
-            return self.job.engineer if self.job else self.engineer
-
-
-        @property
-        def job_ro_asset(self):
-            return self.job.ro_asset if self.job else self.ro_asset
-        
-    
 # ==========================
 # DEPRECATED
 # Use jobs.JobMedia instead.
