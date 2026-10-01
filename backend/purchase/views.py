@@ -4,7 +4,7 @@ from rest_framework import serializers, viewsets
 
 from accounts.permissions import IsStaffOperator
 from jobs.idempotency import action_id_from_request, replay_response, remember_response
-from tenancy.access import request_company
+from tenancy.access import HasRequiredFeature, request_company
 
 from .invoice_identity import supplier_invoice_exists
 from .models import Supplier, Purchase, PurchaseItem
@@ -21,7 +21,8 @@ def _scope_for_request(request, queryset):
 
 class SupplierViewSet(viewsets.ModelViewSet):
     serializer_class = SupplierSerializer
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get_queryset(self):
         return _scope_for_request(self.request, Supplier.objects.all())
@@ -32,7 +33,8 @@ class SupplierViewSet(viewsets.ModelViewSet):
 
 class PurchaseViewSet(viewsets.ModelViewSet):
     serializer_class = PurchaseSerializer
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get_queryset(self):
         return _scope_for_request(
@@ -90,7 +92,8 @@ class PurchaseViewSet(viewsets.ModelViewSet):
 
 class PurchaseItemViewSet(viewsets.ModelViewSet):
     serializer_class = PurchaseItemSerializer
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
