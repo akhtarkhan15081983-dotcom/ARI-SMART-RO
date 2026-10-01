@@ -8,7 +8,7 @@ from customers.models import Customer
 from tenancy.access import request_company
 
 from .models import CustomerEngagement, NotificationCampaign
-from .notifications import _company_users, materialize_campaign
+from .notifications import _company_users, _page_window, materialize_campaign
 from .offer_audience import (
     OFFER_AUDIENCES,
     customer_user,
@@ -24,9 +24,12 @@ class AdminOfferCustomerAudienceAPIView(APIView):
         company = request_company(request)
         if company is None:
             return Response({"detail": "Active company workspace not found."}, status=403)
-        rows = Customer.objects.filter(company=company).select_related("user").order_by("name", "id")[:5000]
-        return Response({
-            "customers": [
+        rows = Customer.objects.filter(company=company).select_related("user").order_by("name", "id")
+        paginated, page, page_size, start, end = _page_window(
+            request, default_size=250, max_size=500
+        )
+        total_count = rows.count()
+        payload = [
                 {
                     "id": row.id,
                     "customer_id": row.customer_id,
@@ -37,9 +40,18 @@ class AdminOfferCustomerAudienceAPIView(APIView):
                     "is_active": row.is_active,
                     "app_user_id": customer_user(row).id if customer_user(row) else None,
                 }
-                for row in rows
+                for row in rows[start:end]
             ]
-        })
+        response = {"customers": payload}
+        if paginated:
+            response.update({
+                "count": total_count,
+                "page": page,
+                "page_size": page_size,
+                "has_more": end < total_count,
+                "next_page": page + 1 if end < total_count else None,
+            })
+        return Response(response)
 
 
 class AdminOfferAPIView(APIView):
@@ -52,9 +64,10 @@ class AdminOfferAPIView(APIView):
         rows = CustomerEngagement.objects.filter(
             kind="OFFER",
             created_by__in=_company_users(company),
-        ).distinct()[:100]
-        return Response({
-            "offers": [{
+        ).distinct()
+        paginated, page, page_size, start, end = _page_window(request)
+        total_count = rows.count()
+        payload = [{
                 "id": row.id,
                 "title": row.title,
                 "audience": row.audience,
@@ -69,8 +82,17 @@ class AdminOfferAPIView(APIView):
                 "valid_from": row.valid_from.isoformat(),
                 "valid_until": row.valid_until.isoformat() if row.valid_until else None,
                 "is_active": row.is_active,
-            } for row in rows]
-        })
+            } for row in rows[start:end]]
+        response = {"offers": payload}
+        if paginated:
+            response.update({
+                "count": total_count,
+                "page": page,
+                "page_size": page_size,
+                "has_more": end < total_count,
+                "next_page": page + 1 if end < total_count else None,
+            })
+        return Response(response)
 
     def post(self, request):
         company = request_company(request)
