@@ -74,3 +74,22 @@ Legend:
 4. Download Center needs real Android + Windows external-file opening evidence.
 5. Background location, face/device and other hardware-sensitive flows need final field-device evidence before 10/10.
 6. No production deploy/release is authorized by this document.
+
+
+## Exact-head CI baseline
+
+Verified exact-head baseline:
+- Commit: `1db2656868f1bc45a0c6d327f296e817c0e298a0`
+- CI: #1051
+- Result: SUCCESS
+- Production container: PASS
+- Django deployment checks: PASS
+- Backend tests: PASS
+- Flutter analyze: PASS
+- Flutter tests: PASS
+- Android debug APK compile: PASS
+- Android artifact upload: PASS
+- Android emulator startup smoke: PASS
+- Windows release / installer chain: PASS
+
+This closes the generic CI gate for modules whose only remaining blocker was exact-head build/test evidence. Modules that still have migration, architecture, hardware, external-service or field-device gates remain not-10/10 until those separate risks are closed.
