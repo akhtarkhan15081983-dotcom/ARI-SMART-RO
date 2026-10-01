@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from tenancy.access import HasRequiredFeature
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
@@ -131,7 +132,8 @@ def _request_payload(part_request):
 
 
 class PartRequestApprovalInboxAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
         queryset = PartRequest.objects.select_related("part", "engineer__user").order_by("-created_at")
@@ -176,7 +178,8 @@ class PartRequestReviewAPIView(APIView):
 
 
 class InventoryReceivingQueueAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
         items = PurchaseItem.objects.select_related("purchase__supplier", "part").order_by("-purchase__invoice_date")
@@ -197,7 +200,8 @@ class InventoryReceivingQueueAPIView(APIView):
 
 
 class InventoryReceiveAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     @transaction.atomic
     def post(self, request):
@@ -247,7 +251,8 @@ class InventoryReceiveAPIView(APIView):
 
 
 class InventoryPhotoReceiveAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     @transaction.atomic
     def post(self, request):
@@ -281,7 +286,8 @@ class InventoryPhotoReceiveAPIView(APIView):
 
 
 class PartRequestFulfilAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     @transaction.atomic
     def post(self, request, request_id):
