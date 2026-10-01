@@ -3368,6 +3368,7 @@ class CallingDeskAPIView(APIView):
             return Response({"detail": "Select a valid priority."}, status=400)
 
         row = PublicCustomerRequest.objects.create(
+            company=company,
             request_type=request_type,
             customer_name=name[:150],
             phone=phone,
