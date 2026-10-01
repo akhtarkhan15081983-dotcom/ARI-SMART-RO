@@ -2070,7 +2070,14 @@ class CustomerRentAPITests(TestCase):
             role="ENGINEER",
             is_verified=True,
         )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=engineer_user,
+            role="STAFF",
+            is_active=True,
+        )
         engineer = EmployeeProfile.objects.create(
+            company=self.company,
             user=engineer_user,
             gender="MALE",
             joining_date=date(2026, 1, 1),
