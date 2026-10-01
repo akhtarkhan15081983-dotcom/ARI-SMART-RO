@@ -8,21 +8,51 @@ class AdminROPassportService {
   const AdminROPassportService();
 
   Future<Map<String, dynamic>> fetchRegistry({String query = ''}) async {
-    final uri = Uri.parse(
-      '${ApiService.baseUrl}/jobs/admin/ro-parts-passports/',
-    ).replace(
-      queryParameters: query.trim().isEmpty ? null : {'q': query.trim()},
-    );
-    final response = await http
-        .get(uri, headers: await ApiService.authHeaders())
-        .timeout(const Duration(seconds: 25));
-    final body = _decode(response.body);
-    if (response.statusCode != 200) {
-      throw Exception(
-        body['detail']?.toString() ?? 'Unable to load Digital RO registry.',
-      );
+    const pageSize = 250;
+    var page = 1;
+    final allCustomers = <dynamic>[];
+    var activeAlarmCount = 0;
+    Map<String, dynamic>? merged;
+
+    while (true) {
+      final params = <String, String>{
+        'page': '$page',
+        'page_size': '$pageSize',
+        if (query.trim().isNotEmpty) 'q': query.trim(),
+      };
+      final uri = Uri.parse(
+        '${ApiService.baseUrl}/jobs/admin/ro-parts-passports/',
+      ).replace(queryParameters: params);
+      final response = await http
+          .get(uri, headers: await ApiService.authHeaders())
+          .timeout(const Duration(seconds: 25));
+      final body = _decode(response.body);
+      if (response.statusCode != 200) {
+        throw Exception(
+          body['detail']?.toString() ?? 'Unable to load Digital RO registry.',
+        );
+      }
+
+      merged ??= Map<String, dynamic>.from(body);
+      final pageCustomers = body['customers'] as List<dynamic>? ?? const [];
+      allCustomers.addAll(pageCustomers);
+      activeAlarmCount += (body['active_alarm_count'] as num?)?.toInt() ?? 0;
+
+      if (body['has_more'] != true || pageCustomers.isEmpty) {
+        break;
+      }
+      page = (body['next_page'] as num?)?.toInt() ?? (page + 1);
     }
-    return body;
+
+    final result = merged ?? <String, dynamic>{};
+    result['customers'] = allCustomers;
+    result['customer_count'] =
+        (result['customer_count'] as num?)?.toInt() ?? allCustomers.length;
+    result['returned_customer_count'] = allCustomers.length;
+    result['active_alarm_count'] = activeAlarmCount;
+    result['has_more'] = false;
+    result['next_page'] = null;
+    return result;
   }
 
   Future<Map<String, dynamic>> updateRentDueDay({
