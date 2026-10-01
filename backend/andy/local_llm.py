@@ -3,6 +3,8 @@ import os
 import urllib.error
 import urllib.request
 
+from django.conf import settings
+
 
 class LocalLLMError(RuntimeError):
     pass
@@ -12,7 +14,9 @@ class LocalLLM:
     """OpenAI-free local inference adapter for ANDY, tuned for low latency."""
 
     def __init__(self):
-        self.base_url = os.getenv("ANDY_LLM_URL", "http://127.0.0.1:11434").rstrip("/")
+        default_url = "http://127.0.0.1:11434" if settings.DEBUG else ""
+        self.base_url = os.getenv("ANDY_LLM_URL", default_url).strip().rstrip("/")
+        self.service_token = os.getenv("ANDY_AI_SERVICE_TOKEN", "").strip()
         self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5:3b")
         self.timeout = int(os.getenv("ANDY_LLM_TIMEOUT", "120"))
         self.num_ctx = int(os.getenv("ANDY_LLM_NUM_CTX", "1536"))
@@ -22,10 +26,21 @@ class LocalLLM:
         self.keep_alive = os.getenv("ANDY_LLM_KEEP_ALIVE", "10m")
 
     def _post_json(self, path, payload):
+        if not self.base_url:
+            raise LocalLLMError(
+                "ANDY language service is unavailable. Configure ANDY_LLM_URL."
+            )
+        headers = {"Content-Type": "application/json"}
+        if self.service_token:
+            headers["Authorization"] = f"Bearer {self.service_token}"
+        elif not settings.DEBUG:
+            raise LocalLLMError(
+                "ANDY AI service token is not configured."
+            )
         request = urllib.request.Request(
             f"{self.base_url}{path}",
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         try:
