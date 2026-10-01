@@ -5,9 +5,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from customers.models import Customer
+from tenancy.access import request_company
 
 from .models import CustomerEngagement, NotificationCampaign
-from .notifications import materialize_campaign
+from .notifications import _company_users, materialize_campaign
 from .offer_audience import (
     OFFER_AUDIENCES,
     customer_user,
@@ -20,7 +21,10 @@ class AdminOfferCustomerAudienceAPIView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        rows = Customer.objects.select_related("user").order_by("name", "id")[:5000]
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+        rows = Customer.objects.filter(company=company).select_related("user").order_by("name", "id")[:5000]
         return Response({
             "customers": [
                 {
@@ -42,7 +46,13 @@ class AdminOfferAPIView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        rows = CustomerEngagement.objects.filter(kind="OFFER")[:100]
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+        rows = CustomerEngagement.objects.filter(
+            kind="OFFER",
+            created_by__in=_company_users(company),
+        ).distinct()[:100]
         return Response({
             "offers": [{
                 "id": row.id,
@@ -63,6 +73,9 @@ class AdminOfferAPIView(APIView):
         })
 
     def post(self, request):
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
         title = str(request.data.get("title") or "").strip()
         message = str(request.data.get("message") or "").strip()
         if not title or not message:
@@ -78,7 +91,8 @@ class AdminOfferAPIView(APIView):
         target_customer = None
         if audience == "TARGETED":
             target_customer = Customer.objects.select_related("user").filter(
-                pk=request.data.get("target_customer_id")
+                pk=request.data.get("target_customer_id"),
+                company=company,
             ).first()
             if target_customer is None:
                 return Response({"detail": "Target customer not found."}, status=400)
@@ -174,12 +188,12 @@ class AdminOfferAPIView(APIView):
         if audience == "TARGETED":
             recipient_users = [target_user]
         elif audience == "ACTIVE":
-            recipient_users = list(users_for_customer_status(True))
+            recipient_users = list(users_for_customer_status(True, company=company))
         elif audience == "INACTIVE":
-            recipient_users = list(users_for_customer_status(False))
+            recipient_users = list(users_for_customer_status(False, company=company))
         else:
             recipient_users = list(
-                users_for_customer_status(True).union(users_for_customer_status(False))
+                users_for_customer_status(True, company=company).union(users_for_customer_status(False, company=company))
             )
 
         campaign.target_users.set([user for user in recipient_users if user is not None])
