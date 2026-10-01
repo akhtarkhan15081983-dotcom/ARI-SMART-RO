@@ -3221,7 +3221,8 @@ class CallingDeskAPIView(APIView):
             "assigned_caller__company",
             "existing_customer",
         ).filter(
-            Q(existing_customer__company=company)
+            Q(company=company)
+            | Q(existing_customer__company=company)
             | Q(existing_customer__company__isnull=True, assigned_caller__company=company)
             | Q(existing_customer__isnull=True, assigned_caller__company=company)
         ).distinct().order_by("-created_at")
@@ -3403,7 +3404,8 @@ class CallingDeskAPIView(APIView):
                 "assigned_caller__company",
                 "existing_customer",
             ).filter(
-                Q(existing_customer__company=company)
+                Q(company=company)
+                | Q(existing_customer__company=company)
                 | Q(existing_customer__company__isnull=True, assigned_caller__company=company)
                 | Q(existing_customer__isnull=True, assigned_caller__company=company)
             ).distinct().get(pk=pk)
