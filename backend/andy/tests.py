@@ -15,6 +15,10 @@ from customers.models import Customer
 from employees.models import EmployeeProfile
 from jobs.models import Job
 from products.models import ProductCategory, ROModel
+from tenancy.models import Company, CompanyMembership
+from complaints.models import Complaint
+from service.models import Service
+from installation.models import Installation
 
 
 class AndyAppControlTests(TestCase):
@@ -65,6 +69,137 @@ class AndyAppControlTests(TestCase):
         self.assertEqual(result["intent"], "operations_summary")
         self.assertIn("pending jobs", result["answer"])
         self.assertIn("open complaints", result["answer"])
+
+    def test_admin_operational_reads_are_tenant_scoped(self):
+        company_a = Company.objects.create(
+            name="ANDY Tenant A",
+            slug="andy-tenant-a",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        company_b = Company.objects.create(
+            name="ANDY Tenant B",
+            slug="andy-tenant-b",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        admin = User.objects.create_user(
+            phone="9000000004",
+            password="test-pass",
+            first_name="Tenant Admin",
+            role="ADMIN",
+        )
+        CompanyMembership.objects.create(
+            company=company_a,
+            user=admin,
+            role="OWNER",
+            is_active=True,
+        )
+        engineer_a_user = User.objects.create_user(
+            phone="9000000005",
+            password="test-pass",
+            role="ENGINEER",
+        )
+        engineer_b_user = User.objects.create_user(
+            phone="9000000006",
+            password="test-pass",
+            role="ENGINEER",
+        )
+        engineer_a = EmployeeProfile.objects.create(
+            company=company_a,
+            user=engineer_a_user,
+            employee_id="ANDY-A",
+            gender="MALE",
+            joining_date=timezone.localdate(),
+            designation="ENGINEER",
+        )
+        engineer_b = EmployeeProfile.objects.create(
+            company=company_b,
+            user=engineer_b_user,
+            employee_id="ANDY-B",
+            gender="MALE",
+            joining_date=timezone.localdate(),
+            designation="ENGINEER",
+        )
+        customer_a = Customer.objects.create(
+            company=company_a,
+            name="Tenant A Customer",
+            phone="9000000401",
+            address="A",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI TEST",
+        )
+        customer_b = Customer.objects.create(
+            company=company_b,
+            name="Tenant B Customer",
+            phone="9000000402",
+            address="B",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI TEST",
+        )
+        category = ProductCategory.objects.create(name="ANDY Tenant RO")
+        ro_model = ROModel.objects.create(
+            category=category,
+            model_name="ANDY Tenant Model",
+            capacity="12 LPH",
+            business_type="RENT",
+        )
+        asset_a = ROAsset.objects.create(ro_model=ro_model, current_customer=customer_a)
+        asset_b = ROAsset.objects.create(ro_model=ro_model, current_customer=customer_b)
+        Job.objects.create(
+            company=company_a,
+            customer=customer_a,
+            engineer=engineer_a,
+            ro_asset=asset_a,
+            job_type="SERVICE",
+            scheduled_date=timezone.now(),
+            status="ASSIGNED",
+        )
+        Job.objects.create(
+            company=company_b,
+            customer=customer_b,
+            engineer=engineer_b,
+            ro_asset=asset_b,
+            job_type="SERVICE",
+            scheduled_date=timezone.now(),
+            status="ASSIGNED",
+        )
+        Complaint.objects.create(
+            company=company_b,
+            customer=customer_b,
+            engineer=engineer_b,
+            complaint_type="OTHER",
+            description="Other tenant complaint",
+            status="ASSIGNED",
+        )
+        Service.objects.create(
+            company=company_b,
+            customer=customer_b,
+            engineer=engineer_b,
+            ro_asset=asset_b,
+            scheduled_date=timezone.now(),
+            status="PENDING",
+        )
+        Installation.objects.create(
+            customer=customer_b,
+            engineer=engineer_b,
+            ro_asset=asset_b,
+            scheduled_date=timezone.now(),
+            status="SCHEDULED",
+        )
+
+        count = AndyAppControl(admin).try_handle("total customers kitne hain")
+        summary = AndyAppControl(admin).try_handle("operations summary batao")
+
+        self.assertIn("1 customer", count["answer"])
+        self.assertIn("1 pending jobs", summary["answer"])
+        self.assertIn("0 open complaints", summary["answer"])
+        self.assertIn("0 pending services", summary["answer"])
+        self.assertIn("0 pending installations", summary["answer"])
 
 
 class AndyActionControlTests(TestCase):
