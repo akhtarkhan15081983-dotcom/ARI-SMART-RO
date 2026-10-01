@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from tenancy.access import HasRequiredFeature
+from tenancy.access import HasRequiredFeature, request_company
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
@@ -65,6 +65,7 @@ class OCRVerifyAPIView(generics.GenericAPIView):
         bag_item = EngineerBagItem.objects.select_related("inventory_item", "inventory_item__part", "engineer__user").filter(engineer=engineer, inventory_item__serial_number=serial_number, inventory_item__status="ISSUED", status="ISSUED").first()
         if not bag_item:
             issued_elsewhere = EngineerBagItem.objects.filter(
+                engineer__company=engineer.company,
                 inventory_item__serial_number=serial_number,
                 inventory_item__status="ISSUED",
                 status="ISSUED",
@@ -121,11 +122,27 @@ class MyPartRequestsAPIView(generics.ListCreateAPIView):
     required_feature = "request"
 
     def get_queryset(self):
-        return PartRequest.objects.select_related("part", "engineer").filter(engineer__user=self.request.user).order_by("-created_at")
+        company = request_company(self.request)
+        if company is None:
+            return PartRequest.objects.none()
+        return PartRequest.objects.select_related("part", "engineer").filter(
+            engineer__user=self.request.user,
+            engineer__company=company,
+            company=company,
+        ).order_by("-created_at")
 
     def perform_create(self, serializer):
-        engineer = get_object_or_404(EmployeeProfile, user=self.request.user, designation="ENGINEER", is_active=True)
-        part_request = serializer.save(engineer=engineer)
+        company = request_company(self.request)
+        if company is None:
+            raise PermissionDenied("Active company workspace not found.")
+        engineer = get_object_or_404(
+            EmployeeProfile,
+            user=self.request.user,
+            designation="ENGINEER",
+            is_active=True,
+            company=company,
+        )
+        part_request = serializer.save(engineer=engineer, company=company)
         PartRequestEvent.objects.create(
             part_request=part_request, action="CREATED", performed_by=self.request.user,
             remarks=part_request.remarks,
