@@ -97,7 +97,10 @@ class _AndyChatScreenState extends State<AndyChatScreen> {
       if (!mounted) return null;
       setState(() {
         _messages.add(
-          _ChatItem(false, 'ANDY local model se connect nahi ho pa raha.\n$e'),
+          _ChatItem(
+            false,
+            'ANDY abhi temporarily unavailable hai. ARI SMART RO ke normal features aap use kar sakte hain aur baad mein ANDY ko retry karein.\n$e',
+          ),
         );
         _avatarState = _AndyAvatarState.idle;
       });
