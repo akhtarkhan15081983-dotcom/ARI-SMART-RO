@@ -10,6 +10,7 @@ from andy.app_control import AndyAppControl
 from andy.models import AndyConversation, AndyKnowledge, AndyMessage, AndyPendingAction, AndySpeechJob, AndyTeaching
 from andy.local_tts import LocalTTS, LocalTTSError
 from andy.local_stt import LocalSTT, LocalSTTError
+from andy.local_llm import LocalLLM, LocalLLMError
 from assets.models import ROAsset
 from customers.models import Customer
 from employees.models import EmployeeProfile
@@ -520,6 +521,34 @@ class AndySpeakAPITests(TestCase):
             LocalTTS().synthesize("Namaste")
         with self.assertRaisesMessage(LocalSTTError, "In-process STT is disabled in production"):
             LocalSTT()._get_model()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "ANDY_LLM_URL": "https://ai.internal.example/llm",
+            "ANDY_TTS_ENGINE": "remote",
+            "ANDY_TTS_URL": "https://ai.internal.example/tts",
+            "ANDY_STT_BACKEND": "remote",
+            "ANDY_STT_URL": "https://ai.internal.example/stt",
+            "ANDY_AI_SERVICE_TOKEN": "",
+        },
+        clear=False,
+    )
+    @patch("andy.local_llm.settings.DEBUG", False)
+    @patch("andy.local_tts.settings.DEBUG", False)
+    @patch("andy.local_stt.settings.DEBUG", False)
+    def test_production_requires_inference_service_token(
+        self,
+        _stt_debug,
+        _tts_debug,
+        _llm_debug,
+    ):
+        with self.assertRaisesMessage(LocalLLMError, "service token is not configured"):
+            LocalLLM()._post_json("/api/chat", {"messages": []})
+        with self.assertRaisesMessage(LocalTTSError, "service token is not configured"):
+            LocalTTS().synthesize("Namaste")
+        with self.assertRaisesMessage(LocalSTTError, "service token is not configured"):
+            LocalSTT()._transcribe_remote("missing-audio.wav")
 
 
 class AndyTeachingTests(TestCase):
