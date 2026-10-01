@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/shop_product_model.dart';
 import '../../services/public_request_service.dart';
+import '../../services/tenant_brand_service.dart';
 
 class PublicRequestScreen extends StatefulWidget {
   const PublicRequestScreen({
@@ -36,10 +37,48 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
   final _referralCode = TextEditingController();
   final _offerCode = TextEditingController();
   final _service = const PublicRequestService();
+  final _tenantBrandService = const TenantBrandService();
+
+  List<TenantBrand> _publicShops = const [];
+  String? _selectedCompanySlug;
+  bool _loadingShops = false;
+  String? _shopLoadError;
 
   int _quantity = 1;
   String _paymentMethod = 'OFFICE';
   bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!TenantBrandService.isDedicatedBuild) {
+      _loadPublicShops();
+    }
+  }
+
+  Future<void> _loadPublicShops() async {
+    setState(() {
+      _loadingShops = true;
+      _shopLoadError = null;
+    });
+    try {
+      final shops = await _tenantBrandService.fetchPublicShops();
+      if (!mounted) return;
+      setState(() {
+        _publicShops = shops;
+        if (shops.length == 1) {
+          _selectedCompanySlug = shops.single.slug;
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _shopLoadError = error.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) setState(() => _loadingShops = false);
+    }
+  }
 
   bool get _isProduct => widget.product != null;
   bool get _isPurchase => widget.requestType == 'PURCHASE';
@@ -77,11 +116,21 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _submitting) return;
+    if (!TenantBrandService.isDedicatedBuild &&
+        (_selectedCompanySlug == null || _selectedCompanySlug!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select the ARI shop handling this request.')),
+      );
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() => _submitting = true);
     try {
       final result = await _service.submit({
         'request_type': widget.requestType,
+        if (!TenantBrandService.isDedicatedBuild &&
+            _selectedCompanySlug != null)
+          'company_slug': _selectedCompanySlug,
         if (widget.product != null) 'product': widget.product!.id,
         'plan_name':
             widget.planName ?? widget.product?.modelName ?? widget.title,
@@ -214,6 +263,51 @@ class _PublicRequestScreenState extends State<PublicRequestScreen> {
                 ],
               ),
             ),
+            if (!TenantBrandService.isDedicatedBuild) ...[
+              const SizedBox(height: 18),
+              const _FormHeading('Select ARI shop'),
+              if (_loadingShops)
+                const LinearProgressIndicator()
+              else if (_shopLoadError != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      _shopLoadError!,
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _loadPublicShops,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry shop list'),
+                    ),
+                  ],
+                )
+              else
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedCompanySlug,
+                  decoration: const InputDecoration(
+                    labelText: 'ARI shop / company *',
+                    prefixIcon: Icon(Icons.storefront_outlined),
+                  ),
+                  items: _publicShops
+                      .map(
+                        (shop) => DropdownMenuItem<String>(
+                          value: shop.slug,
+                          child: Text(
+                            shop.displayName,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
+                  validator: (value) =>
+                      value == null || value.isEmpty ? 'Select an ARI shop' : null,
+                  onChanged: (value) =>
+                      setState(() => _selectedCompanySlug = value),
+                ),
+            ],
             const SizedBox(height: 18),
             const _FormHeading('Contact details'),
             TextFormField(
