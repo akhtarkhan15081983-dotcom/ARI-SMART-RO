@@ -24,6 +24,7 @@ class _AdminROPassportSetupScreenState
   final _service = const AdminROPassportService();
   final _picker = ImagePicker();
   final _serial = TextEditingController();
+  final _tdsThreshold = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -34,6 +35,8 @@ class _AdminROPassportSetupScreenState
   int? _modelId;
   String _ownership = 'RENTAL';
   DateTime? _date;
+  DateTime? _nextFilterDate;
+  bool _alarmMonitoring = true;
 
   bool get _allowed =>
       widget.asset == null || widget.asset?['manual_setup_allowed'] != false;
@@ -56,6 +59,12 @@ class _AdminROPassportSetupScreenState
         (asset?['purchase_date'] ?? widget.customer['installation_date'] ?? '')
             .toString();
     _date = DateTime.tryParse(rawDate);
+    _nextFilterDate = DateTime.tryParse(
+      (asset?['next_filter_change_date'] ?? '').toString(),
+    );
+    _tdsThreshold.text =
+        (asset?['output_tds_attention_level'] ?? '').toString().trim();
+    _alarmMonitoring = asset?['alarm_monitoring_enabled'] != false;
     for (final raw in (asset?['parts'] as List<dynamic>? ?? const [])) {
       if (raw is Map) {
         final key = (raw['part_key'] ?? '').toString();
@@ -68,6 +77,7 @@ class _AdminROPassportSetupScreenState
   @override
   void dispose() {
     _serial.dispose();
+    _tdsThreshold.dispose();
     super.dispose();
   }
 
@@ -105,6 +115,18 @@ class _AdminROPassportSetupScreenState
     if (result != null && mounted) setState(() => _date = result);
   }
 
+  Future<void> _pickFilterDate() async {
+    final result = await showDatePicker(
+      context: context,
+      initialDate: _nextFilterDate ?? DateTime.now().add(const Duration(days: 180)),
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+    );
+    if (result != null && mounted) {
+      setState(() => _nextFilterDate = result);
+    }
+  }
+
   Future<void> _addPhoto() async {
     if (_photos.length >= 4) return;
     final file = await _picker.pickImage(
@@ -129,6 +151,13 @@ class _AdminROPassportSetupScreenState
       _snack('RO model, serial number and at least one current part are required.');
       return;
     }
+    final tdsThreshold = _tdsThreshold.text.trim().isEmpty
+        ? null
+        : int.tryParse(_tdsThreshold.text.trim());
+    if (_tdsThreshold.text.trim().isNotEmpty && tdsThreshold == null) {
+      _snack('Enter a valid TDS attention level.');
+      return;
+    }
     setState(() => _saving = true);
     try {
       await _service.saveInitialBaseline(
@@ -139,17 +168,29 @@ class _AdminROPassportSetupScreenState
         ownershipType: _ownership,
         saleInstallationDate:
             _date == null ? null : DateFormat('yyyy-MM-dd').format(_date!),
+        nextFilterChangeDate: _nextFilterDate == null
+            ? null
+            : DateFormat('yyyy-MM-dd').format(_nextFilterDate!),
+        outputTdsAttentionLevel: tdsThreshold,
+        alarmMonitoringEnabled: _alarmMonitoring,
         partKeys: _selectedParts.toList(),
         photoPaths: _photos.map((e) => e.path).toList(),
       );
       if (!mounted) return;
-      _snack('Digital RO baseline saved. Future verified changes will update automatically.');
+      _snack('Digital RO saved. Customer history and configured RO alarms will continue automatically.');
       Navigator.pop(context, true);
     } catch (e) {
       if (mounted) _snack(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Map<String, dynamic>? get _selectedModel {
+    for (final model in _models) {
+      if (_int(model['id']) == _modelId) return model;
+    }
+    return null;
   }
 
   @override
@@ -214,6 +255,26 @@ class _AdminROPassportSetupScreenState
                       onChanged:
                           _allowed ? (v) => setState(() => _modelId = v) : null,
                     ),
+                    if ((_selectedModel?['image_url'] ?? '').toString().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: SizedBox(
+                          height: 170,
+                          width: double.infinity,
+                          child: Image.network(
+                            (_selectedModel?['image_url'] ?? '').toString(),
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const ColoredBox(
+                              color: Color(0xFFE2E8F0),
+                              child: Center(
+                                child: Icon(Icons.broken_image_outlined),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     TextField(
                       controller: _serial,
@@ -252,6 +313,44 @@ class _AdminROPassportSetupScreenState
                         _date == null
                             ? 'Set sale / installation date'
                             : 'Sale / installation: ${DateFormat('dd MMM yyyy').format(_date!)}',
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Automatic RO monitoring',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 6),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Alarm monitoring enabled'),
+                      subtitle: const Text(
+                        'Use this Digital RO record to generate due-filter and TDS attention alerts.',
+                      ),
+                      value: _alarmMonitoring,
+                      onChanged: _allowed
+                          ? (value) => setState(() => _alarmMonitoring = value)
+                          : null,
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _allowed ? _pickFilterDate : null,
+                      icon: const Icon(Icons.filter_alt_outlined),
+                      label: Text(
+                        _nextFilterDate == null
+                            ? 'Set next filter-change date'
+                            : 'Next filter change: ${DateFormat('dd MMM yyyy').format(_nextFilterDate!)}',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _tdsThreshold,
+                      enabled: _allowed,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Output TDS attention level (optional)',
+                        helperText:
+                            'Maintenance alert threshold only; not a water-safety declaration.',
+                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 18),
