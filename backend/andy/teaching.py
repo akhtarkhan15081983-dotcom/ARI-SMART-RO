@@ -4,6 +4,8 @@ import re
 from django.db import transaction
 from django.utils import timezone
 
+from tenancy.models import CompanyMembership
+
 from .models import AndyKnowledge, AndyTeaching
 
 
@@ -31,10 +33,38 @@ def _content_hash(question, answer):
 
 
 @transaction.atomic
+def _user_company(user):
+    membership = (
+        CompanyMembership.objects.filter(
+            user=user,
+            is_active=True,
+            company__is_active=True,
+            company__lifecycle_status="ACTIVE",
+        )
+        .select_related("company")
+        .first()
+    )
+    if membership is not None:
+        return membership.company
+    try:
+        company = user.employee_profile.company
+    except Exception:
+        return None
+    if company and company.is_active and company.lifecycle_status == "ACTIVE":
+        return company
+    return None
+
+
 def approve_teaching(teaching_id, reviewer):
     teaching = AndyTeaching.objects.select_for_update().get(id=teaching_id)
     if teaching.status != "PENDING":
         raise ValueError("Teaching submission has already been reviewed.")
+
+    reviewer_company = _user_company(reviewer)
+    submitter_company = _user_company(teaching.submitted_by)
+    if not getattr(reviewer, "is_superuser", False):
+        if reviewer_company is None or submitter_company is None or reviewer_company.id != submitter_company.id:
+            raise AndyTeaching.DoesNotExist
 
     knowledge, _ = AndyKnowledge.objects.update_or_create(
         source_path=f"andy-teaching:{teaching.id}",
@@ -48,6 +78,7 @@ def approve_teaching(teaching_id, reviewer):
                 "teaching_id": teaching.id,
                 "submitted_by_id": teaching.submitted_by_id,
                 "reviewed_by_id": reviewer.id,
+                "company_id": submitter_company.id if submitter_company else None,
             },
             "is_active": True,
         },
@@ -65,6 +96,11 @@ def approve_teaching(teaching_id, reviewer):
 @transaction.atomic
 def reject_teaching(teaching_id, reviewer):
     teaching = AndyTeaching.objects.select_for_update().get(id=teaching_id)
+    reviewer_company = _user_company(reviewer)
+    submitter_company = _user_company(teaching.submitted_by)
+    if not getattr(reviewer, "is_superuser", False):
+        if reviewer_company is None or submitter_company is None or reviewer_company.id != submitter_company.id:
+            raise AndyTeaching.DoesNotExist
     if teaching.status != "PENDING":
         raise ValueError("Teaching submission has already been reviewed.")
     teaching.status = "REJECTED"
@@ -74,18 +110,25 @@ def reject_teaching(teaching_id, reviewer):
     return teaching
 
 
-def find_approved_knowledge(question):
+def find_approved_knowledge(question, user=None):
     normalized_question = _normalize(question)
     query_tokens = _tokens(question)
     if not normalized_question or not query_tokens:
         return None
 
-    best = None
-    best_score = 0.0
-    for knowledge in AndyKnowledge.objects.filter(
+    company = _user_company(user) if user is not None else None
+    knowledge_qs = AndyKnowledge.objects.filter(
         namespace="andy-approved",
         is_active=True,
-    ).order_by("-updated_at")[:500]:
+    )
+    if user is not None and not getattr(user, "is_superuser", False):
+        if company is None:
+            return None
+        knowledge_qs = knowledge_qs.filter(metadata__company_id=company.id)
+
+    best = None
+    best_score = 0.0
+    for knowledge in knowledge_qs.order_by("-updated_at")[:500]:
         normalized_title = _normalize(knowledge.title)
         title_tokens = _tokens(knowledge.title)
         if not title_tokens:
