@@ -5,19 +5,35 @@ from rest_framework.test import APITestCase
 
 from accounts.models import User
 from employees.models import EmployeeProfile
+from tenancy.models import Company, CompanyMembership
 from .models import CallingActivity, Customer, PublicCustomerRequest
 
 
 class ProfessionalCallingDeskTests(APITestCase):
     def setUp(self):
+        self.company = Company.objects.create(
+            name="Calling Desk Test Company",
+            slug="calling-desk-test-company",
+            phone="9876500099",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
         self.user = User.objects.create_user(
             phone="9876500001", password="Test@123", role="CALLING", is_verified=True
         )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.user,
+            role="STAFF",
+            is_active=True,
+        )
         self.employee = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.user, gender="MALE", joining_date=date(2026, 1, 1),
             designation="CALLING", salary=Decimal("18000.00"),
         )
         self.customer = Customer.objects.create(
+            company=self.company,
             name="Existing Customer", phone="9876500002", address="Agra",
             city="Agra", state="UP", pincode="282001", ro_model="ARI RO",
             monthly_rent=Decimal("500.00"),
@@ -52,6 +68,7 @@ class ProfessionalCallingDeskTests(APITestCase):
             request_type="SERVICE", customer_name=self.customer.name,
             phone=self.customer.phone, address=self.customer.address,
             city=self.customer.city, state=self.customer.state, pincode=self.customer.pincode,
+            company=self.company,
             existing_customer=self.customer, assigned_caller=self.employee,
         )
         response = self.client.patch(f"/api/customers/calling-desk/{lead.id}/", {
