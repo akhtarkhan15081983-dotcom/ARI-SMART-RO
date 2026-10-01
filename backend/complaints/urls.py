@@ -1,10 +1,5 @@
 from django.urls import path
 
-from .views import (
-    ComplaintStartAPIView,
-    ComplaintResolveAPIView,
-    ComplaintCloseAPIView,
-)
 from .customer_scope import (
     SecureComplaintListAPIView,
     SecureComplaintCreateAPIView,
@@ -14,6 +9,9 @@ from .customer_scope import (
 from .security_views import (
     SecureComplaintUpdateAPIView,
     TenantScopedComplaintAssignEngineerAPIView,
+    TenantScopedComplaintCloseAPIView,
+    TenantScopedComplaintResolveAPIView,
+    TenantScopedComplaintStartAPIView,
 )
 
 
@@ -27,8 +25,8 @@ urlpatterns = [
         TenantScopedComplaintAssignEngineerAPIView.as_view(),
         name="complaint-assign-engineer",
     ),
-    path("<int:pk>/start/", ComplaintStartAPIView.as_view(), name="complaint-start"),
-    path("<int:pk>/resolve/", ComplaintResolveAPIView.as_view(), name="complaint-resolve"),
-    path("<int:pk>/close/", ComplaintCloseAPIView.as_view(), name="complaint-close"),
+    path("<int:pk>/start/", TenantScopedComplaintStartAPIView.as_view(), name="complaint-start"),
+    path("<int:pk>/resolve/", TenantScopedComplaintResolveAPIView.as_view(), name="complaint-resolve"),
+    path("<int:pk>/close/", TenantScopedComplaintCloseAPIView.as_view(), name="complaint-close"),
     path("search/", SecureComplaintSearchAPIView.as_view(), name="complaint-search"),
 ]
