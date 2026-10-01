@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tenancy.access import HasRequiredFeature
 
 from accounts.audit import write_audit_event
 from employees.models import EmployeeProfile
@@ -70,7 +71,8 @@ class OfflineAttendanceSyncAPIView(APIView):
     was lost after the server had already committed the action.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def post(self, request):
         employee = EmployeeProfile.objects.filter(user=request.user).first()
