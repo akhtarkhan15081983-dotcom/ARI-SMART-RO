@@ -14,7 +14,6 @@ from rest_framework.views import APIView
 from accounts.permissions import user_role
 from tenancy.access import HasRequiredFeature, has_feature_access, request_company
 from customers.models import Customer
-from customers.identity import unique_unlinked_customer_for_phone
 from .models import Service
 from .serializers import ServiceSerializer
 
@@ -24,7 +23,7 @@ def _linked_customer_for(user):
 
     Shared/duplicate phone numbers are valid ARI business data, so phone alone
     must never grant access to every record with that number. Prefer the durable
-    user link; phone-only fallback is allowed only when exactly one unlinked row exists.
+    user link; legacy records can claim only the first deterministic unlinked row.
     """
     if user_role(user) != "CUSTOMER" or not user.is_verified or not user.is_active:
         return None
@@ -33,7 +32,15 @@ def _linked_customer_for(user):
     if linked is not None:
         return linked
 
-    legacy = unique_unlinked_customer_for_phone(user.phone, active_only=True)
+    legacy = (
+        Customer.objects.filter(
+            phone=user.phone,
+            user__isnull=True,
+            is_active=True,
+        )
+        .order_by("id")
+        .first()
+    )
     if legacy is not None:
         legacy.user = user
         legacy.save(update_fields=["user"])
