@@ -8,7 +8,8 @@ from accounts.models import User
 from andy.action_control import AndyActionControl
 from andy.app_control import AndyAppControl
 from andy.models import AndyConversation, AndyKnowledge, AndyMessage, AndyPendingAction, AndySpeechJob, AndyTeaching
-from andy.local_tts import LocalTTS
+from andy.local_tts import LocalTTS, LocalTTSError
+from andy.local_stt import LocalSTT, LocalSTTError
 from assets.models import ROAsset
 from customers.models import Customer
 from employees.models import EmployeeProfile
@@ -351,6 +352,39 @@ class AndySpeakAPITests(TestCase):
     @patch.dict("os.environ", {"ANDY_INDICF5_ALLOW_CPU": "0"})
     def test_auto_voice_avoids_slow_cpu_indicf5(self):
         self.assertFalse(LocalTTS()._indicf5_fast_enough_for_auto())
+
+    @patch.dict(
+        "os.environ",
+        {
+            "ANDY_TTS_ENGINE": "remote",
+            "ANDY_TTS_URL": "",
+            "ANDY_STT_BACKEND": "remote",
+            "ANDY_STT_URL": "",
+        },
+        clear=False,
+    )
+    def test_remote_ai_adapters_fail_gracefully_without_inference_service(self):
+        with self.assertRaisesMessage(LocalTTSError, "ANDY voice service is unavailable"):
+            LocalTTS().synthesize("Namaste")
+        with self.assertRaisesMessage(LocalSTTError, "ANDY speech recognition service is unavailable"):
+            LocalSTT().transcribe("missing-audio.wav")
+
+    @patch.dict(
+        "os.environ",
+        {
+            "ANDY_TTS_ENGINE": "piper",
+            "ANDY_STT_BACKEND": "local",
+            "ANDY_ALLOW_INPROCESS_AI": "0",
+        },
+        clear=False,
+    )
+    @patch("andy.local_tts.settings.DEBUG", False)
+    @patch("andy.local_stt.settings.DEBUG", False)
+    def test_production_blocks_inprocess_heavy_ai(self, _stt_debug, _tts_debug):
+        with self.assertRaisesMessage(LocalTTSError, "In-process TTS is disabled in production"):
+            LocalTTS().synthesize("Namaste")
+        with self.assertRaisesMessage(LocalSTTError, "In-process STT is disabled in production"):
+            LocalSTT()._get_model()
 
 
 class AndyTeachingTests(TestCase):
