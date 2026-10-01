@@ -612,6 +612,59 @@ class AndyTeachingTests(TestCase):
         teaching.refresh_from_db()
         self.assertEqual(teaching.status, "PENDING")
 
+    def test_admin_cannot_review_other_company_teaching_or_read_its_knowledge(self):
+        company_a = Company.objects.create(
+            name="ANDY Teach A",
+            slug="andy-teach-a",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        company_b = Company.objects.create(
+            name="ANDY Teach B",
+            slug="andy-teach-b",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        admin_a = User.objects.create_user(
+            phone="9000000391",
+            password="test-pass",
+            role="ADMIN",
+        )
+        submitter_b = User.objects.create_user(
+            phone="9000000392",
+            password="test-pass",
+            role="ENGINEER",
+        )
+        CompanyMembership.objects.create(
+            company=company_a,
+            user=admin_a,
+            role="OWNER",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=company_b,
+            user=submitter_b,
+            role="STAFF",
+            is_active=True,
+        )
+        teaching = AndyTeaching.objects.create(
+            submitted_by=submitter_b,
+            question="Tenant private RO answer?",
+            answer="Tenant B only answer.",
+        )
+
+        self.client.force_authenticate(admin_a)
+        pending = self.client.get("/api/andy/teach/pending/")
+        self.assertEqual(pending.status_code, 200)
+        self.assertNotIn(teaching.id, {row["id"] for row in pending.data["results"]})
+
+        review = self.client.post(
+            f"/api/andy/teach/{teaching.id}/review/",
+            {"action": "APPROVE"},
+            format="json",
+        )
+        self.assertEqual(review.status_code, 404)
+
     def test_admin_approval_creates_retrievable_knowledge(self):
         teaching = AndyTeaching.objects.create(
             submitted_by=self.user,
