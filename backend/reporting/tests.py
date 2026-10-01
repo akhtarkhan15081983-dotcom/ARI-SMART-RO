@@ -11,16 +11,30 @@ from accounts.models import User
 from attendance.models import Attendance
 from customers.models import Customer, CustomerRentHistory, CustomerRentPayment
 from employees.models import EmployeeProfile
+from tenancy.models import Company, CompanyMembership
 
 
 class ReportingAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
+        self.company = Company.objects.create(
+            name="Reporting Test Company",
+            slug="reporting-test-company",
+            phone="9000000199",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
         self.admin = User.objects.create_user(
             phone="9000000101",
             password="StrongPass123!",
             role="ADMIN",
             first_name="Admin",
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.admin,
+            role="ADMIN",
+            is_active=True,
         )
         self.customer_user = User.objects.create_user(
             phone="9000000102",
@@ -35,7 +49,14 @@ class ReportingAPITests(TestCase):
             first_name="Ravi",
             last_name="Kumar",
         )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.engineer_user,
+            role="STAFF",
+            is_active=True,
+        )
         self.engineer = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.engineer_user,
             employee_id="EMP-TEST-001",
             gender="MALE",
@@ -43,6 +64,7 @@ class ReportingAPITests(TestCase):
             designation="ENGINEER",
         )
         self.customer = Customer.objects.create(
+            company=self.company,
             name="Test Customer",
             phone="9000000104",
             address="Test Address",
