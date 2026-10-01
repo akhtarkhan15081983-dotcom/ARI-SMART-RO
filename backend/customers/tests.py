@@ -46,6 +46,7 @@ from referrals.models import (
     WalletReward,
     WalletLedgerEntry,
 )
+from tenancy.models import Company, CompanyMembership
 
 class CustomerProfileTests(TestCase):
 
@@ -1753,6 +1754,13 @@ class CustomerRentAPITests(TestCase):
     def setUp(self):
 
         self.client = APIClient()
+        self.company = Company.objects.create(
+            name="Customer Rent Test Company",
+            slug="customer-rent-test-company",
+            phone="9100000099",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
 
         self.customer_user = User.objects.create_user(
             phone="9100000001",
@@ -1764,6 +1772,7 @@ class CustomerRentAPITests(TestCase):
         )
 
         self.customer = Customer.objects.create(
+            company=self.company,
             user=self.customer_user,
             name="Rent Customer",
             phone="9100000001",
@@ -1788,7 +1797,15 @@ class CustomerRentAPITests(TestCase):
             is_verified=True,
         )
 
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.staff_user,
+            role="OWNER",
+            is_active=True,
+        )
+
         self.employee = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.staff_user,
             gender="MALE",
             joining_date=date(2026, 1, 1),
