@@ -109,11 +109,11 @@ jobs:
         shell: pwsh
         run: |
           $cer = Resolve-Path "build\windows\internal-trust\ARI-SMART-RO-Internal-Code-Signing.cer"
-          & certutil.exe -user -f -addstore Root $cer
+          & certutil.exe -f -addstore Root $cer
           if ($LASTEXITCODE -ne 0) { throw "certutil Root import failed: $LASTEXITCODE" }
-          & certutil.exe -user -f -addstore TrustedPublisher $cer
+          & certutil.exe -f -addstore TrustedPublisher $cer
           if ($LASTEXITCODE -ne 0) { throw "certutil TrustedPublisher import failed: $LASTEXITCODE" }
-          Write-Host "Internal certificate added to CurrentUser Root and TrustedPublisher."
+          Write-Host "Internal certificate added to LocalMachine Root and TrustedPublisher."
 
       - name: Sign application binaries
         shell: pwsh
