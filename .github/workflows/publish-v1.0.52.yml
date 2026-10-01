@@ -1,0 +1,114 @@
+name: Publish ARI SMART RO v1.0.52
+
+on:
+  push:
+    branches:
+      - release/publish-v1.0.52-2026-10-01
+    paths:
+      - .github/workflows/publish-v1.0.52.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_SHA: 85fe142b0271e5e3c6b1d8bcc20e5f681e5edced
+      SIGNED_RC_SHA: db482bdb5373c8ab9a0bb13e41924686b27f738d
+      ARTIFACT_ID: "11171746136"
+      ARTIFACT_ZIP_SHA256: c6100339d3650bfb681256c12991fcc79049f0c9aade323487f340bcf669b4db
+      TAG_NAME: v1.0.52
+    steps:
+      - name: Verify main still points to approved release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          test "$current_main" = "$TARGET_SHA"
+
+      - name: Verify signed RC code tree matches main release tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          target_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${TARGET_SHA}" --jq '.tree.sha')"
+          rc_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${SIGNED_RC_SHA}" --jq '.tree.sha')"
+          echo "Target tree: $target_tree"
+          echo "RC tree:     $rc_tree"
+          test "$target_tree" = "$rc_tree"
+
+      - name: Refuse to overwrite an existing v1.0.52 tag or release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_NAME} already exists; refusing to overwrite."
+            exit 1
+          fi
+          if gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${TAG_NAME} already exists; refusing to overwrite."
+            exit 1
+          fi
+
+      - name: Download verified signed production artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip"             --output signed-production.zip
+          echo "${ARTIFACT_ZIP_SHA256}  signed-production.zip" | sha256sum -c -
+
+      - name: Verify APK and AAB checksums
+        run: |
+          set -euo pipefail
+          mkdir release-assets
+          unzip -q signed-production.zip -d release-assets
+          cd release-assets
+          test -f "ARI-SMART-RO-v1.0.52+52.apk"
+          test -f "ARI-SMART-RO-v1.0.52+52.aab"
+          test -f "SHA256SUMS.txt"
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Prepare release notes
+        run: |
+          cat > release-notes.md <<'EOF'
+          # ARI SMART RO v1.0.52 — Max-Pro Final
+
+          Production release based on the verified Max-Pro hardening candidate.
+
+          Verified release evidence:
+          - Main CI #1072: SUCCESS
+          - Android signed production RC #13: SUCCESS
+          - Signed APK: verified
+          - Signed AAB: verified
+          - APK signature verification: SUCCESS
+          - Isolated migration rehearsal #3: SUCCESS
+          - Production ownership rollout: APPLIED_AND_VERIFIED
+          - Production Render deployment: LIVE on main
+
+          Release target:
+          - main commit: 85fe142b0271e5e3c6b1d8bcc20e5f681e5edced
+          - app version: 1.0.52+52
+
+          SHA-256:
+          - APK: 07e32b4d56e226290c6ae886633c06ee1eaf9dae91811e399b29a7015978f7fa
+          - AAB: 535101be5b59e3b8c96aef045432dff294debde6a0a2b72981e98fdfedf99499
+          EOF
+
+      - name: Create final GitHub release and upload signed assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${TAG_NAME}"             --repo "${GITHUB_REPOSITORY}"             --target "${TARGET_SHA}"             --title "ARI SMART RO v1.0.52 — Max-Pro Final"             --notes-file release-notes.md             "release-assets/ARI-SMART-RO-v1.0.52+52.apk#Signed Android APK"             "release-assets/ARI-SMART-RO-v1.0.52+52.aab#Signed Android App Bundle"             "release-assets/SHA256SUMS.txt#SHA-256 checksums"
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "${TAG_NAME}"             --repo "${GITHUB_REPOSITORY}"             --json tagName,name,isDraft,isPrerelease,url,assets
