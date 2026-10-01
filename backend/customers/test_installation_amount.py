@@ -170,6 +170,7 @@ class WalkInInstallationAmountTests(APITestCase):
         other_asset = ROAsset.objects.create(
             company=other_company,
             ro_model=self.model,
+            serial_number="WALKIN-OTHER-TENANT-001",
             status="WAREHOUSE",
         )
 
