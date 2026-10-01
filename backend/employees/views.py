@@ -16,6 +16,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator, can_edit_customers
 from accounts.models import AuthSecurityEvent, User
 from accounts.audit import write_audit_event
+from attendance.models import Attendance
 from tenancy.models import CompanyMembership
 from tenancy.access import HasRequiredFeature, has_feature_access
 
@@ -597,9 +598,17 @@ class EngineerLiveMapAPIView(APIView):
         stale_after = timedelta(seconds=90)
         payload = []
 
+        local_today = timezone.localdate()
+
         for employee in employees.order_by(
             "designation", "user__first_name", "employee_id"
         ):
+            attendance_active = Attendance.objects.filter(
+                employee=employee,
+                date=local_today,
+                check_in__isnull=False,
+                check_out__isnull=True,
+            ).exists()
             has_location = (
                 employee.last_latitude is not None
                 and employee.last_longitude is not None
@@ -631,6 +640,7 @@ class EngineerLiveMapAPIView(APIView):
                 "location_received": has_location,
                 "location_status": location_status,
                 "online": online,
+                "attendance_active": attendance_active,
             })
 
         return Response(payload)
