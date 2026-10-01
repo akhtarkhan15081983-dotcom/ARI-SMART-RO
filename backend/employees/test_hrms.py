@@ -221,6 +221,27 @@ class CorporateHrmsDashboardTests(HRMSPolicyTests):
             role="ADMIN",
             first_name="HR Admin",
         )
+        self.company = Company.objects.create(
+            name="HR Dashboard Primary Company",
+            slug="hr-dashboard-primary-company",
+            phone="9111111176",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.admin,
+            role="OWNER",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.user,
+            role="STAFF",
+            is_active=True,
+        )
+        self.employee.company = self.company
+        self.employee.save(update_fields=["company"])
 
     def test_admin_dashboard_returns_corporate_workforce_and_approval_metrics(self):
         self.client.force_authenticate(self.admin)
