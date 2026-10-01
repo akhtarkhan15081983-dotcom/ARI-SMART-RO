@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../services/download_center_file_service.dart';
+
 class DownloadCenterScreen extends StatefulWidget {
   const DownloadCenterScreen({super.key});
   @override
@@ -21,26 +23,63 @@ class _DownloadCenterScreenState extends State<DownloadCenterScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final root = await getApplicationDocumentsDirectory();
-    final files = <File>[];
-    await for (final entity in root.list(recursive: true, followLinks: false)) {
-      if (entity is! File) continue;
-      final name = entity.path.toLowerCase();
-      if (name.endsWith('.pdf') || name.endsWith('.xlsx') || name.endsWith('.csv')) {
-        files.add(entity);
+    if (mounted) setState(() => _loading = true);
+    try {
+      final root = await getApplicationDocumentsDirectory();
+      final files = await discoverDownloadCenterFiles(root);
+      if (mounted) {
+        setState(() {
+          _files = files;
+          _loading = false;
+        });
       }
+    } on FileSystemException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _files = const [];
+        _loading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to read Download Center: ${error.message}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _files = const [];
+        _loading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to refresh Download Center right now.')),
+      );
     }
-    files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
-    if (mounted) setState(() { _files = files; _loading = false; });
   }
 
   String _name(File file) => file.path.split(Platform.pathSeparator).last;
 
   Future<void> _open(File file) async {
-    final uri = Uri.file(file.path);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No compatible app found to open this file.')));
+    if (!await file.exists()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This file is no longer available. Refreshing the list.')),
+        );
+      }
+      await _load();
+      return;
+    }
+    try {
+      final uri = Uri.file(file.path);
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No compatible app found to open this file.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to open this file. It may be unavailable or unsupported.')),
+        );
+      }
     }
   }
 
