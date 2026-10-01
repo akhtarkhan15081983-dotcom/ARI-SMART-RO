@@ -582,9 +582,17 @@ class UpdateLiveLocationAPIView(APIView):
 
 
 class EngineerLiveMapAPIView(APIView):
-    permission_classes = [IsOperationsUser]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if not (
+            has_feature_access(request, "map")
+            or has_feature_access(request, "engineer_map")
+        ):
+            return Response(
+                {"detail": "Live map permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         employees = EmployeeProfile.objects.filter(
             is_active=True,
             user__is_active=True,
