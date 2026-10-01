@@ -5,6 +5,8 @@ from rest_framework import status
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .models import ProductCategory, ROModel
+from assets.models import ROAsset
+from tenancy.models import Company, CompanyMembership
 
 
 class CustomerShopCatalogTests(APITestCase):
@@ -64,6 +66,61 @@ class CustomerShopCatalogTests(APITestCase):
         response = self.client.get(reverse('customer-shop-catalog'))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['products'][0]['id'], visible.id)
+
+    def test_authenticated_catalog_uses_company_owned_ro_stock(self):
+        company_a = Company.objects.create(
+            name="Shop Tenant A",
+            slug="shop-tenant-a",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        company_b = Company.objects.create(
+            name="Shop Tenant B",
+            slug="shop-tenant-b",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        CompanyMembership.objects.create(
+            company=company_a,
+            user=self.user,
+            role="STAFF",
+            is_active=True,
+        )
+        product = self._model("Tenant Stock RO")
+        product.stock_quantity = 9
+        product.save(update_fields=["stock_quantity"])
+        ROAsset.objects.create(
+            company=company_a,
+            ro_model=product,
+            serial_number="SHOP-A-001",
+            status="WAREHOUSE",
+        )
+        ROAsset.objects.create(
+            company=company_b,
+            ro_model=product,
+            serial_number="SHOP-B-001",
+            status="WAREHOUSE",
+        )
+
+        response = self.client.get(reverse("customer-shop-catalog"))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.data["products"] if item["id"] == product.id)
+        self.assertEqual(row["stock_quantity"], 9)
+        self.assertEqual(row["tenant_stock_quantity"], 1)
+
+    def test_guest_catalog_keeps_legacy_global_stock(self):
+        product = self._model("Guest Stock RO")
+        product.stock_quantity = 4
+        product.save(update_fields=["stock_quantity"])
+        self.client.force_authenticate(user=None)
+
+        response = self.client.get(reverse("customer-shop-catalog"))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.data["products"] if item["id"] == product.id)
+        self.assertEqual(row["stock_quantity"], 4)
+        self.assertIsNone(row["tenant_stock_quantity"])
 
     def test_catalog_supports_sale_rent_or_both_per_product(self):
         sale_only = self._model('Sale only')
