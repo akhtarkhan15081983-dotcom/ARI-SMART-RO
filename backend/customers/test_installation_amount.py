@@ -47,7 +47,7 @@ class WalkInInstallationAmountTests(APITestCase):
             capacity="12 LPH",
             business_type="RENT",
         )
-        self.asset = ROAsset.objects.create(ro_model=self.model)
+        self.asset = ROAsset.objects.create(company=self.company, ro_model=self.model)
         self.client.force_authenticate(self.user)
 
     def test_three_thousand_is_split_into_600_installation_and_2400_security(self):
@@ -158,3 +158,41 @@ class WalkInInstallationAmountTests(APITestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertFalse(Customer.objects.filter(phone="9333333305").exists())
+
+
+    def test_walkin_rejects_other_company_warehouse_asset(self):
+        other_company = Company.objects.create(
+            name="Other Walkin Company",
+            slug="other-walkin-company",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_asset = ROAsset.objects.create(
+            company=other_company,
+            ro_model=self.model,
+            status="WAREHOUSE",
+        )
+
+        response = self.client.post(
+            "/api/customers/walk-in/",
+            {
+                "name": "Wrong Tenant Asset Customer",
+                "phone": "9333333306",
+                "address": "Test Address",
+                "area": "Test Area",
+                "city": "Agra",
+                "state": "Uttar Pradesh",
+                "pincode": "282001",
+                "ro_model": self.model.id,
+                "asset_id": other_asset.id,
+                "total_amount_received": "3000",
+                "monthly_rent": "300",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(Customer.objects.filter(phone="9333333306").exists())
+        other_asset.refresh_from_db()
+        self.assertIsNone(other_asset.current_customer_id)
+        self.assertEqual(other_asset.status, "WAREHOUSE")
