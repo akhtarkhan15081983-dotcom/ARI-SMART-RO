@@ -64,7 +64,22 @@ class OCRVerifyAPIView(generics.GenericAPIView):
         serial_number = serializer.validated_data["serial_number"].strip()
         bag_item = EngineerBagItem.objects.select_related("inventory_item", "inventory_item__part", "engineer__user").filter(engineer=engineer, inventory_item__serial_number=serial_number, inventory_item__status="ISSUED", status="ISSUED").first()
         if not bag_item:
-            return Response({"verified": False, "message": "This part is not currently issued to this engineer."}, status=status.HTTP_400_BAD_REQUEST)
+            issued_elsewhere = EngineerBagItem.objects.filter(
+                inventory_item__serial_number=serial_number,
+                inventory_item__status="ISSUED",
+                status="ISSUED",
+            ).exists()
+            return Response(
+                {
+                    "verified": False,
+                    "message": "This part is not currently issued to this engineer.",
+                },
+                status=(
+                    status.HTTP_403_FORBIDDEN
+                    if issued_elsewhere
+                    else status.HTTP_400_BAD_REQUEST
+                ),
+            )
         return Response({"verified": True, "message": "Part verified successfully.", "inventory_item": bag_item.inventory_item.id, "part": bag_item.inventory_item.part.name, "part_code": bag_item.inventory_item.part.code, "serial_number": bag_item.inventory_item.serial_number})
 
 
