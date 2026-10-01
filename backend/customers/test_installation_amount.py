@@ -8,17 +8,31 @@ from assets.models import ROAsset
 from customers.models import Customer
 from employees.models import EmployeeProfile
 from products.models import ProductCategory, ROModel
+from tenancy.models import Company, CompanyMembership
 
 
 class WalkInInstallationAmountTests(APITestCase):
     def setUp(self):
+        self.company = Company.objects.create(
+            name="Walkin Install Company",
+            slug="walkin-install-company",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
         self.user = User.objects.create_user(
             phone="9222222201",
             password="Strong@Test1",
             role="ENGINEER",
             first_name="Installer",
         )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.user,
+            role="STAFF",
+            is_active=True,
+        )
         self.employee = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.user,
             employee_id="EMP-INSTALL-1",
             joining_date=date(2026, 1, 1),
@@ -81,3 +95,66 @@ class WalkInInstallationAmountTests(APITestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertFalse(Customer.objects.filter(phone="9333333302").exists())
+
+
+    def test_walkin_binds_customer_and_job_to_active_company(self):
+        response = self.client.post(
+            "/api/customers/walk-in/",
+            {
+                "name": "Tenant Bound Customer",
+                "phone": "9333333303",
+                "address": "Test Address",
+                "area": "Test Area",
+                "city": "Agra",
+                "state": "Uttar Pradesh",
+                "pincode": "282001",
+                "ro_model": self.model.id,
+                "asset_id": self.asset.id,
+                "total_amount_received": "3000",
+                "monthly_rent": "300",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        customer = Customer.objects.get(pk=response.data["customer_id"])
+        self.assertEqual(customer.company_id, self.company.id)
+        self.assertEqual(customer.assigned_engineer_id, self.employee.id)
+        job = customer.jobs.get(pk=response.data["job_id"])
+        self.assertEqual(job.company_id, self.company.id)
+        self.assertEqual(job.engineer_id, self.employee.id)
+
+    def test_walkin_rejects_already_assigned_asset(self):
+        existing = Customer.objects.create(
+            company=self.company,
+            name="Existing Customer",
+            phone="9333333304",
+            address="Existing",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="Split Test RO",
+        )
+        self.asset.current_customer = existing
+        self.asset.status = "INSTALLED"
+        self.asset.save(update_fields=["current_customer", "status"])
+
+        response = self.client.post(
+            "/api/customers/walk-in/",
+            {
+                "name": "Must Not Claim Asset",
+                "phone": "9333333305",
+                "address": "Test Address",
+                "area": "Test Area",
+                "city": "Agra",
+                "state": "Uttar Pradesh",
+                "pincode": "282001",
+                "ro_model": self.model.id,
+                "asset_id": self.asset.id,
+                "total_amount_received": "3000",
+                "monthly_rent": "300",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(Customer.objects.filter(phone="9333333305").exists())
