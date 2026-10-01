@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
 import '../../services/ro_alarm_service.dart';
+import '../admin/admin_ro_passport_screen.dart';
 
 class ROAlarmScreen extends StatefulWidget {
   const ROAlarmScreen({super.key});
@@ -356,9 +357,42 @@ class _ROAlarmScreenState extends State<ROAlarmScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_role == 'ADMIN' && !_loading) {
+      return DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('RO Control Center'),
+            bottom: const TabBar(
+              tabs: [
+                Tab(
+                  icon: Icon(Icons.badge_outlined),
+                  text: 'Digital RO',
+                ),
+                Tab(
+                  icon: Icon(Icons.notifications_active_outlined),
+                  text: 'Alarms',
+                ),
+              ],
+            ),
+          ),
+          body: TabBarView(
+            children: [
+              const AdminROPassportScreen(embedded: true),
+              _alarmBody(showOwnAppBar: false),
+            ],
+          ),
+        ),
+      );
+    }
+    return _alarmBody(showOwnAppBar: true);
+  }
+
+  Widget _alarmBody({required bool showOwnAppBar}) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('RO Alarm Center'),
+      appBar: showOwnAppBar
+          ? AppBar(
+              title: const Text('RO Alarm Center'),
         actions: [
           if (_canConfigure)
             IconButton(
@@ -377,8 +411,9 @@ class _ROAlarmScreenState extends State<ROAlarmScreen> {
             onPressed: _working ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
-        ],
-      ),
+              ],
+            )
+          : null,
       floatingActionButton: _assets.isEmpty
           ? null
           : FloatingActionButton.extended(
