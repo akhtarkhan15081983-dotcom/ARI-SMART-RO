@@ -151,6 +151,51 @@ class AdminROPassportTests(APITestCase):
         self.assertIn("Legacy Sale Customer", names)
         self.assertNotIn("Hidden Customer", names)
 
+
+    def test_admin_registry_paginates_beyond_250_customers_without_hiding_them(self):
+        Customer.objects.bulk_create(
+            [
+                Customer(
+                    customer_id=f"PAGE-{index:04d}",
+                    company=self.company,
+                    name=f"Paged Customer {index:04d}",
+                    phone=f"8{index:09d}"[-10:],
+                    address="Paged address",
+                    city="Agra",
+                    state="Uttar Pradesh",
+                    pincode="282001",
+                    ro_model="ARI Max RO",
+                )
+                for index in range(251)
+            ]
+        )
+
+        self.client.force_authenticate(self.admin)
+        first = self.client.get(
+            "/api/jobs/admin/ro-parts-passports/",
+            {"page": 1, "page_size": 250},
+        )
+        second = self.client.get(
+            "/api/jobs/admin/ro-parts-passports/",
+            {"page": 2, "page_size": 250},
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.data["customer_count"], 253)
+        self.assertEqual(first.data["returned_customer_count"], 250)
+        self.assertTrue(first.data["has_more"])
+        self.assertEqual(first.data["next_page"], 2)
+        self.assertEqual(second.data["customer_count"], 253)
+        self.assertEqual(second.data["returned_customer_count"], 3)
+        self.assertFalse(second.data["has_more"])
+        self.assertIsNone(second.data["next_page"])
+        ids = {
+            row["customer_number"]
+            for row in [*first.data["customers"], *second.data["customers"]]
+        }
+        self.assertEqual(len(ids), 253)
+
     def test_customer_cannot_open_admin_registry_or_setup(self):
         self.client.force_authenticate(self.customer_user)
         registry = self.client.get("/api/jobs/admin/ro-parts-passports/")
