@@ -58,6 +58,18 @@ class _DownloadCenterScreenState extends State<DownloadCenterScreen> {
 
   String _name(File file) => file.path.split(Platform.pathSeparator).last;
 
+  Future<bool> _openOnWindows(File file) async {
+    if (!isDownloadCenterFile(file)) return false;
+
+    final process = await Process.start(
+      'rundll32.exe',
+      ['url.dll,FileProtocolHandler', file.path],
+      mode: ProcessStartMode.detached,
+      runInShell: false,
+    );
+    return process.pid > 0;
+  }
+
   Future<void> _open(File file) async {
     if (!await file.exists()) {
       if (mounted) {
@@ -76,6 +88,11 @@ class _DownloadCenterScreenState extends State<DownloadCenterScreen> {
               {'path': file.path},
             ) ??
             false;
+      } else if (Platform.isWindows) {
+        // The Windows Safe Build intentionally excludes url_launcher_windows.
+        // Use the Windows file-protocol handler directly so local PDFs/XLSX/CSV
+        // open in the user's configured default desktop application.
+        opened = await _openOnWindows(file);
       } else {
         final uri = Uri.file(file.path);
         opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -95,6 +112,12 @@ class _DownloadCenterScreenState extends State<DownloadCenterScreen> {
                   : 'Unable to open this file. It may be unavailable or unsupported.',
             ),
           ),
+        );
+      }
+    } on ProcessException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Windows could not find an app associated with this file type.')),
         );
       }
     } catch (_) {
