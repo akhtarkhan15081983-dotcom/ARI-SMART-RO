@@ -643,6 +643,13 @@ class EmployeeAPITests(TestCase):
 
         self.engineer.save()
 
+        Attendance.objects.create(
+            employee=self.engineer,
+            date=timezone.localdate(),
+            check_in=timezone.now(),
+            status="PRESENT",
+        )
+
         self.client.force_authenticate(
             user=self.manager_user
         )
@@ -698,6 +705,9 @@ class EmployeeAPITests(TestCase):
 
         self.assertTrue(
             engineer_data["online"]
+        )
+        self.assertTrue(
+            engineer_data["attendance_active"]
         )
 
     # ========================================================
