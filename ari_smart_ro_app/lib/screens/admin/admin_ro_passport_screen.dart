@@ -211,7 +211,8 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
         subtitle: Text(
           '${_text(customer['customer_number'])} • '
           '${_text(customer['phone'])}\n'
-          '${_text(customer['master_ro_model'])} • ${assets.length} RO',
+          '${_text(customer['card_number'])} • '
+          '${_text(customer['city'])} • ${assets.length} RO',
         ),
         trailing: alarmCount > 0
             ? Badge(
@@ -221,8 +222,17 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
             : null,
         childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
         children: [
+          _info('Master RO model', customer['master_ro_model']),
           _info('Ownership', customer['ownership_type']),
           _info('Sale / installation', customer['installation_date']),
+          _info(
+            'Address',
+            [
+              customer['address'],
+              customer['area'],
+              customer['city'],
+            ].where((e) => (e ?? '').toString().trim().isNotEmpty).join(', '),
+          ),
           if (assets.isEmpty) ...[
             const ListTile(
               contentPadding: EdgeInsets.zero,
@@ -283,7 +293,34 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
         ),
         childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         children: [
+          if ((asset['ro_model_image_url'] ?? '').toString().isNotEmpty) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: double.infinity,
+                height: 150,
+                child: Image.network(
+                  asset['ro_model_image_url'].toString(),
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const ColoredBox(
+                    color: Color(0xFFE2E8F0),
+                    child: Center(child: Icon(Icons.broken_image_outlined)),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           _info('Sale date', asset['purchase_date']),
+          _info('Next filter change', asset['next_filter_change_date']),
+          _info(
+            'TDS attention level',
+            asset['output_tds_attention_level'],
+          ),
+          _info(
+            'Alarm monitoring',
+            asset['alarm_monitoring_enabled'] == false ? 'OFF' : 'ON',
+          ),
           _info('Last verified check', asset['last_visual_check']),
           SizedBox(
             width: double.infinity,
