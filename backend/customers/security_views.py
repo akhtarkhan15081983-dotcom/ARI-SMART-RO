@@ -146,6 +146,15 @@ class TenantScopedRentPaymentCreateAPIView(RentPaymentCreateAPIView):
 
     @transaction.atomic
     def post(self, request):
+        if request.user.role not in self.ALLOWED_ROLES:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Only Admin, Manager, Office or Engineer can record rent payment.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         _ensure_local_payment_date(request)
         customer_id = request.data.get("customer_id")
         try:
