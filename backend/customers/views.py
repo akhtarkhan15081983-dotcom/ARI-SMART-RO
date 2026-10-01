@@ -1111,7 +1111,26 @@ class WalkInCustomerAPIView(APIView):
     permission_classes = [IsAuthenticated, HasRequiredFeature]
     required_feature = "walkin"
 
+    @transaction.atomic
     def post(self, request):
+
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        engineer = EmployeeProfile.objects.filter(
+            user=request.user,
+            company=company,
+            designation="ENGINEER",
+            is_active=True,
+        ).first()
+        if engineer is None:
+            return Response(
+                {"success": False, "message": "Active engineer profile not found in this company."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         # Customer pays one upfront amount. Installation is always ₹600;
         # the remaining amount is saved as refundable/security deposit.
@@ -1149,38 +1168,54 @@ class WalkInCustomerAPIView(APIView):
         )
 
         if serializer.is_valid():
+            try:
+                ro_model = ROModel.objects.get(id=request.data["ro_model"])
+            except (ROModel.DoesNotExist, KeyError, TypeError, ValueError):
+                return Response(
+                    {"success": False, "message": "Valid RO model is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-            customer = serializer.save()
+            try:
+                asset = (
+                    ROAsset.objects
+                    .select_for_update()
+                    .get(
+                        id=request.data["asset_id"],
+                        ro_model=ro_model,
+                        is_active=True,
+                        status="WAREHOUSE",
+                        current_customer__isnull=True,
+                    )
+                )
+            except (ROAsset.DoesNotExist, KeyError, TypeError, ValueError):
+                return Response(
+                    {
+                        "success": False,
+                        "message": "RO asset is unavailable, already assigned, or does not match the selected model.",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
 
-            ro_model = ROModel.objects.get(
-                id=request.data["ro_model"]
-            )
-
-            asset = ROAsset.objects.get(
-                id=request.data["asset_id"]
+            customer = serializer.save(
+                company=company,
+                assigned_engineer=engineer,
+                installation_date=timezone.localdate(),
             )
 
             asset.current_customer = customer
             asset.status = "INSTALLED"
-            asset.save()
+            asset.save(update_fields=["current_customer", "status"])
 
-            
             job = Job.objects.create(
-
+                company=company,
                 customer=customer,
-
                 ro_asset=asset,
-
-                engineer=request.user.employee_profile,
-
+                engineer=engineer,
                 job_type="INSTALLATION",
-
                 priority="MEDIUM",
-
                 scheduled_date=timezone.now(),
-
                 status="IN_PROGRESS",
-
             )
 
 
