@@ -23,6 +23,19 @@ def customer_for_user(user):
     return Customer.objects.filter(phone=phone).order_by("id").first()
 
 
+def _offer_creator_scope_q(customer):
+    company_id = getattr(customer, "company_id", None)
+    if company_id is None:
+        return Q()
+    return (
+        Q(
+            created_by__company_memberships__company_id=company_id,
+            created_by__company_memberships__is_active=True,
+        )
+        | Q(created_by__employee_profile__company_id=company_id)
+    )
+
+
 def offer_audience_q_for_user(user):
     criteria = (
         Q(audience="ALL", target_user__isnull=True)
@@ -35,6 +48,9 @@ def offer_audience_q_for_user(user):
             criteria |= Q(audience="ACTIVE", target_user__isnull=True)
         else:
             criteria |= Q(audience="INACTIVE", target_user__isnull=True)
+        creator_scope = _offer_creator_scope_q(customer)
+        if creator_scope:
+            criteria = criteria & creator_scope
 
     return criteria
 
@@ -59,10 +75,12 @@ def customer_user(customer):
     ).first()
 
 
-def users_for_customer_status(is_active):
+def users_for_customer_status(is_active, company=None):
     from customers.models import Customer
 
     customers = Customer.objects.filter(is_active=is_active).select_related("user")
+    if company is not None:
+        customers = customers.filter(company=company)
     user_ids = set()
     fallback_phones = set()
 
