@@ -29,6 +29,7 @@ class LocalSTT:
         default_backend = "local" if settings.DEBUG else "remote"
         self.backend = os.getenv("ANDY_STT_BACKEND", default_backend).strip().lower()
         self.remote_url = os.getenv("ANDY_STT_URL", "").strip()
+        self.service_token = os.getenv("ANDY_AI_SERVICE_TOKEN", "").strip()
         self.remote_timeout = int(os.getenv("ANDY_STT_TIMEOUT", "90"))
         self.model_name = os.getenv("ANDY_STT_MODEL", "small")
         self.device = os.getenv("ANDY_STT_DEVICE", "cpu")
@@ -107,6 +108,8 @@ class LocalSTT:
             raise LocalSTTError(
                 "ANDY speech recognition service is unavailable. Configure ANDY_STT_URL."
             )
+        if not settings.DEBUG and not self.service_token:
+            raise LocalSTTError("ANDY AI service token is not configured.")
 
         boundary = f"----ariandy{uuid.uuid4().hex}"
         filename = os.path.basename(audio_path) or "voice.m4a"
@@ -140,6 +143,7 @@ class LocalSTT:
             headers={
                 "Content-Type": f"multipart/form-data; boundary={boundary}",
                 "Accept": "application/json",
+                **({"Authorization": f"Bearer {self.service_token}"} if self.service_token else {}),
             },
             method="POST",
         )
