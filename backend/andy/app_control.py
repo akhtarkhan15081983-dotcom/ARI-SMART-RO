@@ -1,5 +1,6 @@
 import re
 
+from django.db.models import Q
 from django.utils import timezone
 
 from .ro_knowledge import answer_ro_question
@@ -36,6 +37,29 @@ class AndyAppControl:
             return self.user.customer_profile
         except Exception:
             return None
+
+    def _company(self):
+        from tenancy.models import CompanyMembership
+
+        membership = (
+            CompanyMembership.objects.filter(
+                user=self.user,
+                is_active=True,
+                company__is_active=True,
+                company__lifecycle_status="ACTIVE",
+            )
+            .select_related("company")
+            .first()
+        )
+        if membership is not None:
+            return membership.company
+        try:
+            company = self.user.employee_profile.company
+        except Exception:
+            return None
+        if company and company.is_active and company.lifecycle_status == "ACTIVE":
+            return company
+        return None
 
     def _capabilities(self):
         role = getattr(self.user, "role", "")
@@ -198,10 +222,34 @@ class AndyAppControl:
         from jobs.models import Job
         from service.models import Service
 
-        pending_jobs = Job.objects.exclude(status__in=("COMPLETED", "CANCELLED")).count()
-        open_complaints = Complaint.objects.exclude(status__in=("RESOLVED", "CLOSED", "CANCELLED")).count()
-        pending_services = Service.objects.exclude(status__in=("COMPLETED", "CANCELLED")).count()
-        pending_installations = Installation.objects.exclude(status__in=("COMPLETED", "CANCELLED")).count()
+        company = self._company()
+        if company is None:
+            return {
+                "handled": True,
+                "intent": "operations_summary_unavailable",
+                "answer": "Active company workspace nahi mila, isliye operations summary nahi dikhaya ja sakta.",
+            }
+
+        pending_jobs = Job.objects.filter(
+            Q(company=company)
+            | Q(company__isnull=True, engineer__company=company)
+            | Q(company__isnull=True, customer__company=company)
+        ).exclude(status__in=("COMPLETED", "CANCELLED")).distinct().count()
+        open_complaints = Complaint.objects.filter(
+            Q(company=company)
+            | Q(company__isnull=True, engineer__company=company)
+            | Q(company__isnull=True, customer__company=company)
+        ).exclude(status__in=("RESOLVED", "CLOSED", "CANCELLED")).distinct().count()
+        pending_services = Service.objects.filter(
+            Q(company=company)
+            | Q(company__isnull=True, engineer__company=company)
+            | Q(company__isnull=True, customer__company=company)
+        ).exclude(status__in=("COMPLETED", "CANCELLED")).distinct().count()
+        pending_installations = Installation.objects.filter(
+            Q(customer__company=company)
+            | Q(engineer__company=company)
+            | Q(job__company=company)
+        ).exclude(status__in=("COMPLETED", "CANCELLED")).distinct().count()
         return {
             "handled": True,
             "intent": "operations_summary",
@@ -229,7 +277,14 @@ class AndyAppControl:
         ):
             from customers.models import Customer
 
-            count = Customer.objects.count()
+            company = self._company()
+            if company is None:
+                return {
+                    "handled": True,
+                    "intent": "customer_count_unavailable",
+                    "answer": "Active company workspace nahi mila, isliye customer count nahi dikhaya ja sakta.",
+                }
+            count = Customer.objects.filter(company=company).count()
             return {
                 "handled": True,
                 "intent": "customer_count",
