@@ -1,4 +1,5 @@
 from django.db import models, transaction
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.utils import timezone
 import uuid
 
@@ -273,6 +274,16 @@ class Customer(models.Model):
         max_digits=10,
         decimal_places=2,
         default=0
+    )
+
+    rent_due_day = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(31)],
+        help_text=(
+            "Monthly RO rent due day (1-31). If blank, the installation day "
+            "is used for backward compatibility."
+        ),
     )
 
     security_deposit = models.DecimalField(
