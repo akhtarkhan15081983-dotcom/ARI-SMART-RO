@@ -18,6 +18,21 @@ from tenancy.access import request_company
 from tenancy.models import CompanyMembership
 
 
+def _page_window(request, *, default_size=100, max_size=500):
+    requested = "page" in request.query_params or "page_size" in request.query_params
+    try:
+        page = max(1, int(request.query_params.get("page") or 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.query_params.get("page_size") or default_size)
+    except (TypeError, ValueError):
+        page_size = default_size
+    page_size = min(max(page_size, 1), max_size)
+    start = (page - 1) * page_size
+    return requested, page, page_size, start, start + page_size
+
+
 def _active_notifications(user):
     now = timezone.now()
     return UserNotification.objects.filter(user=user).filter(
@@ -143,6 +158,10 @@ class NotificationCenterAPIView(APIView):
     def get(self, request):
         sync_system_notifications(request.user)
         rows = _active_notifications(request.user)
+        paginated, page, page_size, start, end = _page_window(
+            request, default_size=100, max_size=200
+        )
+        total_count = rows.count()
         payload = [{
             "id": row.id,
             "title": row.title,
@@ -155,11 +174,20 @@ class NotificationCenterAPIView(APIView):
             "valid_until": row.valid_until.isoformat() if row.valid_until else None,
             "metadata": row.metadata,
             "created_at": row.created_at.isoformat(),
-        } for row in rows[:200]]
-        return Response({
+        } for row in rows[start:end]]
+        response = {
             "items": payload,
             "unread_count": rows.filter(is_read=False).count(),
-        })
+        }
+        if paginated:
+            response.update({
+                "count": total_count,
+                "page": page,
+                "page_size": page_size,
+                "has_more": end < total_count,
+                "next_page": page + 1 if end < total_count else None,
+            })
+        return Response(response)
 
     def post(self, request):
         notification_id = request.data.get("notification_id")
@@ -193,9 +221,10 @@ class AdminNotificationCampaignAPIView(APIView):
         company_users = _company_users(company)
         rows = NotificationCampaign.objects.filter(
             created_by__in=company_users,
-        )[:100]
-        return Response({
-            "campaigns": [{
+        )
+        paginated, page, page_size, start, end = _page_window(request)
+        total_count = rows.count()
+        payload = [{
                 "id": row.id,
                 "title": row.title,
                 "category": row.category,
@@ -208,8 +237,17 @@ class AdminNotificationCampaignAPIView(APIView):
                 "delivery_count": row.deliveries.count(),
                 "unread_count": row.deliveries.filter(is_read=False).count(),
                 "created_at": row.created_at.isoformat(),
-            } for row in rows]
-        })
+            } for row in rows[start:end]]
+        response = {"campaigns": payload}
+        if paginated:
+            response.update({
+                "count": total_count,
+                "page": page,
+                "page_size": page_size,
+                "has_more": end < total_count,
+                "next_page": page + 1 if end < total_count else None,
+            })
+        return Response(response)
 
     def post(self, request):
         company = request_company(request)
