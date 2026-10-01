@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from tenancy.access import HasRequiredFeature, has_feature_access
+from tenancy.access import HasRequiredFeature, has_feature_access, request_company
 
 from attendance.models import Attendance
 from attendance.work_hours import reconcile_open_attendance
@@ -193,18 +193,36 @@ class EmployeeHrmsDashboardAPIView(APIView):
         policy = HRPolicy.current()
 
         if _role(request.user, "ADMIN", "MANAGER", "OFFICE"):
+            company = request_company(request)
+            if company is None:
+                return Response(
+                    {"detail": "Active company workspace not found."},
+                    status=403,
+                )
             month_end = today.replace(day=calendar.monthrange(today.year, today.month)[1])
-            employees = EmployeeProfile.objects.filter(is_active=True).select_related("user")
-            attendance = Attendance.objects.filter(date__range=(month_start, today))
+            employees = EmployeeProfile.objects.filter(
+                is_active=True,
+                company=company,
+            ).select_related("user")
+            attendance = Attendance.objects.filter(
+                employee__company=company,
+                date__range=(month_start, today),
+            )
             leaves = LeaveRequest.objects.filter(
+                employee__company=company,
                 start_date__lte=month_end,
                 end_date__gte=month_start,
             )
-            payroll = PayrollRecord.objects.filter(payroll_month=month_start)
+            payroll = PayrollRecord.objects.filter(
+                employee__company=company,
+                payroll_month=month_start,
+            )
             penalties = EmployeePenalty.objects.filter(
-                penalty_date__range=(month_start, today)
+                employee__company=company,
+                penalty_date__range=(month_start, today),
             )
             present_today = Attendance.objects.filter(
+                employee__company=company,
                 date=today,
             ).exclude(status="ABSENT").values("employee_id").distinct().count()
             active_count = employees.count()
