@@ -47,6 +47,14 @@ class PublicCustomerRequest(models.Model):
         default=public_request_number,
         editable=False,
     )
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="public_customer_requests",
+        db_index=True,
+    )
     request_type = models.CharField(max_length=15, choices=REQUEST_TYPES)
     product = models.ForeignKey(
         "products.ROModel",
