@@ -6,11 +6,12 @@ from django.db import transaction
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 from jobs.idempotency import action_id_from_request, replay_response, remember_response
+from tenancy.access import has_feature_access
 
 from .models import Referral, WalletReward, WalletLedgerEntry
 from .serializers import (
@@ -30,8 +31,19 @@ from .services import (
 )
 
 
+
+class ReferralFeaturePermission(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated or not user.is_active:
+            return False
+        if str(getattr(user, "role", "") or "").upper() == "CUSTOMER":
+            return bool(getattr(user, "is_verified", False))
+        return has_feature_access(request, "referral")
+
+
 class ReferralMeAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def get(self, request):
         expire_rewards()
@@ -79,7 +91,7 @@ class ReferralMeAPIView(APIView):
 
 
 class ClaimReferralAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def post(self, request):
         serializer = ClaimReferralSerializer(data=request.data)
@@ -102,7 +114,7 @@ class ClaimReferralAPIView(APIView):
 
 
 class WelcomeRewardAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def post(self, request):
         try:
@@ -114,7 +126,7 @@ class WelcomeRewardAPIView(APIView):
 
 
 class WalletBalanceAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def get(self, request):
         expire_rewards()
@@ -124,7 +136,7 @@ class WalletBalanceAPIView(APIView):
 
 
 class WalletHistoryAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def get(self, request):
         entries = WalletLedgerEntry.objects.filter(user=request.user).select_related("reward")
@@ -137,7 +149,7 @@ class WalletHistoryAPIView(APIView):
 
 
 class WalletQuoteAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def post(self, request):
         try:
@@ -152,7 +164,7 @@ class WalletQuoteAPIView(APIView):
 
 
 class WalletRedeemAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     @transaction.atomic
     def post(self, request):
