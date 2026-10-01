@@ -34,6 +34,39 @@ jobs:
       DB_PORT: ${{ secrets.REHEARSAL_DB_PORT }}
 
     steps:
+      - name: Normalize rehearsal database connection inputs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse, unquote
+
+          host_value = (os.environ.get('DB_HOST') or '').strip()
+          updates = {}
+          if '://' in host_value:
+              parsed = urlparse(host_value)
+              if parsed.scheme not in {'postgres', 'postgresql'}:
+                  raise SystemExit('REHEARSAL_DB_HOST contains an unsupported URL scheme.')
+              if not parsed.hostname:
+                  raise SystemExit('REHEARSAL_DB_HOST URL does not contain a valid hostname.')
+              updates['DB_HOST'] = parsed.hostname
+              if parsed.port:
+                  updates['DB_PORT'] = str(parsed.port)
+              if parsed.username and not (os.environ.get('DB_USER') or '').strip():
+                  updates['DB_USER'] = unquote(parsed.username)
+              if parsed.password and not (os.environ.get('DB_PASSWORD') or '').strip():
+                  updates['DB_PASSWORD'] = unquote(parsed.password)
+              parsed_db = (parsed.path or '').lstrip('/')
+              if parsed_db and not (os.environ.get('DB_NAME') or '').strip():
+                  updates['DB_NAME'] = unquote(parsed_db)
+
+          for key, value in updates.items():
+              with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+                  handle.write(f'{key}={value}\n')
+
+          print('Rehearsal database connection inputs normalized without exposing credentials.')
+          PY
+
       - name: Guard explicit rehearsal confirmation
         shell: bash
         run: |
