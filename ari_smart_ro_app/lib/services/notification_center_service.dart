@@ -38,19 +38,39 @@ class NotificationCenterService {
 
   Future<NotificationCenterData> fetch() async {
     await _syncCustomerRoAlarms();
-    final response = await http
-        .get(
-          Uri.parse('${ApiService.baseUrl}/auth/notifications/'),
-          headers: await ApiService.authHeaders(),
-        )
-        .timeout(const Duration(seconds: 20));
-    if (response.statusCode != 200) throw Exception(_message(response));
-    final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
-    return NotificationCenterData(
-      items: (data['items'] as List<dynamic>? ?? const [])
+    const pageSize = 200;
+    var page = 1;
+    var unreadCount = 0;
+    final items = <Map<String, dynamic>>[];
+
+    while (true) {
+      final response = await http
+          .get(
+            Uri.parse('${ApiService.baseUrl}/auth/notifications/').replace(
+              queryParameters: {
+                'page': '$page',
+                'page_size': '$pageSize',
+              },
+            ),
+            headers: await ApiService.authHeaders(),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) throw Exception(_message(response));
+      final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+      if (page == 1) {
+        unreadCount = (data['unread_count'] as num?)?.toInt() ?? 0;
+      }
+      final pageItems = (data['items'] as List<dynamic>? ?? const [])
           .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList(),
-      unreadCount: (data['unread_count'] as num?)?.toInt() ?? 0,
+          .toList(growable: false);
+      items.addAll(pageItems);
+      if (data['has_more'] != true || pageItems.isEmpty) break;
+      page = (data['next_page'] as num?)?.toInt() ?? (page + 1);
+    }
+
+    return NotificationCenterData(
+      items: items,
+      unreadCount: unreadCount,
     );
   }
 
@@ -72,17 +92,11 @@ class NotificationCenterService {
     if (response.statusCode != 200) throw Exception(_message(response));
   }
 
-  Future<List<Map<String, dynamic>>> adminCampaigns() async {
-    final response = await http.get(
-      Uri.parse('${ApiService.baseUrl}/auth/admin/notification-campaigns/'),
-      headers: await ApiService.authHeaders(),
-    );
-    if (response.statusCode != 200) throw Exception(_message(response));
-    final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
-    return (data['campaigns'] as List<dynamic>? ?? const [])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
-  }
+  Future<List<Map<String, dynamic>>> adminCampaigns() =>
+      _fetchAllAdminRows(
+        '/auth/admin/notification-campaigns/',
+        'campaigns',
+      );
 
   Future<Map<String, dynamic>> createCampaign(Map<String, dynamic> payload) async {
     final response = await http.post(
@@ -94,28 +108,44 @@ class NotificationCenterService {
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
-  Future<List<Map<String, dynamic>>> adminOffers() async {
-    final response = await http.get(
-      Uri.parse('${ApiService.baseUrl}/auth/admin/offers/'),
-      headers: await ApiService.authHeaders(),
-    );
-    if (response.statusCode != 200) throw Exception(_message(response));
-    final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
-    return (data['offers'] as List<dynamic>? ?? const [])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
-  }
+  Future<List<Map<String, dynamic>>> adminOffers() =>
+      _fetchAllAdminRows('/auth/admin/offers/', 'offers');
 
-  Future<List<Map<String, dynamic>>> adminOfferCustomers() async {
-    final response = await http.get(
-      Uri.parse('${ApiService.baseUrl}/auth/admin/offers/customers/'),
-      headers: await ApiService.authHeaders(),
-    );
-    if (response.statusCode != 200) throw Exception(_message(response));
-    final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
-    return (data['customers'] as List<dynamic>? ?? const [])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
+  Future<List<Map<String, dynamic>>> adminOfferCustomers() =>
+      _fetchAllAdminRows(
+        '/auth/admin/offers/customers/',
+        'customers',
+        pageSize: 500,
+      );
+
+  Future<List<Map<String, dynamic>>> _fetchAllAdminRows(
+    String path,
+    String key, {
+    int pageSize = 200,
+  }) async {
+    var page = 1;
+    final rows = <Map<String, dynamic>>[];
+
+    while (true) {
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}$path').replace(
+          queryParameters: {
+            'page': '$page',
+            'page_size': '$pageSize',
+          },
+        ),
+        headers: await ApiService.authHeaders(),
+      );
+      if (response.statusCode != 200) throw Exception(_message(response));
+      final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+      final pageRows = (data[key] as List<dynamic>? ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(growable: false);
+      rows.addAll(pageRows);
+      if (data['has_more'] != true || pageRows.isEmpty) break;
+      page = (data['next_page'] as num?)?.toInt() ?? (page + 1);
+    }
+    return rows;
   }
 
   Future<Map<String, dynamic>> createOffer(Map<String, dynamic> payload) async {
