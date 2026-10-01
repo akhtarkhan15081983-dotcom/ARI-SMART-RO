@@ -14,6 +14,8 @@ from .models import (
 )
 from .permissions import IsAdmin
 from .system_notifications import sync_system_notifications
+from tenancy.access import request_company
+from tenancy.models import CompanyMembership
 
 
 def _active_notifications(user):
@@ -23,8 +25,78 @@ def _active_notifications(user):
     )
 
 
+def _campaign_company(campaign):
+    creator = campaign.created_by
+    if creator is None:
+        return None
+    membership = (
+        CompanyMembership.objects.filter(
+            user=creator,
+            is_active=True,
+            company__is_active=True,
+            company__lifecycle_status="ACTIVE",
+        )
+        .select_related("company")
+        .first()
+    )
+    if membership is not None:
+        return membership.company
+    employee = getattr(creator, "employee_profile", None)
+    company = getattr(employee, "company", None)
+    if (
+        company is not None
+        and company.is_active
+        and company.lifecycle_status == "ACTIVE"
+    ):
+        return company
+    return None
+
+
+def _company_users(company):
+    if company is None:
+        return User.objects.none()
+
+    from customers.models import Customer
+
+    explicitly_linked = Q(
+        company_memberships__company=company,
+        company_memberships__is_active=True,
+    ) | Q(employee_profile__company=company) | Q(customer_profile__company=company)
+
+    legacy_phones = set(
+        Customer.objects.filter(
+            company=company,
+            user__isnull=True,
+        )
+        .exclude(phone="")
+        .values_list("phone", flat=True)
+    )
+    if legacy_phones:
+        ambiguous = set(
+            Customer.objects.filter(phone__in=legacy_phones)
+            .exclude(company=company)
+            .exclude(company__isnull=True)
+            .values_list("phone", flat=True)
+        )
+        legacy_phones.difference_update(ambiguous)
+
+    fallback = Q()
+    if legacy_phones:
+        fallback = Q(
+            role="CUSTOMER",
+            customer_profile__isnull=True,
+            phone__in=legacy_phones,
+        )
+
+    return User.objects.filter(
+        Q(explicitly_linked) | fallback,
+        is_active=True,
+    ).distinct()
+
+
 def _campaign_recipients(campaign):
-    users = User.objects.filter(is_active=True)
+    company = _campaign_company(campaign)
+    users = _company_users(company)
     if campaign.audience == "CUSTOMERS":
         users = users.filter(role="CUSTOMER")
     elif campaign.audience == "EMPLOYEES":
@@ -32,7 +104,10 @@ def _campaign_recipients(campaign):
     elif campaign.audience == "ROLE":
         users = users.filter(role=campaign.target_role)
     elif campaign.audience == "USERS":
-        return campaign.target_users.filter(is_active=True)
+        return campaign.target_users.filter(
+            id__in=users.values("id"),
+            is_active=True,
+        )
     return users
 
 
@@ -109,7 +184,16 @@ class AdminNotificationCampaignAPIView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        rows = NotificationCampaign.objects.all()[:100]
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=403,
+            )
+        company_users = _company_users(company)
+        rows = NotificationCampaign.objects.filter(
+            created_by__in=company_users,
+        )[:100]
         return Response({
             "campaigns": [{
                 "id": row.id,
@@ -128,6 +212,12 @@ class AdminNotificationCampaignAPIView(APIView):
         })
 
     def post(self, request):
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=403,
+            )
         audience = str(request.data.get("audience") or "ALL").upper()
         target_role = str(request.data.get("target_role") or "").upper()
         allowed_audiences = {choice[0] for choice in NotificationCampaign.AUDIENCE_CHOICES}
@@ -175,7 +265,9 @@ class AdminNotificationCampaignAPIView(APIView):
 
         if audience == "USERS":
             user_ids = request.data.get("user_ids") or []
-            campaign.target_users.set(User.objects.filter(id__in=user_ids, is_active=True))
+            campaign.target_users.set(
+                _company_users(company).filter(id__in=user_ids)
+            )
         delivered = materialize_campaign(campaign)
         return Response({
             "id": campaign.id,
