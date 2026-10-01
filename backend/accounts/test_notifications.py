@@ -4,11 +4,19 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from customers.models import Customer
+from tenancy.models import Company, CompanyMembership
 from .models import CustomerEngagement, User, UserNotification
 
 
 class NotificationCenterTests(APITestCase):
     def setUp(self):
+        self.company = Company.objects.create(
+            name="Notification Test Company",
+            slug="notification-test-company",
+            phone="9888899999",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
         self.admin = User.objects.create_user(
             phone="9888800001",
             password="Strong@Test1",
@@ -16,12 +24,24 @@ class NotificationCenterTests(APITestCase):
             role="ADMIN",
             is_verified=True,
         )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.admin,
+            role="ADMIN",
+            is_active=True,
+        )
         self.engineer = User.objects.create_user(
             phone="9888800002",
             password="Strong@Test1",
             first_name="Engineer",
             role="ENGINEER",
             is_verified=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.engineer,
+            role="STAFF",
+            is_active=True,
         )
         self.customer_user = User.objects.create_user(
             phone="9888800003",
@@ -31,6 +51,7 @@ class NotificationCenterTests(APITestCase):
             is_verified=True,
         )
         self.customer = Customer.objects.create(
+            company=self.company,
             user=self.customer_user,
             name="Offer Customer",
             phone=self.customer_user.phone,
@@ -67,6 +88,55 @@ class NotificationCenterTests(APITestCase):
         self.assertFalse(
             UserNotification.objects.filter(
                 user=self.customer_user, title="Engineer briefing"
+            ).exists()
+        )
+
+    def test_campaign_does_not_reach_other_company_employee(self):
+        other_company = Company.objects.create(
+            name="Other Notification Company",
+            slug="other-notification-company",
+            phone="9777799999",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_engineer = User.objects.create_user(
+            phone="9777700002",
+            password="Strong@Test1",
+            first_name="Other Engineer",
+            role="ENGINEER",
+            is_verified=True,
+        )
+        CompanyMembership.objects.create(
+            company=other_company,
+            user=other_engineer,
+            role="STAFF",
+            is_active=True,
+        )
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/auth/admin/notification-campaigns/",
+            {
+                "title": "Tenant-only engineer briefing",
+                "message": "Visible only inside this company.",
+                "audience": "ROLE",
+                "target_role": "ENGINEER",
+                "category": "JOB",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                user=self.engineer,
+                title="Tenant-only engineer briefing",
+            ).exists()
+        )
+        self.assertFalse(
+            UserNotification.objects.filter(
+                user=other_engineer,
+                title="Tenant-only engineer briefing",
             ).exists()
         )
 
