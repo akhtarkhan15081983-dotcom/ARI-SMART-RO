@@ -6,7 +6,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.generics import get_object_or_404
 
 from accounts.permissions import IsReadOnlyOrStaffOperator
-from django.db.models import Q
+from tenancy.access import request_company
+from django.db.models import Count, Q
 from .models import (
     ProductCategory,
     ROModel,
@@ -235,6 +236,30 @@ class CustomerShopCatalogAPIView(APIView):
 
         if category_id.isdigit():
             queryset = queryset.filter(category_id=int(category_id))
+
+        company = None
+        user = getattr(request, "user", None)
+        if user is not None and getattr(user, "is_authenticated", False):
+            company = request_company(request)
+            if company is None:
+                try:
+                    company = user.customer_profile.company
+                except Exception:
+                    company = None
+
+        if company is not None:
+            queryset = queryset.annotate(
+                tenant_stock_quantity=Count(
+                    "assets",
+                    filter=Q(
+                        assets__company=company,
+                        assets__is_active=True,
+                        assets__status="WAREHOUSE",
+                        assets__current_customer__isnull=True,
+                    ),
+                    distinct=True,
+                )
+            )
 
         serializer = ROModelSerializer(
             queryset.order_by("category__name", "model_name"),
