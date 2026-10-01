@@ -117,3 +117,47 @@ class AdminApprovedPasswordResetTests(TestCase):
             format="json",
         )
         self.assertEqual(approval.status_code, 400)
+
+
+    def test_admin_cannot_list_or_review_other_company_reset_request(self):
+        other_company = Company.objects.create(
+            name="Other Password Company",
+            slug="other-password-company",
+            phone="9111111111",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_user = User.objects.create_user(
+            phone="9000000010",
+            password="OtherStrong@123",
+            first_name="Other Engineer",
+            role="ENGINEER",
+            is_verified=True,
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=other_company,
+            user=other_user,
+            role="STAFF",
+            is_active=True,
+        )
+        other_reset = PasswordResetRequest.objects.create(
+            user=other_user,
+            status="PENDING",
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        listing = self.client.get("/api/auth/admin/password-reset-requests/")
+        self.assertEqual(listing.status_code, 200)
+        ids = {row["id"] for row in listing.data["requests"]}
+        self.assertNotIn(other_reset.id, ids)
+
+        review = self.client.post(
+            f"/api/auth/admin/password-reset-requests/{other_reset.id}/review/",
+            {"action": "approve"},
+            format="json",
+        )
+        self.assertEqual(review.status_code, 403)
+        other_reset.refresh_from_db()
+        self.assertEqual(other_reset.status, "PENDING")
+        self.assertEqual(other_reset.code_hash, "")
