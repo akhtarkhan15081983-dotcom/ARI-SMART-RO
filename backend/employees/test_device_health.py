@@ -170,6 +170,48 @@ class DeviceHealthTests(TestCase):
         self.assertIn(response.data[0]["status"], {"HEALTHY", "STALE"})
         self.assertEqual(response.data[0]["risk_level"], "CLEAR")
 
+    def test_admin_device_health_hides_other_company_employee(self):
+        other_company = Company.objects.create(
+            name="Other Device Company",
+            slug="other-device-company",
+            phone="9777777777",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_user = User.objects.create_user(
+            phone="9100000004",
+            password="Test@12345",
+            first_name="Other Device",
+            role="ENGINEER",
+            is_verified=True,
+            is_active=True,
+        )
+        other_employee = EmployeeProfile.objects.create(
+            company=other_company,
+            user=other_user,
+            employee_id="EMP-OTHER-HEALTH",
+            gender="MALE",
+            joining_date=date(2026, 1, 1),
+            designation="ENGINEER",
+            salary=Decimal("25000.00"),
+            is_active=True,
+        )
+        EmployeeDeviceHealth.objects.create(
+            employee=other_employee,
+            device_id="other-company-device",
+            app_version="1.0.48",
+            os_version="16",
+            location_permission="GRANTED",
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/employees/admin/device-health/")
+
+        self.assertEqual(response.status_code, 200)
+        employee_codes = {row["employee_code"] for row in response.data}
+        self.assertIn("EMP-HEALTH-001", employee_codes)
+        self.assertNotIn("EMP-OTHER-HEALTH", employee_codes)
+
     def test_admin_face_list_is_tenant_scoped(self):
         other_company = Company.objects.create(
             name="Other Company",
