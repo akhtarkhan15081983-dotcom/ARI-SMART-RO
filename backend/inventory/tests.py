@@ -18,6 +18,7 @@ from inventory.models import (
 )
 from partmaster.models import PartCategory, PartMaster
 from purchase.models import Supplier, Purchase, PurchaseItem
+from tenancy.models import Company, CompanyMembership
 
 
 class InventoryWorkflowTests(TestCase):
@@ -200,11 +201,27 @@ class InventorySecurityTests(TestCase):
             is_verified=True,
         )
 
+        self.company = Company.objects.create(
+            name="Inventory Security Company",
+            slug="inventory-security-company",
+            phone="9999900099",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        for user in (self.engineer_user, self.other_user, self.staff_user):
+            CompanyMembership.objects.create(
+                company=self.company,
+                user=user,
+                role="STAFF",
+                is_active=True,
+            )
+
         # -----------------------------------------
         # ENGINEERS
         # -----------------------------------------
 
         self.engineer = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.engineer_user,
             employee_id="TEST-001",
             gender="MALE",
@@ -213,6 +230,7 @@ class InventorySecurityTests(TestCase):
         )
 
         self.other_engineer = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.other_user,
             employee_id="TEST-002",
             gender="MALE",
@@ -626,6 +644,7 @@ class InventorySecurityTests(TestCase):
     def test_my_bag_only_returns_issued_items(self):
 
         bag = EngineerBagItem.objects.create(
+            company=self.company,
             engineer=self.engineer,
             inventory_item=self.inventory_item,
             status="ISSUED",
