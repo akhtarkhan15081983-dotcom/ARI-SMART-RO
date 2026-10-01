@@ -49,6 +49,7 @@ class LocalTTS:
         default_engine = "piper" if settings.DEBUG else "remote"
         self.engine = os.getenv("ANDY_TTS_ENGINE", default_engine).strip().lower()
         self.remote_url = os.getenv("ANDY_TTS_URL", "").strip()
+        self.service_token = os.getenv("ANDY_AI_SERVICE_TOKEN", "").strip()
         self.remote_timeout = int(os.getenv("ANDY_TTS_REMOTE_TIMEOUT", "90"))
         self.model_name = os.getenv("ANDY_TTS_MODEL", "hi_IN-rohan-medium")
         self.model_path = voices_dir / f"{self.model_name}.onnx"
@@ -209,10 +210,16 @@ class LocalTTS:
                 raise LocalTTSError(
                     "ANDY voice service is unavailable. Configure ANDY_TTS_URL."
                 )
+            if not settings.DEBUG and not self.service_token:
+                raise LocalTTSError("ANDY AI service token is not configured.")
             request = urllib.request.Request(
                 self.remote_url,
                 data=json.dumps({"text": text}).encode("utf-8"),
-                headers={"Content-Type": "application/json", "Accept": "audio/wav"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "audio/wav",
+                    **({"Authorization": f"Bearer {self.service_token}"} if self.service_token else {}),
+                },
                 method="POST",
             )
             try:
