@@ -26,7 +26,7 @@ from .security import (
 )
 from employees.models import EmployeeProfile, HRPolicy
 from accounts.audit import write_audit_event
-from tenancy.access import request_company
+from tenancy.access import HasRequiredFeature, request_company
 
 
 def _is_admin(user):
@@ -43,7 +43,8 @@ def _absolute_file_url(request, file_field):
 
 
 class CheckInAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def post(self, request):
         try:
@@ -134,7 +135,8 @@ class CheckInAPIView(APIView):
 
 
 class CheckOutAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def post(self, request):
         employee = EmployeeProfile.objects.get(user=request.user)
@@ -164,7 +166,8 @@ class CheckOutAPIView(APIView):
 
 
 class TodayAttendanceAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def get(self, request):
         employee = EmployeeProfile.objects.get(user=request.user)
@@ -177,7 +180,8 @@ class TodayAttendanceAPIView(APIView):
 
 
 class OvertimeRequestAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def get(self, request):
         employee = EmployeeProfile.objects.filter(user=request.user).first()
@@ -250,7 +254,8 @@ class OvertimeRequestAPIView(APIView):
 
 
 class OvertimeStartAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def post(self, request):
         employee = EmployeeProfile.objects.filter(user=request.user).first()
@@ -291,7 +296,8 @@ class OvertimeStartAPIView(APIView):
 
 
 class OvertimeStopAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def post(self, request):
         employee = EmployeeProfile.objects.filter(user=request.user).first()
@@ -439,7 +445,8 @@ class AdminOvertimeAPIView(APIView):
 
 
 class AttendanceHistoryAPIView(ListAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
     serializer_class = AttendanceSerializer
 
     def get_queryset(self):
