@@ -32,10 +32,27 @@ def _validate_service_relations(request, validated_data, instance=None):
 
     if getattr(customer, "company_id", None) not in (None, company.id):
         raise ValidationError({"customer": ["Customer belongs to another company workspace."]})
-    if job is not None and getattr(job, "company_id", None) not in (None, company.id):
-        raise ValidationError({"job": ["Job belongs to another company workspace."]})
 
-    if ro_asset is not None and ro_asset.current_customer_id not in (None, getattr(customer, "id", None)):
+    if job is not None:
+        if getattr(job, "company_id", None) not in (None, company.id):
+            raise ValidationError({"job": ["Job belongs to another company workspace."]})
+        if job.job_type != "SERVICE":
+            raise ValidationError({"job": ["Only a service job can be linked to a service."]})
+        if customer is not None and job.customer_id != customer.id:
+            raise ValidationError({"job": ["Job customer must match the service customer."]})
+        if engineer is not None and job.engineer_id != engineer.id:
+            raise ValidationError({"job": ["Job engineer must match the service engineer."]})
+        if (
+            ro_asset is not None
+            and job.ro_asset_id is not None
+            and job.ro_asset_id != ro_asset.id
+        ):
+            raise ValidationError({"job": ["Job RO asset must match the service RO asset."]})
+
+    if ro_asset is not None and ro_asset.current_customer_id not in (
+        None,
+        getattr(customer, "id", None),
+    ):
         raise ValidationError({
             "ro_asset": ["RO asset is assigned to a different customer."]
         })
