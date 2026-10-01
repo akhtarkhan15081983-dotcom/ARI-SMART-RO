@@ -22,7 +22,6 @@ class ProfessionalCallingDeskTests(APITestCase):
             phone="9876500001", password="Test@123", role="CALLING", is_verified=True
         )
         CompanyMembership.objects.create(
-            company=self.company,
             user=self.user,
             role="STAFF",
             is_active=True,
