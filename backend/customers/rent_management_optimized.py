@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from tenancy.access import request_company
 
 from .models import Customer, CustomerRentHistory
-from .rent_policy import RENT_GRACE_DAYS, rent_penalty
+from .rent_policy import RENT_GRACE_DAYS, rent_due_date, rent_penalty
 from .views import _sync_current_rent_offer
 
 
@@ -121,9 +121,7 @@ class RentManagementAPIView(APIView):
             else:
                 payment_status = "PENDING"
 
-            installation_day = customer.installation_date.day if customer.installation_date else 1
-            last_day = calendar.monthrange(today.year, today.month)[1]
-            due_date = date(today.year, today.month, min(installation_day, last_day))
+            due_date = rent_due_date(customer, current_month)
             penalty = rent_penalty(Decimal(str(balance)), due_date)
             collection_bucket = _collection_bucket(payment_status, balance, due_date, today)
             days_until_due = (due_date - today).days
