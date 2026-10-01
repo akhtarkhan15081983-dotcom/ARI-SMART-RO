@@ -114,7 +114,9 @@ void main() {
     });
 
     test('today snapshot survives store recreation and checkout closes it', () async {
-      final now = DateTime.now();
+      // Fixed local midday keeps this persistence test deterministic on CI.
+      // Midnight-crossing behaviour is covered by dedicated attendance tests.
+      final now = DateTime(2026, 9, 30, 12);
       final checkIn = now.subtract(const Duration(hours: 2));
       await store.saveShiftSnapshot(checkIn: checkIn);
 
