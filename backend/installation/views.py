@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied
 
 from accounts.permissions import IsEngineer, IsOperationsUser, IsStaffOperator, STAFF_ROLES, user_role
+from tenancy.access import request_company
 
 from jobs.models import (
     Job,
@@ -36,16 +37,50 @@ from .serializers import (
 
 
 
-def _installation_queryset_for(user):
+def _installation_queryset_for(request):
     queryset = Installation.objects.select_related(
         "customer", "engineer", "engineer__user", "ro_asset", "job"
     )
+    user = request.user
     role = user_role(user)
-    if role in STAFF_ROLES:
-        return queryset
     if role == "ENGINEER":
         return queryset.filter(engineer__user=user)
+    if role in STAFF_ROLES:
+        company = request_company(request)
+        if company is not None:
+            return queryset.filter(
+                engineer__company=company,
+            ).filter(
+                Q(customer__company=company) | Q(customer__company__isnull=True),
+            ).filter(
+                Q(job__isnull=True)
+                | Q(job__company=company)
+                | Q(job__company__isnull=True),
+            ).distinct()
+        return queryset.filter(
+            engineer__company__isnull=True,
+            customer__company__isnull=True,
+        ).filter(Q(job__isnull=True) | Q(job__company__isnull=True))
     return queryset.none()
+
+
+def _validate_installation_workspace(request, *, customer, engineer, job=None):
+    company = request_company(request)
+    if company is not None:
+        if engineer is None or engineer.company_id != company.id:
+            raise PermissionDenied("Engineer is outside the active workspace.")
+        if customer is None or customer.company_id not in (None, company.id):
+            raise PermissionDenied("Customer is outside the active workspace.")
+        if job is not None and job.company_id not in (None, company.id):
+            raise PermissionDenied("Job is outside the active workspace.")
+        return
+
+    if getattr(engineer, "company_id", None) is not None:
+        raise PermissionDenied("Engineer belongs to a company workspace.")
+    if getattr(customer, "company_id", None) is not None:
+        raise PermissionDenied("Customer belongs to a company workspace.")
+    if job is not None and getattr(job, "company_id", None) is not None:
+        raise PermissionDenied("Job belongs to a company workspace.")
 
 
 # ============================================================
@@ -57,7 +92,7 @@ class InstallationListAPIView(generics.ListAPIView):
     serializer_class = InstallationSerializer
 
     def get_queryset(self):
-        return _installation_queryset_for(self.request.user).order_by("-id")
+        return _installation_queryset_for(self.request).order_by("-id")
 
     permission_classes = [IsOperationsUser]
 
@@ -74,6 +109,21 @@ class InstallationCreateAPIView(generics.CreateAPIView):
 
     permission_classes = [IsStaffOperator]
 
+    def perform_create(self, serializer):
+        customer = serializer.validated_data.get("customer")
+        engineer = serializer.validated_data.get("engineer")
+        job = serializer.validated_data.get("job")
+        if job is not None:
+            customer = customer or job.customer
+            engineer = engineer or job.engineer
+        _validate_installation_workspace(
+            self.request,
+            customer=customer,
+            engineer=engineer,
+            job=job,
+        )
+        serializer.save()
+
 
 # ============================================================
 # INSTALLATION DETAIL
@@ -87,7 +137,7 @@ class InstallationDetailAPIView(
     serializer_class = InstallationSerializer
 
     def get_queryset(self):
-        return _installation_queryset_for(self.request.user)
+        return _installation_queryset_for(self.request)
 
     permission_classes = [IsOperationsUser]
 
@@ -104,9 +154,22 @@ class InstallationUpdateAPIView(
     serializer_class = InstallationSerializer
 
     def get_queryset(self):
-        return _installation_queryset_for(self.request.user)
+        return _installation_queryset_for(self.request)
 
     permission_classes = [IsOperationsUser]
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        customer = serializer.validated_data.get("customer", instance.customer)
+        engineer = serializer.validated_data.get("engineer", instance.engineer)
+        job = serializer.validated_data.get("job", instance.job)
+        _validate_installation_workspace(
+            self.request,
+            customer=customer,
+            engineer=engineer,
+            job=job,
+        )
+        serializer.save()
 
 
 # ============================================================
@@ -125,8 +188,12 @@ class InstallationPartCreateAPIView(
 
     def perform_create(self, serializer):
         installation = serializer.validated_data["installation"]
-        if user_role(self.request.user) == "ENGINEER" and installation.engineer.user_id != self.request.user.id:
-            raise PermissionDenied("You can add parts only to your assigned installation.")
+        role = user_role(self.request.user)
+        if role == "ENGINEER":
+            if installation.engineer.user_id != self.request.user.id:
+                raise PermissionDenied("You can add parts only to your assigned installation.")
+        elif not _installation_queryset_for(self.request).filter(pk=installation.pk).exists():
+            raise PermissionDenied("Installation is outside the active workspace.")
         serializer.save()
 
 
@@ -464,7 +531,7 @@ class InstallationSearchAPIView(
             "",
         ).strip()
 
-        queryset = _installation_queryset_for(self.request.user)
+        queryset = _installation_queryset_for(self.request)
 
         if keyword:
 
