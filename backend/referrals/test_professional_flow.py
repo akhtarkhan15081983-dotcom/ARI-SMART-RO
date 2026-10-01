@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
+from tenancy.models import Company, CompanyMembership
 
 from customers.models import Customer
 
@@ -153,3 +154,75 @@ class ProfessionalReferralFlowTests(TestCase):
             referral.rewards.get(reward_type="RENT_REFERRAL").total_amount,
             Decimal("600.00"),
         )
+
+
+    def test_staff_cannot_qualify_other_company_referral(self):
+        company_a = Company.objects.create(
+            name="Referral Tenant A",
+            slug="referral-tenant-a",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        company_b = Company.objects.create(
+            name="Referral Tenant B",
+            slug="referral-tenant-b",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        admin_a = self.User.objects.create_user(
+            phone="9555500101",
+            password="Test@123",
+            role="ADMIN",
+            is_verified=True,
+        )
+        referrer_b = self.User.objects.create_user(
+            phone="9555500102",
+            password="Test@123",
+            role="CUSTOMER",
+            is_verified=True,
+        )
+        referred_b = self.User.objects.create_user(
+            phone="9555500103",
+            password="Test@123",
+            role="CUSTOMER",
+            is_verified=True,
+        )
+        CompanyMembership.objects.create(
+            company=company_a,
+            user=admin_a,
+            role="OWNER",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=company_b,
+            user=referrer_b,
+            role="CUSTOMER",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=company_b,
+            user=referred_b,
+            role="CUSTOMER",
+            is_active=True,
+        )
+        code = get_or_create_profile(referrer_b).referral_code
+        referral = claim_referral(
+            referred_user=referred_b,
+            code=code,
+            claim_fingerprint="tenant-b-device",
+        )
+
+        client = APIClient()
+        client.force_authenticate(admin_a)
+        response = client.post(
+            f"/api/referrals/{referral.id}/qualify/",
+            {
+                "referred_type": "RENT",
+                "qualifying_amount": "300.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        referral.refresh_from_db()
+        self.assertEqual(referral.status, "PENDING")
