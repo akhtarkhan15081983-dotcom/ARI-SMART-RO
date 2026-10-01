@@ -329,6 +329,48 @@ class RoleFeaturePermissionTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_role_feature_override_is_scoped_to_active_company(self):
+        other_company = Company.objects.create(
+            name="RBAC Other Company",
+            slug="rbac-other-company",
+            phone="9000099010",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        RoleFeaturePermission.objects.create(
+            company=other_company,
+            role="ENGINEER",
+            feature_key="hrms",
+            is_allowed=False,
+        )
+
+        self.client.force_authenticate(self.admin)
+        changed = self.client.post(
+            "/api/saas/role-permissions/",
+            {
+                "role": "ENGINEER",
+                "feature_key": "hrms",
+                "is_allowed": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(changed.status_code, 200)
+        self.assertTrue(
+            RoleFeaturePermission.objects.get(
+                company=self.company,
+                role="ENGINEER",
+                feature_key="hrms",
+            ).is_allowed
+        )
+        self.assertFalse(
+            RoleFeaturePermission.objects.get(
+                company=other_company,
+                role="ENGINEER",
+                feature_key="hrms",
+            ).is_allowed
+        )
+
     def test_admin_always_keeps_full_control(self):
         self.client.force_authenticate(self.admin)
         matrix = self.client.get("/api/saas/role-permissions/?role=ADMIN")
