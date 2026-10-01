@@ -11,7 +11,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsOperationsUser, IsStaffOperator, STAFF_ROLES, user_role
+from accounts.permissions import user_role
+from tenancy.access import HasRequiredFeature, has_feature_access, request_company
 from customers.models import Customer
 from .models import Service
 from .serializers import ServiceSerializer
@@ -46,7 +47,15 @@ def _linked_customer_for(user):
     return legacy
 
 
-def _service_queryset_for(user, include_customer=True):
+def _service_module_allowed(request):
+    role = user_role(request.user)
+    if role == "CUSTOMER":
+        return bool(request.user.is_verified and request.user.is_active)
+    return has_feature_access(request, "service")
+
+
+def _service_queryset_for(request, include_customer=True):
+    user = request.user
     queryset = Service.objects.select_related(
         "customer",
         "engineer",
@@ -55,52 +64,88 @@ def _service_queryset_for(user, include_customer=True):
     )
     role = user_role(user)
 
-    if role in STAFF_ROLES:
-        return queryset
-    if role == "ENGINEER":
-        return queryset.filter(engineer__user=user)
     if include_customer and role == "CUSTOMER":
         customer = _linked_customer_for(user)
         return queryset.filter(customer=customer) if customer is not None else queryset.none()
-    return queryset.none()
+
+    if not has_feature_access(request, "service"):
+        return queryset.none()
+
+    company = request_company(request)
+    if role == "ENGINEER":
+        scoped = queryset.filter(engineer__user=user)
+        if company is not None:
+            scoped = scoped.filter(
+                Q(company=company)
+                | Q(company__isnull=True, engineer__company=company)
+            )
+        return scoped
+
+    if company is not None:
+        return queryset.filter(
+            Q(company=company)
+            | Q(company__isnull=True, customer__company=company)
+            | Q(company__isnull=True, engineer__company=company)
+        ).distinct()
+
+    return queryset.filter(company__isnull=True)
 
 
 class ServiceListAPIView(generics.ListAPIView):
     serializer_class = ServiceSerializer
     permission_classes = [IsAuthenticated]
 
+    def get(self, request, *args, **kwargs):
+        if not _service_module_allowed(request):
+            return Response(
+                {"detail": "Service module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
-        return _service_queryset_for(self.request.user).order_by("-id")
+        return _service_queryset_for(self.request).order_by("-id")
 
 
 class ServiceCreateAPIView(generics.CreateAPIView):
     queryset = Service.objects.all()
     serializer_class = ServiceSerializer
-    permission_classes = [IsStaffOperator]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "service"
 
 
 class ServiceDetailAPIView(generics.RetrieveAPIView):
     serializer_class = ServiceSerializer
     permission_classes = [IsAuthenticated]
 
+    def get(self, request, *args, **kwargs):
+        if not _service_module_allowed(request):
+            return Response(
+                {"detail": "Service module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
-        return _service_queryset_for(self.request.user)
+        return _service_queryset_for(self.request)
 
 
 class ServiceUpdateAPIView(generics.UpdateAPIView):
     serializer_class = ServiceSerializer
-    permission_classes = [IsOperationsUser]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "service"
 
     def get_queryset(self):
-        return _service_queryset_for(self.request.user, include_customer=False)
+        return _service_queryset_for(self.request, include_customer=False)
 
 
 class CompleteServiceAPIView(generics.UpdateAPIView):
     serializer_class = ServiceSerializer
-    permission_classes = [IsOperationsUser]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "service"
 
     def get_queryset(self):
-        return _service_queryset_for(self.request.user, include_customer=False)
+        return _service_queryset_for(self.request, include_customer=False)
 
     @transaction.atomic
     def _complete(self):
@@ -137,9 +182,17 @@ class ServiceSearchAPIView(generics.ListAPIView):
     serializer_class = ServiceSerializer
     permission_classes = [IsAuthenticated]
 
+    def get(self, request, *args, **kwargs):
+        if not _service_module_allowed(request):
+            return Response(
+                {"detail": "Service module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
         keyword = self.request.GET.get("q", "").strip()
-        queryset = _service_queryset_for(self.request.user)
+        queryset = _service_queryset_for(self.request)
 
         if keyword:
             queryset = queryset.filter(
@@ -153,10 +206,11 @@ class ServiceSearchAPIView(generics.ListAPIView):
 
 
 class ServiceExportAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "service"
 
     def get(self, request, *args, **kwargs):
-        queryset = _service_queryset_for(request.user).order_by("-id")
+        queryset = _service_queryset_for(request).order_by("-id")
         workbook = openpyxl.Workbook()
         worksheet = workbook.active
         worksheet.title = "Service Report"
