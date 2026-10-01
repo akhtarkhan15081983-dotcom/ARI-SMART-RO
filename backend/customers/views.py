@@ -1422,37 +1422,11 @@ class CustomerRentAPIView(APIView):
 
         # ----------------------------------------------------
         # DUE DATE
-        #
-        # फिलहाल installation date के दिन को monthly
-        # due date माना जा रहा है.
-        #
-        # Example:
-        # Installation = 15 August
-        # September due date = 15 September
         # ----------------------------------------------------
 
-        if customer.installation_date:
-
-            installation_day = customer.installation_date.day
-
-        else:
-
-            installation_day = 1
-
-        last_day = calendar.monthrange(
-            today.year,
-            today.month
-        )[1]
-
-        due_day = min(
-            installation_day,
-            last_day
-        )
-
-        due_date = date(
-            today.year,
-            today.month,
-            due_day
+        due_date = rent_due_date(
+            customer,
+            today.replace(day=1),
         )
 
         # ----------------------------------------------------
@@ -1753,30 +1727,9 @@ class RentManagementAPIView(APIView):
             # DUE DATE
             # ------------------------------------------------
 
-            if customer.installation_date:
-
-                installation_day = (
-                    customer.installation_date.day
-                )
-
-            else:
-
-                installation_day = 1
-
-            last_day = calendar.monthrange(
-                today.year,
-                today.month,
-            )[1]
-
-            due_day = min(
-                installation_day,
-                last_day,
-            )
-
-            due_date = date(
-                today.year,
-                today.month,
-                due_day,
+            due_date = rent_due_date(
+                customer,
+                today.replace(day=1),
             )
 
             # ------------------------------------------------
