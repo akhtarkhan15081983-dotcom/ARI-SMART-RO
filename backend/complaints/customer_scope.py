@@ -1,7 +1,10 @@
-from rest_framework.exceptions import ValidationError
+from django.db.models import Q
+from rest_framework import status
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.response import Response
 
 from customers.models import Customer
-from tenancy.access import request_company
+from tenancy.access import has_feature_access, request_company
 
 from .models import Complaint
 from .views import (
@@ -42,11 +45,44 @@ def linked_customer_for_complaints(user):
     return legacy
 
 
-def secure_complaint_queryset(queryset, user):
+def _complaint_module_allowed(request):
+    user = request.user
     if getattr(user, "role", None) == "CUSTOMER":
+        return bool(user.is_verified and user.is_active)
+    return has_feature_access(request, "complaint")
+
+
+def secure_complaint_queryset(queryset, request):
+    user = request.user
+    role = getattr(user, "role", None)
+
+    if role == "CUSTOMER":
         customer = linked_customer_for_complaints(user)
         return queryset.filter(customer=customer) if customer is not None else queryset.none()
-    return restrict_complaints_for_user(queryset, user)
+
+    if not has_feature_access(request, "complaint"):
+        return queryset.none()
+
+    company = request_company(request)
+
+    if role == "ENGINEER":
+        scoped = queryset.filter(engineer__user=user)
+        if company is not None:
+            scoped = scoped.filter(
+                Q(company=company)
+                | Q(company__isnull=True, customer__company=company)
+                | Q(company__isnull=True, engineer__company=company)
+            )
+        return scoped
+
+    if company is not None:
+        return queryset.filter(
+            Q(company=company)
+            | Q(company__isnull=True, customer__company=company)
+            | Q(company__isnull=True, engineer__company=company)
+        ).distinct()
+
+    return queryset.filter(company__isnull=True)
 
 
 def _effective_customer_company_id(customer):
@@ -77,29 +113,53 @@ def _validate_workspace(company, customer, engineer=None):
 
 
 class SecureComplaintListAPIView(ComplaintListAPIView):
+    def get(self, request, *args, **kwargs):
+        if not _complaint_module_allowed(request):
+            return Response(
+                {"detail": "Complaint module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
         queryset = Complaint.objects.select_related(
             "customer", "engineer__user", "linked_service"
         ).order_by("-id")
-        return secure_complaint_queryset(queryset, self.request.user)
+        return secure_complaint_queryset(queryset, self.request)
 
 
 class SecureComplaintDetailAPIView(ComplaintDetailAPIView):
+    def get(self, request, *args, **kwargs):
+        if not _complaint_module_allowed(request):
+            return Response(
+                {"detail": "Complaint module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
         queryset = Complaint.objects.select_related(
             "customer", "engineer__user", "linked_service"
         )
-        return secure_complaint_queryset(queryset, self.request.user)
+        return secure_complaint_queryset(queryset, self.request)
 
 
 class SecureComplaintSearchAPIView(ComplaintSearchAPIView):
+    def get(self, request, *args, **kwargs):
+        if not _complaint_module_allowed(request):
+            return Response(
+                {"detail": "Complaint module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
         keyword = self.request.GET.get("q", "").strip()
         queryset = secure_complaint_queryset(
             Complaint.objects.select_related(
                 "customer", "engineer__user", "linked_service"
             ),
-            self.request.user,
+            self.request,
         )
         if keyword:
             from django.db.models import Q
@@ -118,6 +178,8 @@ class SecureComplaintCreateAPIView(ComplaintCreateAPIView):
 
     def perform_create(self, serializer):
         role = getattr(self.request.user, "role", None)
+        if role != "CUSTOMER" and not has_feature_access(self.request, "complaint"):
+            raise PermissionDenied("Complaint module permission is required.")
 
         if role == "CUSTOMER":
             customer = linked_customer_for_complaints(self.request.user)
