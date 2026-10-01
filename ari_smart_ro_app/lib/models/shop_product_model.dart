@@ -64,7 +64,10 @@ class ShopProduct {
           json['available_for_rent'] as bool? ?? businessType == 'RENT',
       warrantyMonths: (json['warranty_months'] as num?)?.toInt() ?? 0,
       mrp: double.tryParse(json['mrp']?.toString() ?? '') ?? 0,
-      stockQuantity: (json['stock_quantity'] as num?)?.toInt() ?? 0,
+      stockQuantity:
+          (json['tenant_stock_quantity'] as num?)?.toInt() ??
+          (json['stock_quantity'] as num?)?.toInt() ??
+          0,
       description: json['description']?.toString() ?? '',
       features: (json['features']?.toString() ?? '')
           .split('\n')
