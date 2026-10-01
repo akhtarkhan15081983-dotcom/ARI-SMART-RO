@@ -55,6 +55,69 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
     }
   }
 
+  Future<void> _editRentDueDate(Map<String, dynamic> customer) async {
+    final current = (customer['rent_due_day'] as num?)?.toInt() ??
+        DateTime.tryParse(
+          (customer['installation_date'] ?? '').toString(),
+        )?.day ??
+        1;
+    final controller = TextEditingController(text: '$current');
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('RO Rent Due Date'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Monthly due day (1–31)',
+            helperText:
+                'Example: 10 means rent is due on the 10th of every month.',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    final dueDay = int.tryParse(controller.text.trim());
+    controller.dispose();
+    if (save != true) return;
+    if (dueDay == null || dueDay < 1 || dueDay > 31) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a due day from 1 to 31.')),
+      );
+      return;
+    }
+    try {
+      await _service.updateRentDueDay(
+        customerId: (customer['customer_id'] as num).toInt(),
+        rentDueDay: dueDay,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('RO rent due date updated.')),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
   Future<void> _setup(
     Map<String, dynamic> customer, [
     Map<String, dynamic>? asset,
@@ -225,6 +288,15 @@ class _AdminROPassportScreenState extends State<AdminROPassportScreen> {
           _info('Master RO model', customer['master_ro_model']),
           _info('Ownership', customer['ownership_type']),
           _info('Sale / installation', customer['installation_date']),
+          _info('RO rent due date', customer['current_rent_due_date']),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _editRentDueDate(customer),
+              icon: const Icon(Icons.event_repeat_outlined),
+              label: const Text('EDIT RO RENT DUE DATE'),
+            ),
+          ),
           _info(
             'Address',
             [
