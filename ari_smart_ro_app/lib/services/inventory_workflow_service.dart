@@ -16,9 +16,9 @@ class InventoryWorkflowService {
   final Random _random = Random.secure();
 
   Future<List<Map<String, dynamic>>> requests() async =>
-      _rows(await _get('/inventory/workflow/requests/'), 'requests');
+      _fetchAllPages('/inventory/workflow/requests/', 'requests');
   Future<List<Map<String, dynamic>>> receivingQueue() async =>
-      _rows(await _get('/inventory/workflow/receiving/'), 'items');
+      _fetchAllPages('/inventory/workflow/receiving/', 'items');
   Future<Map<String, dynamic>> summary() async => Map<String, dynamic>.from(
     (await _get('/inventory/workflow/summary/'))['summary'] as Map? ?? const {},
   );
@@ -224,6 +224,27 @@ class InventoryWorkflowService {
 
   Future<Map<String, dynamic>> _get(String path) async =>
       Map<String, dynamic>.from(await _getRaw(path) as Map);
+
+  Future<List<Map<String, dynamic>>> _fetchAllPages(
+    String path,
+    String key,
+  ) async {
+    const pageSize = 250;
+    var page = 1;
+    final allRows = <Map<String, dynamic>>[];
+
+    while (true) {
+      final separator = path.contains('?') ? '&' : '?';
+      final body = await _get(
+        '$path${separator}page=$page&page_size=$pageSize',
+      );
+      final rows = _rows(body, key);
+      allRows.addAll(rows);
+      if (body['has_more'] != true || rows.isEmpty) break;
+      page = (body['next_page'] as num?)?.toInt() ?? (page + 1);
+    }
+    return allRows;
+  }
 
   Future<void> _post(
     String path,
