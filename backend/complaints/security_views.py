@@ -6,7 +6,14 @@ from employees.models import EmployeeProfile
 from tenancy.access import request_company
 
 from .models import Complaint
-from .views import ComplaintAssignEngineerAPIView, ComplaintUpdateAPIView
+from .views import (
+    ComplaintAssignEngineerAPIView,
+    ComplaintCloseAPIView,
+    ComplaintResolveAPIView,
+    ComplaintStartAPIView,
+    ComplaintUpdateAPIView,
+)
+from .customer_scope import _complaint_module_allowed, secure_complaint_queryset
 
 
 def _complaint_company_id(row):
@@ -123,3 +130,59 @@ class SecureComplaintUpdateAPIView(ComplaintUpdateAPIView):
             serializer.save(company=company)
         else:
             serializer.save()
+
+
+class _TenantScopedComplaintLifecycleMixin:
+    def _guard_lifecycle_target(self, request, pk):
+        if not _complaint_module_allowed(request):
+            return Response(
+                {"detail": "Complaint module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        queryset = secure_complaint_queryset(
+            Complaint.objects.select_related(
+                "customer",
+                "customer__assigned_engineer",
+                "engineer__user",
+            ),
+            request,
+        )
+        if not queryset.filter(pk=pk).exists():
+            return Response(
+                {"success": False, "message": "Complaint not found in this workspace."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return None
+
+
+class TenantScopedComplaintStartAPIView(
+    _TenantScopedComplaintLifecycleMixin,
+    ComplaintStartAPIView,
+):
+    def patch(self, request, pk):
+        blocked = self._guard_lifecycle_target(request, pk)
+        if blocked is not None:
+            return blocked
+        return super().patch(request, pk)
+
+
+class TenantScopedComplaintResolveAPIView(
+    _TenantScopedComplaintLifecycleMixin,
+    ComplaintResolveAPIView,
+):
+    def patch(self, request, pk):
+        blocked = self._guard_lifecycle_target(request, pk)
+        if blocked is not None:
+            return blocked
+        return super().patch(request, pk)
+
+
+class TenantScopedComplaintCloseAPIView(
+    _TenantScopedComplaintLifecycleMixin,
+    ComplaintCloseAPIView,
+):
+    def patch(self, request, pk):
+        blocked = self._guard_lifecycle_target(request, pk)
+        if blocked is not None:
+            return blocked
+        return super().patch(request, pk)
