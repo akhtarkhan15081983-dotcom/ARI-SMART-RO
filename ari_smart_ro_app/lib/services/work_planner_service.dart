@@ -22,6 +22,17 @@ class WorkPlannerService {
     return _get('/work-planner/route/', query);
   }
 
+  Future<Map<String, dynamic>> dayRoute(
+    DateTime date, {
+    int? employeeId,
+  }) async {
+    final query = <String, String>{
+      'date': _date(date),
+      if (employeeId != null) 'employee_id': '$employeeId',
+    };
+    return _get('/employees/day-route/', query);
+  }
+
   Future<void> reschedule({
     required String eventKey,
     required DateTime scheduledAt,

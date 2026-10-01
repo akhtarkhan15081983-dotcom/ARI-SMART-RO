@@ -113,6 +113,33 @@ class PublicPlanListAPIView(APIView):
         return Response({"success": True, "plans": SubscriptionPlanSerializer(plans, many=True).data})
 
 
+class PublicShopCompanyListAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        companies = Company.objects.filter(
+            is_active=True,
+            lifecycle_status="ACTIVE",
+            show_public_shop=True,
+        ).select_related("subscription").order_by("name")
+
+        available = []
+        for company in companies:
+            subscription = getattr(company, "subscription", None)
+            if subscription is None or not subscription.has_access:
+                continue
+            available.append(company)
+
+        return Response({
+            "success": True,
+            "shops": PublicCompanyBrandSerializer(
+                available,
+                many=True,
+                context={"request": request},
+            ).data,
+        })
+
+
 class PublicCompanyBrandAPIView(APIView):
     permission_classes = [AllowAny]
 

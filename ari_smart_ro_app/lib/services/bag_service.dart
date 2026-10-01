@@ -46,7 +46,6 @@ class BagService {
 
   Future<Map<String, dynamic>> verifyQRCode(String serialNumber) async {
     final token = await ApiService.getAccessToken();
-    final engineerId = await ApiService.getUserId();
 
     final response = await http.post(
       Uri.parse("${ApiService.baseUrl}/inventory/verify/"),
@@ -55,7 +54,6 @@ class BagService {
         "Content-Type": "application/json",
       },
       body: jsonEncode({
-        "engineer": int.parse(engineerId!),
         "serial_number": serialNumber,
       }),
     );

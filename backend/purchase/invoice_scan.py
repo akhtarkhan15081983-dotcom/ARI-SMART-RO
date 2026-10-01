@@ -4,16 +4,21 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsStaffOperator
+from jobs.idempotency import action_id_from_request, replay_response, remember_response
 from partmaster.models import PartMaster
+from tenancy.access import HasRequiredFeature, request_company
 
+from .invoice_identity import supplier_invoice_exists
 from .models import Purchase, Supplier
 from .serializers import PurchaseSerializer
+from .retry_identity import purchase_action_type
 
 
 def _clean(value):
@@ -49,9 +54,11 @@ def _invoice_number(text):
     return ""
 
 
-def _supplier_match(text):
+def _supplier_match(text, company_id):
     normalized = text.lower()
-    suppliers = list(Supplier.objects.filter(is_active=True).order_by("name"))
+    suppliers = list(
+        Supplier.objects.filter(is_active=True, company_id=company_id).order_by("name")
+    )
     for supplier in suppliers:
         candidates = [supplier.name, supplier.gst_number, supplier.phone]
         if any(value and value.lower() in normalized for value in candidates):
@@ -79,30 +86,43 @@ def _part_lines(text):
             except (InvalidOperation, ValueError):
                 pass
         results.append({
-            "part": part.id, "part_code": part.code, "part_name": part.name,
-            "quantity": quantity, "purchase_price": str(price), "source_line": line,
+            "part": part.id,
+            "part_code": part.code,
+            "part_name": part.name,
+            "quantity": quantity,
+            "purchase_price": str(price),
+            "source_line": line,
         })
         used.add(part.id)
     return results
 
 
-def analyze(text):
+def analyze(text, company_id=None):
     text = str(text or "")[:50000]
-    supplier = _supplier_match(text)
+    supplier = _supplier_match(text, company_id)
     invoice = _invoice_number(text)
     invoice_date = _date_from_text(text)
     items = _part_lines(text)
     checks = [bool(supplier), bool(invoice), bool(items), invoice_date != date.today()]
     confidence = round(sum(checks) / len(checks) * 100, 2)
-    duplicate = bool(invoice and Purchase.objects.filter(
-        invoice_number__iexact=invoice,
-        **({"supplier": supplier} if supplier else {}),
-    ).exists())
+    duplicate = bool(
+        invoice
+        and supplier
+        and supplier_invoice_exists(
+            company_id=company_id,
+            supplier_id=supplier.id,
+            invoice_number=invoice,
+        )
+    )
     warnings = []
-    if not supplier: warnings.append("Supplier could not be matched; please select it.")
-    if not invoice: warnings.append("Invoice number needs manual confirmation.")
-    if not items: warnings.append("No catalog parts were matched; add invoice lines manually.")
-    if duplicate: warnings.append("Possible duplicate invoice detected. It cannot be posted twice.")
+    if not supplier:
+        warnings.append("Supplier could not be matched in this workspace; please select it.")
+    if not invoice:
+        warnings.append("Invoice number needs manual confirmation.")
+    if not items:
+        warnings.append("No catalog parts were matched; add invoice lines manually.")
+    if duplicate:
+        warnings.append("Possible duplicate invoice detected. It cannot be posted twice.")
     return {
         "supplier": supplier.id if supplier else None,
         "supplier_name": supplier.name if supplier else "",
@@ -116,22 +136,30 @@ def analyze(text):
 
 
 class InvoiceAnalyzeAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
         text = request.data.get("ocr_text", "")
         if len(_clean(text)) < 10:
             return Response({"message": "Invoice text could not be read. Retake a clear, flat photo."}, status=400)
-        return Response({"success": True, "draft": analyze(text)})
+        company = request_company(request)
+        return Response({
+            "success": True,
+            "draft": analyze(text, company.id if company is not None else None),
+        })
 
 
 class InvoiceConfirmAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
     parser_classes = [MultiPartParser, FormParser]
 
     @transaction.atomic
     def post(self, request):
+        company = request_company(request)
+        company_id = company.id if company is not None else None
         try:
             payload = json.loads(request.data.get("payload", "{}"))
         except json.JSONDecodeError:
@@ -140,17 +168,40 @@ class InvoiceConfirmAPIView(APIView):
         invoice_number = _clean(payload.get("invoice_number"))
         if not supplier_id or not invoice_number:
             return Response({"message": "Supplier and invoice number are required."}, status=400)
-        if Purchase.objects.filter(supplier_id=supplier_id, invoice_number__iexact=invoice_number).exists():
+
+        action_id = action_id_from_request(request)
+        if action_id:
+            get_user_model().objects.select_for_update().get(pk=request.user.pk)
+        action_type = purchase_action_type("purchase_ocr", company_id, payload)
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
+
+        supplier = Supplier.objects.select_for_update().filter(
+            pk=supplier_id,
+            company_id=company_id,
+            is_active=True,
+        ).first()
+        if supplier is None:
+            return Response({"message": "Supplier not found in this workspace."}, status=404)
+        if supplier_invoice_exists(
+            company_id=company_id,
+            supplier_id=supplier.id,
+            invoice_number=invoice_number,
+        ):
             return Response({"message": "This supplier invoice already exists. Duplicate posting blocked."}, status=409)
-        serializer = PurchaseSerializer(data={
-            "supplier": supplier_id,
-            "invoice_number": invoice_number,
-            "invoice_date": payload.get("invoice_date"),
-            "remarks": _clean(payload.get("remarks")),
-            "items": payload.get("items", []),
-        })
+        serializer = PurchaseSerializer(
+            data={
+                "supplier": supplier.id,
+                "invoice_number": invoice_number,
+                "invoice_date": payload.get("invoice_date"),
+                "remarks": _clean(payload.get("remarks")),
+                "items": payload.get("items", []),
+            },
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
-        purchase = serializer.save()
+        purchase = serializer.save(company=company, supplier=supplier)
         purchase.invoice_image = request.FILES.get("invoice_image")
         purchase.entry_source = "INVOICE_OCR"
         purchase.ocr_text = str(request.data.get("ocr_text", ""))[:50000]
@@ -164,4 +215,12 @@ class InvoiceConfirmAPIView(APIView):
             "invoice_image", "entry_source", "ocr_text", "ocr_confidence",
             "verified_by", "verified_at",
         ))
-        return Response({"success": True, "purchase_id": purchase.id, "message": "Invoice verified and purchase created."}, status=201)
+        response = Response({
+            "success": True,
+            "purchase_id": purchase.id,
+            "message": "Invoice verified and purchase created.",
+        }, status=201)
+        return remember_response(
+            request=request, action_id=action_id,
+            action_type=action_type, response=response,
+        )

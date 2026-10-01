@@ -3,15 +3,23 @@ from partmaster.models import PartMaster
 
 
 class Supplier(models.Model):
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="suppliers",
+        db_index=True,
+    )
     name = models.CharField(max_length=200)
     contact_person = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=15, blank=True)
     email = models.EmailField(blank=True)
     address = models.TextField(blank=True)
     gst_number = models.CharField(max_length=20, blank=True)
-    city = models.CharField(max_length=100,blank=True)
-    state = models.CharField(max_length=100,blank=True)
-    pincode = models.CharField(max_length=10,blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=100, blank=True)
+    pincode = models.CharField(max_length=10, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 
@@ -19,20 +27,23 @@ class Supplier(models.Model):
         return self.name
 
 
-
-
 class Purchase(models.Model):
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="purchases",
+        db_index=True,
+    )
     supplier = models.ForeignKey(
         Supplier,
         on_delete=models.PROTECT,
-        related_name="purchases"
+        related_name="purchases",
     )
-
     invoice_number = models.CharField(max_length=50)
     invoice_date = models.DateField()
-
     remarks = models.TextField(blank=True)
-
     invoice_image = models.ImageField(upload_to="purchase_invoices/%Y/%m/", blank=True, null=True)
     entry_source = models.CharField(
         max_length=20,
@@ -42,11 +53,13 @@ class Purchase(models.Model):
     ocr_text = models.TextField(blank=True)
     ocr_confidence = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     verified_by = models.ForeignKey(
-        "accounts.User", on_delete=models.SET_NULL, null=True, blank=True,
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="verified_purchases",
     )
     verified_at = models.DateTimeField(null=True, blank=True)
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -57,22 +70,27 @@ class Purchase(models.Model):
 
 
 class PurchaseItem(models.Model):
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="purchase_items",
+        db_index=True,
+    )
     purchase = models.ForeignKey(
         Purchase,
         on_delete=models.CASCADE,
-        related_name="items"
+        related_name="items",
     )
-
     part = models.ForeignKey(
         PartMaster,
-        on_delete=models.PROTECT
+        on_delete=models.PROTECT,
     )
-
     quantity = models.PositiveIntegerField()
-
     purchase_price = models.DecimalField(
         max_digits=10,
-        decimal_places=2
+        decimal_places=2,
     )
 
     def __str__(self):

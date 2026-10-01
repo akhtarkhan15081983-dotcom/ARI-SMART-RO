@@ -2,6 +2,7 @@ from decimal import Decimal, ROUND_DOWN
 from uuid import uuid4
 
 from django.db import transaction
+from django.contrib.auth import get_user_model
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -1132,6 +1133,18 @@ def redeem_wallet(
         raise ValidationError(
             "Bill amount must be greater than zero."
         )
+
+    # Serialize all redemptions by one owner, including concurrent requests
+    # that would otherwise lock different reward rows.
+    get_user_model().objects.select_for_update().get(pk=user.pk)
+    if category != CATEGORY_RENT and WalletLedgerEntry.objects.filter(
+        user=user,
+        entry_type="DEBIT",
+        reference_type=reference_type,
+        reference_id=str(reference_id),
+        description=f"Wallet reward used for {category} transaction.",
+    ).exists():
+        raise ValidationError("Wallet was already redeemed for this transaction.")
 
     # ========================================================
     # REQUIRED REFERENCE FOR RENT

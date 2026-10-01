@@ -22,6 +22,11 @@ class DashboardItems {
     icon: Icons.analytics_outlined,
     route: "reports",
   );
+  static const DashboardItem downloads = DashboardItem(
+    title: "Download Center",
+    icon: Icons.download_for_offline_outlined,
+    route: "downloads",
+  );
   static const DashboardItem referral = DashboardItem(
     title: "Refer & Wallet",
     icon: Icons.card_giftcard,
@@ -123,6 +128,11 @@ class DashboardItems {
       route: "customers",
     ),
     const DashboardItem(
+      title: "RO Alarm Center",
+      icon: Icons.notifications_active_rounded,
+      route: "ro_alarm_center",
+    ),
+    const DashboardItem(
       title: "Rent Management",
       icon: Icons.account_balance_wallet,
       route: "rent_management",
@@ -133,6 +143,7 @@ class DashboardItems {
       route: "payment_history",
     ),
     reports,
+    downloads,
     const DashboardItem(
       title: "Face & Device Security",
       icon: Icons.admin_panel_settings,
@@ -201,6 +212,11 @@ class DashboardItems {
       route: "training",
     ),
     const DashboardItem(
+      title: "Assigned Customers",
+      icon: Icons.people_alt,
+      route: "assigned_customers",
+    ),
+    const DashboardItem(
       title: "Customers",
       icon: Icons.people,
       route: "customers",
@@ -230,6 +246,7 @@ class DashboardItems {
       icon: Icons.analytics_outlined,
       route: "reports",
     ),
+    downloads,
     const DashboardItem(
       title: "Inventory Control",
       icon: Icons.qr_code_2_rounded,
@@ -277,4 +294,42 @@ class DashboardItems {
     ),
     const DashboardItem(title: "Profile", icon: Icons.person, route: "profile"),
   ];
+
+  static List<DashboardItem> permissionCandidates() {
+    final seen = <String>{};
+    return <DashboardItem>[
+      ...admin,
+      ...manager,
+      ...office,
+      ...calling,
+      ...engineer,
+    ].where((item) => seen.add(item.route)).toList(growable: false);
+  }
+
+  static List<DashboardItem> resolvePermissions({
+    required String role,
+    required Set<String> allowedFeatures,
+    required List<DashboardItem> baseItems,
+  }) {
+    final normalizedRole = role.trim().toUpperCase();
+    if (normalizedRole == 'ADMIN' || normalizedRole == 'CUSTOMER') {
+      return List<DashboardItem>.from(baseItems, growable: false);
+    }
+    if (allowedFeatures.isEmpty) return const <DashboardItem>[];
+
+    const alwaysVisible = <String>{'andy'};
+    final seenRoutes = <String>{};
+    return <DashboardItem>[
+      ...baseItems,
+      ...permissionCandidates(),
+    ]
+        .where(
+          (item) =>
+              (alwaysVisible.contains(item.route) ||
+                  allowedFeatures.contains(item.route)) &&
+              seenRoutes.add(item.route),
+        )
+        .toList(growable: false);
+  }
+
 }

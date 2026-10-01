@@ -32,7 +32,7 @@ from jobs.models import Job, JobPartUsed
 from purchase.models import PurchaseItem
 from service.models import Service, ServicePart
 from employees.models import EmployeeProfile, Holiday, LeaveRequest, PayrollRecord
-from tenancy.access import request_company
+from tenancy.access import request_company, HasRequiredFeature
 
 from .periods import resolve_period
 from .models import ClientErrorEvent
@@ -81,6 +81,84 @@ def _status_counts(queryset, field="status"):
     }
 
 
+def _scope_customer_rows(queryset, company, prefix=""):
+    return queryset.filter(
+        Q(**{f"{prefix}company": company})
+        | Q(
+            **{
+                f"{prefix}company__isnull": True,
+                f"{prefix}assigned_engineer__company": company,
+            }
+        )
+    ).distinct()
+
+
+def _scope_employee_rows(queryset, company, prefix=""):
+    return queryset.filter(**{f"{prefix}company": company})
+
+
+def _scope_job_rows(queryset, company, prefix=""):
+    return queryset.filter(
+        Q(**{f"{prefix}company": company})
+        | Q(
+            **{
+                f"{prefix}company__isnull": True,
+                f"{prefix}customer__company": company,
+            }
+        )
+        | Q(
+            **{
+                f"{prefix}company__isnull": True,
+                f"{prefix}engineer__company": company,
+            }
+        )
+    ).distinct()
+
+
+def _scope_service_rows(queryset, company, prefix=""):
+    return queryset.filter(
+        Q(**{f"{prefix}company": company})
+        | Q(
+            **{
+                f"{prefix}company__isnull": True,
+                f"{prefix}customer__company": company,
+            }
+        )
+        | Q(
+            **{
+                f"{prefix}company__isnull": True,
+                f"{prefix}engineer__company": company,
+            }
+        )
+    ).distinct()
+
+
+def _scope_complaint_rows(queryset, company, prefix=""):
+    return queryset.filter(
+        Q(**{f"{prefix}company": company})
+        | Q(
+            **{
+                f"{prefix}company__isnull": True,
+                f"{prefix}customer__company": company,
+            }
+        )
+        | Q(
+            **{
+                f"{prefix}company__isnull": True,
+                f"{prefix}engineer__company": company,
+            }
+        )
+    ).distinct()
+
+
+def _scope_installation_rows(queryset, company, prefix=""):
+    return queryset.filter(
+        Q(**{f"{prefix}job__company": company})
+        | Q(**{f"{prefix}customer__company": company})
+        | Q(**{f"{prefix}engineer__company": company})
+    ).distinct()
+
+
 def _employee_name(row, prefix):
     first_name = str(row.get(f"{prefix}__user__first_name") or "").strip()
     last_name = str(row.get(f"{prefix}__user__last_name") or "").strip()
@@ -88,13 +166,15 @@ def _employee_name(row, prefix):
     return f"{first_name} {last_name}".strip() or phone or "Unassigned"
 
 
-def build_parts_report(period):
+def build_parts_report(period, company):
     usage = JobPartUsed.objects.filter(
         **_datetime_filter(period, "used_at")
     ).select_related(
         "job__engineer__user",
         "inventory_item__part",
     )
+
+    usage = _scope_job_rows(usage, company, "job__")
 
     totals = usage.aggregate(
         entries=Count("id"),
@@ -157,20 +237,22 @@ def build_parts_report(period):
         for item in usage.order_by("-used_at")[:100]
     ]
 
-    bag_issued = EngineerBagItem.objects.filter(
+    bag_items = EngineerBagItem.objects.filter(company=company)
+    bag_issued = bag_items.filter(
         **_datetime_filter(period, "issue_date")
     ).count()
-    bag_installed = EngineerBagItem.objects.filter(
+    bag_installed = bag_items.filter(
         install_date__isnull=False,
         **_datetime_filter(period, "install_date"),
     ).count()
-    bag_returned = EngineerBagItem.objects.filter(
+    bag_returned = bag_items.filter(
         return_date__isnull=False,
         **_datetime_filter(period, "return_date"),
     ).count()
 
     requests = PartRequest.objects.filter(
-        **_datetime_filter(period, "created_at")
+        company=company,
+        **_datetime_filter(period, "created_at"),
     )
 
     return {
@@ -187,7 +269,7 @@ def build_parts_report(period):
             "requested_quantity": requests.aggregate(total=Sum("quantity"))["total"] or 0,
         },
         "part_request_status": _status_counts(requests),
-        "inventory_snapshot": _status_counts(InventoryItem.objects.all()),
+        "inventory_snapshot": _status_counts(InventoryItem.objects.filter(company=company)),
         "by_employee": by_employee,
         "by_part": by_part,
         "recent_usage": recent_usage,
@@ -195,10 +277,12 @@ def build_parts_report(period):
     }
 
 
-def build_rent_report(period):
+def build_rent_report(period, company):
     history = CustomerRentHistory.objects.filter(
         rent_month__range=(period.start, period.end)
     ).select_related("customer")
+
+    history = _scope_customer_rows(history, company, "customer__")
 
     totals = history.aggregate(
         expected=Sum("expected_rent"),
@@ -243,6 +327,7 @@ def build_rent_report(period):
         "customer",
         "collected_by__user",
     )
+    payments = _scope_customer_rows(payments, company, "customer__")
     payment_total = _decimal(payments.aggregate(total=Sum("amount"))["total"])
 
     by_mode = [
@@ -300,10 +385,12 @@ def build_rent_report(period):
     }
 
 
-def build_attendance_report(period):
+def build_attendance_report(period, company):
     attendance = Attendance.objects.filter(
         date__range=(period.start, period.end)
     ).select_related("employee__user")
+
+    attendance = _scope_employee_rows(attendance, company, "employee__")
 
     totals = attendance.aggregate(
         records=Count("id"),
@@ -372,7 +459,7 @@ def build_attendance_report(period):
     }
 
 
-def build_employee_activity_report(period):
+def build_employee_activity_report(period, company):
     reconcile_open_attendance()
 
     employees = {
@@ -391,11 +478,15 @@ def build_employee_activity_report(period):
             "rent_collected": Decimal("0"),
             "activities": [],
         }
-        for row in EmployeeProfile.objects.filter(is_active=True).select_related("user")
+        for row in EmployeeProfile.objects.filter(
+            is_active=True,
+            company=company,
+        ).select_related("user")
     }
 
     for row in Attendance.objects.filter(
-        date__range=(period.start, period.end)
+        date__range=(period.start, period.end),
+        employee__company=company,
     ).select_related("employee"):
         target = employees.get(row.employee_id)
         if not target:
@@ -412,10 +503,14 @@ def build_employee_activity_report(period):
             ),
         })
 
-    for row in Job.objects.filter(
-        completed_at__isnull=False,
-        **_datetime_filter(period, "completed_at"),
-    ).select_related("engineer", "customer"):
+    job_activity = _scope_job_rows(
+        Job.objects.filter(
+            completed_at__isnull=False,
+            **_datetime_filter(period, "completed_at"),
+        ),
+        company,
+    ).select_related("engineer", "customer")
+    for row in job_activity:
         target = employees.get(row.engineer_id)
         if not target:
             continue
@@ -427,10 +522,14 @@ def build_employee_activity_report(period):
             "detail": f"{row.get_job_type_display()} • {row.customer.name}",
         })
 
-    for row in Complaint.objects.filter(
-        resolved_date__isnull=False,
-        **_datetime_filter(period, "resolved_date"),
-    ).select_related("engineer", "customer"):
+    complaint_activity = _scope_complaint_rows(
+        Complaint.objects.filter(
+            resolved_date__isnull=False,
+            **_datetime_filter(period, "resolved_date"),
+        ),
+        company,
+    ).select_related("engineer", "customer")
+    for row in complaint_activity:
         if not row.engineer_id:
             continue
         target = employees.get(row.engineer_id)
@@ -444,10 +543,14 @@ def build_employee_activity_report(period):
             "detail": row.customer.name,
         })
 
-    for row in Service.objects.filter(
-        completed_date__isnull=False,
-        **_datetime_filter(period, "completed_date"),
-    ).select_related("engineer", "customer"):
+    service_activity = _scope_service_rows(
+        Service.objects.filter(
+            completed_date__isnull=False,
+            **_datetime_filter(period, "completed_date"),
+        ),
+        company,
+    ).select_related("engineer", "customer")
+    for row in service_activity:
         target = employees.get(row.engineer_id)
         if not target:
             continue
@@ -459,10 +562,14 @@ def build_employee_activity_report(period):
             "detail": row.customer.name,
         })
 
-    for row in Installation.objects.filter(
-        completed_date__isnull=False,
-        **_datetime_filter(period, "completed_date"),
-    ).select_related("engineer", "customer"):
+    installation_activity = _scope_installation_rows(
+        Installation.objects.filter(
+            completed_date__isnull=False,
+            **_datetime_filter(period, "completed_date"),
+        ),
+        company,
+    ).select_related("engineer", "customer")
+    for row in installation_activity:
         target = employees.get(row.engineer_id)
         if not target:
             continue
@@ -475,7 +582,8 @@ def build_employee_activity_report(period):
         })
 
     for row in CallingActivity.objects.filter(
-        **_datetime_filter(period, "called_at")
+        caller__company=company,
+        **_datetime_filter(period, "called_at"),
     ).select_related("caller", "customer", "lead"):
         if not row.caller_id:
             continue
@@ -491,9 +599,14 @@ def build_employee_activity_report(period):
             "detail": f"{row.get_outcome_display()} • {subject}",
         })
 
-    for row in CustomerRentPayment.objects.filter(
-        payment_date__range=(period.start, period.end)
-    ).select_related("collected_by", "customer"):
+    rent_activity = _scope_customer_rows(
+        CustomerRentPayment.objects.filter(
+            payment_date__range=(period.start, period.end)
+        ),
+        company,
+        "customer__",
+    ).select_related("collected_by", "customer")
+    for row in rent_activity:
         if not row.collected_by_id:
             continue
         target = employees.get(row.collected_by_id)
@@ -556,7 +669,7 @@ def build_employee_activity_report(period):
     }
 
 
-def build_operations_report(period):
+def build_operations_report(period, company):
     jobs_created = Job.objects.filter(**_datetime_filter(period, "created_at"))
     jobs_completed = Job.objects.filter(
         completed_at__isnull=False,
@@ -579,12 +692,21 @@ def build_operations_report(period):
         **_datetime_filter(period, "created_at")
     )
 
+    jobs_created = _scope_job_rows(jobs_created, company)
+    jobs_completed = _scope_job_rows(jobs_completed, company)
+    complaints_created = _scope_complaint_rows(complaints_created, company)
+    complaints_resolved = _scope_complaint_rows(complaints_resolved, company)
+    installations = _scope_installation_rows(installations, company)
+    services = _scope_service_rows(services, company)
+    new_customers = _scope_customer_rows(new_customers, company)
+
     purchase_value_expression = ExpressionWrapper(
         F("quantity") * F("purchase_price"),
         output_field=DecimalField(max_digits=18, decimal_places=2),
     )
     purchase_items = PurchaseItem.objects.filter(
-        purchase__invoice_date__range=(period.start, period.end)
+        company=company,
+        purchase__invoice_date__range=(period.start, period.end),
     )
     purchase_totals = purchase_items.aggregate(
         items=Count("id"),
@@ -594,8 +716,11 @@ def build_operations_report(period):
         suppliers=Count("purchase__supplier", distinct=True),
     )
 
-    open_complaints = Complaint.objects.exclude(
-        status__in=["RESOLVED", "CLOSED", "CANCELLED"]
+    open_complaints = _scope_complaint_rows(
+        Complaint.objects.exclude(
+            status__in=["RESOLVED", "CLOSED", "CANCELLED"]
+        ),
+        company,
     ).count()
 
     return {
@@ -623,7 +748,7 @@ def build_operations_report(period):
     }
 
 
-def build_customer_report(period):
+def build_customer_report(period, company):
     """Customer-wise financial and operational audit for the selected period."""
     rows = {}
 
@@ -644,8 +769,12 @@ def build_customer_report(period):
             "complaints_resolved": 0,
         })
 
-    payment_rows = CustomerRentPayment.objects.filter(
-        payment_date__range=(period.start, period.end)
+    payment_rows = _scope_customer_rows(
+        CustomerRentPayment.objects.filter(
+            payment_date__range=(period.start, period.end)
+        ),
+        company,
+        "customer__",
     ).values(
         "customer_id", "customer__customer_id", "customer__name", "customer__phone"
     ).annotate(
@@ -656,8 +785,12 @@ def build_customer_report(period):
         row["payments"] = item["payments"]
         row["payment_amount"] = _decimal(item["amount"])
 
-    part_rows = JobPartUsed.objects.filter(
-        **_datetime_filter(period, "used_at")
+    part_rows = _scope_job_rows(
+        JobPartUsed.objects.filter(
+            **_datetime_filter(period, "used_at")
+        ),
+        company,
+        "job__",
     ).values(
         "job__customer_id", "job__customer__customer_id", "job__customer__name", "job__customer__phone"
     ).annotate(
@@ -668,8 +801,12 @@ def build_customer_report(period):
         row["parts_quantity"] = item["quantity"] or 0
         row["parts_types"] = item["part_types"] or 0
 
-    service_part_rows = ServicePart.objects.filter(
-        **_datetime_filter(period, "service__scheduled_date")
+    service_part_rows = _scope_service_rows(
+        ServicePart.objects.filter(
+            **_datetime_filter(period, "service__scheduled_date")
+        ),
+        company,
+        "service__",
     ).values(
         "service__customer_id", "service__customer__customer_id",
         "service__customer__name", "service__customer__phone",
@@ -681,8 +818,11 @@ def build_customer_report(period):
         row["parts_quantity"] += item["quantity"] or 0
         row["parts_types"] += item["part_types"] or 0
 
-    job_rows = Job.objects.filter(
-        **_datetime_filter(period, "created_at")
+    job_rows = _scope_job_rows(
+        Job.objects.filter(
+            **_datetime_filter(period, "created_at")
+        ),
+        company,
     ).values(
         "customer_id", "customer__customer_id", "customer__name", "customer__phone"
     ).annotate(
@@ -693,8 +833,11 @@ def build_customer_report(period):
         row["jobs"] = item["jobs"]
         row["jobs_completed"] = item["completed"]
 
-    service_rows = Service.objects.filter(
-        **_datetime_filter(period, "scheduled_date")
+    service_rows = _scope_service_rows(
+        Service.objects.filter(
+            **_datetime_filter(period, "scheduled_date")
+        ),
+        company,
     ).values(
         "customer_id", "customer__customer_id", "customer__name", "customer__phone"
     ).annotate(
@@ -705,8 +848,11 @@ def build_customer_report(period):
         row["services"] = item["services"]
         row["services_completed"] = item["completed"]
 
-    complaint_rows = Complaint.objects.filter(
-        **_datetime_filter(period, "complaint_date")
+    complaint_rows = _scope_complaint_rows(
+        Complaint.objects.filter(
+            **_datetime_filter(period, "complaint_date")
+        ),
+        company,
     ).values(
         "customer_id", "customer__customer_id", "customer__name", "customer__phone"
     ).annotate(
@@ -732,8 +878,12 @@ def build_customer_report(period):
         "payment_mode": item["payment_mode"],
         "collected_by": item["collected_by__employee_id"] or "",
         "remarks": item["remarks"],
-    } for item in CustomerRentPayment.objects.filter(
-        payment_date__range=(period.start, period.end)
+    } for item in _scope_customer_rows(
+        CustomerRentPayment.objects.filter(
+            payment_date__range=(period.start, period.end)
+        ),
+        company,
+        "customer__",
     ).values(
         "payment_date", "customer__customer_id", "customer__name", "amount",
         "payment_mode", "remarks", "collected_by__employee_id",
@@ -749,8 +899,12 @@ def build_customer_report(period):
         "serial_number": item["inventory_item__serial_number"],
         "quantity": item["quantity"],
         "remarks": item["remarks"],
-    } for item in JobPartUsed.objects.filter(
-        **_datetime_filter(period, "used_at")
+    } for item in _scope_job_rows(
+        JobPartUsed.objects.filter(
+            **_datetime_filter(period, "used_at")
+        ),
+        company,
+        "job__",
     ).values(
         "used_at", "job__customer__customer_id", "job__customer__name",
         "job__job_id", "inventory_item__part__code", "inventory_item__part__name",
@@ -766,8 +920,12 @@ def build_customer_report(period):
         "serial_number": item["inventory_item__serial_number"],
         "quantity": item["quantity"],
         "remarks": item["remarks"],
-    } for item in ServicePart.objects.filter(
-        **_datetime_filter(period, "service__scheduled_date")
+    } for item in _scope_service_rows(
+        ServicePart.objects.filter(
+            **_datetime_filter(period, "service__scheduled_date")
+        ),
+        company,
+        "service__",
     ).values(
         "service__scheduled_date", "service__customer__customer_id",
         "service__customer__name", "service__service_id", "part__code",
@@ -786,7 +944,7 @@ def build_customer_report(period):
     }
 
 
-def build_management_report(period, parts, rent, attendance, operations):
+def build_management_report(period, parts, rent, attendance, operations, company):
     rent_summary = rent["summary"]
     operation_summary = operations["summary"]
     attendance_summary = attendance["summary"]
@@ -809,9 +967,14 @@ def build_management_report(period, parts, rent, attendance, operations):
     health_score = round(sum(scored_rates) / len(scored_rates), 1) if scored_rates else 0
 
     ageing = {"current": ZERO, "31_60_days": ZERO, "61_90_days": ZERO, "over_90_days": ZERO}
-    for row in CustomerRentHistory.objects.filter(
-        rent_month__lte=period.end
-    ).values("rent_month", "expected_rent", "paid_amount"):
+    ageing_rows = _scope_customer_rows(
+        CustomerRentHistory.objects.filter(
+            rent_month__lte=period.end
+        ),
+        company,
+        "customer__",
+    )
+    for row in ageing_rows.values("rent_month", "expected_rent", "paid_amount"):
         due = max(_decimal(row["expected_rent"]) - _decimal(row["paid_amount"]), ZERO)
         if not due:
             continue
@@ -827,11 +990,19 @@ def build_management_report(period, parts, rent, attendance, operations):
         month = month_zero + 1
         start = date(year, month, 1)
         end = date(year, month, calendar.monthrange(year, month)[1])
-        payments = _decimal(CustomerRentPayment.objects.filter(
-            payment_date__range=(start, end)
+        payments = _decimal(_scope_customer_rows(
+            CustomerRentPayment.objects.filter(payment_date__range=(start, end)),
+            company,
+            "customer__",
         ).aggregate(total=Sum("amount"))["total"])
-        completed = Job.objects.filter(completed_at__date__range=(start, end)).count()
-        resolved = Complaint.objects.filter(resolved_date__date__range=(start, end)).count()
+        completed = _scope_job_rows(
+            Job.objects.filter(completed_at__date__range=(start, end)),
+            company,
+        ).count()
+        resolved = _scope_complaint_rows(
+            Complaint.objects.filter(resolved_date__date__range=(start, end)),
+            company,
+        ).count()
         trend.append({"month": start.strftime("%b %Y"), "rent_collected": _money(payments), "jobs_completed": completed, "complaints_resolved": resolved})
 
     employee_rows = {}
@@ -873,16 +1044,18 @@ def build_management_report(period, parts, rent, attendance, operations):
     }
 
 
-def build_reports(period):
-    parts = build_parts_report(period)
-    rent = build_rent_report(period)
-    attendance = build_attendance_report(period)
-    operations = build_operations_report(period)
-    employee_activity = build_employee_activity_report(period)
-    customers = build_customer_report(period)
-    management = build_management_report(period, parts, rent, attendance, operations)
-    hrms = build_hrms_report(period)
-    ledgers = build_operational_ledgers(period)
+def build_reports(period, company):
+    parts = build_parts_report(period, company)
+    rent = build_rent_report(period, company)
+    attendance = build_attendance_report(period, company)
+    operations = build_operations_report(period, company)
+    employee_activity = build_employee_activity_report(period, company)
+    customers = build_customer_report(period, company)
+    management = build_management_report(
+        period, parts, rent, attendance, operations, company
+    )
+    hrms = build_hrms_report(period, company)
+    ledgers = build_operational_ledgers(period, company)
 
     return {
         "period": period.as_dict(),
@@ -906,7 +1079,7 @@ def build_reports(period):
     }
 
 
-def build_operational_ledgers(period):
+def build_operational_ledgers(period, company):
     def employee_name(employee):
         return employee.user.get_full_name() or employee.user.phone
 
@@ -917,7 +1090,7 @@ def build_operational_ledgers(period):
         "customer_phone": row.customer.phone,
         "engineer_id": row.engineer.employee_id,
         "engineer_name": employee_name(row.engineer),
-        "asset_id": row.ro_asset.asset_id,
+        "asset_id": row.ro_asset.asset_id if row.ro_asset else "",
         "job_type": row.get_job_type_display(),
         "priority": row.get_priority_display(),
         "scheduled_date": row.scheduled_date,
@@ -925,8 +1098,9 @@ def build_operational_ledgers(period):
         "assigned_at": row.assigned_at,
         "completed_at": row.completed_at,
         "remarks": row.remarks,
-    } for row in Job.objects.filter(
-        **_datetime_filter(period, "scheduled_date")
+    } for row in _scope_job_rows(
+        Job.objects.filter(**_datetime_filter(period, "scheduled_date")),
+        company,
     ).select_related("customer", "engineer__user", "ro_asset").order_by("scheduled_date")]
 
     complaints = [{
@@ -945,8 +1119,9 @@ def build_operational_ledgers(period):
         "description": row.description,
         "resolution": row.resolution,
         "engineer_remarks": row.engineer_remarks,
-    } for row in Complaint.objects.filter(
-        **_datetime_filter(period, "complaint_date")
+    } for row in _scope_complaint_rows(
+        Complaint.objects.filter(**_datetime_filter(period, "complaint_date")),
+        company,
     ).select_related("customer", "engineer__user").order_by("complaint_date")]
 
     services = [{
@@ -965,8 +1140,9 @@ def build_operational_ledgers(period):
         "next_service_date": row.next_service_date,
         "status": row.get_status_display(),
         "remarks": row.remarks,
-    } for row in Service.objects.filter(
-        **_datetime_filter(period, "scheduled_date")
+    } for row in _scope_service_rows(
+        Service.objects.filter(**_datetime_filter(period, "scheduled_date")),
+        company,
     ).select_related("customer", "engineer__user", "ro_asset").order_by("scheduled_date")]
 
     installations = [{
@@ -985,8 +1161,9 @@ def build_operational_ledgers(period):
         "referral_name": row.referral_name,
         "status": row.get_status_display(),
         "remarks": row.remarks,
-    } for row in Installation.objects.filter(
-        **_datetime_filter(period, "scheduled_date")
+    } for row in _scope_installation_rows(
+        Installation.objects.filter(**_datetime_filter(period, "scheduled_date")),
+        company,
     ).select_related("customer", "engineer__user", "ro_asset").order_by("scheduled_date")]
 
     return {
@@ -997,9 +1174,11 @@ def build_operational_ledgers(period):
     }
 
 
-def build_hrms_report(period):
+def build_hrms_report(period, company):
     employees = []
-    for employee in EmployeeProfile.objects.select_related("user").order_by("employee_id"):
+    for employee in EmployeeProfile.objects.filter(
+        company=company,
+    ).select_related("user").order_by("employee_id"):
         employees.append({
             "employee_id": employee.employee_id,
             "employee_name": employee.user.get_full_name() or employee.user.phone,
@@ -1024,6 +1203,7 @@ def build_hrms_report(period):
         "review_note": row.review_note,
         "reviewed_by": (row.reviewed_by.get_full_name() or row.reviewed_by.phone) if row.reviewed_by else "",
     } for row in LeaveRequest.objects.filter(
+        employee__company=company,
         start_date__lte=period.end,
         end_date__gte=period.start,
     ).select_related("employee__user", "reviewed_by")]
@@ -1050,6 +1230,7 @@ def build_hrms_report(period):
         "status": row.status,
         "paid_at": row.paid_at,
     } for row in PayrollRecord.objects.filter(
+        employee__company=company,
         payroll_month__gte=period.start.replace(day=1),
         payroll_month__lte=period.end,
     ).select_related("employee__user")]
@@ -1060,7 +1241,11 @@ def build_hrms_report(period):
         "description": row.description,
         "paid": row.is_paid,
         "declared_by": row.declared_by.get_full_name() or row.declared_by.phone,
-    } for row in Holiday.objects.filter(date__range=(period.start, period.end)).select_related("declared_by")]
+    } for row in Holiday.objects.filter(
+        date__range=(period.start, period.end),
+        declared_by__company_memberships__company=company,
+        declared_by__company_memberships__is_active=True,
+    ).distinct().select_related("declared_by")]
 
     return {
         "summary": {
@@ -1373,9 +1558,16 @@ def build_workbook(data):
 
 
 class ReportsSummaryAPIView(APIView):
-    permission_classes = [IsAdminOrManager]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "reports"
 
     def get(self, request):
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             period = resolve_period(request.query_params)
         except ValueError as exc:
@@ -1386,14 +1578,21 @@ class ReportsSummaryAPIView(APIView):
 
         return Response({
             "success": True,
-            **build_reports(period),
+            **build_reports(period, company),
         })
 
 
 class ReportsExportAPIView(APIView):
-    permission_classes = [IsAdminOrManager]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "reports"
 
     def get(self, request):
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             period = resolve_period(request.query_params)
         except ValueError as exc:
@@ -1402,7 +1601,7 @@ class ReportsExportAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        data = build_reports(period)
+        data = build_reports(period, company)
         workbook = build_workbook(data)
         output = BytesIO()
         workbook.save(output)

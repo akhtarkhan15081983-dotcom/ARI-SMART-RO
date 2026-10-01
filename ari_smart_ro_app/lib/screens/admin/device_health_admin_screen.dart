@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/device_health_service.dart';
+import 'sms_gateway_setup_screen.dart';
 
 class DeviceHealthAdminScreen extends StatefulWidget {
   const DeviceHealthAdminScreen({super.key});
@@ -42,8 +43,10 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
   Color _statusColor(String status) {
     switch (status) {
       case 'HEALTHY':
+      case 'CLEAR':
         return Colors.green.shade700;
       case 'STALE':
+      case 'UNKNOWN':
         return Colors.orange.shade800;
       default:
         return Colors.red.shade700;
@@ -64,6 +67,16 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
       appBar: AppBar(
         title: const Text('Device Health Center'),
         actions: [
+          IconButton(
+            tooltip: 'Free SIM verification gateway',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const SmsGatewaySetupScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.sms_outlined),
+          ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
@@ -97,8 +110,18 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                           ? Map<String, dynamic>.from(row['health'] as Map)
                           : <String, dynamic>{};
                       final status = row['status']?.toString() ?? 'UNKNOWN';
+                      final riskLevel = row['risk_level']?.toString() ?? 'UNKNOWN';
+                      final risks = row['security_risks'] is List
+                          ? List<dynamic>.from(row['security_risks'] as List)
+                              .map((value) => value.toString().replaceAll('_', ' '))
+                              .toList(growable: false)
+                          : const <String>[];
                       final pendingJobs =
                           int.tryParse(health['pending_job_actions']?.toString() ?? '') ?? 0;
+                      final pendingAttendance = int.tryParse(
+                            health['pending_attendance_actions']?.toString() ?? '',
+                          ) ??
+                          0;
                       final pendingLocations =
                           int.tryParse(health['pending_location_points']?.toString() ?? '') ?? 0;
                       return Card(
@@ -150,6 +173,14 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                                 runSpacing: 8,
                                 children: [
                                   _Metric(
+                                    icon: Icons.security_outlined,
+                                    label: 'Security Risk',
+                                    value: risks.isEmpty
+                                        ? riskLevel
+                                        : '$riskLevel • ${risks.join(', ')}',
+                                    valueColor: _statusColor(riskLevel),
+                                  ),
+                                  _Metric(
                                     icon: Icons.schedule,
                                     label: 'Heartbeat',
                                     value: _ago(row['age_seconds']),
@@ -179,9 +210,21 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                                         '${row['location_status'] ?? '-'} • ${health['location_permission'] ?? '-'}',
                                   ),
                                   _Metric(
+                                    icon: Icons.battery_saver_outlined,
+                                    label: 'Background power',
+                                    value: health['battery_optimization_ignored'] == true
+                                        ? 'Unrestricted / allowed'
+                                        : 'Battery optimization ON',
+                                    valueColor:
+                                        health['battery_optimization_ignored'] == true
+                                            ? Colors.green.shade700
+                                            : Colors.orange.shade800,
+                                  ),
+                                  _Metric(
                                     icon: Icons.sync,
                                     label: 'Pending Sync',
-                                    value: '$pendingJobs jobs • $pendingLocations GPS',
+                                    value:
+                                        '$pendingAttendance attendance • $pendingJobs jobs • $pendingLocations GPS',
                                   ),
                                   _Metric(
                                     icon: Icons.memory,
@@ -214,11 +257,13 @@ class _Metric extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.valueColor,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -243,7 +288,10 @@ class _Metric extends StatelessWidget {
                   value,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: valueColor,
+                  ),
                 ),
               ],
             ),

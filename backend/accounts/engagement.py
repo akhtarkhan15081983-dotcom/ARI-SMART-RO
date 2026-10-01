@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 from django.db import models
-from django.db.models import Q
 from django.utils import timezone
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -10,6 +9,7 @@ from rest_framework.views import APIView
 from customers.models import CustomerRentHistory
 from customers.rent_policy import rent_alert_schedule, rent_due_date, rent_penalty
 from .models import CustomerEngagement, CustomerEngagementRead
+from .offer_audience import offer_audience_q_for_user
 
 
 def _discount_label(item):
@@ -21,7 +21,6 @@ def _discount_label(item):
 
 
 def _decimal_string(value):
-    """Return a compact decimal string without unnecessary trailing zeroes."""
     normalized = Decimal(value).normalize()
     return format(normalized, "f")
 
@@ -34,13 +33,10 @@ class CustomerEngagementAPIView(APIView):
         items = CustomerEngagement.objects.filter(
             is_active=True, valid_from__lte=now,
         ).filter(
-            Q(valid_until__isnull=True) | Q(valid_until__gte=now),
+            models.Q(valid_until__isnull=True) | models.Q(valid_until__gte=now),
         )
         if request.user.is_authenticated:
-            items = items.filter(
-                Q(audience="ALL", target_user__isnull=True) |
-                Q(audience="TARGETED", target_user=request.user),
-            )
+            items = items.filter(offer_audience_q_for_user(request.user))
             read_ids = set(request.user.engagement_reads.values_list("engagement_id", flat=True))
         else:
             items = items.filter(audience="ALL", target_user__isnull=True)
@@ -134,8 +130,7 @@ class CustomerEngagementAPIView(APIView):
         if not engagement_id:
             return Response({"detail": "engagement_id is required."}, status=400)
         eligible = CustomerEngagement.objects.filter(id=engagement_id).filter(
-            Q(audience="ALL", target_user__isnull=True) |
-            Q(audience="TARGETED", target_user=request.user),
+            offer_audience_q_for_user(request.user)
         ).first()
         if eligible is None:
             return Response({"detail": "Alert not found."}, status=404)

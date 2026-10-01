@@ -1,12 +1,17 @@
+import hashlib
+import json
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
+from jobs.idempotency import action_id_from_request, replay_response, remember_response
+from tenancy.access import has_feature_access, request_company
 
 from .models import Referral, WalletReward, WalletLedgerEntry
 from .serializers import (
@@ -26,8 +31,19 @@ from .services import (
 )
 
 
+
+class ReferralFeaturePermission(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated or not user.is_active:
+            return False
+        if str(getattr(user, "role", "") or "").upper() == "CUSTOMER":
+            return bool(getattr(user, "is_verified", False))
+        return has_feature_access(request, "referral")
+
+
 class ReferralMeAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def get(self, request):
         expire_rewards()
@@ -75,7 +91,7 @@ class ReferralMeAPIView(APIView):
 
 
 class ClaimReferralAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def post(self, request):
         serializer = ClaimReferralSerializer(data=request.data)
@@ -98,7 +114,7 @@ class ClaimReferralAPIView(APIView):
 
 
 class WelcomeRewardAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def post(self, request):
         try:
@@ -110,7 +126,7 @@ class WelcomeRewardAPIView(APIView):
 
 
 class WalletBalanceAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def get(self, request):
         expire_rewards()
@@ -120,7 +136,7 @@ class WalletBalanceAPIView(APIView):
 
 
 class WalletHistoryAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def get(self, request):
         entries = WalletLedgerEntry.objects.filter(user=request.user).select_related("reward")
@@ -133,7 +149,7 @@ class WalletHistoryAPIView(APIView):
 
 
 class WalletQuoteAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
     def post(self, request):
         try:
@@ -148,8 +164,9 @@ class WalletQuoteAPIView(APIView):
 
 
 class WalletRedeemAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReferralFeaturePermission]
 
+    @transaction.atomic
     def post(self, request):
         try:
             bill = Decimal(str(request.data.get("bill_amount"))).quantize(Decimal("0.01"))
@@ -160,6 +177,18 @@ class WalletRedeemAPIView(APIView):
         reference_id = str(request.data.get("reference_id", "")).strip()
         if category not in {"RENT", "PURCHASE", "PARTS", "SERVICE"} or not reference_type or not reference_id:
             return Response({"success": False, "message": "category, reference_type and reference_id are required."}, status=400)
+        identity = json.dumps(
+            [str(bill), category, reference_type, reference_id], separators=(",", ":"),
+        )
+        action_type = "wallet_redeem:" + hashlib.sha256(identity.encode()).hexdigest()[:16]
+        action_id = action_id_from_request(request)
+        if action_id:
+            # Lock before receipt lookup so concurrent identical retries cannot
+            # both debit the wallet before one receipt becomes visible.
+            type(request.user).objects.select_for_update().get(pk=request.user.pk)
+        replay = replay_response(request=request, action_type=action_type)
+        if replay.response is not None:
+            return replay.response
         try:
             result = redeem_wallet(
                 user=request.user,
@@ -171,7 +200,13 @@ class WalletRedeemAPIView(APIView):
         except Exception as exc:
             detail = getattr(exc, "detail", str(exc))
             return Response({"success": False, "message": detail}, status=400)
-        return Response({"success": True, **result})
+        response = Response({"success": True, **result})
+        if action_id:
+            response.data = json.loads(json.dumps(response.data, cls=DjangoJSONEncoder))
+        return remember_response(
+            request=request, action_id=action_id,
+            action_type=action_type, response=response,
+        )
 
 
 class QualifyReferralAPIView(APIView):
@@ -181,6 +216,38 @@ class QualifyReferralAPIView(APIView):
     def post(self, request, pk):
         if request.user.role not in self.ALLOWED_ROLES:
             return Response({"success": False, "message": "Only Admin, Manager or Office can qualify referrals."}, status=403)
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=403,
+            )
+        referral = Referral.objects.filter(pk=pk).select_related(
+            "referrer",
+            "referred_user",
+        ).first()
+        if referral is None:
+            return Response({"success": False, "message": "Referral not found."}, status=404)
+
+        from customers.models import Customer
+
+        def user_in_company(user):
+            if user.company_memberships.filter(
+                company=company,
+                is_active=True,
+            ).exists():
+                return True
+            return Customer.objects.filter(
+                user=user,
+                company=company,
+            ).exists()
+
+        if not user_in_company(referral.referrer) or not user_in_company(referral.referred_user):
+            return Response(
+                {"success": False, "message": "Referral does not belong to your company."},
+                status=404,
+            )
+
         referred_type = str(request.data.get("referred_type", "")).upper().strip()
         try:
             amount = Decimal(str(request.data.get("qualifying_amount", "0"))).quantize(Decimal("0.01"))

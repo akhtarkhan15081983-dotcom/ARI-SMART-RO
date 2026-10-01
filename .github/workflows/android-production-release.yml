@@ -8,6 +8,12 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - "andy-assistant"
+      - "hardening/max-pro-5of5-2026-09-29"
+    paths:
+      - "ari_smart_ro_app/pubspec.yaml"
+      - ".github/workflows/android-production-release.yml"
 
 jobs:
   signed-android-release:

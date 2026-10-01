@@ -2,13 +2,17 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.generics import get_object_or_404
 
 from accounts.permissions import IsReadOnlyOrStaffOperator
-from django.db.models import Q
+from tenancy.access import request_company
+from django.db.models import Count, Q
 from .models import (
     ProductCategory,
     ROModel,
     ROModelPart,
+    ROModelImage,
 )
 
 from .serializers import (
@@ -88,6 +92,54 @@ class ROModelAPIView(APIView):
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+class ROModelDetailAPIView(APIView):
+    permission_classes = [IsReadOnlyOrStaffOperator]
+
+    def patch(self, request, model_id):
+        product = get_object_or_404(ROModel, id=model_id)
+        serializer = ROModelSerializer(
+            product,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, model_id):
+        product = get_object_or_404(ROModel, id=model_id)
+        product.is_active = False
+        product.save(update_fields=["is_active"])
+        return Response({"success": True, "message": "Product deactivated."})
+
+
+class ROModelImageAPIView(APIView):
+    permission_classes = [IsReadOnlyOrStaffOperator]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, model_id):
+        product = get_object_or_404(ROModel, id=model_id)
+        image = request.FILES.get("image")
+        if image is None:
+            return Response({"image": ["Product image is required."]}, status=400)
+        if image.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+            return Response({"image": ["Use a JPEG, PNG or WebP image."]}, status=400)
+        if image.size > 8 * 1024 * 1024:
+            return Response({"image": ["Image must be 8 MB or smaller."]}, status=400)
+        product.images.all().delete()
+        ROModelImage.objects.create(
+            ro_model=product,
+            image=image,
+            alt_text=product.model_name,
+        )
+        serializer = ROModelSerializer(
+            product,
+            context={"request": request},
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class ROModelPartAPIView(APIView):
@@ -184,6 +236,30 @@ class CustomerShopCatalogAPIView(APIView):
 
         if category_id.isdigit():
             queryset = queryset.filter(category_id=int(category_id))
+
+        company = None
+        user = getattr(request, "user", None)
+        if user is not None and getattr(user, "is_authenticated", False):
+            company = request_company(request)
+            if company is None:
+                try:
+                    company = user.customer_profile.company
+                except Exception:
+                    company = None
+
+        if company is not None:
+            queryset = queryset.annotate(
+                tenant_stock_quantity=Count(
+                    "assets",
+                    filter=Q(
+                        assets__company=company,
+                        assets__is_active=True,
+                        assets__status="WAREHOUSE",
+                        assets__current_customer__isnull=True,
+                    ),
+                    distinct=True,
+                )
+            )
 
         serializer = ROModelSerializer(
             queryset.order_by("category__name", "model_name"),

@@ -184,6 +184,11 @@ class HrmsService {
         .timeout(const Duration(seconds: 60));
     if (response.statusCode != 200) throw Exception(_message(response));
     final filename = 'ARI_Salary_Register_${month.replaceAll('-', '_')}.xlsx';
+    final root = await getApplicationDocumentsDirectory();
+    final archive = Directory('${root.path}/ARI Smart RO Downloads');
+    if (!await archive.exists()) await archive.create(recursive: true);
+    final archivedFile = File('${archive.path}/$filename');
+    await archivedFile.writeAsBytes(response.bodyBytes, flush: true);
     if (Platform.isAndroid) {
       final path = await _downloads.invokeMethod<String>('saveFile', {
         'filename': filename,
@@ -194,12 +199,9 @@ class HrmsService {
       if (path == null || path.isEmpty) {
         throw Exception('Download location not returned.');
       }
-      return path;
+      return archivedFile.path;
     }
-    final directory = await getApplicationDocumentsDirectory();
-    final file = File('${directory.path}/$filename');
-    await file.writeAsBytes(response.bodyBytes, flush: true);
-    return file.path;
+    return archivedFile.path;
   }
 
   static String _date(DateTime value) =>

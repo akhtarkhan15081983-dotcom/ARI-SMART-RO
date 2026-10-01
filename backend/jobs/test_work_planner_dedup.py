@@ -72,7 +72,7 @@ class WorkPlannerDedupTests(TestCase):
         self.client.force_authenticate(self.user)
 
     def test_linked_complaint_is_exposed_once_as_job_event(self):
-        month = self.complaint.scheduled_date.strftime("%Y-%m")
+        month = timezone.localtime(self.complaint.scheduled_date).strftime("%Y-%m")
         response = self.client.get(reverse("work-calendar"), {"month": month})
         self.assertEqual(response.status_code, 200)
 

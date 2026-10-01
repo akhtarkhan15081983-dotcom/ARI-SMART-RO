@@ -37,6 +37,10 @@ class ROModelSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     images = ROModelImageSerializer(many=True, read_only=True)
+    tenant_stock_quantity = serializers.SerializerMethodField()
+
+    def get_tenant_stock_quantity(self, obj):
+        return getattr(obj, "tenant_stock_quantity", None)
 
     class Meta:
         model = ROModel

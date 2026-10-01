@@ -12,8 +12,11 @@ RENT_REMINDER_INTERVAL_HOURS = 3
 
 
 def rent_due_date(customer, month):
-    """Return the monthly due date, using the installation day safely."""
-    due_day = customer.installation_date.day if customer.installation_date else 1
+    """Return the monthly due date from the editable customer rent schedule."""
+    due_day = (
+        customer.rent_due_day
+        or (customer.installation_date.day if customer.installation_date else 1)
+    )
     last_day = calendar.monthrange(month.year, month.month)[1]
     return date(month.year, month.month, min(due_day, last_day))
 

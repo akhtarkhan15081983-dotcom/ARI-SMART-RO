@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_service.dart';
 import 'live_location_service.dart';
+import 'offline_attendance_store.dart';
 import 'offline_job_store.dart';
 
 class DeviceHealthService {
@@ -20,6 +21,7 @@ class DeviceHealthService {
         ) ??
         <String, dynamic>{};
     final jobPending = await OfflineJobStore().pendingCount();
+    final attendancePending = await OfflineAttendanceStore().count();
     final liveLocation = LiveLocationService();
     final locationPending = await liveLocation.pendingLocationCount();
     final tracking = await liveLocation.isTracking();
@@ -28,6 +30,7 @@ class DeviceHealthService {
       ...native,
       'live_location_tracking': tracking,
       'pending_job_actions': jobPending,
+      'pending_attendance_actions': attendancePending,
       'pending_location_points': locationPending,
     };
   }

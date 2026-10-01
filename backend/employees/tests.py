@@ -6,6 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from attendance.models import Attendance
 from .models import EmployeeProfile
 from tenancy.models import Company, CompanyMembership, CompanySubscription, SubscriptionPlan
 from django.utils import timezone
@@ -17,6 +18,13 @@ class EmployeeAPITests(TestCase):
     def setUp(self):
 
         self.client = APIClient()
+        self.company = Company.objects.create(
+            name="Employee API Test Company",
+            slug="employee-api-test-company",
+            phone="9200000098",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
 
         # ====================================================
         # ENGINEER USER
@@ -32,7 +40,15 @@ class EmployeeAPITests(TestCase):
             is_verified=True,
         )
 
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.engineer_user,
+            role="STAFF",
+            is_active=True,
+        )
+
         self.engineer = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.engineer_user,
             employee_id="EMP-TEST-0001",
             gender="MALE",
@@ -62,7 +78,15 @@ class EmployeeAPITests(TestCase):
             is_verified=True,
         )
 
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.office_user,
+            role="STAFF",
+            is_active=True,
+        )
+
         self.office = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.office_user,
             employee_id="EMP-TEST-0002",
             gender="FEMALE",
@@ -89,7 +113,15 @@ class EmployeeAPITests(TestCase):
             is_verified=True,
         )
 
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.manager_user,
+            role="STAFF",
+            is_active=True,
+        )
+
         self.manager = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.manager_user,
             employee_id="EMP-TEST-0003",
             gender="MALE",
@@ -110,6 +142,14 @@ class EmployeeAPITests(TestCase):
 
         self.client.force_authenticate(
             user=self.engineer_user
+        )
+
+    def create_active_attendance(self, employee):
+        return Attendance.objects.create(
+            employee=employee,
+            date=timezone.localdate(),
+            check_in=timezone.now(),
+            status="PRESENT",
         )
 
     # ========================================================
@@ -408,6 +448,7 @@ class EmployeeAPITests(TestCase):
 
     def test_engineer_can_update_live_location(self):
 
+        self.create_active_attendance(self.engineer)
         self.authenticate_engineer()
 
         response = self.client.post(
@@ -450,6 +491,7 @@ class EmployeeAPITests(TestCase):
         )
 
     def test_non_engineer_employee_can_update_live_location(self):
+        self.create_active_attendance(self.office)
         self.client.force_authenticate(user=self.office_user)
 
         response = self.client.post(
@@ -485,6 +527,7 @@ class EmployeeAPITests(TestCase):
         self.assertFalse(response.data["online"])
 
     def test_older_queued_location_does_not_replace_newer_point(self):
+        self.create_active_attendance(self.engineer)
         latest = timezone.now()
         self.engineer.last_latitude = Decimal("28.7000000")
         self.engineer.last_longitude = Decimal("77.3000000")
@@ -631,6 +674,13 @@ class EmployeeAPITests(TestCase):
 
         self.engineer.save()
 
+        Attendance.objects.create(
+            employee=self.engineer,
+            date=timezone.localdate(),
+            check_in=timezone.now(),
+            status="PRESENT",
+        )
+
         self.client.force_authenticate(
             user=self.manager_user
         )
@@ -686,6 +736,9 @@ class EmployeeAPITests(TestCase):
 
         self.assertTrue(
             engineer_data["online"]
+        )
+        self.assertTrue(
+            engineer_data["attendance_active"]
         )
 
     # ========================================================

@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from employees.models import EmployeeProfile, HRPolicy
+from tenancy.models import Company, CompanyMembership
 from .models import Attendance, OvertimeRequest
 from .work_hours import recalculate_attendance
 
@@ -50,6 +51,13 @@ class OfficeGeofenceTests(SimpleTestCase):
 class WorkHoursAndOvertimeTests(TestCase):
     def setUp(self):
         self.client = APIClient()
+        self.company = Company.objects.create(
+            name="Attendance Test Company",
+            slug="attendance-test-company",
+            phone="9000000999",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
         self.employee_user = User.objects.create_user(
             phone="9000000901",
             password="Strong@Test1",
@@ -64,7 +72,20 @@ class WorkHoursAndOvertimeTests(TestCase):
             first_name="Admin",
             is_verified=True,
         )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.employee_user,
+            role="STAFF",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.admin,
+            role="ADMIN",
+            is_active=True,
+        )
         self.employee = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.employee_user,
             employee_id="EMP-SHIFT-1",
             joining_date=timezone.localdate(),

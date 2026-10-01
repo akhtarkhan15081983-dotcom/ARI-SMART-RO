@@ -170,8 +170,6 @@ elif MEDIA_STORAGE_BACKEND == "s3":
     AWS_STORAGE_BUCKET_NAME = _required_env("AWS_STORAGE_BUCKET_NAME")
     AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "ap-south-1").strip()
     AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL", "").strip() or None
-    # Default uploads include invoices, agreements and employee selfies.
-    # Never expose them through a public domain or unsigned URL.
     AWS_S3_CUSTOM_DOMAIN = None
     AWS_QUERYSTRING_AUTH = True
     AWS_QUERYSTRING_EXPIRE = 3600
@@ -241,8 +239,8 @@ CORS_ALLOWED_ORIGINS = _env_list(
 CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=10),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,

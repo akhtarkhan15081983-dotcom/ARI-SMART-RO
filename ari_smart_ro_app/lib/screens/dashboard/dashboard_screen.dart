@@ -33,11 +33,14 @@ import '../walkin/walkin_customer_screen.dart';
 import '../customer/customer_list_screen.dart';
 import '../customer/my_ro_screen.dart';
 import '../customer/customer_history_screen.dart';
+import '../customer/customer_profile_screen.dart';
+import '../customer/ro_alarm_screen.dart';
 import '../customer/referral_screen.dart';
 import '../rent/rent_payment_screen.dart';
 import '../rent/rent_management_screen.dart';
 import '../rent/payment_history_screen.dart';
 import '../reports/reports_screen.dart';
+import '../downloads/download_center_screen.dart';
 import '../service/service_list_screen.dart';
 import '../complaint/complaint_list_screen.dart';
 import '../profile/profile_screen.dart';
@@ -169,11 +172,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _todayAttendance = null;
           _isLoadingAttendance = false;
         });
       }
-      await _liveLocationService.stopTracking();
+      // A temporary attendance/API refresh failure must never stop an already
+      // active background location service. The server-side shift gate remains
+      // authoritative and will stop tracking after checkout.
+      debugPrint('ATTENDANCE REFRESH ERROR: $e');
     }
   }
 
@@ -241,16 +246,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   List<DashboardItem> _applyRolePermissions(List<DashboardItem> items) {
-    if (_role == 'ADMIN' || _role == 'CUSTOMER') return items;
-    if (_allowedFeatures.isEmpty) return const [];
-    const alwaysVisible = {'andy'};
-    return items
-        .where(
-          (item) =>
-              alwaysVisible.contains(item.route) ||
-              _allowedFeatures.contains(item.route),
-        )
-        .toList();
+    return DashboardItems.resolvePermissions(
+      role: _role,
+      allowedFeatures: _allowedFeatures,
+      baseItems: items,
+    );
   }
 
   List<DashboardItem> get _dashboardItems {
@@ -528,6 +528,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       case 'customers':
         _push(const CustomerListScreen());
         return;
+      case 'ro_alarm_center':
+        if (_role == 'ADMIN' || _role == 'MANAGER' || _role == 'OFFICE') {
+          _push(const ROAlarmScreen());
+        } else {
+          _showComingSoon('RO Alarm Center permission is required.');
+        }
+        return;
       case 'my_ro':
         _push(const MyROScreen());
         return;
@@ -552,8 +559,15 @@ class _DashboardScreenState extends State<DashboardScreen>
       case 'reports':
         _push(const ReportsScreen());
         return;
+      case 'downloads':
+        _push(const DownloadCenterScreen());
+        return;
       case 'profile':
-        _push(const ProfileScreen());
+        if (_role == 'CUSTOMER') {
+          _push(const CustomerProfileScreen());
+        } else {
+          _push(const ProfileScreen());
+        }
         return;
       default:
         _showComingSoon('${item.title} is being prepared.');
@@ -583,6 +597,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         'map',
         'engineer_map',
         'calling_desk',
+        'ro_alarm_center',
       },
       'Finance': {
         'rent',
@@ -713,7 +728,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     _dashboardRefreshTimer?.cancel();
     _toolSearchController.dispose();
     WidgetsBinding.instance.removeObserver(this);
-    _liveLocationService.stopTracking();
+    // Do not stop live location just because this dashboard widget is disposed.
+    // Checked-in employees must keep sharing location until checkout/logout or
+    // the server reports that the shift is no longer active.
     super.dispose();
   }
 
@@ -912,6 +929,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
+                            mouseCursor: SystemMouseCursors.click,
                             borderRadius: BorderRadius.circular(14),
                             onTap: () =>
                                 setState(() => _windowsWorkspace = group.title),
@@ -1534,6 +1552,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
     final allItems = _dashboardItems, isCustomer = _role == 'CUSTOMER';
     final isWindows = defaultTargetPlatform == TargetPlatform.windows;
+    final useWindowsDesktop = isWindows && MediaQuery.sizeOf(context).width >= 1050;
     final items = allItems
         .where((item) => matchesAllSearchTerms(_toolQuery, [item.title, item.route]))
         .toList();
@@ -1543,7 +1562,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (!didPop) _handleDashboardBack();
       },
       child: Scaffold(
-        appBar: isWindows ? null : AppBar(
+        appBar: useWindowsDesktop ? null : AppBar(
           title: Text(isCustomer ? 'ARI Smart RO' : '$_role Dashboard'),
           actions: [
             Stack(
@@ -1588,7 +1607,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             IconButton(onPressed: _logout, icon: const Icon(Icons.logout)),
           ],
         ),
-        body: isWindows
+        body: useWindowsDesktop
             ? _buildWindowsDashboard(items: items, isCustomer: isCustomer)
             : RefreshIndicator(
           onRefresh: _loadDashboard,
@@ -1655,6 +1674,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 role: _role,
                 groups: _dashboardGroups(items),
                 onOpen: _openDashboardGroup,
+                isDesktop: isWindows,
               ),
             ],
           ),
@@ -1725,6 +1745,7 @@ class _CommandGrid extends StatelessWidget {
           return Card(
             margin: EdgeInsets.zero,
             child: InkWell(
+              mouseCursor: SystemMouseCursors.click,
               borderRadius: BorderRadius.circular(16),
               onTap: () => onOpen(group),
               child: Padding(
@@ -1847,6 +1868,7 @@ class _WindowsHeaderAction extends StatelessWidget {
           color: Colors.white.withValues(alpha: .14),
           borderRadius: BorderRadius.circular(13),
           child: InkWell(
+            mouseCursor: SystemMouseCursors.click,
             borderRadius: BorderRadius.circular(13),
             onTap: onTap,
             child: Container(
@@ -2142,6 +2164,7 @@ class _WindowsToolCardState extends State<_WindowsToolCard> {
   Widget build(BuildContext context) {
     final color = widget.color;
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedScale(

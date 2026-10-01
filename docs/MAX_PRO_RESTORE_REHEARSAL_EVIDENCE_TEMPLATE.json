@@ -1,0 +1,41 @@
+{
+  "rehearsal_status": "OPEN",
+  "executed_on_isolated_restored_production_like_database": false,
+  "utc_timestamp": null,
+  "branch_commit": null,
+  "source_backup_utc": null,
+  "source_backup_sha256": null,
+  "source_instance_id_redacted": null,
+  "restore_instance_id_redacted": null,
+  "restore_point_utc": null,
+  "restore_duration_seconds": null,
+  "source_postgresql_version": null,
+  "restore_postgresql_version": null,
+  "schema_migration_heads": null,
+  "commands": {
+    "rehearse_tenant_migration": {"exit_code": null, "json_sha256": null},
+    "backfill_tenant_ownership_dry_run": {"exit_code": null, "json_sha256": null},
+    "backfill_inventory_tenant_ownership_dry_run": {"exit_code": null, "json_sha256": null},
+    "audit_duplicate_supplier_invoices_fail_on_conflict": {"exit_code": null, "json_sha256": null}
+  },
+  "ownership_totals": {
+    "ALREADY_OWNED": null,
+    "RESOLVED": null,
+    "UNRESOLVED": null,
+    "CONFLICT": null
+  },
+  "ownership_by_model": null,
+  "invoice_audit": {
+    "duplicate_group_count": null,
+    "duplicate_row_count": null,
+    "blank_identity_row_count": null,
+    "unresolved_company_row_count": null,
+    "blocking_issue_count": null
+  },
+  "before_counts_by_model": null,
+  "after_counts_by_model": null,
+  "before_relation_inconsistency_count": null,
+  "after_relation_inconsistency_count": null,
+  "reviewer": null,
+  "disposition": "Actual isolated restore and reconciliation are required."
+}

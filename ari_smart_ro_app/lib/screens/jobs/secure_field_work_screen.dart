@@ -7,6 +7,7 @@ import '../../models/job_model.dart';
 import '../../services/field_work_security_service.dart';
 import '../../services/job_service.dart';
 import 'field_work_part_scanner_screen.dart';
+import 'ro_parts_capture_screen.dart';
 import 'signature_screen.dart';
 
 class SecureFieldWorkScreen extends StatefulWidget {
@@ -89,6 +90,18 @@ class _SecureFieldWorkScreenState extends State<SecureFieldWorkScreen> {
       ),
       before ? 'Before photo saved.' : 'After photo saved.',
     );
+  }
+
+  Future<void> _captureROPartsPassport() async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => ROPartsCaptureScreen(jobId: widget.jobId),
+      ),
+    );
+    if (result == true) {
+      _message('RO visual parts passport confirmed.');
+      await _refresh();
+    }
   }
 
   Future<void> _scanParts() async {
@@ -221,6 +234,7 @@ class _SecureFieldWorkScreenState extends State<SecureFieldWorkScreen> {
   Widget _proofStatus(JobModel job) {
     final rows = <String, bool>{
       'Before photo': job.beforePhotoUploaded,
+      'RO visual parts passport': job.roPartsPassportConfirmed,
       'Parts decision': job.partsDecision != 'PENDING',
       'After photo': job.afterPhotoUploaded,
       'Customer OTP': job.otpVerified,
@@ -283,6 +297,35 @@ class _SecureFieldWorkScreenState extends State<SecureFieldWorkScreen> {
       });
     }
     if (status == 'IN_PROGRESS') {
+      if (!job.roPartsPassportConfirmed) {
+        return Column(
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.document_scanner_outlined),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Take 3–4 clear photos of this RO. The system will suggest visible parts; confirm them before continuing.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            _button(
+              'Capture RO Parts Passport (3–4 Photos)',
+              Icons.add_a_photo_outlined,
+              _captureROPartsPassport,
+            ),
+          ],
+        );
+      }
       if (job.partsDecision == 'PENDING') {
         return Column(
           children: [

@@ -221,6 +221,27 @@ class CorporateHrmsDashboardTests(HRMSPolicyTests):
             role="ADMIN",
             first_name="HR Admin",
         )
+        self.company = Company.objects.create(
+            name="HR Dashboard Primary Company",
+            slug="hr-dashboard-primary-company",
+            phone="9111111176",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.admin,
+            role="OWNER",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.user,
+            role="STAFF",
+            is_active=True,
+        )
+        self.employee.company = self.company
+        self.employee.save(update_fields=["company"])
 
     def test_admin_dashboard_returns_corporate_workforce_and_approval_metrics(self):
         self.client.force_authenticate(self.admin)
@@ -232,6 +253,47 @@ class CorporateHrmsDashboardTests(HRMSPolicyTests):
         self.assertIn("payroll", response.data)
         self.assertIn("attendance", response.data)
         self.assertGreaterEqual(response.data["workforce"]["active_employees"], 1)
+
+
+    def test_admin_dashboard_excludes_other_company_metrics(self):
+        other_company = Company.objects.create(
+            name="Other HR Dashboard Company",
+            slug="other-hr-dashboard-company",
+            phone="9111111171",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_user = User.objects.create_user(
+            phone="9111111172",
+            password="Strong@Test1",
+            role="ENGINEER",
+            first_name="Other Engineer",
+            is_verified=True,
+        )
+        other_employee = EmployeeProfile.objects.create(
+            company=other_company,
+            user=other_user,
+            employee_id="EMP-OTHER-HR",
+            joining_date=date(2025, 1, 1),
+            designation="ENGINEER",
+            gender="MALE",
+            salary=Decimal("99000.00"),
+            is_active=True,
+        )
+        Attendance.objects.create(
+            employee=other_employee,
+            date=timezone.localdate(),
+            status="PRESENT",
+            regular_working_hours=Decimal("8"),
+            working_hours=Decimal("8"),
+        )
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get("/api/employees/hrms/dashboard/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["workforce"]["active_employees"], 1)
+        self.assertEqual(response.data["attendance"]["records_this_month"], 0)
 
 
 class CorporateCareerMovementTests(APITestCase):

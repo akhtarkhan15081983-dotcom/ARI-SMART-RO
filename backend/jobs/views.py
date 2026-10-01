@@ -42,6 +42,8 @@ from datetime import timedelta
 from accounts.services.sms import SMSDeliveryError, send_customer_verification_otp
 from accounts.models import AuthSecurityEvent
 from customers.models import Customer
+from customers.identity import unique_unlinked_customer_for_phone
+from tenancy.access import HasRequiredFeature
 
 
 
@@ -54,9 +56,8 @@ class JobViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = JobSerializer
 
-    permission_classes = [
-        IsAuthenticated,
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     def get_queryset(self):
 
@@ -77,9 +78,8 @@ class MyJobsAPIView(generics.ListAPIView):
 
     serializer_class = JobSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     def get_queryset(self):
 
@@ -113,9 +113,8 @@ class MyJobsAPIView(generics.ListAPIView):
 
 class JobAcceptAPIView(APIView):
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     def post(
         self,
@@ -187,9 +186,8 @@ class JobAcceptAPIView(APIView):
 
 class JobChangeStatusAPIView(APIView):
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     def post(
         self,
@@ -274,9 +272,8 @@ class JobChangeStatusAPIView(APIView):
 
 class JobMediaUploadAPIView(APIView):
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     parser_classes = [
         MultiPartParser,
@@ -348,9 +345,8 @@ class JobMediaUploadAPIView(APIView):
 
 class JobGPSUploadAPIView(APIView):
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     def post(
         self,
@@ -417,9 +413,8 @@ class JobGPSUploadAPIView(APIView):
 
 class JobPartUsedAPIView(APIView):
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     @transaction.atomic
     def post(
@@ -789,9 +784,8 @@ class JobPartUsedAPIView(APIView):
 
 class JobSignatureUploadAPIView(APIView):
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     parser_classes = [
         MultiPartParser,
@@ -885,9 +879,8 @@ class JobSearchAPIView(
 
     serializer_class = JobSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     def get_queryset(self):
 
@@ -985,10 +978,7 @@ def _job_otp_payload(job):
 def _customer_for_user(user):
     customer = Customer.objects.filter(user=user).first()
     if customer is None:
-        customer = Customer.objects.filter(
-            phone=user.phone,
-            user__isnull=True,
-        ).first()
+        customer = unique_unlinked_customer_for_phone(user.phone, active_only=True)
     return customer
 
 
@@ -1128,9 +1118,8 @@ class AdminJobOTPAPIView(APIView):
 
 class GenerateOTPAPIView(APIView):
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     OTP_VALIDITY_MINUTES = JOB_OTP_VALIDITY_MINUTES
 
@@ -1198,9 +1187,8 @@ class GenerateOTPAPIView(APIView):
 
 class VerifyOTPAPIView(APIView):
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "jobs"
 
     OTP_VALIDITY_MINUTES = 5
     MAX_OTP_ATTEMPTS = 5

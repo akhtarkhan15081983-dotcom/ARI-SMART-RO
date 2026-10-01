@@ -4,11 +4,20 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from customers.models import Customer
+from tenancy.models import Company, CompanyMembership
 from .models import CustomerEngagement, User, UserNotification
+from .offers import best_offer, customer_offer_user
 
 
 class NotificationCenterTests(APITestCase):
     def setUp(self):
+        self.company = Company.objects.create(
+            name="Notification Test Company",
+            slug="notification-test-company",
+            phone="9888899999",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
         self.admin = User.objects.create_user(
             phone="9888800001",
             password="Strong@Test1",
@@ -16,12 +25,24 @@ class NotificationCenterTests(APITestCase):
             role="ADMIN",
             is_verified=True,
         )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.admin,
+            role="ADMIN",
+            is_active=True,
+        )
         self.engineer = User.objects.create_user(
             phone="9888800002",
             password="Strong@Test1",
             first_name="Engineer",
             role="ENGINEER",
             is_verified=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.engineer,
+            role="STAFF",
+            is_active=True,
         )
         self.customer_user = User.objects.create_user(
             phone="9888800003",
@@ -31,6 +52,7 @@ class NotificationCenterTests(APITestCase):
             is_verified=True,
         )
         self.customer = Customer.objects.create(
+            company=self.company,
             user=self.customer_user,
             name="Offer Customer",
             phone=self.customer_user.phone,
@@ -70,6 +92,55 @@ class NotificationCenterTests(APITestCase):
             ).exists()
         )
 
+    def test_campaign_does_not_reach_other_company_employee(self):
+        other_company = Company.objects.create(
+            name="Other Notification Company",
+            slug="other-notification-company",
+            phone="9777799999",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_engineer = User.objects.create_user(
+            phone="9777700002",
+            password="Strong@Test1",
+            first_name="Other Engineer",
+            role="ENGINEER",
+            is_verified=True,
+        )
+        CompanyMembership.objects.create(
+            company=other_company,
+            user=other_engineer,
+            role="STAFF",
+            is_active=True,
+        )
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            "/api/auth/admin/notification-campaigns/",
+            {
+                "title": "Tenant-only engineer briefing",
+                "message": "Visible only inside this company.",
+                "audience": "ROLE",
+                "target_role": "ENGINEER",
+                "category": "JOB",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                user=self.engineer,
+                title="Tenant-only engineer briefing",
+            ).exists()
+        )
+        self.assertFalse(
+            UserNotification.objects.filter(
+                user=other_engineer,
+                title="Tenant-only engineer briefing",
+            ).exists()
+        )
+
     def test_customer_can_read_notification(self):
         UserNotification.objects.create(
             user=self.customer_user,
@@ -98,10 +169,74 @@ class NotificationCenterTests(APITestCase):
             UserNotification.objects.get(pk=notification_id).is_read
         )
 
+    def test_shared_phone_does_not_borrow_another_customer_offer_account(self):
+        duplicate = Customer.objects.create(
+            company=self.company,
+            name="Duplicate Phone Customer",
+            phone=self.customer_user.phone,
+            address="Duplicate address",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI Test RO",
+            monthly_rent=Decimal("500.00"),
+        )
+
+        self.assertIsNone(customer_offer_user(duplicate))
+
+    def test_offer_from_this_company_does_not_discount_other_company_customer(self):
+        other_company = Company.objects.create(
+            name="Other Offer Company",
+            slug="other-offer-company",
+            phone="9666699999",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_user = User.objects.create_user(
+            phone="9666600003",
+            password="Strong@Test1",
+            role="CUSTOMER",
+            is_verified=True,
+        )
+        Customer.objects.create(
+            company=other_company,
+            user=other_user,
+            name="Other Offer Customer",
+            phone=other_user.phone,
+            address="Other address",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+            ro_model="Other RO",
+            monthly_rent=Decimal("500.00"),
+        )
+        CustomerEngagement.objects.create(
+            kind="OFFER",
+            audience="ALL",
+            created_by=self.admin,
+            title="ARI-only rent discount",
+            message="20% off",
+            discount_type="PERCENT",
+            discount_value=Decimal("20.00"),
+            offer_scope="RENT",
+            auto_apply=True,
+        )
+
+        offer, discount, final_amount = best_offer(
+            other_user,
+            "RENT",
+            Decimal("500.00"),
+        )
+
+        self.assertIsNone(offer)
+        self.assertEqual(discount, Decimal("0.00"))
+        self.assertEqual(final_amount, Decimal("500.00"))
+
     def test_auto_rent_offer_reduces_customer_current_rent(self):
         CustomerEngagement.objects.create(
             kind="OFFER",
             audience="ALL",
+            created_by=self.admin,
             title="Festival Rent Discount",
             message="20% off this month's rent",
             discount_type="PERCENT",

@@ -96,7 +96,7 @@ class AndyChatAPIView(APIView):
         if app_result and app_result.get("handled"):
             return _save_app_answer(conversation, app_result, "app_control")
 
-        approved_knowledge = find_approved_knowledge(text)
+        approved_knowledge = find_approved_knowledge(text, request.user)
         if approved_knowledge is not None:
             return _save_app_answer(
                 conversation,
@@ -302,7 +302,18 @@ class AndyTeachPendingAPIView(APIView):
 
         rows = AndyTeaching.objects.filter(status="PENDING").select_related(
             "submitted_by", "source_message"
-        )[:100]
+        )
+        if not getattr(request.user, "is_superuser", False):
+            from .teaching import _user_company
+            company = _user_company(request.user)
+            if company is None:
+                rows = AndyTeaching.objects.none()
+            else:
+                rows = rows.filter(
+                    submitted_by__company_memberships__company=company,
+                    submitted_by__company_memberships__is_active=True,
+                ).distinct()
+        rows = rows[:100]
         return Response({
             "success": True,
             "results": [

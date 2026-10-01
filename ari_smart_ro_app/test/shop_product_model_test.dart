@@ -27,4 +27,22 @@ void main() {
     expect(product.sellingPrice, 0);
     expect(product.warrantyMonths, 0);
   });
+
+  test('ShopProduct prefers tenant stock when provided', () {
+    final product = ShopProduct.fromJson({
+      'stock_quantity': 9,
+      'tenant_stock_quantity': 2,
+    });
+
+    expect(product.stockQuantity, 2);
+  });
+
+  test('ShopProduct falls back to legacy global stock for guests', () {
+    final product = ShopProduct.fromJson({
+      'stock_quantity': 4,
+    });
+
+    expect(product.stockQuantity, 4);
+  });
+
 }

@@ -22,6 +22,14 @@ class InventoryItem(models.Model):
         ("SCRAP", "Scrap"),
     ]
 
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="inventory_items",
+        db_index=True,
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING_RECEIPT")
     purchase_item = models.ForeignKey(PurchaseItem, on_delete=models.PROTECT, related_name="inventory_items")
     part = models.ForeignKey(PartMaster, on_delete=models.PROTECT)
@@ -30,6 +38,7 @@ class InventoryItem(models.Model):
     manufacturing_date = models.DateField(blank=True, null=True)
     expiry_date = models.DateField(blank=True, null=True)
     qr_code = models.ImageField(upload_to="qr_codes/", blank=True, null=True)
+    receipt_photo = models.ImageField(upload_to="inventory_receipts/%Y/%m/", blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     received_at = models.DateTimeField(null=True, blank=True)
     received_by = models.ForeignKey(
@@ -62,6 +71,14 @@ class EngineerBagItem(models.Model):
         ("RETURNED", "Returned"),
     ]
 
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="engineer_bag_items",
+        db_index=True,
+    )
     engineer = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE, related_name="bag_items")
     inventory_item = models.OneToOneField(InventoryItem, on_delete=models.CASCADE, related_name="bag_item")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="ISSUED")
@@ -86,6 +103,14 @@ class InventoryAuditLog(models.Model):
         ("RECEIVED", "Received Into Stock"),
     ]
 
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="inventory_audit_logs",
+        db_index=True,
+    )
     inventory_item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, related_name="audit_logs")
     engineer = models.ForeignKey(EmployeeProfile, on_delete=models.PROTECT, null=True, blank=True, related_name="inventory_audit_logs")
     performed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="inventory_audit_logs")
@@ -112,6 +137,14 @@ class PartRequest(models.Model):
         ("FULFILLED", "Fulfilled"),
     ]
 
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="part_requests",
+        db_index=True,
+    )
     engineer = models.ForeignKey(
         EmployeeProfile,
         on_delete=models.CASCADE,

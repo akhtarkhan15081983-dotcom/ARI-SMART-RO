@@ -390,8 +390,9 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
                       ),
                       TextField(
                         controller: invoice,
-                        decoration: const InputDecoration(
-                          labelText: 'Invoice number *',
+                        decoration: InputDecoration(
+                          labelText: draft == null ? 'Bill / Invoice number (optional)' : 'Invoice number *',
+                          helperText: draft == null ? 'No bill? Leave blank; an internal NO-BILL reference will be created.' : null,
                         ),
                       ),
                       ListTile(
@@ -530,7 +531,7 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
           ),
         ) ??
         false;
-    if (ok && invoice.text.trim().isNotEmpty && supplierId != null) {
+    if (ok && supplierId != null && (draft == null || invoice.text.trim().isNotEmpty)) {
       final valid = lines.every(
         (l) =>
             l.partId != null &&
@@ -624,30 +625,50 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
   }
 
   Future<void> _receive(Map<String, dynamic> item) async {
-    final code = await _scan('Receive ${item['part_name']}');
-    if (code != null) {
-      await _act(
-        () => _service.receive((item['purchase_item_id'] as num).toInt(), code),
-        'Unit verified and added to stock.',
-      );
+    final serialized = item['is_serialized'] == true;
+    if (serialized) {
+      final code = await _scan('Receive ${item['part_name']}');
+      if (code != null) {
+        await _act(
+          () => _service.receive((item['purchase_item_id'] as num).toInt(), code),
+          'QR verified and unit added to stock.',
+        );
+      }
+      return;
     }
+    final photo = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+      maxWidth: 1600,
+    );
+    if (photo == null) return;
+    await _act(
+      () => _service.receivePhoto((item['purchase_item_id'] as num).toInt(), photo.path),
+      'Photo verified and item added to stock.',
+    );
   }
 
   Future<void> _fulfil(Map<String, dynamic> request) async {
-    final qty = (request['quantity'] as num).toInt(), codes = <String>[];
-    for (var i = 0; i < qty; i++) {
-      final code = await _scan('Scan part ${i + 1} of $qty');
-      if (code == null) return;
-      if (codes.contains(code)) {
-        _show('This QR was already scanned.');
-        i--;
-      } else {
-        codes.add(code);
+    final qty = (request['quantity'] as num).toInt();
+    final serialized = request['is_serialized'] == true;
+    final codes = <String>[];
+    if (serialized) {
+      for (var i = 0; i < qty; i++) {
+        final code = await _scan('Scan part ${i + 1} of $qty');
+        if (code == null) return;
+        if (codes.contains(code)) {
+          _show('This QR was already scanned.');
+          i--;
+        } else {
+          codes.add(code);
+        }
       }
     }
     await _act(
       () => _service.fulfil((request['id'] as num).toInt(), codes),
-      'Parts issued and engineer bag updated.',
+      serialized
+          ? 'QR-verified parts issued and engineer bag updated.'
+          : 'Photo-verified stock issued and engineer bag updated.',
     );
   }
 
@@ -873,8 +894,8 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
                       width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: () => _fulfil(r),
-                        icon: const Icon(Icons.qr_code_scanner),
-                        label: const Text('SCAN & ISSUE PARTS'),
+                        icon: Icon(r['is_serialized'] == true ? Icons.qr_code_scanner : Icons.inventory_2_outlined),
+                        label: Text(r['is_serialized'] == true ? 'SCAN & ISSUE PARTS' : 'ISSUE VERIFIED STOCK'),
                       ),
                     ),
                 ],
@@ -893,7 +914,7 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
       children: [
         _intro(
           'Goods receiving',
-          'Generate labels, print them, attach each label and scan the physical unit into live stock.',
+          'Serialized items use QR labels and scanning. Other items use a receipt photo before entering live stock.',
         ),
         _searchBox(
           controller: _receivingSearchController,
@@ -932,41 +953,35 @@ class _InventoryWorkflowScreenState extends State<InventoryWorkflowScreen> {
                     spacing: 8,
                     runSpacing: 6,
                     children: [
-                      OutlinedButton.icon(
-                        onPressed: _busy
-                            ? null
-                            : () => _act(() async {
-                                final n = await _service.generateCodes(
-                                  (item['purchase_item_id'] as num).toInt(),
-                                );
-                                _show('$n secure QR codes generated.');
-                              }, 'QR generation completed.'),
-                        icon: const Icon(Icons.qr_code_2),
-                        label: const Text('GENERATE QR'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _busy
-                            ? null
-                            : () async {
-                                try {
-                                  final path = await _service.downloadQrLabels(
-                                    purchaseItemId:
-                                        (item['purchase_item_id'] as num)
-                                            .toInt(),
-                                  );
-                                  _show('QR label PDF saved: $path');
-                                } catch (e) {
-                                  _show(_clean(e));
-                                }
-                              },
-                        icon: const Icon(Icons.print_outlined),
-                        label: const Text('PRINT LABELS'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: _busy ? null : () => _receive(item),
-                        icon: const Icon(Icons.qr_code_scanner),
-                        label: const Text('SCAN RECEIPT'),
-                      ),
+                      if (item['is_serialized'] == true) ...[
+                        OutlinedButton.icon(
+                          onPressed: _busy
+                              ? null
+                              : () async {
+                                  try {
+                                    final path = await _service.downloadQrLabels(
+                                      purchaseItemId:
+                                          (item['purchase_item_id'] as num).toInt(),
+                                    );
+                                    _show('QR label PDF saved: $path');
+                                  } catch (e) {
+                                    _show(_clean(e));
+                                  }
+                                },
+                          icon: const Icon(Icons.print_outlined),
+                          label: const Text('PRINT LABELS'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: _busy ? null : () => _receive(item),
+                          icon: const Icon(Icons.qr_code_scanner),
+                          label: const Text('SCAN RECEIPT'),
+                        ),
+                      ] else
+                        FilledButton.icon(
+                          onPressed: _busy ? null : () => _receive(item),
+                          icon: const Icon(Icons.add_a_photo_outlined),
+                          label: const Text('TAKE ITEM PHOTO'),
+                        ),
                     ],
                   ),
                 ],

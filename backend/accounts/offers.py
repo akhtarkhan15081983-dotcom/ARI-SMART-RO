@@ -4,6 +4,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import CustomerEngagement
+from .offer_audience import offer_audience_q_for_user
 
 
 ZERO = Decimal("0.00")
@@ -26,10 +27,7 @@ def eligible_offers(user=None, scope=None, now=None):
     if user is None:
         rows = rows.filter(audience="ALL", target_user__isnull=True)
     else:
-        rows = rows.filter(
-            Q(audience="ALL", target_user__isnull=True)
-            | Q(audience="TARGETED", target_user=user)
-        )
+        rows = rows.filter(offer_audience_q_for_user(user))
     return rows.order_by("-priority", "-created_at")
 
 
@@ -70,9 +68,23 @@ def customer_offer_user(customer):
         return customer.user
     if not getattr(customer, "phone", ""):
         return None
-    from .models import User
-    return User.objects.filter(phone=customer.phone, role="CUSTOMER", is_active=True).first()
 
+    from .models import User
+
+    candidate = User.objects.filter(
+        phone=customer.phone,
+        role="CUSTOMER",
+        is_active=True,
+    ).first()
+    if candidate is None:
+        return None
+
+    linked_customer = getattr(candidate, "customer_profile", None)
+    if linked_customer is not None and linked_customer.pk != customer.pk:
+        # Shared/duplicate phone: never borrow another customer's account
+        # context for discounts. Explicit account linkage is required.
+        return None
+    return candidate
 
 
 def best_public_offer(scope, base_amount, promo_code=""):

@@ -15,6 +15,7 @@ from accounts.permissions import (
     user_role,
 )
 from employees.models import EmployeeProfile
+from .identity import unique_unlinked_customer_for_phone
 from .models import CallingActivity, Customer, PublicCustomerRequest
 from .serializers import PublicCustomerRequestSerializer
 
@@ -39,6 +40,8 @@ from django.db import transaction
 from .models import CustomerLocationLog, CustomerRentHistory, CustomerRentPayment
 from .rent_policy import RENT_GRACE_DAYS, rent_due_date, rent_penalty
 from referrals.services import claim_welcome_reward
+from tenancy.access import HasRequiredFeature, has_feature_access, request_company
+from .tenant_scope import operator_customer_queryset
 
 from referrals.services import (
     calculate_max_redeemable,
@@ -122,9 +125,12 @@ class CustomerLocationCaptureAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        customer = Customer.objects.select_related("assigned_engineer").filter(pk=pk).first()
+        customer = operator_customer_queryset(
+            request,
+            Customer.objects.select_related("assigned_engineer"),
+        ).filter(pk=pk).first()
         if customer is None:
-            return Response({"detail": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Customer not found in this workspace."}, status=status.HTTP_404_NOT_FOUND)
 
         employee = getattr(request.user, "employee_profile", None)
         if role == "ENGINEER" and (
@@ -191,27 +197,47 @@ from .serializers import (
 )
 
 
-def _customer_queryset_for(user):
+def _customer_module_allowed(request):
+    role = user_role(request.user)
+    if role == "CUSTOMER":
+        return bool(request.user.is_verified and request.user.is_active)
+    return has_feature_access(request, "customers")
+
+
+def _customer_queryset_for(request):
+    user = request.user
     role = user_role(user)
     queryset = Customer.objects.select_related("assigned_engineer__user")
-    if role in {"ADMIN", "MANAGER"}:
-        return queryset
-    if role == "ENGINEER":
-        return queryset.filter(assigned_engineer__user=user)
+
     if role == "CUSTOMER":
         if not user.is_verified or not user.is_active:
             return queryset.none()
         linked = queryset.filter(user=user)
         if linked.exists():
             return linked
-        first_match = (
-            queryset
-            .filter(phone=user.phone, user__isnull=True)
-            .order_by("id")
-            .first()
-        )
+        first_match = unique_unlinked_customer_for_phone(user.phone, active_only=True)
         return queryset.filter(pk=first_match.pk) if first_match else queryset.none()
-    return queryset.none()
+
+    if not has_feature_access(request, "customers"):
+        return queryset.none()
+
+    company = request_company(request)
+    if role == "ENGINEER":
+        scoped = queryset.filter(assigned_engineer__user=user)
+        if company is not None:
+            scoped = scoped.filter(
+                Q(company=company)
+                | Q(company__isnull=True, assigned_engineer__company=company)
+            )
+        return scoped
+
+    if company is not None:
+        return queryset.filter(
+            Q(company=company)
+            | Q(company__isnull=True, assigned_engineer__company=company)
+        ).distinct()
+
+    return queryset.filter(company__isnull=True)
 
 
 class CustomerProfileAPIView(APIView):
@@ -268,17 +294,9 @@ class CustomerProfileAPIView(APIView):
 
         if customer is None:
 
-            customer = (
-                Customer.objects
-                .select_related(
-                    "assigned_engineer__user"
-                )
-                .filter(
-                    phone=request.user.phone,
-                    user__isnull=True,
-                )
-                .order_by("id")
-                .first()
+            customer = unique_unlinked_customer_for_phone(
+                request.user.phone,
+                active_only=True,
             )
 
             if customer:
@@ -366,13 +384,9 @@ class CustomerProfileAPIView(APIView):
         # CHECK LEGACY CUSTOMER BY PHONE
         # ----------------------------------------------------
 
-        legacy_customer = (
-            Customer.objects
-            .filter(
-                phone=request.user.phone,
-                user__isnull=True,
-            )
-            .first()
+        legacy_customer = unique_unlinked_customer_for_phone(
+            request.user.phone,
+            active_only=True,
         )
 
         if legacy_customer:
@@ -594,6 +608,7 @@ class MyROAPIView(APIView):
                     phone=request.user.phone,
                     user__isnull=True,
                 )
+                .order_by("id")
                 .first()
             )
 
@@ -668,45 +683,40 @@ class MyROAPIView(APIView):
 class CustomerListAPIView(generics.ListAPIView):
 
     serializer_class = CustomerSerializer
-    permission_classes = [IsVerifiedCustomerOrOperations]
-
-    def get_queryset(self):
-
-        user = self.request.user
-
-        if user.role in ["ADMIN", "MANAGER", "OFFICE"]:
-            # Exact Excel import created customers in source-data order.
-            # Keep that stable order so the Customer List serial (1, 2, 3...)
-            # follows the original customer data instead of newest-first IDs.
-            return Customer.objects.all().order_by("id")
-
-        elif user.role == "ENGINEER":
-            return Customer.objects.filter(
-                assigned_engineer__user=user
-            ).order_by("id")
-
-        elif user.role == "CUSTOMER":
-            return Customer.objects.filter(
-                phone=user.phone
-            )
-
-        return Customer.objects.none()
-
-class MyCustomersAPIView(generics.ListAPIView):
-    """Return customers assigned to the logged-in engineer."""
-
-    serializer_class = CustomerSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        if self.request.user.role not in {"ENGINEER", "OFFICE"}:
-            return Customer.objects.none()
+    def get(self, request, *args, **kwargs):
+        if not _customer_module_allowed(request):
+            return Response(
+                {"detail": "Customers module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
 
+    def get_queryset(self):
+        # Stable source-data order keeps customer serials predictable.
+        return _customer_queryset_for(self.request).order_by("id")
+
+class MyCustomersAPIView(generics.ListAPIView):
+    """Return customers assigned to the logged-in employee."""
+
+    serializer_class = CustomerSerializer
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "assigned_customers"
+
+    def get_queryset(self):
+        company = request_company(self.request)
+        if company is None:
+            return Customer.objects.none()
         return Customer.objects.filter(
-            assigned_engineer__user=self.request.user
+            assigned_engineer__user=self.request.user,
+            assigned_engineer__company=company,
+        ).filter(
+            Q(company=company)
+            | Q(company__isnull=True, assigned_engineer__company=company)
         ).select_related(
             "assigned_engineer__user"
-        ).order_by("id")
+        ).distinct().order_by("id")
 
 class CustomerCreateAPIView(generics.CreateAPIView):
 
@@ -719,11 +729,18 @@ class CustomerCreateAPIView(generics.CreateAPIView):
 class CustomerDetailAPIView(generics.RetrieveAPIView):
 
     serializer_class = CustomerSerializer
+    permission_classes = [IsAuthenticated]
 
-    permission_classes = [IsVerifiedCustomerOrOperations]
+    def get(self, request, *args, **kwargs):
+        if not _customer_module_allowed(request):
+            return Response(
+                {"detail": "Customers module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
-        return _customer_queryset_for(self.request.user)
+        return _customer_queryset_for(self.request)
 
 class CustomerServiceHistoryAPIView(APIView):
     """
@@ -886,9 +903,17 @@ class CustomerServiceHistoryAPIView(APIView):
         # ADMIN / MANAGER / OFFICE
         # --------------------------------------------------------
 
-        elif user.role in self.ALLOWED_STAFF_ROLES:
+        elif has_feature_access(request, "customers"):
 
-            pass
+            allowed_customers = _customer_queryset_for(request)
+            if not allowed_customers.filter(pk=customer.pk).exists():
+                return Response(
+                    {
+                        "success": False,
+                        "message": "Customer is outside your permitted workspace scope.",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         # --------------------------------------------------------
         # OTHER ROLES
@@ -1032,13 +1057,18 @@ class CustomerServiceHistoryAPIView(APIView):
 
 class CustomerSearchAPIView(APIView):
 
-    permission_classes = [IsVerifiedCustomerOrOperations]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if not _customer_module_allowed(request):
+            return Response(
+                {"detail": "Customers module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         q = request.GET.get("q", "").strip()
 
-        queryset = _customer_queryset_for(request.user)
+        queryset = _customer_queryset_for(request)
 
         if q:
 
@@ -1078,9 +1108,29 @@ class CustomerUpdateAPIView(generics.UpdateAPIView):
 
 class WalkInCustomerAPIView(APIView):
 
-    permission_classes = [IsEngineer]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "walkin"
 
+    @transaction.atomic
     def post(self, request):
+
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        engineer = EmployeeProfile.objects.filter(
+            user=request.user,
+            company=company,
+            designation="ENGINEER",
+            is_active=True,
+        ).first()
+        if engineer is None:
+            return Response(
+                {"success": False, "message": "Active engineer profile not found in this company."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         # Customer pays one upfront amount. Installation is always ₹600;
         # the remaining amount is saved as refundable/security deposit.
@@ -1118,38 +1168,55 @@ class WalkInCustomerAPIView(APIView):
         )
 
         if serializer.is_valid():
+            try:
+                ro_model = ROModel.objects.get(id=request.data["ro_model"])
+            except (ROModel.DoesNotExist, KeyError, TypeError, ValueError):
+                return Response(
+                    {"success": False, "message": "Valid RO model is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-            customer = serializer.save()
+            try:
+                asset = (
+                    ROAsset.objects
+                    .select_for_update()
+                    .get(
+                        id=request.data["asset_id"],
+                        company=company,
+                        ro_model=ro_model,
+                        is_active=True,
+                        status="WAREHOUSE",
+                        current_customer__isnull=True,
+                    )
+                )
+            except (ROAsset.DoesNotExist, KeyError, TypeError, ValueError):
+                return Response(
+                    {
+                        "success": False,
+                        "message": "RO asset is unavailable, already assigned, or does not match the selected model.",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
 
-            ro_model = ROModel.objects.get(
-                id=request.data["ro_model"]
-            )
-
-            asset = ROAsset.objects.get(
-                id=request.data["asset_id"]
+            customer = serializer.save(
+                company=company,
+                assigned_engineer=engineer,
+                installation_date=timezone.localdate(),
             )
 
             asset.current_customer = customer
             asset.status = "INSTALLED"
-            asset.save()
+            asset.save(update_fields=["current_customer", "status"])
 
-            
             job = Job.objects.create(
-
+                company=company,
                 customer=customer,
-
                 ro_asset=asset,
-
-                engineer=request.user.employee_profile,
-
+                engineer=engineer,
                 job_type="INSTALLATION",
-
                 priority="MEDIUM",
-
                 scheduled_date=timezone.now(),
-
                 status="IN_PROGRESS",
-
             )
 
 
@@ -1340,14 +1407,25 @@ class CustomerRentAPIView(APIView):
         # CUSTOMER FIND
         # ----------------------------------------------------
 
-        try:
+        customer = (
+            Customer.objects
+            .filter(user=request.user)
+            .order_by("id")
+            .first()
+        )
 
-            customer = Customer.objects.get(
-                phone=request.user.phone
+        if customer is None:
+            customer = (
+                Customer.objects
+                .filter(
+                    phone=request.user.phone,
+                    user__isnull=True,
+                )
+                .order_by("id")
+                .first()
             )
 
-        except Customer.DoesNotExist:
-
+        if customer is None:
             return Response(
                 {
                     "success": False,
@@ -1360,7 +1438,7 @@ class CustomerRentAPIView(APIView):
         # CURRENT MONTH
         # ----------------------------------------------------
 
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         current_month = today.replace(day=1)
 
@@ -1422,37 +1500,11 @@ class CustomerRentAPIView(APIView):
 
         # ----------------------------------------------------
         # DUE DATE
-        #
-        # फिलहाल installation date के दिन को monthly
-        # due date माना जा रहा है.
-        #
-        # Example:
-        # Installation = 15 August
-        # September due date = 15 September
         # ----------------------------------------------------
 
-        if customer.installation_date:
-
-            installation_day = customer.installation_date.day
-
-        else:
-
-            installation_day = 1
-
-        last_day = calendar.monthrange(
-            today.year,
-            today.month
-        )[1]
-
-        due_day = min(
-            installation_day,
-            last_day
-        )
-
-        due_date = date(
-            today.year,
-            today.month,
-            due_day
+        due_date = rent_due_date(
+            customer,
+            today.replace(day=1),
         )
 
         # ----------------------------------------------------
@@ -1753,30 +1805,9 @@ class RentManagementAPIView(APIView):
             # DUE DATE
             # ------------------------------------------------
 
-            if customer.installation_date:
-
-                installation_day = (
-                    customer.installation_date.day
-                )
-
-            else:
-
-                installation_day = 1
-
-            last_day = calendar.monthrange(
-                today.year,
-                today.month,
-            )[1]
-
-            due_day = min(
-                installation_day,
-                last_day,
-            )
-
-            due_date = date(
-                today.year,
-                today.month,
-                due_day,
+            due_date = rent_due_date(
+                customer,
+                today.replace(day=1),
             )
 
             # ------------------------------------------------
@@ -2024,14 +2055,20 @@ class RentPaymentCreateAPIView(APIView):
         # ====================================================
 
         if request.user.role not in self.ALLOWED_ROLES:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Only Admin, Manager, Office or Engineer can record rent payment.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not has_feature_access(request, "rent_management"):
 
             return Response(
                 {
                     "success": False,
-                    "message": (
-                        "Only Admin, Manager or assigned Engineer "
-                        "can record rent payment."
-                    ),
+                    "message": "Rent management permission is required to record rent payment.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -2897,15 +2934,12 @@ class RentPaymentHistoryAPIView(APIView):
         # ROLE CHECK
         # ----------------------------------------------------
 
-        if request.user.role not in self.ALLOWED_ROLES:
+        if not has_feature_access(request, "payment_history"):
 
             return Response(
                 {
                     "success": False,
-                    "message": (
-                        "Only Admin or Manager "
-                        "can view rent payment history."
-                    ),
+                    "message": "Payment history permission is required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -2918,6 +2952,16 @@ class RentPaymentHistoryAPIView(APIView):
             "customer_id"
         )
 
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Active company workspace not found.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         payments = (
             CustomerRentPayment.objects
             .select_related(
@@ -2925,6 +2969,14 @@ class RentPaymentHistoryAPIView(APIView):
                 "rent_history",
                 "collected_by__user",
             )
+            .filter(
+                Q(customer__company=company)
+                | Q(
+                    customer__company__isnull=True,
+                    customer__assigned_engineer__company=company,
+                )
+            )
+            .distinct()
             .order_by(
                 "-payment_date",
                 "-id",
@@ -3091,8 +3143,8 @@ class RentPaymentHistoryAPIView(APIView):
 class CallingDeskAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def _allowed(self, user):
-        return getattr(user, "role", "") in {"ADMIN", "MANAGER", "OFFICE", "CALLING"}
+    def _allowed(self, request):
+        return has_feature_access(request, "calling_desk")
 
     def _serialize(self, row):
         caller = row.assigned_caller
@@ -3151,15 +3203,29 @@ class CallingDeskAPIView(APIView):
         }
 
     def get(self, request):
-        if not self._allowed(request.user):
+        if not self._allowed(request):
             return Response(
                 {"detail": "Calling desk access is restricted to authorised staff."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         rows = PublicCustomerRequest.objects.select_related(
-            "assigned_caller__user"
-        ).order_by("-created_at")
+            "assigned_caller__user",
+            "assigned_caller__company",
+            "existing_customer",
+        ).filter(
+            Q(company=company)
+            | Q(existing_customer__company=company)
+            | Q(existing_customer__company__isnull=True, assigned_caller__company=company)
+            | Q(existing_customer__isnull=True, assigned_caller__company=company)
+        ).distinct().order_by("-created_at")
 
         if getattr(request.user, "role", "") == "CALLING":
             employee = getattr(request.user, "employee_profile", None)
@@ -3185,7 +3251,12 @@ class CallingDeskAPIView(APIView):
 
         now = timezone.now()
         data = [self._serialize(row) for row in rows[:300]]
-        customers = Customer.objects.filter(is_active=True).order_by("name", "id")
+        customers = Customer.objects.filter(
+            is_active=True,
+        ).filter(
+            Q(company=company)
+            | Q(company__isnull=True, assigned_engineer__company=company)
+        ).distinct().order_by("name", "id")
         if q:
             customers = customers.filter(
                 Q(name__icontains=q) | Q(phone__icontains=q)
@@ -3196,8 +3267,14 @@ class CallingDeskAPIView(APIView):
         customer_data = [self._customer_data(row) for row in customers[:300]]
         caller = self._caller(request)
         activities = CallingActivity.objects.select_related(
-            "lead", "customer", "caller__user"
-        )
+            "lead", "customer", "caller__user", "caller__company"
+        ).filter(
+            Q(customer__company=company)
+            | Q(customer__company__isnull=True, caller__company=company)
+            | Q(customer__isnull=True, caller__company=company)
+            | Q(lead__existing_customer__company=company)
+            | Q(lead__existing_customer__isnull=True, lead__assigned_caller__company=company)
+        ).distinct()
         if getattr(request.user, "role", "") == "CALLING" and caller:
             activities = activities.filter(caller=caller)
         activity_data = [{
@@ -3227,7 +3304,7 @@ class CallingDeskAPIView(APIView):
                 "interested": sum(1 for row in rows[:300] if row.last_call_outcome == "INTERESTED"),
                 "converted": sum(1 for row in rows[:300] if row.last_call_outcome == "CONVERTED"),
                 "calls_today": activities.filter(called_at__date=timezone.localdate()).count(),
-                "customers": Customer.objects.filter(is_active=True).count(),
+                "customers": customers.count(),
             },
             "leads": data,
             "customers": customer_data,
@@ -3236,16 +3313,31 @@ class CallingDeskAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        if not self._allowed(request.user):
+        if not self._allowed(request):
             return Response({"detail": "Calling desk access is restricted to authorised staff."}, status=403)
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         caller = self._caller(request)
-        if getattr(request.user, "role", "") == "CALLING" and caller is None:
-            return Response({"detail": "Employee profile not found."}, status=404)
+        if caller is None or caller.company_id != company.id:
+            return Response(
+                {"detail": "Active employee profile in this workspace is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         customer = None
         customer_id = request.data.get("customer_id")
         if customer_id not in (None, ""):
-            customer = Customer.objects.filter(pk=customer_id, is_active=True).first()
+            customer = Customer.objects.filter(
+                pk=customer_id,
+                is_active=True,
+            ).filter(
+                Q(company=company)
+                | Q(company__isnull=True, assigned_engineer__company=company)
+            ).first()
             if customer is None:
                 return Response({"detail": "Active customer not found."}, status=404)
             existing = PublicCustomerRequest.objects.filter(
@@ -3276,6 +3368,7 @@ class CallingDeskAPIView(APIView):
             return Response({"detail": "Select a valid priority."}, status=400)
 
         row = PublicCustomerRequest.objects.create(
+            company=company,
             request_type=request_type,
             customer_name=name[:150],
             phone=phone,
@@ -3295,15 +3388,28 @@ class CallingDeskAPIView(APIView):
 
     @transaction.atomic
     def patch(self, request, pk):
-        if not self._allowed(request.user):
+        if not self._allowed(request):
             return Response(
                 {"detail": "Calling desk access is restricted to authorised staff."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             row = PublicCustomerRequest.objects.select_related(
-                "assigned_caller__user"
-            ).get(pk=pk)
+                "assigned_caller__user",
+                "assigned_caller__company",
+                "existing_customer",
+            ).filter(
+                Q(company=company)
+                | Q(existing_customer__company=company)
+                | Q(existing_customer__company__isnull=True, assigned_caller__company=company)
+                | Q(existing_customer__isnull=True, assigned_caller__company=company)
+            ).distinct().get(pk=pk)
         except PublicCustomerRequest.DoesNotExist:
             return Response({"detail": "Lead not found."}, status=404)
 
@@ -3399,9 +3505,17 @@ class CustomerLifecycleAPIView(APIView):
     @transaction.atomic
     def post(self, request, pk):
         try:
-            customer = Customer.objects.select_for_update().get(pk=pk)
+            scoped_customer_id = (
+                operator_customer_queryset(request, Customer.objects.all())
+                .filter(pk=pk)
+                .values_list("pk", flat=True)
+                .first()
+            )
+            if scoped_customer_id is None:
+                raise Customer.DoesNotExist
+            customer = Customer.objects.select_for_update().get(pk=scoped_customer_id)
         except Customer.DoesNotExist:
-            return Response({"detail": "Customer not found."}, status=404)
+            return Response({"detail": "Customer not found in this workspace."}, status=404)
 
         action = str(request.data.get("action") or "").strip().lower()
 

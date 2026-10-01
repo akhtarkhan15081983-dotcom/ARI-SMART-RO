@@ -17,8 +17,42 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsStaffOperator
 from purchase.models import Purchase, PurchaseItem, Supplier
+from tenancy.access import request_company
 
 from .models import InventoryAuditLog, InventoryItem, PartRequest
+
+
+def _generate_codes_for_items(items, user):
+    codes = []
+    for item in items:
+        while True:
+            code = f"ARI-{item.part.code}-{token_hex(5).upper()}"
+            if not InventoryItem.objects.filter(serial_number=code).exists():
+                break
+        item.serial_number = code
+        item.barcode = code
+        item.save(update_fields=["serial_number", "barcode"])
+        InventoryAuditLog.objects.create(
+            inventory_item=item,
+            performed_by=user,
+            action="STATUS_CHANGE",
+            old_status="PENDING_RECEIPT",
+            new_status="PENDING_RECEIPT",
+            serial_number=code,
+            remarks="Internal QR label generated before receipt.",
+        )
+        codes.append(code)
+    return codes
+
+
+def _purchase_id_from_item(purchase_item_id):
+    if not purchase_item_id:
+        return None
+    return (
+        PurchaseItem.objects.filter(id=purchase_item_id)
+        .values_list("purchase_id", flat=True)
+        .first()
+    )
 
 
 class InventoryCodeGenerationAPIView(APIView):
@@ -27,41 +61,28 @@ class InventoryCodeGenerationAPIView(APIView):
     @transaction.atomic
     def post(self, request):
         purchase_item_id = request.data.get("purchase_item_id")
+        purchase_id = request.data.get("purchase_id") or _purchase_id_from_item(purchase_item_id)
+        if not purchase_id:
+            return Response(
+                {"success": False, "message": "Purchase or purchase item is required."},
+                status=400,
+            )
+
         items = list(
             InventoryItem.objects.select_for_update()
             .filter(
-                purchase_item_id=purchase_item_id,
+                purchase_item__purchase_id=purchase_id,
                 status="PENDING_RECEIPT",
                 serial_number__isnull=True,
+                part__is_serialized=True,
             )
-            .select_related("part")
+            .select_related("part", "purchase_item")
+            .order_by("purchase_item_id", "id")
         )
-        requested_count = request.data.get("count")
-        if requested_count not in (None, ""):
-            try:
-                count = int(requested_count)
-            except (TypeError, ValueError):
-                return Response({"success": False, "message": "Count must be a number."}, status=400)
-            if count < 1 or count > len(items):
-                return Response({"success": False, "message": "Count exceeds pending quantity."}, status=400)
-            items = items[:count]
         if not items:
-            return Response({"success": False, "message": "No pending items need QR codes."}, status=409)
-        codes = []
-        for item in items:
-            while True:
-                code = f"ARI-{item.part.code}-{token_hex(5).upper()}"
-                if not InventoryItem.objects.filter(serial_number=code).exists():
-                    break
-            item.serial_number = code
-            item.barcode = code
-            item.save()
-            InventoryAuditLog.objects.create(
-                inventory_item=item, performed_by=request.user, action="STATUS_CHANGE",
-                old_status="PENDING_RECEIPT", new_status="PENDING_RECEIPT",
-                serial_number=code, remarks="Internal QR label generated before receipt.",
-            )
-            codes.append(code)
+            return Response({"success": True, "generated": 0, "codes": [], "message": "QR codes are already available for serialized pending stock."})
+
+        codes = _generate_codes_for_items(items, request.user)
         return Response({"success": True, "generated": len(codes), "codes": codes})
 
 
@@ -69,12 +90,13 @@ class InventoryQrLabelsPdfAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     def get(self, request):
-        queryset = InventoryItem.objects.exclude(serial_number__isnull=True).exclude(
+        queryset = InventoryItem.objects.filter(part__is_serialized=True).exclude(serial_number__isnull=True).exclude(
             serial_number=""
         ).select_related("part", "purchase_item__purchase")
         purchase_item_id = request.query_params.get("purchase_item_id")
-        if purchase_item_id:
-            queryset = queryset.filter(purchase_item_id=purchase_item_id)
+        purchase_id = request.query_params.get("purchase_id") or _purchase_id_from_item(purchase_item_id)
+        if purchase_id:
+            queryset = queryset.filter(purchase_item__purchase_id=purchase_id)
         items = list(queryset.order_by("part__code", "id")[:1000])
         if not items:
             return Response({"success": False, "message": "No QR labels are available."}, status=404)
@@ -111,18 +133,27 @@ class InventorySummaryAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     def get(self, request):
-        by_status = {row["status"]: row["count"] for row in InventoryItem.objects.values("status").annotate(count=Count("id"))}
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        inventory = InventoryItem.objects.filter(company=company)
+        requests = PartRequest.objects.filter(company=company)
+        by_status = {
+            row["status"]: row["count"]
+            for row in inventory.values("status").annotate(count=Count("id"))
+        }
         return Response({
             "success": True,
             "summary": {
-                "total_units": InventoryItem.objects.count(),
+                "total_units": inventory.count(),
                 "pending_receipt": by_status.get("PENDING_RECEIPT", 0),
                 "in_stock": by_status.get("IN_STOCK", 0),
                 "issued": by_status.get("ISSUED", 0),
                 "installed": by_status.get("INSTALLED", 0),
                 "scrap": by_status.get("SCRAP", 0),
-                "pending_requests": PartRequest.objects.filter(status="PENDING").count(),
-                "approved_requests": PartRequest.objects.filter(status="APPROVED").count(),
+                "pending_requests": requests.filter(status="PENDING").count(),
+                "approved_requests": requests.filter(status="APPROVED").count(),
             },
         })
 
@@ -148,19 +179,23 @@ class InventoryExcelReportAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     def get(self, request):
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
         workbook = openpyxl.Workbook()
         workbook.remove(workbook.active)
-        summary = InventoryItem.objects.values("status").annotate(units=Count("id")).order_by("status")
+        summary = InventoryItem.objects.filter(company=company).values("status").annotate(units=Count("id")).order_by("status")
         _sheet(workbook, "Executive Summary", ["Metric", "Value"], [
             ("Generated By", request.user.get_full_name() or request.user.phone),
-            ("Total Suppliers", Supplier.objects.count()),
-            ("Total Purchases", Purchase.objects.count()),
-            ("AI-Scanned Invoices", Purchase.objects.filter(entry_source="INVOICE_OCR").count()),
-            ("Inventory Units", InventoryItem.objects.count()),
-            ("Stock Value", float(PurchaseItem.objects.aggregate(value=Sum("purchase_price"))["value"] or 0)),
+            ("Total Suppliers", Supplier.objects.filter(company=company).count()),
+            ("Total Purchases", Purchase.objects.filter(company=company).count()),
+            ("AI-Scanned Invoices", Purchase.objects.filter(company=company, entry_source="INVOICE_OCR").count()),
+            ("Inventory Units", InventoryItem.objects.filter(company=company).count()),
+            ("Stock Value", float(PurchaseItem.objects.filter(company=company).aggregate(value=Sum("purchase_price"))["value"] or 0)),
             *[(f"Status: {row['status']}", row["units"]) for row in summary],
         ])
-        inventory = InventoryItem.objects.select_related("part", "purchase_item__purchase__supplier", "received_by")
+        inventory = InventoryItem.objects.filter(company=company).select_related("part", "purchase_item__purchase__supplier", "received_by")
         _sheet(workbook, "Stock Ledger", ["ID", "Part Code", "Part", "Serial-QR", "Status", "Invoice", "Supplier", "Received At", "Received By"], [
             (item.id, item.part.code, item.part.name, item.serial_number or "", item.status,
              item.purchase_item.purchase.invoice_number, item.purchase_item.purchase.supplier.name,
@@ -168,7 +203,7 @@ class InventoryExcelReportAPIView(APIView):
              (item.received_by.get_full_name() or item.received_by.phone) if item.received_by else "")
             for item in inventory
         ])
-        purchases = PurchaseItem.objects.select_related("purchase__supplier", "purchase__verified_by", "part")
+        purchases = PurchaseItem.objects.filter(company=company).select_related("purchase__supplier", "purchase__verified_by", "part")
         _sheet(workbook, "Purchases", ["Invoice", "Date", "Supplier", "Part Code", "Part", "Quantity", "Unit Price", "Total", "Entry Source", "OCR Confidence", "Verified By", "Invoice Image"], [
             (item.purchase.invoice_number, item.purchase.invoice_date, item.purchase.supplier.name,
              item.part.code, item.part.name, item.quantity, float(item.purchase_price), float(item.purchase_price * item.quantity),
@@ -177,14 +212,14 @@ class InventoryExcelReportAPIView(APIView):
              item.purchase.invoice_image.name if item.purchase.invoice_image else "")
             for item in purchases
         ])
-        requests = PartRequest.objects.select_related("engineer__user", "part", "reviewed_by")
+        requests = PartRequest.objects.filter(company=company).select_related("engineer__user", "part", "reviewed_by")
         _sheet(workbook, "Part Requests", ["Request", "Employee", "Part Code", "Part", "Qty", "Status", "Requested", "Reviewed By", "Review Note"], [
             (row.id, row.engineer.user.get_full_name(), row.part.code, row.part.name, row.quantity,
              row.status, row.created_at.replace(tzinfo=None),
              (row.reviewed_by.get_full_name() or row.reviewed_by.phone) if row.reviewed_by else "", row.review_remarks)
             for row in requests
         ])
-        audit = InventoryAuditLog.objects.select_related("inventory_item__part", "engineer__user", "performed_by")
+        audit = InventoryAuditLog.objects.filter(company=company).select_related("inventory_item__part", "engineer__user", "performed_by")
         _sheet(workbook, "Audit Trail", ["Time", "Action", "Part", "Serial", "Old Status", "New Status", "Engineer", "Performed By", "Remarks"], [
             (row.created_at.replace(tzinfo=None), row.action, row.inventory_item.part.name, row.serial_number,
              row.old_status, row.new_status, row.engineer.user.get_full_name() if row.engineer else "",

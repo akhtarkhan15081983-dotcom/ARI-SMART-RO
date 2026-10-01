@@ -3,6 +3,8 @@ import os
 import urllib.error
 import urllib.request
 
+from django.conf import settings
+
 
 class LocalLLMError(RuntimeError):
     pass
@@ -12,9 +14,12 @@ class LocalLLM:
     """OpenAI-free local inference adapter for ANDY, tuned for low latency."""
 
     def __init__(self):
-        self.base_url = os.getenv("ANDY_LLM_URL", "http://127.0.0.1:11434").rstrip("/")
+        default_url = "http://127.0.0.1:11434" if settings.DEBUG else ""
+        self.base_url = os.getenv("ANDY_LLM_URL", default_url).strip().rstrip("/")
+        self.service_token = os.getenv("ANDY_AI_SERVICE_TOKEN", "").strip()
         self.model = os.getenv("ANDY_LLM_MODEL", "qwen2.5:3b")
         self.timeout = int(os.getenv("ANDY_LLM_TIMEOUT", "120"))
+        self.remote_retries = max(0, min(int(os.getenv("ANDY_AI_REMOTE_RETRIES", "1")), 1))
         self.num_ctx = int(os.getenv("ANDY_LLM_NUM_CTX", "1536"))
         self.num_predict = int(os.getenv("ANDY_LLM_NUM_PREDICT", "96"))
         # Keeping the 3B model warm removes repeated model-start cost. The value
@@ -22,24 +27,47 @@ class LocalLLM:
         self.keep_alive = os.getenv("ANDY_LLM_KEEP_ALIVE", "10m")
 
     def _post_json(self, path, payload):
+        if not self.base_url:
+            raise LocalLLMError(
+                "ANDY language service is unavailable. Configure ANDY_LLM_URL."
+            )
+        headers = {"Content-Type": "application/json"}
+        if self.service_token:
+            headers["Authorization"] = f"Bearer {self.service_token}"
+        elif not settings.DEBUG:
+            raise LocalLLMError(
+                "ANDY AI service token is not configured."
+            )
         request = urllib.request.Request(
             f"{self.base_url}{path}",
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
+        attempts = self.remote_retries + 1
+        last_error = None
+        for attempt in range(attempts):
             try:
-                body = exc.read().decode("utf-8", errors="replace").strip()
-            except Exception:
-                body = ""
-            detail = body[:1000] if body else str(exc)
-            raise LocalLLMError(f"Ollama {path} HTTP {exc.code}: {detail}") from exc
-        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            raise LocalLLMError(f"Local Ollama connection failed at {path}: {exc}") from exc
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                if exc.code in {502, 503, 504} and attempt + 1 < attempts:
+                    continue
+                try:
+                    body = exc.read().decode("utf-8", errors="replace").strip()
+                except Exception:
+                    body = ""
+                detail = body[:1000] if body else str(exc)
+                raise LocalLLMError(f"ANDY language service {path} HTTP {exc.code}: {detail}") from exc
+            except (urllib.error.URLError, TimeoutError) as exc:
+                last_error = exc
+                if attempt + 1 < attempts:
+                    continue
+                raise LocalLLMError(f"ANDY language service unavailable at {path}.") from exc
+            except ValueError as exc:
+                raise LocalLLMError(f"ANDY language service returned invalid JSON at {path}.") from exc
+        raise LocalLLMError(f"ANDY language service unavailable at {path}.") from last_error
 
     @staticmethod
     def _messages_to_prompt(messages):

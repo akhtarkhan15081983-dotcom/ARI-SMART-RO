@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -9,11 +11,14 @@ import 'api_service.dart';
 
 class InventoryWorkflowService {
   static const _downloads = MethodChannel('com.arismartro.app/downloads');
+  static const _archiveFolder = 'ARI Smart RO Downloads';
+  final Map<String, String> _pendingActionIds = <String, String>{};
+  final Random _random = Random.secure();
 
   Future<List<Map<String, dynamic>>> requests() async =>
-      _rows(await _get('/inventory/workflow/requests/'), 'requests');
+      _fetchAllPages('/inventory/workflow/requests/', 'requests');
   Future<List<Map<String, dynamic>>> receivingQueue() async =>
-      _rows(await _get('/inventory/workflow/receiving/'), 'items');
+      _fetchAllPages('/inventory/workflow/receiving/', 'items');
   Future<Map<String, dynamic>> summary() async => Map<String, dynamic>.from(
     (await _get('/inventory/workflow/summary/'))['summary'] as Map? ?? const {},
   );
@@ -27,20 +32,84 @@ class InventoryWorkflowService {
     {'action': action, 'remarks': remarks},
     expected: const {200},
   );
-  Future<void> receive(int purchaseItemId, String code) => _post(
-    '/inventory/workflow/receive/',
-    {'purchase_item_id': purchaseItemId, 'code': code},
-    expected: const {200, 201},
-  );
-  Future<void> fulfil(int requestId, List<String> codes) => _post(
-    '/inventory/workflow/requests/$requestId/fulfil/',
-    {'codes': codes},
-    expected: const {200},
-  );
+
+  Future<void> receive(int purchaseItemId, String code) async {
+    final payload = {'purchase_item_id': purchaseItemId, 'code': code};
+    final key = 'receive:${jsonEncode(payload)}';
+    final actionId = _claimAction(key, 'RECEIVE');
+    await _post(
+      '/inventory/workflow/receive/',
+      payload,
+      expected: const {200, 201},
+      actionId: actionId,
+      retryTransport: true,
+    );
+    _completeAction(key);
+  }
+
+  Future<void> receivePhoto(int purchaseItemId, String imagePath) async {
+    final key = 'receive-photo:$purchaseItemId:$imagePath';
+    final actionId = _claimAction(key, 'RECEIVE_PHOTO');
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final request = http.MultipartRequest(
+          'POST',
+          Uri.parse('${ApiService.baseUrl}/inventory/workflow/receive-photo/'),
+        );
+        request.headers.addAll(await ApiService.authHeaders());
+        request.headers['X-ARI-Action-ID'] = actionId;
+        request.fields['purchase_item_id'] = '$purchaseItemId';
+        request.files.add(await http.MultipartFile.fromPath('photo', imagePath));
+        final response = await http.Response.fromStream(
+          await request.send().timeout(const Duration(seconds: 45)),
+        );
+        if (response.statusCode != 200 && response.statusCode != 201) {
+          throw Exception(_message(response));
+        }
+        _completeAction(key);
+        return;
+      } on TimeoutException {
+        if (attempt == 0) continue;
+        rethrow;
+      } on SocketException {
+        if (attempt == 0) continue;
+        rethrow;
+      } on http.ClientException {
+        if (attempt == 0) continue;
+        rethrow;
+      }
+    }
+  }
+
+  Future<void> fulfil(int requestId, List<String> codes) async {
+    final payload = {'codes': codes};
+    final key = 'fulfil:$requestId:${jsonEncode(payload)}';
+    final actionId = _claimAction(key, 'FULFIL');
+    await _post(
+      '/inventory/workflow/requests/$requestId/fulfil/',
+      payload,
+      expected: const {200},
+      actionId: actionId,
+      retryTransport: true,
+    );
+    _completeAction(key);
+  }
+
   Future<void> createSupplier(Map<String, dynamic> payload) =>
       _post('/suppliers/', payload, expected: const {201});
-  Future<void> createPurchase(Map<String, dynamic> payload) =>
-      _post('/purchases/', payload, expected: const {201});
+
+  Future<void> createPurchase(Map<String, dynamic> payload) async {
+    final key = 'purchase:${jsonEncode(payload)}';
+    final actionId = _claimAction(key, 'PURCHASE');
+    await _post(
+      '/purchases/',
+      payload,
+      expected: const {200, 201},
+      actionId: actionId,
+      retryTransport: true,
+    );
+    _completeAction(key);
+  }
 
   Future<Map<String, dynamic>> analyzeInvoice(
     String imagePath,
@@ -68,20 +137,40 @@ class InventoryWorkflowService {
     required String ocrText,
     required Map<String, dynamic> payload,
   }) async {
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('${ApiService.baseUrl}/purchases/invoice-scan/confirm/'),
-    );
-    request.headers.addAll(await ApiService.authHeaders());
-    request.fields['ocr_text'] = ocrText;
-    request.fields['payload'] = jsonEncode(payload);
-    request.files.add(
-      await http.MultipartFile.fromPath('invoice_image', imagePath),
-    );
-    final response = await http.Response.fromStream(
-      await request.send().timeout(const Duration(seconds: 60)),
-    );
-    if (response.statusCode != 201) throw Exception(_message(response));
+    final key = 'ocr-confirm:$imagePath:${jsonEncode(payload)}';
+    final actionId = _claimAction(key, 'OCR_PURCHASE');
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final request = http.MultipartRequest(
+          'POST',
+          Uri.parse('${ApiService.baseUrl}/purchases/invoice-scan/confirm/'),
+        );
+        request.headers.addAll(await ApiService.authHeaders());
+        request.headers['X-ARI-Action-ID'] = actionId;
+        request.fields['ocr_text'] = ocrText;
+        request.fields['payload'] = jsonEncode(payload);
+        request.files.add(
+          await http.MultipartFile.fromPath('invoice_image', imagePath),
+        );
+        final response = await http.Response.fromStream(
+          await request.send().timeout(const Duration(seconds: 60)),
+        );
+        if (response.statusCode != 200 && response.statusCode != 201) {
+          throw Exception(_message(response));
+        }
+        _completeAction(key);
+        return;
+      } on TimeoutException {
+        if (attempt == 0) continue;
+        rethrow;
+      } on SocketException {
+        if (attempt == 0) continue;
+        rethrow;
+      } on http.ClientException {
+        if (attempt == 0) continue;
+        rethrow;
+      }
+    }
   }
 
   Future<int> generateCodes(int purchaseItemId) async {
@@ -97,9 +186,10 @@ class InventoryWorkflowService {
     final query = purchaseItemId == null
         ? ''
         : '?purchase_item_id=$purchaseItemId';
+    final suffix = purchaseItemId == null ? 'All' : 'Purchase';
     return _download(
       '/inventory/workflow/qr-labels.pdf$query',
-      'ARI_Inventory_QR_Labels.pdf',
+      'ARI_Inventory_QR_Labels_$suffix.pdf',
       'application/pdf',
     );
   }
@@ -109,6 +199,17 @@ class InventoryWorkflowService {
     'ARI_Professional_Inventory_Report.xlsx',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   );
+
+  Future<List<FileSystemEntity>> savedDownloads() async {
+    final root = await getApplicationDocumentsDirectory();
+    final directory = Directory('${root.path}/$_archiveFolder');
+    if (!await directory.exists()) return const [];
+    final files = directory.listSync().whereType<File>().toList()
+      ..sort(
+        (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
+      );
+    return files;
+  }
 
   Future<dynamic> _getRaw(String path) async {
     final response = await http
@@ -124,31 +225,92 @@ class InventoryWorkflowService {
   Future<Map<String, dynamic>> _get(String path) async =>
       Map<String, dynamic>.from(await _getRaw(path) as Map);
 
+  Future<List<Map<String, dynamic>>> _fetchAllPages(
+    String path,
+    String key,
+  ) async {
+    const pageSize = 250;
+    var page = 1;
+    final allRows = <Map<String, dynamic>>[];
+
+    while (true) {
+      final separator = path.contains('?') ? '&' : '?';
+      final body = await _get(
+        '$path${separator}page=$page&page_size=$pageSize',
+      );
+      final rows = _rows(body, key);
+      allRows.addAll(rows);
+      if (body['has_more'] != true || rows.isEmpty) break;
+      page = (body['next_page'] as num?)?.toInt() ?? (page + 1);
+    }
+    return allRows;
+  }
+
   Future<void> _post(
     String path,
     Map<String, dynamic> payload, {
     required Set<int> expected,
+    String? actionId,
+    bool retryTransport = false,
   }) async {
-    await _postData(path, payload, expected: expected);
+    await _postData(
+      path,
+      payload,
+      expected: expected,
+      actionId: actionId,
+      retryTransport: retryTransport,
+    );
   }
 
   Future<Map<String, dynamic>> _postData(
     String path,
     Map<String, dynamic> payload, {
     required Set<int> expected,
+    String? actionId,
+    bool retryTransport = false,
   }) async {
-    final response = await http
-        .post(
-          Uri.parse('${ApiService.baseUrl}$path'),
-          headers: await ApiService.authHeaders(),
-          body: jsonEncode(payload),
-        )
-        .timeout(const Duration(seconds: 30));
-    if (!expected.contains(response.statusCode)) {
-      throw Exception(_message(response));
+    final attempts = retryTransport ? 2 : 1;
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      try {
+        final headers = await ApiService.authHeaders();
+        if (actionId != null && actionId.isNotEmpty) {
+          headers['X-ARI-Action-ID'] = actionId;
+        }
+        final response = await http
+            .post(
+              Uri.parse('${ApiService.baseUrl}$path'),
+              headers: headers,
+              body: jsonEncode(payload),
+            )
+            .timeout(const Duration(seconds: 30));
+        if (!expected.contains(response.statusCode)) {
+          throw Exception(_message(response));
+        }
+        if (response.body.isEmpty) return const {};
+        return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+      } on TimeoutException {
+        if (attempt + 1 < attempts) continue;
+        rethrow;
+      } on SocketException {
+        if (attempt + 1 < attempts) continue;
+        rethrow;
+      } on http.ClientException {
+        if (attempt + 1 < attempts) continue;
+        rethrow;
+      }
     }
-    if (response.body.isEmpty) return const {};
-    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    throw StateError('Inventory request retry loop ended unexpectedly.');
+  }
+
+  String _claimAction(String key, String prefix) =>
+      _pendingActionIds.putIfAbsent(key, () => _newActionId(prefix));
+
+  void _completeAction(String key) => _pendingActionIds.remove(key);
+
+  String _newActionId(String prefix) {
+    final micros = DateTime.now().toUtc().microsecondsSinceEpoch;
+    final random = _random.nextInt(0x7fffffff).toRadixString(16);
+    return 'INV-$prefix-$micros-$random';
   }
 
   Future<String> _download(
@@ -163,6 +325,13 @@ class InventoryWorkflowService {
         )
         .timeout(const Duration(seconds: 60));
     if (response.statusCode != 200) throw Exception(_message(response));
+
+    final root = await getApplicationDocumentsDirectory();
+    final archive = Directory('${root.path}/$_archiveFolder');
+    if (!await archive.exists()) await archive.create(recursive: true);
+    final archivedFile = File('${archive.path}/$filename');
+    await archivedFile.writeAsBytes(response.bodyBytes, flush: true);
+
     if (Platform.isAndroid) {
       final saved = await _downloads.invokeMethod<String>('saveFile', {
         'filename': filename,
@@ -170,14 +339,10 @@ class InventoryWorkflowService {
         'bytes': response.bodyBytes,
       });
       if (saved == null || saved.isEmpty) {
-        throw Exception('Download location not returned.');
+        return archivedFile.path;
       }
-      return saved;
     }
-    final directory = await getApplicationDocumentsDirectory();
-    final file = File('${directory.path}/$filename');
-    await file.writeAsBytes(response.bodyBytes, flush: true);
-    return file.path;
+    return archivedFile.path;
   }
 
   List<Map<String, dynamic>> _rawList(dynamic data) {

@@ -1,6 +1,8 @@
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from .token_security import token_session_is_current
+
 
 class VerifiedCustomerJWTAuthentication(JWTAuthentication):
     TENANT_SAFE_PREFIXES = (
@@ -14,6 +16,13 @@ class VerifiedCustomerJWTAuthentication(JWTAuthentication):
         if result is None:
             return None
         user, token = result
+
+        if not token_session_is_current(user, token):
+            raise AuthenticationFailed(
+                "Your secure session has expired. Please sign in again.",
+                code="session_revoked",
+            )
+
         if user.is_superuser or user.role == "CUSTOMER":
             return user, token
 
@@ -26,8 +35,12 @@ class VerifiedCustomerJWTAuthentication(JWTAuthentication):
                     code="employee_device_login_required",
                 )
             if not device_id or device_id != bound_device_id:
+                # Device migration is deliberately never performed from a client-
+                # supplied legacy identifier. A new phone requires the explicit
+                # admin reset/re-enrollment flow so a copied/spoofed identifier
+                # cannot move an employee session to another installation.
                 raise AuthenticationFailed(
-                    "This employee session belongs to another phone.",
+                    "This employee session belongs to another phone. Ask Admin to reset the device before using a new phone.",
                     code="employee_device_mismatch",
                 )
 

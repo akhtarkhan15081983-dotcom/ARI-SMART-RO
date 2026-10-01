@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_service.dart';
+import 'tenant_brand_service.dart';
 
 class PublicRequestService {
   const PublicRequestService();
@@ -14,7 +15,11 @@ class PublicRequestService {
           .post(
             Uri.parse('${ApiService.baseUrl}/customers/public-requests/'),
             headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode(payload),
+            body: jsonEncode({
+              ...payload,
+              if (TenantBrandService.isDedicatedBuild)
+                'company_slug': TenantBrandService.dedicatedTenantSlug.trim(),
+            }),
           )
           .timeout(const Duration(seconds: 70));
       final decoded = jsonDecode(response.body);

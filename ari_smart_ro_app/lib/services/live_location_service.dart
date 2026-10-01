@@ -12,13 +12,14 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart' as permissions;
 
 import 'api_service.dart';
+import 'attendance_service.dart';
+import 'location_queue_store.dart';
 
 const String _trackingEnabledKey = 'ari_live_location_tracking_enabled';
-const String _pendingLocationsKey = 'ari_live_location_pending_queue';
+const String _legacyPendingLocationsKey = 'ari_live_location_pending_queue';
 const String _notificationChannelId = 'ari_live_location';
 const int _notificationId = 4091;
 const Duration _trackingInterval = Duration(seconds: 20);
-const int _maxPendingLocations = 30;
 
 class LiveLocationException implements Exception {
   const LiveLocationException(this.message);
@@ -50,6 +51,7 @@ class LiveLocationService {
   }
 
   static Future<void> _configure() async {
+    await _migrateLegacyQueue();
     final service = FlutterBackgroundService();
 
     if (Platform.isAndroid) {
@@ -167,17 +169,30 @@ class LiveLocationService {
 
   Future<int> pendingLocationCount() async {
     if (!isSupportedPlatform) return 0;
-    return (await _readQueue()).length;
+    return LocationQueueStore.count();
   }
 
   Future<void> sendCurrentLocation() async {
     if (!isSupportedPlatform) return;
+    await _syncPendingAttendanceBeforeLocation();
     await _flushPendingLocations();
+    final stillEnabled = await _storage.read(key: _trackingEnabledKey) == 'true';
+    if (!stillEnabled) return;
     final point = await _capturePoint();
     if (point == null) return;
     final sent = await _sendPoint(point);
     if (!sent) {
       await _queuePoint(point);
+    }
+  }
+
+  static Future<void> _syncPendingAttendanceBeforeLocation() async {
+    try {
+      await AttendanceService().syncPendingOfflineActions();
+    } catch (_) {
+      // Attendance sync is best-effort here. A transient failure must not discard
+      // queued attendance or location evidence. The server-side shift gate remains
+      // authoritative and will stop tracking once it can be reached.
     }
   }
 
@@ -208,74 +223,113 @@ class LiveLocationService {
     }
   }
 
-  static Future<bool> _sendPoint(Map<String, dynamic> point) async {
-    try {
-      final response = await http
+  static Future<http.Response> _postPoint(Map<String, dynamic> point) {
+    return ApiService.authHeaders().then(
+      (headers) => http
           .post(
             Uri.parse('${ApiService.baseUrl}/employees/live-location/'),
-            headers: await ApiService.authHeaders(),
+            headers: headers,
             body: jsonEncode(point),
           )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return true;
-      }
-      if (response.statusCode == 401) {
-        await _storage.write(key: _trackingEnabledKey, value: 'false');
-      }
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static Future<void> _queuePoint(Map<String, dynamic> point) async {
-    final queue = await _readQueue();
-    queue.add(point);
-    if (queue.length > _maxPendingLocations) {
-      queue.removeRange(0, queue.length - _maxPendingLocations);
-    }
-    await _storage.write(
-      key: _pendingLocationsKey,
-      value: jsonEncode(queue),
+          .timeout(const Duration(seconds: 15)),
     );
   }
 
-  static Future<void> _flushPendingLocations() async {
-    final queue = await _readQueue();
-    if (queue.isEmpty) return;
+  static Future<http.Response> _postBatch(
+    List<Map<String, dynamic>> points,
+  ) {
+    return ApiService.authHeaders().then(
+      (headers) => http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/employees/live-location/batch/'),
+            headers: headers,
+            body: jsonEncode(<String, dynamic>{'points': points}),
+          )
+          .timeout(const Duration(seconds: 20)),
+    );
+  }
 
-    var sentCount = 0;
-    for (final point in queue) {
-      if (!await _sendPoint(point)) break;
-      sentCount++;
+  static Future<bool> _acceptSuccessfulResponse(http.Response response) async {
+    if (response.statusCode < 200 || response.statusCode >= 300) return false;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map && decoded['shift_active'] == false) {
+        await _storage.write(key: _trackingEnabledKey, value: 'false');
+      }
+    } catch (_) {
+      // Older backend responses may not include shift state.
     }
-    if (sentCount == 0) return;
+    return true;
+  }
 
-    final remaining = queue.sublist(sentCount);
-    if (remaining.isEmpty) {
-      await _storage.delete(key: _pendingLocationsKey);
-    } else {
-      await _storage.write(
-        key: _pendingLocationsKey,
-        value: jsonEncode(remaining),
-      );
+  static Future<bool> _sendPoint(Map<String, dynamic> point) async {
+    try {
+      var response = await _postPoint(point);
+      if (await _acceptSuccessfulResponse(response)) {
+        return true;
+      }
+
+      if (response.statusCode == 401) {
+        final recovered = await ApiService.recoverSessionAfterUnauthorized();
+        if (recovered) {
+          response = await _postPoint(point);
+          if (await _acceptSuccessfulResponse(response)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    } catch (_) {
+      return false;
     }
   }
 
-  static Future<List<Map<String, dynamic>>> _readQueue() async {
+  static Future<bool> _sendBatch(List<Map<String, dynamic>> points) async {
+    if (points.isEmpty) return true;
     try {
-      final raw = await _storage.read(key: _pendingLocationsKey);
-      if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return <Map<String, dynamic>>[];
-      return decoded
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList();
+      var response = await _postBatch(points);
+      if (response.statusCode >= 200 && response.statusCode < 300) return true;
+
+      if (response.statusCode == 401) {
+        final recovered = await ApiService.recoverSessionAfterUnauthorized();
+        if (recovered) {
+          response = await _postBatch(points);
+          return response.statusCode >= 200 && response.statusCode < 300;
+        }
+      }
+      return false;
     } catch (_) {
-      return <Map<String, dynamic>>[];
+      return false;
+    }
+  }
+
+  static Future<void> _queuePoint(Map<String, dynamic> point) {
+    return LocationQueueStore.append(point);
+  }
+
+  static Future<void> _flushPendingLocations() async {
+    // Drain only one bounded batch per tracking tick. This prevents a large
+    // offline backlog from starving capture of the employee's current position.
+    final batch = await LocationQueueStore.readBatch();
+    if (batch.isEmpty) return;
+    if (!await _sendBatch(batch)) return;
+    await LocationQueueStore.acknowledgeFirst(batch.length);
+  }
+
+  static Future<void> _migrateLegacyQueue() async {
+    try {
+      final raw = await _storage.read(key: _legacyPendingLocationsKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        for (final item in decoded.whereType<Map>()) {
+          await LocationQueueStore.append(Map<String, dynamic>.from(item));
+        }
+      }
+      await _storage.delete(key: _legacyPendingLocationsKey);
+    } catch (_) {
+      // Keep legacy data untouched if migration cannot complete.
     }
   }
 
@@ -307,6 +361,7 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
   final storage = const FlutterSecureStorage();
+  await LiveLocationService._migrateLegacyQueue();
   var timer = Timer(const Duration(days: 3650), () {});
   var busy = false;
 
@@ -322,7 +377,16 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
         return;
       }
 
+      await LiveLocationService._syncPendingAttendanceBeforeLocation();
       await LiveLocationService._flushPendingLocations();
+      final stillEnabledAfterFlush =
+          await storage.read(key: _trackingEnabledKey) == 'true';
+      if (!stillEnabledAfterFlush) {
+        timer.cancel();
+        await service.stopSelf();
+        return;
+      }
+
       final point = await LiveLocationService._capturePoint();
       var locationSent = false;
       if (point != null) {
@@ -332,25 +396,27 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
         }
       }
 
+      final shiftStillActive =
+          await storage.read(key: _trackingEnabledKey) == 'true';
+      if (!shiftStillActive) {
+        timer.cancel();
+        await service.stopSelf();
+        return;
+      }
+
       if (service is AndroidServiceInstance &&
           await service.isForegroundService()) {
         final time =
             '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}';
+        final pending = await LocationQueueStore.count();
         await service.setForegroundNotificationInfo(
           title: locationSent
               ? 'ARI SMART RO • Live location ON'
-              : 'ARI SMART RO • Location required',
+              : 'ARI SMART RO • Location queued safely',
           content: locationSent
-              ? 'Work shift tracking active • updated $time'
-              : 'GPS/permission is off or network failed. Open the app now.',
+              ? 'Work shift tracking active • updated $time${pending > 0 ? ' • $pending pending' : ''}'
+              : 'Network/GPS issue • pending route points: $pending',
         );
-      }
-
-      final stillEnabled =
-          await storage.read(key: _trackingEnabledKey) == 'true';
-      if (!stillEnabled) {
-        timer.cancel();
-        await service.stopSelf();
       }
     } finally {
       busy = false;

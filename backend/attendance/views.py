@@ -26,7 +26,7 @@ from .security import (
 )
 from employees.models import EmployeeProfile, HRPolicy
 from accounts.audit import write_audit_event
-from tenancy.access import request_company
+from tenancy.access import HasRequiredFeature, request_company
 
 
 def _is_admin(user):
@@ -42,8 +42,24 @@ def _absolute_file_url(request, file_field):
         return None
 
 
+def _page_window(request, *, default_size, max_size):
+    requested = "page" in request.query_params or "page_size" in request.query_params
+    try:
+        page = max(1, int(request.query_params.get("page") or 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.query_params.get("page_size") or default_size)
+    except (TypeError, ValueError):
+        page_size = default_size
+    page_size = min(max(page_size, 1), max_size)
+    start = (page - 1) * page_size
+    return requested, page, page_size, start, start + page_size
+
+
 class CheckInAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def post(self, request):
         try:
@@ -134,7 +150,8 @@ class CheckInAPIView(APIView):
 
 
 class CheckOutAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def post(self, request):
         employee = EmployeeProfile.objects.get(user=request.user)
@@ -164,7 +181,8 @@ class CheckOutAPIView(APIView):
 
 
 class TodayAttendanceAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def get(self, request):
         employee = EmployeeProfile.objects.get(user=request.user)
@@ -177,7 +195,8 @@ class TodayAttendanceAPIView(APIView):
 
 
 class OvertimeRequestAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def get(self, request):
         employee = EmployeeProfile.objects.filter(user=request.user).first()
@@ -250,7 +269,8 @@ class OvertimeRequestAPIView(APIView):
 
 
 class OvertimeStartAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def post(self, request):
         employee = EmployeeProfile.objects.filter(user=request.user).first()
@@ -291,7 +311,8 @@ class OvertimeStartAPIView(APIView):
 
 
 class OvertimeStopAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
 
     def post(self, request):
         employee = EmployeeProfile.objects.filter(user=request.user).first()
@@ -329,17 +350,22 @@ class AdminOvertimeAPIView(APIView):
             return Response({"detail": "Only Admin can manage overtime."}, status=403)
         reconcile_open_attendance()
         company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
         rows = OvertimeRequest.objects.select_related(
             "attendance__employee__user",
             "attendance__employee__company",
             "reviewed_by",
         )
-        if company is not None:
-            rows = rows.filter(attendance__employee__company=company)
+        rows = rows.filter(attendance__employee__company=company)
         status_filter = str(request.query_params.get("status") or "").upper()
         if status_filter in {"PENDING", "APPROVED", "REJECTED", "COMPLETED", "CANCELLED"}:
             rows = rows.filter(status=status_filter)
-        return Response([
+        paginated, page, page_size, start, end = _page_window(
+            request, default_size=200, max_size=500
+        )
+        total_count = rows.count()
+        payload = [
             {
                 "id": row.id,
                 "attendance_id": row.attendance_id,
@@ -360,8 +386,18 @@ class AdminOvertimeAPIView(APIView):
                 "planned_end_at": row.planned_end_at,
                 "ended_at": row.ended_at,
             }
-            for row in rows[:500]
-        ])
+            for row in rows[start:end]
+        ]
+        if not paginated:
+            return Response(payload)
+        return Response({
+            "results": payload,
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "has_more": end < total_count,
+            "next_page": page + 1 if end < total_count else None,
+        })
 
     def post(self, request, request_id=None):
         if not _is_admin(request.user):
@@ -372,7 +408,9 @@ class AdminOvertimeAPIView(APIView):
         if row is None:
             return Response({"detail": "Overtime request not found."}, status=404)
         company = request_company(request)
-        if company is not None and row.attendance.employee.company_id != company.id:
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+        if row.attendance.employee.company_id != company.id:
             return Response({"detail": "Overtime request not found in this workspace."}, status=404)
 
         action = str(request.data.get("action") or "").upper()
@@ -439,7 +477,8 @@ class AdminOvertimeAPIView(APIView):
 
 
 class AttendanceHistoryAPIView(ListAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "attendance"
     serializer_class = AttendanceSerializer
 
     def get_queryset(self):
@@ -456,12 +495,21 @@ class AdminAttendanceDeviceOverrideAPIView(APIView):
                 {"success": False, "message": "Only admin can manage emergency attendance device permission."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
         today = timezone.localdate()
         overrides = {
             item.employee_id: item
-            for item in AttendanceDeviceOverride.objects.filter(date=today)
+            for item in AttendanceDeviceOverride.objects.filter(
+                date=today,
+                employee__company=company,
+            )
         }
-        employees = EmployeeProfile.objects.filter(is_active=True).select_related("user").order_by(
+        employees = EmployeeProfile.objects.filter(
+            is_active=True,
+            company=company,
+        ).select_related("user").order_by(
             "designation", "user__first_name", "user__last_name"
         )
         return Response([
@@ -487,8 +535,15 @@ class AdminAttendanceDeviceOverrideAPIView(APIView):
             )
         if employee_id is None:
             return Response({"success": False, "message": "Employee is required."}, status=400)
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
         try:
-            employee = EmployeeProfile.objects.select_related("user").get(id=employee_id, is_active=True)
+            employee = EmployeeProfile.objects.select_related("user").get(
+                id=employee_id,
+                is_active=True,
+                company=company,
+            )
         except EmployeeProfile.DoesNotExist:
             return Response({"success": False, "message": "Employee not found."}, status=404)
 
@@ -547,12 +602,23 @@ class AdminAttendanceReviewListAPIView(APIView):
         if review_status not in {"PENDING", "APPROVED", "REJECTED", "ALL"}:
             review_status = "PENDING"
 
-        qs = Attendance.objects.select_related("employee__user", "identity_reviewed_by").order_by("-date", "-check_in")
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        qs = Attendance.objects.select_related(
+            "employee__user",
+            "identity_reviewed_by",
+        ).filter(employee__company=company).order_by("-date", "-check_in")
         if review_status != "ALL":
             qs = qs.filter(identity_review_status=review_status)
 
+        paginated, page, page_size, start, end = _page_window(
+            request, default_size=100, max_size=200
+        )
+        total_count = qs.count()
         data = []
-        for attendance in qs[:200]:
+        for attendance in qs[start:end]:
             employee = attendance.employee
             data.append({
                 "id": attendance.id,
@@ -573,7 +639,16 @@ class AdminAttendanceReviewListAPIView(APIView):
                 ),
                 "remarks": attendance.remarks,
             })
-        return Response(data)
+        if not paginated:
+            return Response(data)
+        return Response({
+            "results": data,
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "has_more": end < total_count,
+            "next_page": page + 1 if end < total_count else None,
+        })
 
 
 class AdminAttendanceReviewActionAPIView(APIView):
@@ -586,8 +661,14 @@ class AdminAttendanceReviewActionAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        company = request_company(request)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
         try:
-            attendance = Attendance.objects.select_related("employee__user").get(id=attendance_id)
+            attendance = Attendance.objects.select_related("employee__user").get(
+                id=attendance_id,
+                employee__company=company,
+            )
         except Attendance.DoesNotExist:
             return Response({"success": False, "message": "Attendance record not found."}, status=404)
 

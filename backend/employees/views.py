@@ -16,6 +16,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator, can_edit_customers
 from accounts.models import AuthSecurityEvent, User
 from accounts.audit import write_audit_event
+from attendance.models import Attendance
 from tenancy.models import CompanyMembership
 from tenancy.access import HasRequiredFeature, has_feature_access
 
@@ -581,9 +582,17 @@ class UpdateLiveLocationAPIView(APIView):
 
 
 class EngineerLiveMapAPIView(APIView):
-    permission_classes = [IsOperationsUser]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if not (
+            has_feature_access(request, "map")
+            or has_feature_access(request, "engineer_map")
+        ):
+            return Response(
+                {"detail": "Live map permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         employees = EmployeeProfile.objects.filter(
             is_active=True,
             user__is_active=True,
@@ -597,9 +606,17 @@ class EngineerLiveMapAPIView(APIView):
         stale_after = timedelta(seconds=90)
         payload = []
 
+        local_today = timezone.localdate()
+
         for employee in employees.order_by(
             "designation", "user__first_name", "employee_id"
         ):
+            attendance_active = Attendance.objects.filter(
+                employee=employee,
+                date=local_today,
+                check_in__isnull=False,
+                check_out__isnull=True,
+            ).exists()
             has_location = (
                 employee.last_latitude is not None
                 and employee.last_longitude is not None
@@ -631,6 +648,7 @@ class EngineerLiveMapAPIView(APIView):
                 "location_received": has_location,
                 "location_status": location_status,
                 "online": online,
+                "attendance_active": attendance_active,
             })
 
         return Response(payload)
@@ -668,8 +686,16 @@ class EngineerListAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     def get(self, request):
+        company = _request_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=403,
+            )
         engineers = EmployeeProfile.objects.filter(
-            designation="ENGINEER", is_active=True,
+            company=company,
+            designation="ENGINEER",
+            is_active=True,
         ).select_related("user")
         return Response([{
             "id": e.id,
@@ -687,8 +713,16 @@ class AssignmentEmployeeListAPIView(APIView):
     permission_classes = [IsStaffOperator]
 
     def get(self, request):
+        company = _request_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=403,
+            )
         employees = EmployeeProfile.objects.filter(
-            designation__in=["ENGINEER", "OFFICE"], is_active=True,
+            company=company,
+            designation__in=["ENGINEER", "OFFICE"],
+            is_active=True,
         ).select_related("user").order_by(
             "designation", "user__first_name", "user__last_name",
         )

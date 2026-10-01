@@ -43,13 +43,19 @@ class JobSerializer(serializers.ModelSerializer):
         source="customer.longitude", max_digits=10, decimal_places=7, read_only=True
     )
     engineer_name = serializers.CharField(source="engineer.user.get_full_name", read_only=True)
-    asset_id = serializers.CharField(source="ro_asset.asset_id", read_only=True)
+    asset_id = serializers.SerializerMethodField()
     parts_used = serializers.SerializerMethodField()
     before_photo_uploaded = serializers.SerializerMethodField()
     after_photo_uploaded = serializers.SerializerMethodField()
     otp_verified = serializers.BooleanField(read_only=True)
     signature_uploaded = serializers.SerializerMethodField()
     parts_decision = serializers.SerializerMethodField()
+    ro_parts_passport_confirmed = serializers.SerializerMethodField()
+
+    def get_asset_id(self, obj):
+        if not obj.ro_asset_id:
+            return ""
+        return obj.ro_asset.asset_id or ""
 
     def get_parts_used(self, obj):
         return JobPartUsedSerializer(obj.parts_used.all(), many=True, context=self.context).data
@@ -70,6 +76,11 @@ class JobSerializer(serializers.ModelSerializer):
             return "NO_PARTS"
         return "PENDING"
 
+    def get_ro_parts_passport_confirmed(self, obj):
+        if not obj.ro_asset_id:
+            return False
+        return obj.ro_parts_inspections.filter(status="CONFIRMED").exists()
+
     class Meta:
         model = Job
         fields = [
@@ -77,8 +88,9 @@ class JobSerializer(serializers.ModelSerializer):
             "customer", "customer_name", "customer_phone", "address", "area", "city",
             "latitude", "longitude", "engineer", "engineer_name", "ro_asset", "asset_id",
             "parts_used", "parts_decision", "before_photo_uploaded", "after_photo_uploaded",
-            "otp_verified", "signature_uploaded", "remarks", "assigned_at", "accepted_at",
-            "on_the_way_at", "arrived_at", "in_progress_at", "completed_at",
+            "ro_parts_passport_confirmed", "otp_verified", "signature_uploaded", "remarks",
+            "assigned_at", "accepted_at", "on_the_way_at", "arrived_at", "in_progress_at",
+            "completed_at",
         ]
 
 

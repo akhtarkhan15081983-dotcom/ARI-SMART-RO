@@ -5,8 +5,10 @@ from django.utils import timezone
 from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from tenancy.access import HasRequiredFeature, request_company
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 
 from accounts.permissions import IsStaffOperator
 
@@ -44,27 +46,63 @@ class EngineerBagIssueAPIView(generics.CreateAPIView):
 
 class OCRVerifyAPIView(generics.GenericAPIView):
     serializer_class = OCRVerifySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "qr"
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        engineer = serializer.validated_data["engineer"]
+        engineer = EmployeeProfile.objects.filter(
+            user=request.user,
+            is_active=True,
+            user__is_active=True,
+        ).first()
+        if engineer is None:
+            return Response(
+                {"verified": False, "message": "Active employee profile is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serial_number = serializer.validated_data["serial_number"].strip()
-        if engineer.user_id != request.user.id:
-            return Response({"verified": False, "message": "You cannot verify a part for another engineer."}, status=status.HTTP_403_FORBIDDEN)
         bag_item = EngineerBagItem.objects.select_related("inventory_item", "inventory_item__part", "engineer__user").filter(engineer=engineer, inventory_item__serial_number=serial_number, inventory_item__status="ISSUED", status="ISSUED").first()
         if not bag_item:
-            return Response({"verified": False, "message": "This part is not currently issued to this engineer."}, status=status.HTTP_400_BAD_REQUEST)
+            issued_elsewhere = EngineerBagItem.objects.filter(
+                engineer__company=engineer.company,
+                inventory_item__serial_number=serial_number,
+                inventory_item__status="ISSUED",
+                status="ISSUED",
+            ).exists()
+            return Response(
+                {
+                    "verified": False,
+                    "message": "This part is not currently issued to this engineer.",
+                },
+                status=(
+                    status.HTTP_403_FORBIDDEN
+                    if issued_elsewhere
+                    else status.HTTP_400_BAD_REQUEST
+                ),
+            )
         return Response({"verified": True, "message": "Part verified successfully.", "inventory_item": bag_item.inventory_item.id, "part": bag_item.inventory_item.part.name, "part_code": bag_item.inventory_item.part.code, "serial_number": bag_item.inventory_item.serial_number})
 
 
 class MyBagAPIView(generics.ListAPIView):
     serializer_class = MyBagSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "bag"
 
     def get_queryset(self):
-        return EngineerBagItem.objects.select_related("inventory_item__part", "engineer__user").filter(engineer__user=self.request.user, status="ISSUED", inventory_item__status="ISSUED").order_by("-issue_date")
+        company = request_company(self.request)
+        if company is None:
+            return EngineerBagItem.objects.none()
+        return EngineerBagItem.objects.select_related(
+            "inventory_item__part", "engineer__user"
+        ).filter(
+            engineer__user=self.request.user,
+            engineer__company=company,
+            company=company,
+            status="ISSUED",
+            inventory_item__status="ISSUED",
+        ).order_by("-issue_date")
 
 
 class AdminEngineerBagAPIView(generics.ListAPIView):
@@ -72,9 +110,14 @@ class AdminEngineerBagAPIView(generics.ListAPIView):
     permission_classes = [IsAdminOrManager]
 
     def get_queryset(self):
+        company = request_company(self.request)
+        if company is None:
+            return EngineerBagItem.objects.none()
         return EngineerBagItem.objects.select_related(
             "inventory_item__part", "engineer__user"
         ).filter(
+            company=company,
+            engineer__company=company,
             status="ISSUED",
             inventory_item__status="ISSUED",
             engineer__designation="ENGINEER",
@@ -92,14 +135,31 @@ class PartCatalogAPIView(generics.ListAPIView):
 
 class MyPartRequestsAPIView(generics.ListCreateAPIView):
     serializer_class = PartRequestSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRequiredFeature]
+    required_feature = "request"
 
     def get_queryset(self):
-        return PartRequest.objects.select_related("part", "engineer").filter(engineer__user=self.request.user).order_by("-created_at")
+        company = request_company(self.request)
+        if company is None:
+            return PartRequest.objects.none()
+        return PartRequest.objects.select_related("part", "engineer").filter(
+            engineer__user=self.request.user,
+            engineer__company=company,
+            company=company,
+        ).order_by("-created_at")
 
     def perform_create(self, serializer):
-        engineer = get_object_or_404(EmployeeProfile, user=self.request.user, designation="ENGINEER", is_active=True)
-        part_request = serializer.save(engineer=engineer)
+        company = request_company(self.request)
+        if company is None:
+            raise PermissionDenied("Active company workspace not found.")
+        engineer = get_object_or_404(
+            EmployeeProfile,
+            user=self.request.user,
+            designation="ENGINEER",
+            is_active=True,
+            company=company,
+        )
+        part_request = serializer.save(engineer=engineer, company=company)
         PartRequestEvent.objects.create(
             part_request=part_request, action="CREATED", performed_by=self.request.user,
             remarks=part_request.remarks,
@@ -109,6 +169,21 @@ class MyPartRequestsAPIView(generics.ListCreateAPIView):
 def _company_id_for(user):
     membership = user.company_memberships.filter(is_active=True).first()
     return membership.company_id if membership else None
+
+
+def _page_window(request, *, default_size=100, max_size=250):
+    requested = "page" in request.query_params or "page_size" in request.query_params
+    try:
+        page = max(1, int(request.query_params.get("page") or 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.query_params.get("page_size") or default_size)
+    except (TypeError, ValueError):
+        page_size = default_size
+    page_size = min(max(page_size, 1), max_size)
+    start = (page - 1) * page_size
+    return requested, page, page_size, start, start + page_size
 
 
 def _request_payload(part_request):
@@ -121,6 +196,7 @@ def _request_payload(part_request):
         "part_name": part_request.part.name,
         "part_code": part_request.part.code,
         "quantity": part_request.quantity,
+        "is_serialized": part_request.part.is_serialized,
         "remarks": part_request.remarks,
         "status": part_request.status,
         "review_remarks": part_request.review_remarks,
@@ -130,7 +206,8 @@ def _request_payload(part_request):
 
 
 class PartRequestApprovalInboxAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
         queryset = PartRequest.objects.select_related("part", "engineer__user").order_by("-created_at")
@@ -140,7 +217,21 @@ class PartRequestApprovalInboxAPIView(APIView):
         status_filter = str(request.query_params.get("status", "")).upper()
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-        return Response({"success": True, "requests": [_request_payload(row) for row in queryset[:250]]})
+
+        paginated, page, page_size, start, end = _page_window(request)
+        total_count = queryset.count()
+        rows = [_request_payload(row) for row in queryset[start:end]]
+        if not paginated:
+            return Response({"success": True, "requests": rows})
+        return Response({
+            "success": True,
+            "requests": rows,
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "has_more": end < total_count,
+            "next_page": page + 1 if end < total_count else None,
+        })
 
 
 class PartRequestReviewAPIView(APIView):
@@ -175,26 +266,47 @@ class PartRequestReviewAPIView(APIView):
 
 
 class InventoryReceivingQueueAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
-        items = PurchaseItem.objects.select_related("purchase__supplier", "part").order_by("-purchase__invoice_date")
+        items = PurchaseItem.objects.select_related(
+            "purchase__supplier",
+            "part",
+        ).filter(
+            inventory_items__status="PENDING_RECEIPT",
+        ).distinct().order_by("-purchase__invoice_date", "-id")
+
+        paginated, page, page_size, start, end = _page_window(request)
+        total_count = items.count()
         rows = []
-        for item in items[:250]:
+        for item in items[start:end]:
             pending = item.inventory_items.filter(status="PENDING_RECEIPT").count()
             received = item.inventory_items.exclude(status="PENDING_RECEIPT").count()
-            if pending:
-                rows.append({
-                    "purchase_item_id": item.id, "invoice_number": item.purchase.invoice_number,
-                    "invoice_date": item.purchase.invoice_date, "supplier": item.purchase.supplier.name,
-                    "part_name": item.part.name, "part_code": item.part.code,
-                    "quantity": item.quantity, "pending_count": pending, "received_count": received,
-                })
-        return Response({"success": True, "items": rows})
+            rows.append({
+                "purchase_item_id": item.id, "invoice_number": item.purchase.invoice_number,
+                "invoice_date": item.purchase.invoice_date, "supplier": item.purchase.supplier.name,
+                "part_name": item.part.name, "part_code": item.part.code,
+                "is_serialized": item.part.is_serialized,
+                "receipt_mode": "QR" if item.part.is_serialized else "PHOTO",
+                "quantity": item.quantity, "pending_count": pending, "received_count": received,
+            })
+        if not paginated:
+            return Response({"success": True, "items": rows})
+        return Response({
+            "success": True,
+            "items": rows,
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "has_more": end < total_count,
+            "next_page": page + 1 if end < total_count else None,
+        })
 
 
 class InventoryReceiveAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     @transaction.atomic
     def post(self, request):
@@ -212,10 +324,17 @@ class InventoryReceiveAPIView(APIView):
             return Response({"success": False, "message": "This QR/serial code is already registered."}, status=409)
         inventory_item = registered or (
             InventoryItem.objects.select_for_update()
-            .filter(purchase_item_id=purchase_item_id, status="PENDING_RECEIPT", serial_number__isnull=True)
+            .filter(
+                purchase_item_id=purchase_item_id,
+                status="PENDING_RECEIPT",
+                serial_number__isnull=True,
+                part__is_serialized=True,
+            )
             .select_related("part")
             .first()
         )
+        if inventory_item is not None and not inventory_item.part.is_serialized:
+            return Response({"success": False, "message": "This item uses photo receipt, not QR scanning."}, status=400)
         if inventory_item is None:
             return Response({"success": False, "message": "No pending quantity remains for this purchase item."}, status=409)
         inventory_item.serial_number = code
@@ -236,8 +355,44 @@ class InventoryReceiveAPIView(APIView):
         }, status=201)
 
 
+class InventoryPhotoReceiveAPIView(APIView):
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
+
+    @transaction.atomic
+    def post(self, request):
+        purchase_item_id = request.data.get("purchase_item_id")
+        photo = request.FILES.get("photo")
+        if not photo:
+            return Response({"success": False, "message": "Item photo is required."}, status=400)
+        inventory_item = (
+            InventoryItem.objects.select_for_update()
+            .filter(
+                purchase_item_id=purchase_item_id,
+                status="PENDING_RECEIPT",
+                part__is_serialized=False,
+            )
+            .select_related("part", "purchase_item__purchase")
+            .first()
+        )
+        if inventory_item is None:
+            return Response({"success": False, "message": "No pending non-serialized quantity remains."}, status=409)
+        inventory_item.receipt_photo = photo
+        inventory_item.status = "IN_STOCK"
+        inventory_item.received_at = timezone.now()
+        inventory_item.received_by = request.user
+        inventory_item.save(update_fields=["receipt_photo", "status", "received_at", "received_by"])
+        InventoryAuditLog.objects.create(
+            inventory_item=inventory_item, performed_by=request.user, action="RECEIVED",
+            old_status="PENDING_RECEIPT", new_status="IN_STOCK", serial_number="",
+            remarks=f"Photo-verified receipt against invoice {inventory_item.purchase_item.purchase.invoice_number}",
+        )
+        return Response({"success": True, "message": "Photo verified and item added to stock."}, status=201)
+
+
 class PartRequestFulfilAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     @transaction.atomic
     def post(self, request, request_id):
@@ -249,19 +404,27 @@ class PartRequestFulfilAPIView(APIView):
             return Response({"success": False, "message": "This request belongs to another company."}, status=403)
         if part_request.status != "APPROVED":
             return Response({"success": False, "message": "Only approved requests can be issued."}, status=409)
-        codes = request.data.get("codes")
-        if not isinstance(codes, list) or len(codes) != part_request.quantity:
-            return Response({"success": False, "message": f"Scan exactly {part_request.quantity} part code(s)."}, status=400)
-        clean_codes = [str(code).strip() for code in codes]
-        if len(set(clean_codes)) != len(clean_codes):
-            return Response({"success": False, "message": "Duplicate QR codes are not allowed."}, status=400)
-        stock = list(
-            InventoryItem.objects.select_for_update().filter(
-                part=part_request.part, status="IN_STOCK", serial_number__in=clean_codes,
+        codes = request.data.get("codes") or []
+        if part_request.part.is_serialized:
+            if not isinstance(codes, list) or len(codes) != part_request.quantity:
+                return Response({"success": False, "message": f"Scan exactly {part_request.quantity} part code(s)."}, status=400)
+            clean_codes = [str(code).strip() for code in codes]
+            if len(set(clean_codes)) != len(clean_codes):
+                return Response({"success": False, "message": "Duplicate QR codes are not allowed."}, status=400)
+            stock = list(
+                InventoryItem.objects.select_for_update().filter(
+                    part=part_request.part, status="IN_STOCK", serial_number__in=clean_codes,
+                )
             )
-        )
+        else:
+            clean_codes = []
+            stock = list(
+                InventoryItem.objects.select_for_update().filter(
+                    part=part_request.part, status="IN_STOCK", receipt_photo__isnull=False,
+                ).order_by("received_at", "id")[:part_request.quantity]
+            )
         if len(stock) != part_request.quantity:
-            return Response({"success": False, "message": "One or more scanned parts are unavailable or incorrect."}, status=409)
+            return Response({"success": False, "message": "Required verified stock is not available."}, status=409)
         for item in stock:
             EngineerBagItem.objects.create(
                 engineer=part_request.engineer, inventory_item=item, status="ISSUED",

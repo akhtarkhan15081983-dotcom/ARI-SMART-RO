@@ -4,6 +4,8 @@ import json
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from django.conf import settings
@@ -44,9 +46,12 @@ class LocalTTS:
 
     def __init__(self):
         voices_dir = Path(os.getenv("ANDY_TTS_VOICES_DIR", Path(settings.BASE_DIR) / "andy" / "voices"))
-        # Keep the current release fast on CPU-only laptops. IndicF5 remains
-        # available as an explicit opt-in for the next optimized voice version.
-        self.engine = os.getenv("ANDY_TTS_ENGINE", "piper").strip().lower()
+        default_engine = "piper" if settings.DEBUG else "remote"
+        self.engine = os.getenv("ANDY_TTS_ENGINE", default_engine).strip().lower()
+        self.remote_url = os.getenv("ANDY_TTS_URL", "").strip()
+        self.service_token = os.getenv("ANDY_AI_SERVICE_TOKEN", "").strip()
+        self.remote_timeout = int(os.getenv("ANDY_TTS_REMOTE_TIMEOUT", "90"))
+        self.remote_retries = max(0, min(int(os.getenv("ANDY_AI_REMOTE_RETRIES", "1")), 1))
         self.model_name = os.getenv("ANDY_TTS_MODEL", "hi_IN-rohan-medium")
         self.model_path = voices_dir / f"{self.model_name}.onnx"
         self.config_path = voices_dir / f"{self.model_name}.onnx.json"
@@ -198,8 +203,56 @@ class LocalTTS:
         if len(text) > 1800:
             text = text[:1800]
 
-        if self.engine not in {"auto", "indicf5", "piper"}:
+        if self.engine not in {"auto", "indicf5", "piper", "remote"}:
             raise LocalTTSError(f"Unsupported ANDY_TTS_ENGINE: {self.engine}")
+
+        if self.engine == "remote":
+            if not self.remote_url:
+                raise LocalTTSError(
+                    "ANDY voice service is unavailable. Configure ANDY_TTS_URL."
+                )
+            if not settings.DEBUG and not self.service_token:
+                raise LocalTTSError("ANDY AI service token is not configured.")
+            request = urllib.request.Request(
+                self.remote_url,
+                data=json.dumps({"text": text}).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "audio/wav",
+                    **({"Authorization": f"Bearer {self.service_token}"} if self.service_token else {}),
+                },
+                method="POST",
+            )
+            attempts = self.remote_retries + 1
+            audio = None
+            last_error = None
+            for attempt in range(attempts):
+                try:
+                    with urllib.request.urlopen(request, timeout=self.remote_timeout) as response:
+                        audio = response.read()
+                    break
+                except urllib.error.HTTPError as exc:
+                    last_error = exc
+                    if exc.code in {502, 503, 504} and attempt + 1 < attempts:
+                        continue
+                    raise LocalTTSError(
+                        f"ANDY voice service returned HTTP {exc.code}."
+                    ) from exc
+                except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                    last_error = exc
+                    if attempt + 1 < attempts:
+                        continue
+                    raise LocalTTSError("ANDY voice service is unavailable.") from exc
+            if audio is None:
+                raise LocalTTSError("ANDY voice service is unavailable.") from last_error
+            if len(audio) <= 44:
+                raise LocalTTSError("ANDY voice service returned empty audio.")
+            return audio
+
+        if not settings.DEBUG and os.getenv("ANDY_ALLOW_INPROCESS_AI", "0") != "1":
+            raise LocalTTSError(
+                "In-process TTS is disabled in production. Configure ANDY_TTS_URL."
+            )
 
         if self.engine == "piper":
             return self._synthesize_piper(text)

@@ -2,7 +2,7 @@ name: ari_smart_ro_app
 description: "ARI SMART RO Management System"
 publish_to: 'none'
 
-version: 1.0.34+34
+version: 1.0.52+52
 
 environment:
   sdk: ^3.12.2
@@ -25,6 +25,7 @@ dependencies:
   mobile_scanner: ^5.2.3
   signature: ^5.5.0
   path_provider: ^2.1.5
+  synchronized: ^3.4.0
   google_maps_flutter: ^2.12.3
   flutter_map: ^8.2.1
   latlong2: ^0.9.1
@@ -39,6 +40,8 @@ dependencies:
   flutter_local_notifications: ^19.4.2
   flutter_background_service: ^5.1.0
   timezone: ^0.10.1
+  posthog_flutter: 5.24.0
+  smart_auth: ^3.2.0
 
 dev_dependencies:
   flutter_test:

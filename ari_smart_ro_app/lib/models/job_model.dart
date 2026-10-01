@@ -20,6 +20,7 @@ class JobModel {
   final String partsDecision;
   final bool beforePhotoUploaded;
   final bool afterPhotoUploaded;
+  final bool roPartsPassportConfirmed;
   final bool otpVerified;
   final bool signatureUploaded;
 
@@ -45,6 +46,7 @@ class JobModel {
     required this.partsDecision,
     required this.beforePhotoUploaded,
     required this.afterPhotoUploaded,
+    required this.roPartsPassportConfirmed,
     required this.otpVerified,
     required this.signatureUploaded,
   });
@@ -72,6 +74,7 @@ class JobModel {
       partsDecision: json["parts_decision"] ?? "PENDING",
       beforePhotoUploaded: json["before_photo_uploaded"] == true,
       afterPhotoUploaded: json["after_photo_uploaded"] == true,
+      roPartsPassportConfirmed: json["ro_parts_passport_confirmed"] == true,
       otpVerified: json["otp_verified"] == true,
       signatureUploaded: json["signature_uploaded"] == true,
     );
@@ -99,6 +102,7 @@ class JobModel {
         "parts_decision": partsDecision,
         "before_photo_uploaded": beforePhotoUploaded,
         "after_photo_uploaded": afterPhotoUploaded,
+        "ro_parts_passport_confirmed": roPartsPassportConfirmed,
         "otp_verified": otpVerified,
         "signature_uploaded": signatureUploaded,
       };

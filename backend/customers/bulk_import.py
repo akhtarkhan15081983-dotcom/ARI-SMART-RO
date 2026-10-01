@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.db.models import Q
 from openpyxl import load_workbook
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -12,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminOrManager, user_role
+from tenancy.access import request_company
 from .models import Customer
 from .serializers import CustomerSerializer
 
@@ -121,11 +123,46 @@ def _xlsx_rows(upload):
 def _csv_rows(upload):
     upload.seek(0)
     raw = upload.read()
-    if isinstance(raw, bytes):
-        text = raw.decode("utf-8-sig", errors="replace")
-    else:
-        text = raw
+    text = raw.decode("utf-8-sig", errors="replace") if isinstance(raw, bytes) else raw
     return [row for row in csv.reader(io.StringIO(text))]
+
+
+def _customer_visible_in_workspace(request, customer):
+    role = user_role(request.user)
+    if role == "ENGINEER":
+        employee = getattr(request.user, "employee_profile", None)
+        return employee is not None and customer.assigned_engineer_id == employee.id
+    if role == "CUSTOMER":
+        if not request.user.is_verified:
+            return False
+        if customer.user_id == request.user.id:
+            return True
+        if customer.user_id is None and customer.phone == request.user.phone:
+            first_match = (
+                Customer.objects.filter(phone=request.user.phone, user__isnull=True)
+                .order_by("id").only("id").first()
+            )
+            return first_match is not None and first_match.id == customer.id
+        return False
+    if role in {"ADMIN", "MANAGER", "OFFICE"}:
+        company = request_company(request)
+        if company is not None:
+            return (
+                customer.company_id == company.id
+                or (
+                    customer.company_id is None
+                    and customer.assigned_engineer_id is not None
+                    and customer.assigned_engineer.company_id == company.id
+                )
+            )
+        return (
+            customer.company_id is None
+            and (
+                customer.assigned_engineer_id is None
+                or customer.assigned_engineer.company_id is None
+            )
+        )
+    return False
 
 
 class CustomerBulkImportAPIView(APIView):
@@ -136,7 +173,6 @@ class CustomerBulkImportAPIView(APIView):
         upload = request.FILES.get("file")
         if upload is None:
             return Response({"detail": "Excel or CSV file is required."}, status=status.HTTP_400_BAD_REQUEST)
-
         if upload.size > MAX_IMPORT_SIZE:
             return Response({"detail": "File is too large. Maximum size is 10 MB."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -166,6 +202,7 @@ class CustomerBulkImportAPIView(APIView):
             )
 
         preview_only = str(request.data.get("preview_only", "")).lower() in {"1", "true", "yes"}
+        company = request_company(request)
         created = []
         errors = []
         duplicates = []
@@ -178,7 +215,6 @@ class CustomerBulkImportAPIView(APIView):
 
             name = _clean(value("name"))
             phone = _phone(value("phone"))
-
             if not name and not phone:
                 continue
             if not name:
@@ -192,7 +228,12 @@ class CustomerBulkImportAPIView(APIView):
                 continue
             seen_phones.add(phone)
 
-            existing = Customer.objects.filter(phone=phone).only("id", "customer_id", "name", "phone").first()
+            existing_scope = Customer.objects.filter(phone=phone)
+            if company is not None:
+                existing_scope = existing_scope.filter(company=company)
+            else:
+                existing_scope = existing_scope.filter(company__isnull=True)
+            existing = existing_scope.only("id", "customer_id", "name", "phone").first()
             if existing:
                 duplicates.append({
                     "row": row_number,
@@ -204,6 +245,7 @@ class CustomerBulkImportAPIView(APIView):
                 continue
 
             payload = {
+                "company": company,
                 "name": name,
                 "phone": phone,
                 "alternate_phone": _phone(value("alternate_phone")),
@@ -227,12 +269,7 @@ class CustomerBulkImportAPIView(APIView):
                 payload["gender"] = ""
 
             if preview_only:
-                created.append({
-                    "row": row_number,
-                    "name": name,
-                    "phone": phone,
-                    "status": "ready",
-                })
+                created.append({"row": row_number, "name": name, "phone": phone, "status": "ready"})
                 continue
 
             try:
@@ -272,30 +309,10 @@ class CustomerQRCodeAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        customer = Customer.objects.filter(pk=pk).first()
+        customer = Customer.objects.select_related("assigned_engineer").filter(pk=pk).first()
         if customer is None:
             return Response({"detail": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        role = user_role(request.user)
-        allowed = role in {"ADMIN", "MANAGER", "OFFICE"}
-        if role == "ENGINEER":
-            allowed = customer.assigned_engineer_id == getattr(getattr(request.user, "employee_profile", None), "id", None)
-        elif role == "CUSTOMER":
-            allowed = False
-            if request.user.is_verified:
-                if customer.user_id == request.user.id:
-                    allowed = True
-                elif customer.user_id is None and customer.phone == request.user.phone:
-                    first_match = (
-                        Customer.objects
-                        .filter(phone=request.user.phone, user__isnull=True)
-                        .order_by("id")
-                        .only("id")
-                        .first()
-                    )
-                    allowed = first_match is not None and first_match.id == customer.id
-
-        if not allowed:
+        if not _customer_visible_in_workspace(request, customer):
             return Response({"detail": "You do not have access to this customer QR."}, status=status.HTTP_403_FORBIDDEN)
 
         return Response({

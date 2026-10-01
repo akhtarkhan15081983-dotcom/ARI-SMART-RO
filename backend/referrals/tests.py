@@ -143,6 +143,34 @@ class ReferralWalletTests(TestCase):
             Decimal("50.00"),
         )
 
+    def test_wallet_redemption_retry_keeps_one_debit_for_same_bill(self):
+        reward = claim_welcome_reward(self.referred)
+        client = APIClient()
+        client.force_authenticate(self.referred)
+        payload = {
+            "bill_amount": "100.00", "category": "SERVICE",
+            "reference_type": "SERVICE_BILL", "reference_id": "retry-bill-1",
+        }
+        headers = {"HTTP_X_ARI_ACTION_ID": "wallet-retry-001"}
+        first = client.post("/api/referrals/wallet/redeem/", payload, format="json", **headers)
+        second = client.post("/api/referrals/wallet/redeem/", payload, format="json", **headers)
+        self.assertEqual((first.status_code, second.status_code), (200, 200))
+        self.assertTrue(second.data["idempotent_replay"])
+        self.assertEqual(first.data["wallet_used"], second.data["wallet_used"])
+        reward.refresh_from_db()
+        self.assertEqual(reward.used_amount, Decimal("40.00"))
+        self.assertEqual(WalletLedgerEntry.objects.filter(
+            user=self.referred, entry_type="DEBIT", reference_id="retry-bill-1",
+        ).count(), 1)
+
+        new_action = client.post(
+            "/api/referrals/wallet/redeem/", payload, format="json",
+            HTTP_X_ARI_ACTION_ID="wallet-retry-002",
+        )
+        self.assertEqual(new_action.status_code, 400)
+        reward.refresh_from_db()
+        self.assertEqual(reward.used_amount, Decimal("40.00"))
+
     # ========================================================
     # RENT -> RENT REFERRAL
     # ========================================================

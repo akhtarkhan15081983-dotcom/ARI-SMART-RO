@@ -33,6 +33,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
   // ============================================================
 
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   String _searchQuery = "";
 
@@ -113,6 +114,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
 
     super.dispose();
   }
@@ -182,12 +184,18 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
   // ============================================================
 
   Future<void> _openCustomerDetails(CustomerModel customer) async {
+    final previousOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CustomerDetailsScreen(customer: customer),
-      ),
+      MaterialPageRoute(builder: (_) => CustomerDetailsScreen(customer: customer)),
     );
-    if (mounted) await _loadCustomers();
+    if (!mounted) return;
+    await _loadCustomers();
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final target = previousOffset.clamp(0.0, _scrollController.position.maxScrollExtent);
+      _scrollController.jumpTo(target.toDouble());
+    });
   }
 
   void _showCustomerQr(CustomerModel customer) {
@@ -996,6 +1004,8 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
               onRefresh: _loadCustomers,
 
               child: ListView(
+                controller: _scrollController,
+                key: const PageStorageKey<String>('customer-list-scroll'),
                 padding: const EdgeInsets.all(10),
 
                 children: [

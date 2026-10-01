@@ -1,14 +1,10 @@
 from django.urls import path
 
 from .views import (
-    UpdateLiveLocationAPIView,
     EngineerLiveMapAPIView,
     EmployeeProfileAPIView,
     EngineerListAPIView,
     AssignmentEmployeeListAPIView,
-    FaceEnrollmentAPIView,
-    AdminFaceEnrollmentControlAPIView,
-    AdminFaceEnrollmentListAPIView,
     EmployeeManagementAPIView,
     EmployeeCustomerEditPermissionAPIView,
     EmployeeLoginDeviceResetAPIView,
@@ -17,9 +13,19 @@ from .views import (
     EmployeeCareerMovementActionAPIView,
     EmployeeIdCardAPIView,
     EmployeeIdVerifyAPIView,
-    EmployeeDeviceHealthAPIView,
-    AdminDeviceHealthAPIView,
 )
+from .reliability import (
+    AttendanceAwareLiveLocationAPIView,
+    CombinedFaceEnrollmentControlAPIView,
+    SecureFaceEnrollmentAPIView,
+)
+from .device_health_security import (
+    SecurityAwareEmployeeDeviceHealthAPIView,
+    SecurityAwareAdminDeviceHealthAPIView,
+    TenantScopedAdminFaceEnrollmentListAPIView,
+)
+from .location_batch import EmployeeLocationBatchAPIView
+from .route_history import EmployeeDayRouteAPIView
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
 from .training import (
     TrainingDetailAPIView,
@@ -41,8 +47,8 @@ from .training import (
 )
 
 urlpatterns = [
-    path("employees/device-health/", EmployeeDeviceHealthAPIView.as_view(), name="employee-device-health"),
-    path("employees/admin/device-health/", AdminDeviceHealthAPIView.as_view(), name="admin-device-health"),
+    path("employees/device-health/", SecurityAwareEmployeeDeviceHealthAPIView.as_view(), name="employee-device-health"),
+    path("employees/admin/device-health/", SecurityAwareAdminDeviceHealthAPIView.as_view(), name="admin-device-health"),
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
     path(
         "employees/manage/<int:employee_id>/customer-edit-permission/",
@@ -102,13 +108,23 @@ urlpatterns = [
     path("employees/hrms/reports/payroll.xlsx", PayrollExcelReportAPIView.as_view(), name="hrms-payroll-excel"),
     path(
         "employees/live-location/",
-        UpdateLiveLocationAPIView.as_view(),
+        AttendanceAwareLiveLocationAPIView.as_view(),
         name="live-location",
+    ),
+    path(
+        "employees/live-location/batch/",
+        EmployeeLocationBatchAPIView.as_view(),
+        name="live-location-batch",
     ),
     path(
         "employees/live-map/",
         EngineerLiveMapAPIView.as_view(),
         name="live-map",
+    ),
+    path(
+        "employees/day-route/",
+        EmployeeDayRouteAPIView.as_view(),
+        name="employee-day-route",
     ),
     path(
         "employees/profile/",
@@ -117,18 +133,18 @@ urlpatterns = [
     ),
     path(
         "employees/face-enrollment/",
-        FaceEnrollmentAPIView.as_view(),
+        SecureFaceEnrollmentAPIView.as_view(),
         name="face-enrollment",
     ),
     path(
         "employees/admin/face-enrollments/",
-        AdminFaceEnrollmentListAPIView.as_view(),
+        TenantScopedAdminFaceEnrollmentListAPIView.as_view(),
         name="admin-face-enrollment-list",
     ),
     path(
         "employees/<int:employee_id>/face-enrollment-control/",
-        AdminFaceEnrollmentControlAPIView.as_view(),
-        name="admin-face-enrollment-control",
+        CombinedFaceEnrollmentControlAPIView.as_view(),
+        name="face-enrollment-control",
     ),
     path(
         "employees/engineers/",

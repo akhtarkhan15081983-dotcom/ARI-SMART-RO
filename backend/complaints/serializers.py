@@ -36,6 +36,25 @@ class ComplaintSerializer(serializers.ModelSerializer):
             "linked_service_id_display", "created_at", "updated_at",
         ]
 
+    def create(self, validated_data):
+        # Keep assignment state consistent at the data layer. Any complaint
+        # created with an engineer is immediately ASSIGNED unless the caller
+        # explicitly supplied a later workflow state.
+        engineer = validated_data.get("engineer")
+        status_value = validated_data.get("status", "NEW")
+        if engineer is not None and status_value == "NEW":
+            validated_data["status"] = "ASSIGNED"
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Reassignment through the generic update endpoint must never leave a
+        # complaint in the contradictory state engineer!=null + status=NEW.
+        engineer = validated_data.get("engineer", instance.engineer)
+        status_value = validated_data.get("status", instance.status)
+        if engineer is not None and status_value == "NEW":
+            validated_data["status"] = "ASSIGNED"
+        return super().update(instance, validated_data)
+
     def get_engineer_name(self, obj):
         if not obj.engineer:
             return ""

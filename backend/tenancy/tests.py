@@ -22,6 +22,61 @@ class SaaSFoundationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.data["plans"]), 3)
 
+    def test_public_shop_discovery_exposes_only_available_public_shops(self):
+        plan = SubscriptionPlan.objects.get(code="starter")
+        public_company = Company.objects.create(
+            name="Public Shop Co",
+            slug="public-shop-co",
+            phone="9000011120",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+            show_public_shop=True,
+        )
+        hidden_company = Company.objects.create(
+            name="Hidden Shop Co",
+            slug="hidden-shop-co",
+            phone="9000011121",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+            show_public_shop=False,
+        )
+        expired_company = Company.objects.create(
+            name="Expired Shop Co",
+            slug="expired-shop-co",
+            phone="9000011122",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+            show_public_shop=True,
+        )
+        CompanySubscription.objects.create(
+            company=public_company,
+            plan=plan,
+            status="ACTIVE",
+            current_period_end=timezone.now() + timedelta(days=30),
+        )
+        CompanySubscription.objects.create(
+            company=hidden_company,
+            plan=plan,
+            status="ACTIVE",
+            current_period_end=timezone.now() + timedelta(days=30),
+        )
+        CompanySubscription.objects.create(
+            company=expired_company,
+            plan=plan,
+            status="PAUSED",
+            current_period_end=timezone.now() + timedelta(days=30),
+        )
+
+        response = self.client.get("/api/saas/public-shops/")
+
+        self.assertEqual(response.status_code, 200)
+        slugs = [row["slug"] for row in response.data["shops"]]
+        self.assertIn(public_company.slug, slugs)
+        self.assertNotIn(hidden_company.slug, slugs)
+        self.assertNotIn(expired_company.slug, slugs)
+        self.assertNotIn("gstin", response.data["shops"][0])
+        self.assertNotIn("subscription", response.data["shops"][0])
+
     def test_public_brand_endpoint_exposes_only_safe_white_label_config(self):
         response = self.client.get("/api/saas/brand/ari-smart-ro/")
         self.assertEqual(response.status_code, 200)
@@ -229,6 +284,12 @@ class RoleFeaturePermissionTests(TestCase):
             role="ENGINEER",
             is_verified=True,
         )
+        self.calling = User.objects.create_user(
+            phone="9000099003",
+            password="StrongPass123!",
+            role="CALLING",
+            is_verified=True,
+        )
         CompanyMembership.objects.create(
             company=self.company,
             user=self.admin,
@@ -238,6 +299,12 @@ class RoleFeaturePermissionTests(TestCase):
         CompanyMembership.objects.create(
             company=self.company,
             user=self.engineer,
+            role="STAFF",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.calling,
             role="STAFF",
             is_active=True,
         )
@@ -279,6 +346,31 @@ class RoleFeaturePermissionTests(TestCase):
         direct = self.client.get("/api/employees/hrms/dashboard/")
         self.assertEqual(direct.status_code, 403)
 
+    def test_admin_can_grant_calling_rent_management_and_api_honours_it(self):
+        self.client.force_authenticate(self.calling)
+        blocked = self.client.get("/api/customers/rent-management/")
+        self.assertEqual(blocked.status_code, 403)
+
+        self.client.force_authenticate(self.admin)
+        changed = self.client.post(
+            "/api/saas/role-permissions/",
+            {
+                "role": "CALLING",
+                "feature_key": "rent_management",
+                "is_allowed": True,
+            },
+            format="json",
+        )
+        self.assertEqual(changed.status_code, 200)
+
+        self.client.force_authenticate(self.calling)
+        matrix = self.client.get("/api/saas/role-permissions/?role=CALLING")
+        self.assertEqual(matrix.status_code, 200)
+        self.assertIn("rent_management", matrix.data["allowed_features"])
+
+        allowed = self.client.get("/api/customers/rent-management/")
+        self.assertEqual(allowed.status_code, 200)
+
     def test_non_admin_cannot_change_role_permissions(self):
         self.client.force_authenticate(self.engineer)
         response = self.client.post(
@@ -291,6 +383,48 @@ class RoleFeaturePermissionTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_role_feature_override_is_scoped_to_active_company(self):
+        other_company = Company.objects.create(
+            name="RBAC Other Company",
+            slug="rbac-other-company",
+            phone="9000099010",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        RoleFeaturePermission.objects.create(
+            company=other_company,
+            role="ENGINEER",
+            feature_key="hrms",
+            is_allowed=False,
+        )
+
+        self.client.force_authenticate(self.admin)
+        changed = self.client.post(
+            "/api/saas/role-permissions/",
+            {
+                "role": "ENGINEER",
+                "feature_key": "hrms",
+                "is_allowed": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(changed.status_code, 200)
+        self.assertTrue(
+            RoleFeaturePermission.objects.get(
+                company=self.company,
+                role="ENGINEER",
+                feature_key="hrms",
+            ).is_allowed
+        )
+        self.assertFalse(
+            RoleFeaturePermission.objects.get(
+                company=other_company,
+                role="ENGINEER",
+                feature_key="hrms",
+            ).is_allowed
+        )
 
     def test_admin_always_keeps_full_control(self):
         self.client.force_authenticate(self.admin)

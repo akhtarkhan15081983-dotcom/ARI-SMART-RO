@@ -1,4 +1,5 @@
-from unittest.mock import patch
+import urllib.error
+from unittest.mock import Mock, patch
 
 from django.test import TestCase
 from django.utils import timezone
@@ -8,12 +9,18 @@ from accounts.models import User
 from andy.action_control import AndyActionControl
 from andy.app_control import AndyAppControl
 from andy.models import AndyConversation, AndyKnowledge, AndyMessage, AndyPendingAction, AndySpeechJob, AndyTeaching
-from andy.local_tts import LocalTTS
+from andy.local_tts import LocalTTS, LocalTTSError
+from andy.local_stt import LocalSTT, LocalSTTError
+from andy.local_llm import LocalLLM, LocalLLMError
 from assets.models import ROAsset
 from customers.models import Customer
 from employees.models import EmployeeProfile
 from jobs.models import Job
 from products.models import ProductCategory, ROModel
+from tenancy.models import Company, CompanyMembership
+from complaints.models import Complaint
+from service.models import Service
+from installation.models import Installation
 
 
 class AndyAppControlTests(TestCase):
@@ -64,6 +71,137 @@ class AndyAppControlTests(TestCase):
         self.assertEqual(result["intent"], "operations_summary")
         self.assertIn("pending jobs", result["answer"])
         self.assertIn("open complaints", result["answer"])
+
+    def test_admin_operational_reads_are_tenant_scoped(self):
+        company_a = Company.objects.create(
+            name="ANDY Tenant A",
+            slug="andy-tenant-a",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        company_b = Company.objects.create(
+            name="ANDY Tenant B",
+            slug="andy-tenant-b",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        admin = User.objects.create_user(
+            phone="9000000004",
+            password="test-pass",
+            first_name="Tenant Admin",
+            role="ADMIN",
+        )
+        CompanyMembership.objects.create(
+            company=company_a,
+            user=admin,
+            role="OWNER",
+            is_active=True,
+        )
+        engineer_a_user = User.objects.create_user(
+            phone="9000000005",
+            password="test-pass",
+            role="ENGINEER",
+        )
+        engineer_b_user = User.objects.create_user(
+            phone="9000000006",
+            password="test-pass",
+            role="ENGINEER",
+        )
+        engineer_a = EmployeeProfile.objects.create(
+            company=company_a,
+            user=engineer_a_user,
+            employee_id="ANDY-A",
+            gender="MALE",
+            joining_date=timezone.localdate(),
+            designation="ENGINEER",
+        )
+        engineer_b = EmployeeProfile.objects.create(
+            company=company_b,
+            user=engineer_b_user,
+            employee_id="ANDY-B",
+            gender="MALE",
+            joining_date=timezone.localdate(),
+            designation="ENGINEER",
+        )
+        customer_a = Customer.objects.create(
+            company=company_a,
+            name="Tenant A Customer",
+            phone="9000000401",
+            address="A",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI TEST",
+        )
+        customer_b = Customer.objects.create(
+            company=company_b,
+            name="Tenant B Customer",
+            phone="9000000402",
+            address="B",
+            city="Agra",
+            state="Uttar Pradesh",
+            pincode="282001",
+            ro_model="ARI TEST",
+        )
+        category = ProductCategory.objects.create(name="ANDY Tenant RO")
+        ro_model = ROModel.objects.create(
+            category=category,
+            model_name="ANDY Tenant Model",
+            capacity="12 LPH",
+            business_type="RENT",
+        )
+        asset_a = ROAsset.objects.create(ro_model=ro_model, current_customer=customer_a)
+        asset_b = ROAsset.objects.create(ro_model=ro_model, current_customer=customer_b)
+        Job.objects.create(
+            company=company_a,
+            customer=customer_a,
+            engineer=engineer_a,
+            ro_asset=asset_a,
+            job_type="SERVICE",
+            scheduled_date=timezone.now(),
+            status="ASSIGNED",
+        )
+        Job.objects.create(
+            company=company_b,
+            customer=customer_b,
+            engineer=engineer_b,
+            ro_asset=asset_b,
+            job_type="SERVICE",
+            scheduled_date=timezone.now(),
+            status="ASSIGNED",
+        )
+        Complaint.objects.create(
+            company=company_b,
+            customer=customer_b,
+            engineer=engineer_b,
+            complaint_type="OTHER",
+            description="Other tenant complaint",
+            status="ASSIGNED",
+        )
+        Service.objects.create(
+            company=company_b,
+            customer=customer_b,
+            engineer=engineer_b,
+            ro_asset=asset_b,
+            scheduled_date=timezone.now(),
+            status="PENDING",
+        )
+        Installation.objects.create(
+            customer=customer_b,
+            engineer=engineer_b,
+            ro_asset=asset_b,
+            scheduled_date=timezone.now(),
+            status="SCHEDULED",
+        )
+
+        count = AndyAppControl(admin).try_handle("total customers kitne hain")
+        summary = AndyAppControl(admin).try_handle("operations summary batao")
+
+        self.assertIn("1 customer", count["answer"])
+        self.assertIn("1 pending jobs", summary["answer"])
+        self.assertIn("0 open complaints", summary["answer"])
+        self.assertIn("0 pending services", summary["answer"])
+        self.assertIn("0 pending installations", summary["answer"])
 
 
 class AndyActionControlTests(TestCase):
@@ -352,6 +490,87 @@ class AndySpeakAPITests(TestCase):
     def test_auto_voice_avoids_slow_cpu_indicf5(self):
         self.assertFalse(LocalTTS()._indicf5_fast_enough_for_auto())
 
+    @patch.dict(
+        "os.environ",
+        {
+            "ANDY_TTS_ENGINE": "remote",
+            "ANDY_TTS_URL": "",
+            "ANDY_STT_BACKEND": "remote",
+            "ANDY_STT_URL": "",
+        },
+        clear=False,
+    )
+    def test_remote_ai_adapters_fail_gracefully_without_inference_service(self):
+        with self.assertRaisesMessage(LocalTTSError, "ANDY voice service is unavailable"):
+            LocalTTS().synthesize("Namaste")
+        with self.assertRaisesMessage(LocalSTTError, "ANDY speech recognition service is unavailable"):
+            LocalSTT().transcribe("missing-audio.wav")
+
+    @patch.dict(
+        "os.environ",
+        {
+            "ANDY_TTS_ENGINE": "piper",
+            "ANDY_STT_BACKEND": "local",
+            "ANDY_ALLOW_INPROCESS_AI": "0",
+        },
+        clear=False,
+    )
+    @patch("andy.local_tts.settings.DEBUG", False)
+    @patch("andy.local_stt.settings.DEBUG", False)
+    def test_production_blocks_inprocess_heavy_ai(self, _stt_debug, _tts_debug):
+        with self.assertRaisesMessage(LocalTTSError, "In-process TTS is disabled in production"):
+            LocalTTS().synthesize("Namaste")
+        with self.assertRaisesMessage(LocalSTTError, "In-process STT is disabled in production"):
+            LocalSTT()._get_model()
+
+    @patch.dict("os.environ", {"ANDY_LLM_URL": "https://ai.internal.example/llm", "ANDY_AI_SERVICE_TOKEN": "test-token", "ANDY_AI_REMOTE_RETRIES": "1"}, clear=False)
+    @patch("andy.local_llm.settings.DEBUG", False)
+    def test_remote_llm_retries_transient_failure_once(self, _debug):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.read.return_value = b'{"message":{"content":"ok"}}'
+        with patch("andy.local_llm.urllib.request.urlopen", side_effect=[urllib.error.URLError("temporary"), response]) as opener:
+            data = LocalLLM()._post_json("/api/chat", {"messages": []})
+            self.assertEqual(data["message"]["content"], "ok")
+            self.assertEqual(opener.call_count, 2)
+
+    @patch.dict("os.environ", {"ANDY_LLM_URL": "https://ai.internal.example/llm", "ANDY_AI_SERVICE_TOKEN": "test-token", "ANDY_AI_REMOTE_RETRIES": "1"}, clear=False)
+    @patch("andy.local_llm.settings.DEBUG", False)
+    def test_remote_llm_does_not_retry_client_error(self, _debug):
+        error = urllib.error.HTTPError("https://ai.internal.example/llm/api/chat", 401, "Unauthorized", None, None)
+        with patch("andy.local_llm.urllib.request.urlopen", side_effect=error) as opener:
+            with self.assertRaises(LocalLLMError):
+                LocalLLM()._post_json("/api/chat", {"messages": []})
+            self.assertEqual(opener.call_count, 1)
+    @patch.dict(
+        "os.environ",
+        {
+            "ANDY_LLM_URL": "https://ai.internal.example/llm",
+            "ANDY_TTS_ENGINE": "remote",
+            "ANDY_TTS_URL": "https://ai.internal.example/tts",
+            "ANDY_STT_BACKEND": "remote",
+            "ANDY_STT_URL": "https://ai.internal.example/stt",
+            "ANDY_AI_SERVICE_TOKEN": "",
+        },
+        clear=False,
+    )
+    @patch("andy.local_llm.settings.DEBUG", False)
+    @patch("andy.local_tts.settings.DEBUG", False)
+    @patch("andy.local_stt.settings.DEBUG", False)
+    def test_production_requires_inference_service_token(
+        self,
+        _stt_debug,
+        _tts_debug,
+        _llm_debug,
+    ):
+        with self.assertRaisesMessage(LocalLLMError, "service token is not configured"):
+            LocalLLM()._post_json("/api/chat", {"messages": []})
+        with self.assertRaisesMessage(LocalTTSError, "service token is not configured"):
+            LocalTTS().synthesize("Namaste")
+        with self.assertRaisesMessage(LocalSTTError, "service token is not configured"):
+            LocalSTT()._transcribe_remote("missing-audio.wav")
+
 
 class AndyTeachingTests(TestCase):
     def setUp(self):
@@ -413,6 +632,59 @@ class AndyTeachingTests(TestCase):
         self.assertEqual(response.status_code, 403)
         teaching.refresh_from_db()
         self.assertEqual(teaching.status, "PENDING")
+
+    def test_admin_cannot_review_other_company_teaching_or_read_its_knowledge(self):
+        company_a = Company.objects.create(
+            name="ANDY Teach A",
+            slug="andy-teach-a",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        company_b = Company.objects.create(
+            name="ANDY Teach B",
+            slug="andy-teach-b",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        admin_a = User.objects.create_user(
+            phone="9000000391",
+            password="test-pass",
+            role="ADMIN",
+        )
+        submitter_b = User.objects.create_user(
+            phone="9000000392",
+            password="test-pass",
+            role="ENGINEER",
+        )
+        CompanyMembership.objects.create(
+            company=company_a,
+            user=admin_a,
+            role="OWNER",
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=company_b,
+            user=submitter_b,
+            role="STAFF",
+            is_active=True,
+        )
+        teaching = AndyTeaching.objects.create(
+            submitted_by=submitter_b,
+            question="Tenant private RO answer?",
+            answer="Tenant B only answer.",
+        )
+
+        self.client.force_authenticate(admin_a)
+        pending = self.client.get("/api/andy/teach/pending/")
+        self.assertEqual(pending.status_code, 200)
+        self.assertNotIn(teaching.id, {row["id"] for row in pending.data["results"]})
+
+        review = self.client.post(
+            f"/api/andy/teach/{teaching.id}/review/",
+            {"action": "APPROVE"},
+            format="json",
+        )
+        self.assertEqual(review.status_code, 404)
 
     def test_admin_approval_creates_retrievable_knowledge(self):
         teaching = AndyTeaching.objects.create(

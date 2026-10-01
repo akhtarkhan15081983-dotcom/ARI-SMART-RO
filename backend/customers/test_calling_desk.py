@@ -5,19 +5,35 @@ from rest_framework.test import APITestCase
 
 from accounts.models import User
 from employees.models import EmployeeProfile
+from tenancy.models import Company, CompanyMembership
 from .models import CallingActivity, Customer, PublicCustomerRequest
 
 
 class ProfessionalCallingDeskTests(APITestCase):
     def setUp(self):
+        self.company = Company.objects.create(
+            name="Calling Desk Test Company",
+            slug="calling-desk-test-company",
+            phone="9876500099",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
         self.user = User.objects.create_user(
             phone="9876500001", password="Test@123", role="CALLING", is_verified=True
         )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.user,
+            role="STAFF",
+            is_active=True,
+        )
         self.employee = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.user, gender="MALE", joining_date=date(2026, 1, 1),
             designation="CALLING", salary=Decimal("18000.00"),
         )
         self.customer = Customer.objects.create(
+            company=self.company,
             name="Existing Customer", phone="9876500002", address="Agra",
             city="Agra", state="UP", pincode="282001", ro_model="ARI RO",
             monthly_rent=Decimal("500.00"),
@@ -63,3 +79,113 @@ class ProfessionalCallingDeskTests(APITestCase):
         self.assertEqual(activity.caller, self.employee)
         self.assertEqual(activity.duration_seconds, 75)
         self.assertEqual(activity.outcome, "CALLBACK")
+
+
+    def test_calling_desk_hides_and_rejects_other_company_records(self):
+        other_company = Company.objects.create(
+            name="Calling Desk Other Company",
+            slug="calling-desk-other-company",
+            phone="9876500098",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_user = User.objects.create_user(
+            phone="9876500010",
+            password="Test@123",
+            role="CALLING",
+            is_verified=True,
+        )
+        CompanyMembership.objects.create(
+            company=other_company,
+            user=other_user,
+            role="STAFF",
+            is_active=True,
+        )
+        other_employee = EmployeeProfile.objects.create(
+            company=other_company,
+            user=other_user,
+            gender="MALE",
+            joining_date=date(2026, 1, 1),
+            designation="CALLING",
+            salary=Decimal("18000.00"),
+        )
+        other_customer = Customer.objects.create(
+            company=other_company,
+            name="Other Tenant Customer",
+            phone="9876500011",
+            address="Delhi",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+            ro_model="ARI RO",
+            monthly_rent=Decimal("500.00"),
+        )
+        other_lead = PublicCustomerRequest.objects.create(
+            request_type="SERVICE",
+            customer_name=other_customer.name,
+            phone=other_customer.phone,
+            address=other_customer.address,
+            city=other_customer.city,
+            state=other_customer.state,
+            pincode=other_customer.pincode,
+            existing_customer=other_customer,
+            assigned_caller=other_employee,
+        )
+
+        listing = self.client.get("/api/customers/calling-desk/")
+        self.assertEqual(listing.status_code, 200)
+        lead_ids = {row["id"] for row in listing.data["leads"]}
+        customer_ids = {row["id"] for row in listing.data["customers"]}
+        self.assertNotIn(other_lead.id, lead_ids)
+        self.assertNotIn(other_customer.id, customer_ids)
+
+        update = self.client.patch(
+            f"/api/customers/calling-desk/{other_lead.id}/",
+            {"outcome": "CALLBACK", "note": "must stay isolated"},
+            format="json",
+        )
+        self.assertEqual(update.status_code, 404)
+
+        create_for_other = self.client.post(
+            "/api/customers/calling-desk/",
+            {"customer_id": other_customer.id},
+            format="json",
+        )
+        self.assertEqual(create_for_other.status_code, 404)
+
+
+    def test_calling_desk_lists_company_owned_unassigned_guest_lead(self):
+        owned = PublicCustomerRequest.objects.create(
+            company=self.company,
+            request_type="PURCHASE",
+            customer_name="Owned Guest Lead",
+            phone="9876500020",
+            address="Agra",
+            city="Agra",
+            state="UP",
+            pincode="282001",
+        )
+        other_company = Company.objects.create(
+            name="Other Guest Lead Company",
+            slug="other-guest-lead-company",
+            phone="9876500021",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        hidden = PublicCustomerRequest.objects.create(
+            company=other_company,
+            request_type="PURCHASE",
+            customer_name="Hidden Guest Lead",
+            phone="9876500022",
+            address="Delhi",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+        )
+
+        response = self.client.get("/api/customers/calling-desk/")
+
+        self.assertEqual(response.status_code, 200)
+        lead_ids = {row["id"] for row in response.data["leads"]}
+        self.assertIn(owned.id, lead_ids)
+        self.assertNotIn(hidden.id, lead_ids)

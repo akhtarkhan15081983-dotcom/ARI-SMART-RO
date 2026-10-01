@@ -1,0 +1,225 @@
+name: Isolated Tenant Migration Rehearsal
+
+on:
+  push:
+    branches:
+      - hardening/max-pro-5of5-2026-09-29
+    paths:
+      - .github/workflows/isolated-migration-rehearsal.yml
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type REHEARSE_ISOLATED_DB_ONLY to allow rehearsal DB migrations'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-tenant-migration-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DJANGO_DEBUG: '1'
+      DB_ENGINE: django.db.backends.postgresql
+      DB_NAME: ${{ secrets.REHEARSAL_DB_NAME }}
+      DB_USER: ${{ secrets.REHEARSAL_DB_USER }}
+      DB_PASSWORD: ${{ secrets.REHEARSAL_DB_PASSWORD }}
+      DB_HOST: ${{ secrets.REHEARSAL_DB_HOST }}
+      DB_PORT: ${{ secrets.REHEARSAL_DB_PORT }}
+
+    steps:
+      - name: Normalize rehearsal database connection inputs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse, unquote
+
+          host_value = (os.environ.get('DB_HOST') or '').strip()
+          updates = {}
+          if '://' in host_value:
+              parsed = urlparse(host_value)
+              if parsed.scheme not in {'postgres', 'postgresql'}:
+                  raise SystemExit('REHEARSAL_DB_HOST contains an unsupported URL scheme.')
+              if not parsed.hostname:
+                  raise SystemExit('REHEARSAL_DB_HOST URL does not contain a valid hostname.')
+              updates['DB_HOST'] = parsed.hostname
+              if parsed.port:
+                  updates['DB_PORT'] = str(parsed.port)
+              if parsed.username and not (os.environ.get('DB_USER') or '').strip():
+                  updates['DB_USER'] = unquote(parsed.username)
+              if parsed.password and not (os.environ.get('DB_PASSWORD') or '').strip():
+                  updates['DB_PASSWORD'] = unquote(parsed.password)
+              parsed_db = (parsed.path or '').lstrip('/')
+              if parsed_db and not (os.environ.get('DB_NAME') or '').strip():
+                  updates['DB_NAME'] = unquote(parsed_db)
+
+          for key, value in updates.items():
+              with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+                  handle.write(f'{key}={value}\n')
+
+          print('Rehearsal database connection inputs normalized without exposing credentials.')
+          PY
+
+      - name: Guard explicit rehearsal confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.confirm }}" != "REHEARSE_ISOLATED_DB_ONLY" ]; then
+              echo "Explicit rehearsal confirmation is missing."
+              exit 1
+            fi
+          elif [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "Branch-scoped one-shot rehearsal trigger accepted."
+          else
+            echo "Unsupported rehearsal trigger: ${GITHUB_EVENT_NAME}"
+            exit 1
+          fi
+          if [ -z "${DB_NAME:-}" ]; then
+            echo "REHEARSAL_DB_NAME secret is not configured."
+            exit 1
+          fi
+          if [ "${GITHUB_REF_NAME}" != "hardening/max-pro-5of5-2026-09-29" ]; then
+            echo "Refusing to run outside the approved hardening branch."
+            exit 1
+          fi
+          if [ "$DB_NAME" = "ari_smart_ro" ]; then
+            echo "Refusing to run against the production database."
+            exit 1
+          fi
+          if [ "$DB_NAME" != "ari_smart_ro_szws" ]; then
+            echo "Refusing to run against any database except the approved isolated rehearsal database."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Verify connected database identity
+        working-directory: backend
+        run: |
+          python manage.py shell -c "from django.db import connection; print('DB_ENGINE=', connection.vendor); print('DB_NAME=', connection.settings_dict.get('NAME'))"
+
+      - name: Capture pre-migration evidence
+        working-directory: backend
+        run: |
+          python manage.py shell -c "import json; from pathlib import Path; from assets.models import ROAsset; from customers.models import PublicCustomerRequest, Customer; data={'roasset_rows': ROAsset.objects.count(), 'roasset_linked': ROAsset.objects.filter(current_customer__isnull=False).count(), 'roasset_unassigned': ROAsset.objects.filter(current_customer__isnull=True).count(), 'roasset_expected_company_backfill': ROAsset.objects.filter(current_customer__company__isnull=False).count(), 'public_request_rows': PublicCustomerRequest.objects.count(), 'customer_rows': Customer.objects.count(), 'customers_with_company': Customer.objects.filter(company__isnull=False).count(), 'customers_without_company': Customer.objects.filter(company__isnull=True).count()}; Path('/tmp/rehearsal_before.json').write_text(json.dumps(data), encoding='utf-8'); print(json.dumps(data, indent=2))"
+
+      - name: Show migration plan
+        working-directory: backend
+        run: python manage.py migrate --plan
+
+      - name: Apply migrations to isolated rehearsal database
+        working-directory: backend
+        run: python manage.py migrate --noinput
+
+      - name: Verify migration rows and schema-visible model fields
+        working-directory: backend
+        run: |
+          python manage.py shell -c "from django.db import connection; from django.db.migrations.recorder import MigrationRecorder; from assets.models import ROAsset; from customers.models import PublicCustomerRequest; applied=set(MigrationRecorder(connection).migration_qs.values_list('app','name')); expected={('assets','0003_ro_alarm_center'),('assets','0004_roasset_company'),('customers','0021_customer_rent_due_day'),('customers','0022_publiccustomerrequest_company')}; missing=expected-applied; assert not missing, f'Missing expected migrations: {sorted(missing)}'; assert ROAsset._meta.get_field('company'); assert PublicCustomerRequest._meta.get_field('company'); print('MIGRATION_ROWS_OK=1'); print('ROASSET_COMPANY_FIELD_OK=1'); print('PUBLIC_REQUEST_COMPANY_FIELD_OK=1')"
+
+      - name: Capture and verify post-migration evidence
+        working-directory: backend
+        run: |
+          python manage.py shell -c "import json; from pathlib import Path; from assets.models import ROAsset; from customers.models import PublicCustomerRequest; before=json.loads(Path('/tmp/rehearsal_before.json').read_text(encoding='utf-8')); after={'roasset_rows': ROAsset.objects.count(), 'roasset_with_company': ROAsset.objects.filter(company__isnull=False).count(), 'roasset_without_company': ROAsset.objects.filter(company__isnull=True).count(), 'public_request_rows': PublicCustomerRequest.objects.count(), 'public_requests_with_company': PublicCustomerRequest.objects.filter(company__isnull=False).count(), 'public_requests_without_company': PublicCustomerRequest.objects.filter(company__isnull=True).count()}; assert after['roasset_rows'] == before['roasset_rows'], f\"ROAsset row count changed: {before['roasset_rows']} -> {after['roasset_rows']}\"; assert after['public_request_rows'] == before['public_request_rows'], f\"PublicCustomerRequest row count changed: {before['public_request_rows']} -> {after['public_request_rows']}\"; assert after['roasset_with_company'] == before['roasset_expected_company_backfill'], f\"Unexpected ROAsset company backfill count: expected {before['roasset_expected_company_backfill']}, got {after['roasset_with_company']}\"; assert after['public_requests_with_company'] == 0, f\"Existing PublicCustomerRequest rows were unexpectedly assigned to a company: {after['public_requests_with_company']}\"; print(json.dumps(after, indent=2))"
+
+      - name: Read-only tenant migration rehearsal
+        working-directory: backend
+        run: python manage.py rehearse_tenant_migration --json /tmp/tenant-migration-rehearsal.json > /dev/null
+
+      - name: Tenant ownership dry-run
+        working-directory: backend
+        run: python manage.py backfill_tenant_ownership --report /tmp/tenant-ownership.json > /dev/null
+
+      - name: Inventory ownership dry-run
+        working-directory: backend
+        run: python manage.py backfill_inventory_tenant_ownership --report /tmp/inventory-ownership.json > /dev/null
+
+      - name: Duplicate supplier invoice audit
+        working-directory: backend
+        shell: bash
+        run: |
+          set +e
+          python manage.py audit_duplicate_supplier_invoices --fail-on-conflict --json /tmp/duplicate-invoice-audit.json > /dev/null
+          audit_rc=$?
+          set -e
+          echo "DUPLICATE_AUDIT_EXIT_CODE=${audit_rc}" >> "${GITHUB_ENV}"
+
+      - name: Publish sanitized rehearsal evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          rehearsal = json.loads(Path('/tmp/tenant-migration-rehearsal.json').read_text(encoding='utf-8'))
+          tenant = json.loads(Path('/tmp/tenant-ownership.json').read_text(encoding='utf-8'))
+          inventory = json.loads(Path('/tmp/inventory-ownership.json').read_text(encoding='utf-8'))
+          duplicate = json.loads(Path('/tmp/duplicate-invoice-audit.json').read_text(encoding='utf-8'))
+          before = json.loads(Path('/tmp/rehearsal_before.json').read_text(encoding='utf-8'))
+
+          safe = {
+              'database_name': os.environ.get('DB_NAME', ''),
+              'before_counts': before,
+              'projected_backfill': rehearsal.get('projected_backfill', {}),
+              'tenant_ownership_summary': tenant.get('summary', {}),
+              'inventory_ownership_summary': inventory.get('summary', {}),
+              'relation_inconsistency_count': rehearsal.get('relation_inconsistency_count', 0),
+              'duplicate_invoice': {
+                  'total_purchase_count': duplicate.get('total_purchase_count', 0),
+                  'unique_identity_count': duplicate.get('unique_identity_count', 0),
+                  'duplicate_group_count': duplicate.get('duplicate_group_count', 0),
+                  'duplicate_row_count': duplicate.get('duplicate_row_count', 0),
+                  'blank_identity_row_count': duplicate.get('blank_identity_row_count', 0),
+                  'unresolved_company_row_count': duplicate.get('unresolved_company_row_count', 0),
+                  'blocking_issue_count': duplicate.get('blocking_issue_count', 0),
+                  'rehearsal_status': duplicate.get('rehearsal_status'),
+                  'constraint_ready': duplicate.get('constraint_ready'),
+              },
+              'duplicate_audit_exit_code': int(os.environ.get('DUPLICATE_AUDIT_EXIT_CODE', '1')),
+          }
+
+          Path('/tmp/rehearsal-summary.json').write_text(json.dumps(safe, indent=2, sort_keys=True), encoding='utf-8')
+          print('=== SANITIZED REHEARSAL SUMMARY ===')
+          print(json.dumps(safe, indent=2, sort_keys=True))
+
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as handle:
+              handle.write('## Isolated tenant migration rehearsal\n\n')
+              handle.write('```json\n')
+              handle.write(json.dumps(safe, indent=2, sort_keys=True))
+              handle.write('\n```\n')
+          PY
+
+      - name: Upload sanitized rehearsal evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-migration-rehearsal-sanitized-evidence
+          path: /tmp/rehearsal-summary.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce duplicate supplier invoice gate
+        shell: bash
+        run: |
+          if [ "${DUPLICATE_AUDIT_EXIT_CODE}" != "0" ]; then
+            echo "Duplicate supplier invoice audit reported blocking issues."
+            exit "${DUPLICATE_AUDIT_EXIT_CODE}"
+          fi

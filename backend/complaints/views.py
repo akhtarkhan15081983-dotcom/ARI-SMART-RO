@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -535,6 +536,7 @@ class ComplaintResolveAPIView(
         IsAuthenticated,
     ]
 
+    @transaction.atomic
     def patch(
         self,
         request,
@@ -563,7 +565,7 @@ class ComplaintResolveAPIView(
         try:
 
             complaint = restrict_complaints_for_user(
-                Complaint.objects.all(),
+                Complaint.objects.select_for_update(),
                 request.user,
             ).get(pk=pk)
 
@@ -603,6 +605,25 @@ class ComplaintResolveAPIView(
                         "Resolution is required.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if complaint.status in {"CLOSED", "CANCELLED"}:
+            return Response(
+                {"success": False, "message": "Closed or cancelled complaints cannot be resolved."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if complaint.status == "RESOLVED":
+            if complaint.resolution != resolution or (
+                engineer_remarks and complaint.engineer_remarks != engineer_remarks
+            ):
+                return Response(
+                    {"success": False, "message": "Complaint was resolved with different details."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            return Response(
+                {"success": True, "message": "Complaint resolved successfully.",
+                 "complaint": ComplaintSerializer(complaint).data},
+                status=status.HTTP_200_OK,
             )
 
         complaint.resolution = resolution
@@ -647,6 +668,7 @@ class ComplaintCloseAPIView(
         IsAuthenticated,
     ]
 
+    @transaction.atomic
     def patch(
         self,
         request,
@@ -675,7 +697,7 @@ class ComplaintCloseAPIView(
         try:
 
             complaint = restrict_complaints_for_user(
-                Complaint.objects.all(),
+                Complaint.objects.select_for_update(),
                 request.user,
             ).get(pk=pk)
 
@@ -702,6 +724,13 @@ class ComplaintCloseAPIView(
                         "Only resolved complaints can be closed.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if complaint.status == "CLOSED":
+            return Response(
+                {"success": True, "message": "Complaint closed successfully.",
+                 "complaint": ComplaintSerializer(complaint).data},
+                status=status.HTTP_200_OK,
             )
 
         complaint.status = "CLOSED"

@@ -7,6 +7,45 @@ import '../models/customer_model.dart';
 import 'api_service.dart';
 
 class CustomerService {
+  Future<Map<String, dynamic>> getMyProfile() async {
+    final response = await http.get(
+      Uri.parse("${ApiService.baseUrl}/customers/profile/"),
+      headers: await ApiService.authHeaders(),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map) {
+      return Map<String, dynamic>.from(
+        (decoded['profile'] as Map?) ?? const <String, dynamic>{},
+      );
+    }
+    throw Exception(
+      decoded is Map
+          ? (decoded['message'] ?? decoded['detail'] ?? 'Unable to load profile.').toString()
+          : 'Unable to load profile.',
+    );
+  }
+
+  Future<Map<String, dynamic>> updateMyProfile(
+    Map<String, dynamic> values,
+  ) async {
+    final response = await http.patch(
+      Uri.parse("${ApiService.baseUrl}/customers/profile/"),
+      headers: await ApiService.authHeaders(),
+      body: jsonEncode(values),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map) {
+      return Map<String, dynamic>.from(
+        (decoded['profile'] as Map?) ?? const <String, dynamic>{},
+      );
+    }
+    throw Exception(
+      decoded is Map
+          ? (decoded['message'] ?? decoded['errors'] ?? 'Unable to update profile.').toString()
+          : 'Unable to update profile.',
+    );
+  }
+
   // ============================================================
   // GET ALL CUSTOMERS
   // ============================================================
@@ -15,14 +54,9 @@ class CustomerService {
   // /api/customers/
   // ============================================================
   Future<List<CustomerModel>> getCustomers() async {
-    final token = await ApiService.getAccessToken();
-
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/customers/"),
-      headers: {
-        "Authorization": "Bearer $token",
-        "Content-Type": "application/json",
-      },
+      headers: await ApiService.authHeaders(),
     );
 
     if (response.statusCode == 200) {
@@ -37,22 +71,18 @@ class CustomerService {
   // ============================================================
   // GET MY / ASSIGNED CUSTOMERS
   // ============================================================
-  // Used by Engineer.
+  // Used by Engineer / Office employee.
   // Backend endpoint:
   // /api/customers/my-customers/
   //
-  // Backend will return only customers linked to jobs
-  // assigned to the logged-in engineer.
+  // The backend returns customers directly assigned to the logged-in
+  // employee profile. authHeaders() is required so the request includes
+  // both JWT authentication and the employee's bound X-ARI-Device-ID.
   // ============================================================
   Future<List<CustomerModel>> getMyCustomers() async {
-    final token = await ApiService.getAccessToken();
-
     final response = await http.get(
       Uri.parse("${ApiService.baseUrl}/customers/my-customers/"),
-      headers: {
-        "Authorization": "Bearer $token",
-        "Content-Type": "application/json",
-      },
+      headers: await ApiService.authHeaders(),
     );
 
     if (response.statusCode == 200) {
@@ -145,13 +175,15 @@ class CustomerService {
     required Uint8List bytes,
     bool previewOnly = false,
   }) async {
-    final token = await ApiService.getAccessToken();
     final request = http.MultipartRequest(
       "POST",
       Uri.parse("${ApiService.baseUrl}/customers/bulk-import/"),
     );
 
-    request.headers["Authorization"] = "Bearer $token";
+    final headers = await ApiService.authHeaders();
+    // MultipartRequest must create its own content-type boundary.
+    headers.remove("Content-Type");
+    request.headers.addAll(headers);
     request.fields["preview_only"] = previewOnly ? "true" : "false";
     request.files.add(
       http.MultipartFile.fromBytes("file", bytes, filename: filename),

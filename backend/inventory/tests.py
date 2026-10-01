@@ -18,6 +18,7 @@ from inventory.models import (
 )
 from partmaster.models import PartCategory, PartMaster
 from purchase.models import Supplier, Purchase, PurchaseItem
+from tenancy.models import Company, CompanyMembership
 
 
 class InventoryWorkflowTests(TestCase):
@@ -77,13 +78,22 @@ class InventoryWorkflowTests(TestCase):
         fulfilled = self.client.post(
             f"/api/inventory/workflow/requests/{self.part_request.id}/fulfil/",
             {"codes": ["QR-WF-0001"]}, format="json",
+            HTTP_X_ARI_ACTION_ID="fulfil-retry-001",
         )
         self.assertEqual(fulfilled.status_code, 200)
+        replay = self.client.post(
+            f"/api/inventory/workflow/requests/{self.part_request.id}/fulfil/",
+            {"codes": ["QR-WF-0001"]}, format="json",
+            HTTP_X_ARI_ACTION_ID="fulfil-retry-001",
+        )
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.data["idempotent_replay"])
         self.part_request.refresh_from_db()
         self.inventory_item.refresh_from_db()
         self.assertEqual(self.part_request.status, "FULFILLED")
         self.assertEqual(self.inventory_item.status, "ISSUED")
         self.assertTrue(EngineerBagItem.objects.filter(engineer=self.engineer, inventory_item=self.inventory_item).exists())
+        self.assertEqual(self.part_request.events.filter(action="FULFILLED").count(), 1)
 
     def test_qr_labels_and_professional_inventory_report(self):
         self.client.force_authenticate(self.office)
@@ -191,11 +201,27 @@ class InventorySecurityTests(TestCase):
             is_verified=True,
         )
 
+        self.company = Company.objects.create(
+            name="Inventory Security Company",
+            slug="inventory-security-company",
+            phone="9999900099",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        for user in (self.engineer_user, self.other_user, self.staff_user):
+            CompanyMembership.objects.create(
+                company=self.company,
+                user=user,
+                role="STAFF",
+                is_active=True,
+            )
+
         # -----------------------------------------
         # ENGINEERS
         # -----------------------------------------
 
         self.engineer = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.engineer_user,
             employee_id="TEST-001",
             gender="MALE",
@@ -204,6 +230,7 @@ class InventorySecurityTests(TestCase):
         )
 
         self.other_engineer = EmployeeProfile.objects.create(
+            company=self.company,
             user=self.other_user,
             employee_id="TEST-002",
             gender="MALE",
@@ -258,6 +285,7 @@ class InventorySecurityTests(TestCase):
         # -----------------------------------------
 
         self.supplier = Supplier.objects.create(
+            company=self.company,
             name="Security Test Supplier",
         )
 
@@ -266,6 +294,7 @@ class InventorySecurityTests(TestCase):
         # -----------------------------------------
 
         self.purchase = Purchase.objects.create(
+            company=self.company,
             supplier=self.supplier,
             invoice_number="TEST-INV-001",
             invoice_date=date(2026, 1, 1),
@@ -276,6 +305,7 @@ class InventorySecurityTests(TestCase):
         # -----------------------------------------
 
         self.purchase_item = PurchaseItem.objects.create(
+            company=self.company,
             purchase=self.purchase,
             part=self.part,
             quantity=10,
@@ -287,6 +317,7 @@ class InventorySecurityTests(TestCase):
         # -----------------------------------------
 
         self.inventory_item = InventoryItem.objects.create(
+            company=self.company,
             purchase_item=self.purchase_item,
             part=self.part,
             serial_number="TEST-SERIAL-001",
@@ -617,6 +648,7 @@ class InventorySecurityTests(TestCase):
     def test_my_bag_only_returns_issued_items(self):
 
         bag = EngineerBagItem.objects.create(
+            company=self.company,
             engineer=self.engineer,
             inventory_item=self.inventory_item,
             status="ISSUED",
@@ -646,3 +678,6 @@ class InventorySecurityTests(TestCase):
             response.data[0]["serial_number"],
             "TEST-SERIAL-001",
         )
+
+
+# v1.0.48 receipt-mode regression coverage is exercised by API integration tests in CI.

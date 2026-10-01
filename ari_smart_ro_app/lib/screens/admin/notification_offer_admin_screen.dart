@@ -16,6 +16,7 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
   bool _loading = true;
   List<Map<String, dynamic>> _campaigns = const [];
   List<Map<String, dynamic>> _offers = const [];
+  List<Map<String, dynamic>> _offerCustomers = const [];
 
   @override
   void initState() {
@@ -39,11 +40,13 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
       final values = await Future.wait([
         _service.adminCampaigns(),
         _service.adminOffers(),
+        _service.adminOfferCustomers(),
       ]);
       if (!mounted) return;
       setState(() {
         _campaigns = values[0];
         _offers = values[1];
+        _offerCustomers = values[2];
       });
     } catch (error) {
       if (mounted) {
@@ -188,6 +191,12 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
     }
   }
 
+  String _customerLabel(Map<String, dynamic> row) {
+    final status = row['is_active'] == true ? 'Active' : 'Inactive';
+    final app = row['app_user_id'] == null ? ' • App not linked' : '';
+    return '${row['name']} • ${row['customer_id']} • ${row['phone']} • $status$app';
+  }
+
   Future<void> _createOffer() async {
     final title = TextEditingController();
     final message = TextEditingController();
@@ -196,6 +205,8 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
     final minAmount = TextEditingController(text: '0');
     final maxDiscount = TextEditingController(text: '0');
     final terms = TextEditingController();
+    String audience = 'ALL';
+    int? targetCustomerId;
     String scope = 'RENT';
     String discountType = 'PERCENT';
     bool autoApply = true;
@@ -207,10 +218,46 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
             builder: (context, setLocal) => AlertDialog(
               title: const Text('Create customer offer'),
               content: SizedBox(
-                width: 540,
+                width: 580,
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
+                      DropdownButtonFormField<String>(
+                        initialValue: audience,
+                        decoration: const InputDecoration(labelText: 'Send offer to'),
+                        items: const [
+                          DropdownMenuItem(value: 'ALL', child: Text('All customers')),
+                          DropdownMenuItem(value: 'ACTIVE', child: Text('Active customers only')),
+                          DropdownMenuItem(value: 'INACTIVE', child: Text('Inactive customers only')),
+                          DropdownMenuItem(value: 'TARGETED', child: Text('One customer')),
+                        ],
+                        onChanged: (v) => setLocal(() {
+                          audience = v ?? audience;
+                          if (audience != 'TARGETED') targetCustomerId = null;
+                        }),
+                      ),
+                      if (audience == 'TARGETED')
+                        DropdownButtonFormField<int>(
+                          isExpanded: true,
+                          initialValue: targetCustomerId,
+                          decoration: const InputDecoration(
+                            labelText: 'Select customer',
+                            helperText: 'Active and inactive customers are both available.',
+                          ),
+                          items: _offerCustomers
+                              .map(
+                                (row) => DropdownMenuItem<int>(
+                                  value: (row['id'] as num).toInt(),
+                                  child: Text(
+                                    _customerLabel(row),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) => setLocal(() => targetCustomerId = v),
+                        ),
+                      const SizedBox(height: 8),
                       TextField(controller: title, decoration: const InputDecoration(labelText: 'Offer title')),
                       TextField(controller: message, maxLines: 3, decoration: const InputDecoration(labelText: 'Customer message')),
                       DropdownButtonFormField<String>(
@@ -269,7 +316,12 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
               ),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
-                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('CREATE & SEND')),
+                FilledButton(
+                  onPressed: audience == 'TARGETED' && targetCustomerId == null
+                      ? null
+                      : () => Navigator.pop(context, true),
+                  child: const Text('CREATE & SEND'),
+                ),
               ],
             ),
           ),
@@ -281,7 +333,8 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
       final result = await _service.createOffer({
         'title': title.text.trim(),
         'message': message.text.trim(),
-        'audience': 'ALL',
+        'audience': audience,
+        if (targetCustomerId != null) 'target_customer_id': targetCustomerId,
         'offer_scope': scope,
         'discount_type': discountType,
         'discount_value': discount.text.trim(),
@@ -297,7 +350,11 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Offer sent to ${result['delivered'] ?? 0} customers.')),
+          SnackBar(
+            content: Text(
+              'Offer sent to ${result['delivered'] ?? 0} customer app inboxes.',
+            ),
+          ),
         );
       }
       await _load();
@@ -374,7 +431,7 @@ class _NotificationOfferAdminScreenState extends State<NotificationOfferAdminScr
                             leading: const CircleAvatar(child: Icon(Icons.local_offer_outlined)),
                             title: Text(row['title']?.toString() ?? ''),
                             subtitle: Text(
-                              '${row['offer_scope']} • ${type == 'PERCENT' ? '$value%' : '₹$value'}'
+                              '${row['audience']} • ${row['offer_scope']} • ${type == 'PERCENT' ? '$value%' : '₹$value'}'
                               '${row['promo_code']?.toString().isNotEmpty == true ? ' • ${row['promo_code']}' : ''}\n'
                               '${row['auto_apply'] == true ? 'Auto apply' : 'Promo code required'}',
                             ),

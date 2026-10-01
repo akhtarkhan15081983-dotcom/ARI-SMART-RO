@@ -6,6 +6,7 @@ from accounts.models import CustomerEngagement
 from rest_framework.test import APITestCase
 
 from products.models import ProductCategory, ROModel
+from tenancy.models import Company
 from .models import PublicCustomerRequest
 
 
@@ -144,3 +145,50 @@ class PublicCustomerRequestTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+    def test_dedicated_tenant_slug_binds_guest_request(self):
+        company = Company.objects.create(
+            name="Dedicated Guest Company",
+            slug="dedicated-guest-company",
+            phone="9000012345",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+            show_public_shop=True,
+        )
+        response = self.client.post(
+            self.url,
+            {
+                **self.contact,
+                "request_type": "PURCHASE",
+                "product": self.product.id,
+                "quantity": 1,
+                "company_slug": company.slug,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        order = PublicCustomerRequest.objects.get()
+        self.assertEqual(order.company_id, company.id)
+
+    def test_unavailable_tenant_slug_is_rejected(self):
+        company = Company.objects.create(
+            name="Hidden Guest Company",
+            slug="hidden-guest-company",
+            phone="9000012346",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+            show_public_shop=False,
+        )
+        response = self.client.post(
+            self.url,
+            {
+                **self.contact,
+                "request_type": "PURCHASE",
+                "product": self.product.id,
+                "company_slug": company.slug,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(PublicCustomerRequest.objects.count(), 0)

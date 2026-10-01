@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from tenancy.models import Company
 
 from accounts.offers import best_public_offer
 from .models import Customer, PublicCustomerRequest
@@ -7,6 +8,7 @@ from .models import Customer, PublicCustomerRequest
 class PublicCustomerRequestSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.model_name", read_only=True)
     offer_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    company_slug = serializers.SlugField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = PublicCustomerRequest
@@ -16,7 +18,7 @@ class PublicCustomerRequestSerializer(serializers.ModelSerializer):
             "address", "city", "state", "pincode", "quantity", "unit_price",
             "base_amount", "discount_amount", "total_amount", "offer_code",
             "payment_method", "preferred_date", "referral_code",
-            "notes", "status", "created_at",
+            "notes", "company_slug", "status", "created_at",
         ]
         read_only_fields = [
             "id", "request_number", "product_name", "unit_price", "base_amount",
@@ -52,6 +54,20 @@ class PublicCustomerRequestSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        company_slug = (validated_data.pop("company_slug", "") or "").strip()
+        if company_slug:
+            company = Company.objects.filter(
+                slug=company_slug,
+                is_active=True,
+                lifecycle_status="ACTIVE",
+                show_public_shop=True,
+            ).first()
+            if company is None:
+                raise serializers.ValidationError({
+                    "company_slug": "This company shop is unavailable."
+                })
+            validated_data["company"] = company
+
         product = validated_data.get("product")
         quantity = validated_data.get("quantity", 1)
         request_type = validated_data["request_type"]
@@ -158,6 +174,8 @@ class CustomerSerializer(serializers.ModelSerializer):
             "installation_charge",
 
             "monthly_rent",
+
+            "rent_due_day",
 
             "security_deposit",
 
