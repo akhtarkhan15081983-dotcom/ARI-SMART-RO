@@ -39,7 +39,7 @@ from django.db import transaction
 from .models import CustomerLocationLog, CustomerRentHistory, CustomerRentPayment
 from .rent_policy import RENT_GRACE_DAYS, rent_due_date, rent_penalty
 from referrals.services import claim_welcome_reward
-from tenancy.access import has_feature_access
+from tenancy.access import has_feature_access, request_company
 
 from referrals.services import (
     calculate_max_redeemable,
@@ -192,13 +192,18 @@ from .serializers import (
 )
 
 
-def _customer_queryset_for(user):
+def _customer_module_allowed(request):
+    role = user_role(request.user)
+    if role == "CUSTOMER":
+        return bool(request.user.is_verified and request.user.is_active)
+    return has_feature_access(request, "customers")
+
+
+def _customer_queryset_for(request):
+    user = request.user
     role = user_role(user)
     queryset = Customer.objects.select_related("assigned_engineer__user")
-    if role in {"ADMIN", "MANAGER"}:
-        return queryset
-    if role == "ENGINEER":
-        return queryset.filter(assigned_engineer__user=user)
+
     if role == "CUSTOMER":
         if not user.is_verified or not user.is_active:
             return queryset.none()
@@ -212,7 +217,27 @@ def _customer_queryset_for(user):
             .first()
         )
         return queryset.filter(pk=first_match.pk) if first_match else queryset.none()
-    return queryset.none()
+
+    if not has_feature_access(request, "customers"):
+        return queryset.none()
+
+    company = request_company(request)
+    if role == "ENGINEER":
+        scoped = queryset.filter(assigned_engineer__user=user)
+        if company is not None:
+            scoped = scoped.filter(
+                Q(company=company)
+                | Q(company__isnull=True, assigned_engineer__company=company)
+            )
+        return scoped
+
+    if company is not None:
+        return queryset.filter(
+            Q(company=company)
+            | Q(company__isnull=True, assigned_engineer__company=company)
+        ).distinct()
+
+    return queryset.filter(company__isnull=True)
 
 
 class CustomerProfileAPIView(APIView):
@@ -669,29 +694,19 @@ class MyROAPIView(APIView):
 class CustomerListAPIView(generics.ListAPIView):
 
     serializer_class = CustomerSerializer
-    permission_classes = [IsVerifiedCustomerOrOperations]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        if not _customer_module_allowed(request):
+            return Response(
+                {"detail": "Customers module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
-
-        user = self.request.user
-
-        if user.role in ["ADMIN", "MANAGER", "OFFICE"]:
-            # Exact Excel import created customers in source-data order.
-            # Keep that stable order so the Customer List serial (1, 2, 3...)
-            # follows the original customer data instead of newest-first IDs.
-            return Customer.objects.all().order_by("id")
-
-        elif user.role == "ENGINEER":
-            return Customer.objects.filter(
-                assigned_engineer__user=user
-            ).order_by("id")
-
-        elif user.role == "CUSTOMER":
-            return Customer.objects.filter(
-                phone=user.phone
-            )
-
-        return Customer.objects.none()
+        # Stable source-data order keeps customer serials predictable.
+        return _customer_queryset_for(self.request).order_by("id")
 
 class MyCustomersAPIView(generics.ListAPIView):
     """Return customers assigned to the logged-in engineer."""
@@ -720,11 +735,18 @@ class CustomerCreateAPIView(generics.CreateAPIView):
 class CustomerDetailAPIView(generics.RetrieveAPIView):
 
     serializer_class = CustomerSerializer
+    permission_classes = [IsAuthenticated]
 
-    permission_classes = [IsVerifiedCustomerOrOperations]
+    def get(self, request, *args, **kwargs):
+        if not _customer_module_allowed(request):
+            return Response(
+                {"detail": "Customers module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
-        return _customer_queryset_for(self.request.user)
+        return _customer_queryset_for(self.request)
 
 class CustomerServiceHistoryAPIView(APIView):
     """
@@ -887,9 +909,17 @@ class CustomerServiceHistoryAPIView(APIView):
         # ADMIN / MANAGER / OFFICE
         # --------------------------------------------------------
 
-        elif user.role in self.ALLOWED_STAFF_ROLES:
+        elif has_feature_access(request, "customers"):
 
-            pass
+            allowed_customers = _customer_queryset_for(request)
+            if not allowed_customers.filter(pk=customer.pk).exists():
+                return Response(
+                    {
+                        "success": False,
+                        "message": "Customer is outside your permitted workspace scope.",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         # --------------------------------------------------------
         # OTHER ROLES
@@ -1033,13 +1063,18 @@ class CustomerServiceHistoryAPIView(APIView):
 
 class CustomerSearchAPIView(APIView):
 
-    permission_classes = [IsVerifiedCustomerOrOperations]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if not _customer_module_allowed(request):
+            return Response(
+                {"detail": "Customers module permission is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         q = request.GET.get("q", "").strip()
 
-        queryset = _customer_queryset_for(request.user)
+        queryset = _customer_queryset_for(request)
 
         if q:
 
