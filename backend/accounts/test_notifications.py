@@ -6,6 +6,7 @@ from rest_framework.test import APITestCase
 from customers.models import Customer
 from tenancy.models import Company, CompanyMembership
 from .models import CustomerEngagement, User, UserNotification
+from .offers import best_offer
 
 
 class NotificationCenterTests(APITestCase):
@@ -168,10 +169,59 @@ class NotificationCenterTests(APITestCase):
             UserNotification.objects.get(pk=notification_id).is_read
         )
 
+    def test_offer_from_this_company_does_not_discount_other_company_customer(self):
+        other_company = Company.objects.create(
+            name="Other Offer Company",
+            slug="other-offer-company",
+            phone="9666699999",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_user = User.objects.create_user(
+            phone="9666600003",
+            password="Strong@Test1",
+            role="CUSTOMER",
+            is_verified=True,
+        )
+        Customer.objects.create(
+            company=other_company,
+            user=other_user,
+            name="Other Offer Customer",
+            phone=other_user.phone,
+            address="Other address",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+            ro_model="Other RO",
+            monthly_rent=Decimal("500.00"),
+        )
+        CustomerEngagement.objects.create(
+            kind="OFFER",
+            audience="ALL",
+            created_by=self.admin,
+            title="ARI-only rent discount",
+            message="20% off",
+            discount_type="PERCENT",
+            discount_value=Decimal("20.00"),
+            offer_scope="RENT",
+            auto_apply=True,
+        )
+
+        offer, discount, final_amount = best_offer(
+            other_user,
+            "RENT",
+            Decimal("500.00"),
+        )
+
+        self.assertIsNone(offer)
+        self.assertEqual(discount, Decimal("0.00"))
+        self.assertEqual(final_amount, Decimal("500.00"))
+
     def test_auto_rent_offer_reduces_customer_current_rent(self):
         CustomerEngagement.objects.create(
             kind="OFFER",
             audience="ALL",
+            created_by=self.admin,
             title="Festival Rent Discount",
             message="20% off this month's rent",
             discount_type="PERCENT",
