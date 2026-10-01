@@ -125,6 +125,11 @@ class InstallationTenantSecurityTests(TestCase):
             ro_model="Installation Tenant RO",
         )
 
+    def test_installation_relation_helpers_are_available(self):
+        self.assertEqual(self.installation_a.job_customer, self.customer_a)
+        self.assertEqual(self.installation_a.job_engineer, self.engineer_a)
+        self.assertEqual(self.installation_a.job_ro_asset, self.asset_a)
+
     def test_staff_list_contains_only_active_company_installations(self):
         response = self.client.get("/api/installations/")
         self.assertEqual(response.status_code, 200)
