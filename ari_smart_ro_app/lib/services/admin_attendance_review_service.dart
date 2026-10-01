@@ -8,38 +8,63 @@ class AdminAttendanceReviewService {
   Future<List<Map<String, dynamic>>> getReviews({
     String status = 'PENDING',
   }) async {
-    final response = await http.get(
-      Uri.parse(
-        '${ApiService.baseUrl}/attendance/admin/reviews/?status=$status',
-      ),
-      headers: await ApiService.authHeaders(),
+    return _fetchAll(
+      '/attendance/admin/reviews/',
+      query: {'status': status},
+      errorMessage: 'Unable to load attendance reviews',
     );
-
-    if (response.statusCode != 200) {
-      throw Exception('Unable to load attendance reviews');
-    }
-
-    final data = jsonDecode(response.body) as List;
-    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
   Future<List<Map<String, dynamic>>> getOvertimeRequests({
     String status = '',
   }) async {
-    final uri = Uri.parse(
-      '${ApiService.baseUrl}/attendance/admin/overtime/',
-    ).replace(
-      queryParameters: status.isEmpty ? null : {'status': status},
+    return _fetchAll(
+      '/attendance/admin/overtime/',
+      query: status.isEmpty ? const {} : {'status': status},
+      errorMessage: 'Unable to load overtime requests',
     );
-    final response = await http.get(
-      uri,
-      headers: await ApiService.authHeaders(),
-    );
-    if (response.statusCode != 200) {
-      throw Exception('Unable to load overtime requests');
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAll(
+    String path, {
+    required Map<String, String> query,
+    required String errorMessage,
+  }) async {
+    const pageSize = 200;
+    var page = 1;
+    final rows = <Map<String, dynamic>>[];
+
+    while (true) {
+      final uri = Uri.parse('${ApiService.baseUrl}$path').replace(
+        queryParameters: {
+          ...query,
+          'page': '$page',
+          'page_size': '$pageSize',
+        },
+      );
+      final response = await http.get(
+        uri,
+        headers: await ApiService.authHeaders(),
+      );
+      if (response.statusCode != 200) {
+        throw Exception(errorMessage);
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is List) {
+        rows.addAll(
+          decoded.map((e) => Map<String, dynamic>.from(e as Map)),
+        );
+        break;
+      }
+      final body = Map<String, dynamic>.from(decoded as Map);
+      final pageRows = (body['results'] as List<dynamic>? ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(growable: false);
+      rows.addAll(pageRows);
+      if (body['has_more'] != true || pageRows.isEmpty) break;
+      page = (body['next_page'] as num?)?.toInt() ?? (page + 1);
     }
-    final data = jsonDecode(response.body) as List;
-    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    return rows;
   }
 
   Future<String> reviewOvertime({
