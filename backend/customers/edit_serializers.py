@@ -33,6 +33,7 @@ class CustomerStaffEditSerializer(serializers.ModelSerializer):
             "ro_model",
             "installation_charge",
             "monthly_rent",
+            "rent_due_day",
             "security_deposit",
             "ownership_type",
             "rent_to_purchase_date",
