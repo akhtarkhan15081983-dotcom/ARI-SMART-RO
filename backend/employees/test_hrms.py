@@ -256,28 +256,6 @@ class CorporateHrmsDashboardTests(HRMSPolicyTests):
 
 
     def test_admin_dashboard_excludes_other_company_metrics(self):
-        company = Company.objects.create(
-            name="HR Dashboard Company",
-            slug="hr-dashboard-company",
-            phone="9111111170",
-            is_active=True,
-            lifecycle_status="ACTIVE",
-        )
-        CompanyMembership.objects.create(
-            company=company,
-            user=self.admin,
-            role="OWNER",
-            is_active=True,
-        )
-        self.employee.company = company
-        self.employee.save(update_fields=["company"])
-        CompanyMembership.objects.create(
-            company=company,
-            user=self.user,
-            role="STAFF",
-            is_active=True,
-        )
-
         other_company = Company.objects.create(
             name="Other HR Dashboard Company",
             slug="other-hr-dashboard-company",
