@@ -140,3 +140,62 @@ class InventoryTenantCertificationTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.data["verified"])
+
+
+    def test_my_bag_excludes_cross_tenant_items(self):
+        supplier = Supplier.objects.create(name="Tenant A Bag Supplier")
+        purchase = Purchase.objects.create(
+            company=self.company_a,
+            supplier=supplier,
+            invoice_number="TENANT-BAG-A-1",
+            invoice_date=date(2026, 9, 2),
+        )
+        purchase_item = PurchaseItem.objects.create(
+            company=self.company_a,
+            purchase=purchase,
+            part=self.part,
+            quantity=1,
+            purchase_price="100.00",
+        )
+        own_item = InventoryItem.objects.create(
+            company=self.company_a,
+            purchase_item=purchase_item,
+            part=self.part,
+            serial_number="OWN-TENANT-SERIAL",
+            status="ISSUED",
+        )
+        own_bag = EngineerBagItem.objects.create(
+            company=self.company_a,
+            engineer=self.engineer_a,
+            inventory_item=own_item,
+            status="ISSUED",
+        )
+
+        response = self.client.get("/api/inventory/my-bag/")
+
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data}
+        self.assertIn(own_bag.id, ids)
+        self.assertEqual(len(ids), 1)
+
+    def test_admin_engineer_bag_list_is_tenant_scoped(self):
+        admin = User.objects.create_user(
+            phone="9333390009",
+            password="Strong@123",
+            role="ADMIN",
+            is_verified=True,
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company_a,
+            user=admin,
+            role="OWNER",
+            is_active=True,
+        )
+        self.client.force_authenticate(admin)
+
+        response = self.client.get("/api/inventory/admin/engineer-bags/")
+
+        self.assertEqual(response.status_code, 200)
+        engineer_ids = {row["engineer_id"] for row in response.data}
+        self.assertNotIn(self.engineer_b.id, engineer_ids)
