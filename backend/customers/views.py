@@ -2018,6 +2018,15 @@ class RentPaymentCreateAPIView(APIView):
         # ROLE CHECK
         # ====================================================
 
+        if request.user.role not in self.ALLOWED_ROLES:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Only Admin, Manager, Office or Engineer can record rent payment.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         if not has_feature_access(request, "rent_management"):
 
             return Response(
