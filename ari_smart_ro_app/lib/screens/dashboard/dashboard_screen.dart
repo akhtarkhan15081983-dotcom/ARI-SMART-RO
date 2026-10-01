@@ -33,6 +33,7 @@ import '../walkin/walkin_customer_screen.dart';
 import '../customer/customer_list_screen.dart';
 import '../customer/my_ro_screen.dart';
 import '../customer/customer_history_screen.dart';
+import '../customer/customer_profile_screen.dart';
 import '../customer/ro_alarm_screen.dart';
 import '../customer/referral_screen.dart';
 import '../rent/rent_payment_screen.dart';
@@ -580,7 +581,11 @@ class _DashboardScreenState extends State<DashboardScreen>
         _push(const DownloadCenterScreen());
         return;
       case 'profile':
-        _push(const ProfileScreen());
+        if (_role == 'CUSTOMER') {
+          _push(const CustomerProfileScreen());
+        } else {
+          _push(const ProfileScreen());
+        }
         return;
       default:
         _showComingSoon('${item.title} is being prepared.');
