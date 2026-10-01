@@ -115,3 +115,20 @@ Shop tenant-routing evidence:
 - Legacy global `ROModel.stock_quantity` remains only as backward-compatible guest fallback where tenant stock is unavailable.
 
 The prior Shop ARCHITECTURE GATE is therefore closed. Shop is not yet 10/10 because final real-device/customer checkout UX evidence and migration rehearsal for tenant ownership fields remain separate gates.
+
+
+## Latest exact-head CI baseline
+
+Verified exact-head baseline:
+- Commit: `4bc063990843a033dee9d237d2f64eaa95d96971`
+- CI: #1060
+- Run ID: `36856106537`
+- Result: SUCCESS
+- Backend: PASS
+- Django deployment checks: PASS
+- Production container: PASS
+- Flutter analyze/tests: PASS
+- Android debug build/emulator startup: PASS
+- Windows release/startup/installer: PASS
+
+This validates the guarded migration-rehearsal workflow changes and the current certification/documentation head. Platform-device and isolated migration execution gates remain separate and must not be inferred as passed from CI.
