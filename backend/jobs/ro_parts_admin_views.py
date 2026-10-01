@@ -144,9 +144,23 @@ class AdminROPartsPassportAPIView(APIView):
                 | Q(ro_assets__ro_model__model_name__icontains=query)
             ).distinct()
 
+        try:
+            page = max(1, int(request.GET.get("page") or 1))
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.GET.get("page_size") or 250)
+        except (TypeError, ValueError):
+            page_size = 250
+        page_size = min(max(page_size, 1), 250)
+
+        total_customer_count = customers.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+
         rows = []
         total_active_alarms = 0
-        for customer in customers[:250]:
+        for customer in customers[start:end]:
             assets = (
                 ROAsset.objects.filter(current_customer=customer, is_active=True)
                 .select_related("ro_model")
@@ -223,7 +237,12 @@ class AdminROPartsPassportAPIView(APIView):
                 "company_id": company.id,
                 "company_name": company.display_name,
                 "query": query,
-                "customer_count": len(rows),
+                "customer_count": total_customer_count,
+                "returned_customer_count": len(rows),
+                "page": page,
+                "page_size": page_size,
+                "has_more": end < total_customer_count,
+                "next_page": page + 1 if end < total_customer_count else None,
                 "active_alarm_count": total_active_alarms,
                 "customers": rows,
             }
