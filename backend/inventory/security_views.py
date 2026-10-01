@@ -19,6 +19,7 @@ from .views import (
     PartRequestFulfilAPIView,
     PartRequestReviewAPIView,
     _request_payload,
+    _page_window,
 )
 
 
@@ -167,7 +168,21 @@ class TenantScopedPartRequestApprovalInboxAPIView(PartRequestApprovalInboxAPIVie
         status_filter = str(request.query_params.get("status", "")).upper()
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-        return Response({"success": True, "requests": [_request_payload(row) for row in queryset[:250]]})
+
+        paginated, page, page_size, start, end = _page_window(request)
+        total_count = queryset.count()
+        rows = [_request_payload(row) for row in queryset[start:end]]
+        if not paginated:
+            return Response({"success": True, "requests": rows})
+        return Response({
+            "success": True,
+            "requests": rows,
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "has_more": end < total_count,
+            "next_page": page + 1 if end < total_count else None,
+        })
 
 
 class TenantScopedPartRequestReviewAPIView(PartRequestReviewAPIView):
