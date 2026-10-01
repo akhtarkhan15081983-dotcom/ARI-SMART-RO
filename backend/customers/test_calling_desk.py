@@ -22,6 +22,7 @@ class ProfessionalCallingDeskTests(APITestCase):
             phone="9876500001", password="Test@123", role="CALLING", is_verified=True
         )
         CompanyMembership.objects.create(
+            company=self.company,
             user=self.user,
             role="STAFF",
             is_active=True,
@@ -67,7 +68,6 @@ class ProfessionalCallingDeskTests(APITestCase):
             request_type="SERVICE", customer_name=self.customer.name,
             phone=self.customer.phone, address=self.customer.address,
             city=self.customer.city, state=self.customer.state, pincode=self.customer.pincode,
-            company=self.company,
             existing_customer=self.customer, assigned_caller=self.employee,
         )
         response = self.client.patch(f"/api/customers/calling-desk/{lead.id}/", {
