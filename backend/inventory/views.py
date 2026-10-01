@@ -91,7 +91,18 @@ class MyBagAPIView(generics.ListAPIView):
     required_feature = "bag"
 
     def get_queryset(self):
-        return EngineerBagItem.objects.select_related("inventory_item__part", "engineer__user").filter(engineer__user=self.request.user, status="ISSUED", inventory_item__status="ISSUED").order_by("-issue_date")
+        company = request_company(self.request)
+        if company is None:
+            return EngineerBagItem.objects.none()
+        return EngineerBagItem.objects.select_related(
+            "inventory_item__part", "engineer__user"
+        ).filter(
+            engineer__user=self.request.user,
+            engineer__company=company,
+            company=company,
+            status="ISSUED",
+            inventory_item__status="ISSUED",
+        ).order_by("-issue_date")
 
 
 class AdminEngineerBagAPIView(generics.ListAPIView):
@@ -99,9 +110,14 @@ class AdminEngineerBagAPIView(generics.ListAPIView):
     permission_classes = [IsAdminOrManager]
 
     def get_queryset(self):
+        company = request_company(self.request)
+        if company is None:
+            return EngineerBagItem.objects.none()
         return EngineerBagItem.objects.select_related(
             "inventory_item__part", "engineer__user"
         ).filter(
+            company=company,
+            engineer__company=company,
             status="ISSUED",
             inventory_item__status="ISSUED",
             engineer__designation="ENGINEER",
