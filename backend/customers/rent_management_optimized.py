@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
 
-from tenancy.access import request_company
+from tenancy.access import has_feature_access, request_company
 
 from .models import Customer, CustomerRentHistory
 from .rent_policy import RENT_GRACE_DAYS, rent_due_date, rent_penalty
@@ -79,14 +79,13 @@ class RentManagementAPIView(APIView):
     """Memory-bounded digital rent collection response."""
 
     permission_classes = [IsAuthenticated]
-    ALLOWED_ROLES = {"ADMIN", "MANAGER", "OFFICE", "ENGINEER"}
 
     def get(self, request):
-        if request.user.role not in self.ALLOWED_ROLES:
+        if not has_feature_access(request, "rent_management"):
             return Response(
                 {
                     "success": False,
-                    "message": "Only Admin, Manager or Engineer can access rent management.",
+                    "message": "Rent management permission is required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
