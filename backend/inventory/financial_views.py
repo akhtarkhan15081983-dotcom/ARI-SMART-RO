@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsStaffOperator
 from products.models import ROModel
 from purchase.models import Purchase, PurchaseItem, Supplier
+from tenancy.access import HasRequiredFeature
 
 from .financials import inventory_financial_snapshot
 from .models import InventoryAuditLog, InventoryItem, PartRequest
@@ -38,7 +39,8 @@ def _shop_ro_stock():
 
 
 class ReconciledInventorySummaryAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
         company_id = _company_id(request)
@@ -60,7 +62,8 @@ class ReconciledInventorySummaryAPIView(APIView):
 
 
 class ReconciledInventoryExcelReportAPIView(APIView):
-    permission_classes = [IsStaffOperator]
+    permission_classes = [HasRequiredFeature]
+    required_feature = "inventory_workflow"
 
     def get(self, request):
         company_id = _company_id(request)
