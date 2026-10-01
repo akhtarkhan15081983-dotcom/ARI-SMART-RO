@@ -22,6 +22,61 @@ class SaaSFoundationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.data["plans"]), 3)
 
+    def test_public_shop_discovery_exposes_only_available_public_shops(self):
+        plan = SubscriptionPlan.objects.get(code="starter")
+        public_company = Company.objects.create(
+            name="Public Shop Co",
+            slug="public-shop-co",
+            phone="9000011120",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+            show_public_shop=True,
+        )
+        hidden_company = Company.objects.create(
+            name="Hidden Shop Co",
+            slug="hidden-shop-co",
+            phone="9000011121",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+            show_public_shop=False,
+        )
+        expired_company = Company.objects.create(
+            name="Expired Shop Co",
+            slug="expired-shop-co",
+            phone="9000011122",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+            show_public_shop=True,
+        )
+        CompanySubscription.objects.create(
+            company=public_company,
+            plan=plan,
+            status="ACTIVE",
+            current_period_end=timezone.now() + timedelta(days=30),
+        )
+        CompanySubscription.objects.create(
+            company=hidden_company,
+            plan=plan,
+            status="ACTIVE",
+            current_period_end=timezone.now() + timedelta(days=30),
+        )
+        CompanySubscription.objects.create(
+            company=expired_company,
+            plan=plan,
+            status="PAUSED",
+            current_period_end=timezone.now() + timedelta(days=30),
+        )
+
+        response = self.client.get("/api/saas/public-shops/")
+
+        self.assertEqual(response.status_code, 200)
+        slugs = [row["slug"] for row in response.data["shops"]]
+        self.assertIn(public_company.slug, slugs)
+        self.assertNotIn(hidden_company.slug, slugs)
+        self.assertNotIn(expired_company.slug, slugs)
+        self.assertNotIn("gstin", response.data["shops"][0])
+        self.assertNotIn("subscription", response.data["shops"][0])
+
     def test_public_brand_endpoint_exposes_only_safe_white_label_config(self):
         response = self.client.get("/api/saas/brand/ari-smart-ro/")
         self.assertEqual(response.status_code, 200)
