@@ -620,6 +620,7 @@ class MyROAPIView(APIView):
                     phone=request.user.phone,
                     user__isnull=True,
                 )
+                .order_by("id")
                 .first()
             )
 
@@ -1375,14 +1376,25 @@ class CustomerRentAPIView(APIView):
         # CUSTOMER FIND
         # ----------------------------------------------------
 
-        try:
+        customer = (
+            Customer.objects
+            .filter(user=request.user)
+            .order_by("id")
+            .first()
+        )
 
-            customer = Customer.objects.get(
-                phone=request.user.phone
+        if customer is None:
+            customer = (
+                Customer.objects
+                .filter(
+                    phone=request.user.phone,
+                    user__isnull=True,
+                )
+                .order_by("id")
+                .first()
             )
 
-        except Customer.DoesNotExist:
-
+        if customer is None:
             return Response(
                 {
                     "success": False,
@@ -1395,7 +1407,7 @@ class CustomerRentAPIView(APIView):
         # CURRENT MONTH
         # ----------------------------------------------------
 
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         current_month = today.replace(day=1)
 
