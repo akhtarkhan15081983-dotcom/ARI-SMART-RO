@@ -40,7 +40,7 @@ Legend:
 | 25 | My RO | STRONG / CI GATE | Exact-head CI + final customer-device UX verification |
 | 26 | Customer Rent & Payment | STRONG / CI GATE | Exact-head CI |
 | 27 | Customer History | CERTIFICATION REVIEW | Consolidate explicit history/audit regression + platform UX evidence |
-| 28 | Shop | ARCHITECTURE GATE | Exact-head CI + global/non-dedicated guest tenant-selection decision |
+| 28 | Shop | STRONG / CI GATE | Exact-head CI is green; final real-device/customer checkout UX verification remains |
 | 29 | Profile | STRONG / CI GATE | Exact-head CI |
 | 30 | Face & Device Security | PLATFORM GATE | Exact-head CI + remaining field-device compatibility evidence |
 | 31 | Password Reset Approvals | STRONG / CI GATE | Exact-head CI |
@@ -93,3 +93,25 @@ Verified exact-head baseline:
 - Windows release / installer chain: PASS
 
 This closes the generic CI gate for modules whose only remaining blocker was exact-head build/test evidence. Modules that still have migration, architecture, hardware, external-service or field-device gates remain not-10/10 until those separate risks are closed.
+
+
+## Shop architecture gate closure
+
+Verified on exact-head CI #1057 at commit `811d2ac288e99d07d15c66d2d9f88cdcba69fcba`:
+- Backend tests: PASS
+- Flutter analyze/tests: PASS
+- Android compile/emulator smoke: PASS
+- Windows: PASS
+- Production container: PASS
+
+Shop tenant-routing evidence:
+- Dedicated builds use deterministic `TENANT_SLUG` routing.
+- Global/non-dedicated builds discover only active, public, subscription-accessible ARI shops.
+- Global guest checkout requires explicit shop/company selection instead of guessing a tenant.
+- Selected `company_slug` is persisted through the public request flow.
+- `PublicCustomerRequest.company` stores tenant ownership.
+- Calling Desk scopes tenant-owned guest leads.
+- Authenticated physical availability derives from company-owned active unassigned WAREHOUSE ROAssets.
+- Legacy global `ROModel.stock_quantity` remains only as backward-compatible guest fallback where tenant stock is unavailable.
+
+The prior Shop ARCHITECTURE GATE is therefore closed. Shop is not yet 10/10 because final real-device/customer checkout UX evidence and migration rehearsal for tenant ownership fields remain separate gates.
