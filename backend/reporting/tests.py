@@ -190,3 +190,81 @@ class ReportingAPITests(TestCase):
             {"period": "fortnightly"},
         )
         self.assertEqual(response.status_code, 400)
+
+
+    def test_business_reports_exclude_other_company_data(self):
+        other_company = Company.objects.create(
+            name="Reporting Other Company",
+            slug="reporting-other-company",
+            phone="9000000299",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
+        other_engineer_user = User.objects.create_user(
+            phone="9000000203",
+            password="StrongPass123!",
+            role="ENGINEER",
+            first_name="Other",
+        )
+        CompanyMembership.objects.create(
+            company=other_company,
+            user=other_engineer_user,
+            role="STAFF",
+            is_active=True,
+        )
+        other_engineer = EmployeeProfile.objects.create(
+            company=other_company,
+            user=other_engineer_user,
+            employee_id="EMP-OTHER-001",
+            gender="MALE",
+            joining_date=date(2025, 1, 1),
+            designation="ENGINEER",
+        )
+        other_customer = Customer.objects.create(
+            company=other_company,
+            name="Other Report Customer",
+            phone="9000000204",
+            address="Other Address",
+            city="Delhi",
+            state="Delhi",
+            pincode="110001",
+            ro_model="Other RO",
+            monthly_rent=Decimal("5000.00"),
+        )
+        other_history = CustomerRentHistory.objects.create(
+            customer=other_customer,
+            rent_month=date(2026, 8, 1),
+            expected_rent=Decimal("5000.00"),
+            paid_amount=Decimal("5000.00"),
+        )
+        CustomerRentPayment.objects.create(
+            customer=other_customer,
+            rent_history=other_history,
+            amount=Decimal("5000.00"),
+            payment_date=date(2026, 8, 20),
+            payment_mode="CASH",
+            collected_by=other_engineer,
+        )
+        Attendance.objects.create(
+            employee=other_engineer,
+            date=date(2026, 8, 25),
+            status="PRESENT",
+            regular_working_hours=Decimal("9.00"),
+            working_hours=Decimal("9.00"),
+        )
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(
+            "/api/reports/summary/",
+            {"period": "monthly", "date": "2026-08-25"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["rent"]["summary"]["expected"], "1000.00")
+        self.assertEqual(response.data["rent"]["summary"]["paid"], "700.00")
+        employee_ids = {
+            row["employee_id"]
+            for row in response.data["employee_activity"]["employees"]
+        }
+        self.assertIn(self.engineer.employee_id, employee_ids)
+        self.assertNotIn(other_engineer.employee_id, employee_ids)
