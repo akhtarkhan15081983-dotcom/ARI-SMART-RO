@@ -92,6 +92,22 @@ class TenantBrandService {
     );
   }
 
+  Future<List<TenantBrand>> fetchPublicShops() async {
+    final response = await http
+        .get(Uri.parse('${ApiService.baseUrl}/saas/public-shops/'))
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw Exception('Public shops are temporarily unavailable.');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final shops = data['shops'] as List<dynamic>? ?? const [];
+    return shops
+        .map((row) => TenantBrand.fromJson(
+              Map<String, dynamic>.from(row as Map),
+            ))
+        .toList(growable: false);
+  }
+
   Future<TenantBrand?> resolveDedicated() async {
     if (!isDedicatedBuild) return null;
     return fetch(dedicatedTenantSlug);
