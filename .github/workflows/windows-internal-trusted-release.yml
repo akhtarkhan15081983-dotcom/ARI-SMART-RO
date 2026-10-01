@@ -121,10 +121,37 @@ jobs:
       - name: Trust internal certificate on CI runner for verification
         shell: pwsh
         run: |
-          $cer = "build\windows\internal-trust\ARI-SMART-RO-Internal-Code-Signing.cer"
-          Import-Certificate -FilePath $cer -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
-          Import-Certificate -FilePath $cer -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher" | Out-Null
-          Write-Host "Internal certificate trusted on ephemeral CI runner."
+          $cerPath = "build\windows\internal-trust\ARI-SMART-RO-Internal-Code-Signing.cer"
+          if (!(Test-Path $cerPath)) { throw "Internal certificate file not found." }
+
+          $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($cerPath)
+
+          foreach ($storeName in @("Root", "TrustedPublisher")) {
+            $store = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+              $storeName,
+              [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+            )
+            try {
+              $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+              $store.Add($cert)
+            }
+            finally {
+              $store.Close()
+            }
+          }
+
+          $rootCheck = Get-ChildItem "Cert:\CurrentUser\Root" |
+            Where-Object { $_.Thumbprint -eq $env:ARI_CERT_THUMBPRINT } |
+            Select-Object -First 1
+          $publisherCheck = Get-ChildItem "Cert:\CurrentUser\TrustedPublisher" |
+            Where-Object { $_.Thumbprint -eq $env:ARI_CERT_THUMBPRINT } |
+            Select-Object -First 1
+
+          if (-not $rootCheck -or -not $publisherCheck) {
+            throw "Internal certificate was not installed in both CurrentUser trust stores."
+          }
+
+          Write-Host "Internal certificate trusted non-interactively on ephemeral CI runner."
 
       - name: Sign ARI_SMART_RO.exe
         shell: pwsh
