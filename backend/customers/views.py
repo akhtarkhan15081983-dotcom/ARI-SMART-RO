@@ -40,6 +40,7 @@ from .models import CustomerLocationLog, CustomerRentHistory, CustomerRentPaymen
 from .rent_policy import RENT_GRACE_DAYS, rent_due_date, rent_penalty
 from referrals.services import claim_welcome_reward
 from tenancy.access import HasRequiredFeature, has_feature_access, request_company
+from .tenant_scope import operator_customer_queryset
 
 from referrals.services import (
     calculate_max_redeemable,
@@ -123,9 +124,12 @@ class CustomerLocationCaptureAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        customer = Customer.objects.select_related("assigned_engineer").filter(pk=pk).first()
+        customer = operator_customer_queryset(
+            request,
+            Customer.objects.select_related("assigned_engineer"),
+        ).filter(pk=pk).first()
         if customer is None:
-            return Response({"detail": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Customer not found in this workspace."}, status=status.HTTP_404_NOT_FOUND)
 
         employee = getattr(request.user, "employee_profile", None)
         if role == "ENGINEER" and (
@@ -3444,9 +3448,12 @@ class CustomerLifecycleAPIView(APIView):
     @transaction.atomic
     def post(self, request, pk):
         try:
-            customer = Customer.objects.select_for_update().get(pk=pk)
+            customer = operator_customer_queryset(
+                request,
+                Customer.objects.select_for_update(),
+            ).get(pk=pk)
         except Customer.DoesNotExist:
-            return Response({"detail": "Customer not found."}, status=404)
+            return Response({"detail": "Customer not found in this workspace."}, status=404)
 
         action = str(request.data.get("action") or "").strip().lower()
 
