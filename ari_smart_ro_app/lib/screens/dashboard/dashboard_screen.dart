@@ -171,11 +171,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _todayAttendance = null;
           _isLoadingAttendance = false;
         });
       }
-      await _liveLocationService.stopTracking();
+      // A temporary attendance/API refresh failure must never stop an already
+      // active background location service. The server-side shift gate remains
+      // authoritative and will stop tracking after checkout.
+      debugPrint('ATTENDANCE REFRESH ERROR: $e');
     }
   }
 
@@ -726,7 +728,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     _dashboardRefreshTimer?.cancel();
     _toolSearchController.dispose();
     WidgetsBinding.instance.removeObserver(this);
-    _liveLocationService.stopTracking();
+    // Do not stop live location just because this dashboard widget is disposed.
+    // Checked-in employees must keep sharing location until checkout/logout or
+    // the server reports that the shift is no longer active.
     super.dispose();
   }
 
