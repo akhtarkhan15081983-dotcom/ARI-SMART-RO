@@ -21,6 +21,7 @@ from tenancy.access import HasRequiredFeature, request_company
 
 from .models import InventoryAuditLog, InventoryItem, PartRequest
 from .reports import _sheet
+from .views import _page_window
 
 
 def _company_id(request):
@@ -41,34 +42,48 @@ class TenantScopedInventoryReceivingQueueAPIView(APIView):
     required_feature = "inventory_workflow"
 
     def get(self, request):
+        company_id = _company_id(request)
         items = (
             _scoped_purchase_items(request)
+            .filter(inventory_items__company_id=company_id, inventory_items__status="PENDING_RECEIPT")
             .select_related("purchase__supplier", "part")
+            .distinct()
             .order_by("-purchase__invoice_date", "-id")
         )
+        paginated, page, page_size, start, end = _page_window(request)
+        total_count = items.count()
         rows = []
-        for item in items[:250]:
+        for item in items[start:end]:
             pending = item.inventory_items.filter(
-                company_id=_company_id(request), status="PENDING_RECEIPT"
+                company_id=company_id, status="PENDING_RECEIPT"
             ).count()
-            received = item.inventory_items.filter(company_id=_company_id(request)).exclude(
+            received = item.inventory_items.filter(company_id=company_id).exclude(
                 status="PENDING_RECEIPT"
             ).count()
-            if pending:
-                rows.append({
-                    "purchase_item_id": item.id,
-                    "invoice_number": item.purchase.invoice_number,
-                    "invoice_date": item.purchase.invoice_date,
-                    "supplier": item.purchase.supplier.name,
-                    "part_name": item.part.name,
-                    "part_code": item.part.code,
-                    "is_serialized": item.part.is_serialized,
-                    "receipt_mode": "QR" if item.part.is_serialized else "PHOTO",
-                    "quantity": item.quantity,
-                    "pending_count": pending,
-                    "received_count": received,
-                })
-        return Response({"success": True, "items": rows})
+            rows.append({
+                "purchase_item_id": item.id,
+                "invoice_number": item.purchase.invoice_number,
+                "invoice_date": item.purchase.invoice_date,
+                "supplier": item.purchase.supplier.name,
+                "part_name": item.part.name,
+                "part_code": item.part.code,
+                "is_serialized": item.part.is_serialized,
+                "receipt_mode": "QR" if item.part.is_serialized else "PHOTO",
+                "quantity": item.quantity,
+                "pending_count": pending,
+                "received_count": received,
+            })
+        if not paginated:
+            return Response({"success": True, "items": rows})
+        return Response({
+            "success": True,
+            "items": rows,
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "has_more": end < total_count,
+            "next_page": page + 1 if end < total_count else None,
+        })
 
 
 class TenantScopedInventoryReceiveAPIView(APIView):
