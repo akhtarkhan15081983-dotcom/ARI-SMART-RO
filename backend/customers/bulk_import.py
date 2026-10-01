@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminOrManager, user_role
 from tenancy.access import request_company
+from .identity import unique_unlinked_customer_for_phone
 from .models import Customer
 from .serializers import CustomerSerializer
 
@@ -138,11 +139,11 @@ def _customer_visible_in_workspace(request, customer):
         if customer.user_id == request.user.id:
             return True
         if customer.user_id is None and customer.phone == request.user.phone:
-            first_match = (
-                Customer.objects.filter(phone=request.user.phone, user__isnull=True)
-                .order_by("id").only("id").first()
+            unique_match = unique_unlinked_customer_for_phone(
+                request.user.phone,
+                active_only=True,
             )
-            return first_match is not None and first_match.id == customer.id
+            return unique_match is not None and unique_match.id == customer.id
         return False
     if role in {"ADMIN", "MANAGER", "OFFICE"}:
         company = request_company(request)
