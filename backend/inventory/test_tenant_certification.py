@@ -199,3 +199,27 @@ class InventoryTenantCertificationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         engineer_ids = {row["engineer_id"] for row in response.data}
         self.assertNotIn(self.engineer_b.id, engineer_ids)
+
+
+    def test_inventory_summary_excludes_other_company_data(self):
+        admin = User.objects.create_user(
+            phone="9333390010",
+            password="Strong@123",
+            role="ADMIN",
+            is_verified=True,
+            is_active=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company_a,
+            user=admin,
+            role="OWNER",
+            is_active=True,
+        )
+        self.client.force_authenticate(admin)
+
+        response = self.client.get("/api/inventory/workflow/summary/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["summary"]["total_units"], 0)
+        self.assertEqual(response.data["summary"]["pending_requests"], 1)
+        self.assertEqual(response.data["summary"]["approved_requests"], 0)
