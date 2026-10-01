@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from accounts.permissions import user_role
 from complaints.models import Complaint
 from customers.models import Customer, CustomerRentHistory
+from customers.rent_policy import rent_due_date
 from employees.models import EmployeeProfile
 from .models import Job, WorkScheduleOverride
 
@@ -183,7 +184,7 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
             )
         }
         for customer in customers:
-            day = min(customer.installation_date.day, calendar.monthrange(first.year, first.month)[1])
+            due_date = rent_due_date(customer, first)
             key = f"RENT:{customer.id}:{first:%Y-%m}"
             row = rent_rows.get(customer.id)
             expected = row.expected_rent if row else customer.monthly_rent
@@ -191,7 +192,7 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
             rent_status = "PAID" if paid >= expected else "PARTIAL" if paid > 0 else "PENDING"
             if rent_status == "PAID":
                 continue
-            add(key, "RENT", "Rent Collection", aware(date(first.year, first.month, day)),
+            add(key, "RENT", "Rent Collection", aware(due_date),
                 customer.assigned_engineer, customer, rent_status,
                 amount=max(expected - paid, 0), detail_id=customer.id)
 
