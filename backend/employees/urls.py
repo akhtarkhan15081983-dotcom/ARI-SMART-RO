@@ -17,8 +17,8 @@ from .views import (
 from .reliability import (
     AttendanceAwareLiveLocationAPIView,
     CombinedFaceEnrollmentControlAPIView,
-    SecureFaceEnrollmentAPIView,
 )
+from .enrollment_atomic import TransactionSafeFaceEnrollmentAPIView
 from .device_health_security import (
     SecurityAwareEmployeeDeviceHealthAPIView,
     SecurityAwareAdminDeviceHealthAPIView,
@@ -133,7 +133,7 @@ urlpatterns = [
     ),
     path(
         "employees/face-enrollment/",
-        SecureFaceEnrollmentAPIView.as_view(),
+        TransactionSafeFaceEnrollmentAPIView.as_view(),
         name="face-enrollment",
     ),
     path(

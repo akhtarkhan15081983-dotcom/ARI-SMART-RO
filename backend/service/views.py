@@ -11,10 +11,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsOperationsUser, IsStaffOperator, STAFF_ROLES, user_role
+from accounts.permissions import IsAdmin, IsOperationsUser, IsStaffOperator, STAFF_ROLES, user_role
+from assets.models import ROAsset
 from customers.models import Customer
-from .models import Service
+from partmaster.models import PartMaster
+from products.models import ROModel
+from tenancy.models import CompanyMembership
+from .models import Service, ServiceIntervalPolicy
 from .serializers import ServiceSerializer
+from .smart_care import asset_health, record_completed_service_cycles
 
 
 def _linked_customer_for(user):
@@ -46,6 +51,20 @@ def _linked_customer_for(user):
     return legacy
 
 
+def _active_company_for(user):
+    membership = (
+        CompanyMembership.objects.filter(
+            user=user,
+            is_active=True,
+            company__is_active=True,
+            company__lifecycle_status="ACTIVE",
+        )
+        .select_related("company")
+        .first()
+    )
+    return membership.company if membership else None
+
+
 def _service_queryset_for(user, include_customer=True):
     queryset = Service.objects.select_related(
         "customer",
@@ -56,7 +75,8 @@ def _service_queryset_for(user, include_customer=True):
     role = user_role(user)
 
     if role in STAFF_ROLES:
-        return queryset
+        company = _active_company_for(user)
+        return queryset.filter(company=company) if company is not None else queryset.none()
     if role == "ENGINEER":
         return queryset.filter(engineer__user=user)
     if include_customer and role == "CUSTOMER":
@@ -109,6 +129,7 @@ class CompleteServiceAPIView(generics.UpdateAPIView):
         )
         self.check_object_permissions(self.request, service)
         if service.status == "COMPLETED":
+            record_completed_service_cycles(service)
             return Response({
                 "success": True,
                 "service_id": service.service_id,
@@ -117,6 +138,7 @@ class CompleteServiceAPIView(generics.UpdateAPIView):
         service.status = "COMPLETED"
         service.completed_date = timezone.now()
         service.save(update_fields=["status", "completed_date", "updated_at"])
+        record_completed_service_cycles(service)
         return Response(
             {
                 "success": True,
@@ -131,6 +153,144 @@ class CompleteServiceAPIView(generics.UpdateAPIView):
 
     def update(self, request, *args, **kwargs):
         return self._complete()
+
+
+class ROHealthAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, asset_id):
+        role = user_role(request.user)
+        configuration_key = request.GET.get("configuration", "").strip()
+
+        if role == "CUSTOMER":
+            customer = _linked_customer_for(request.user)
+            if customer is None or customer.company_id is None:
+                return Response({"detail": "Customer workspace not found."}, status=404)
+            asset = get_object_or_404(
+                ROAsset.objects.select_related("ro_model", "current_customer"),
+                asset_id=asset_id,
+                current_customer=customer,
+                is_active=True,
+            )
+            company = customer.company
+        elif role in STAFF_ROLES:
+            company = _active_company_for(request.user)
+            if company is None:
+                return Response({"detail": "Active company workspace not found."}, status=403)
+            asset = get_object_or_404(
+                ROAsset.objects.select_related("ro_model", "current_customer"),
+                asset_id=asset_id,
+                current_customer__company=company,
+                is_active=True,
+            )
+        elif role == "ENGINEER":
+            service = (
+                Service.objects.filter(
+                    engineer__user=request.user,
+                    ro_asset__asset_id=asset_id,
+                )
+                .select_related("company", "customer__company", "ro_asset__ro_model")
+                .order_by("-id")
+                .first()
+            )
+            if service is None:
+                return Response({"detail": "RO asset is not available for this engineer."}, status=404)
+            asset = service.ro_asset
+            company = service.company or service.customer.company
+        else:
+            return Response({"detail": "RO health access is not available for this role."}, status=403)
+
+        return Response(asset_health(company, asset, configuration_key))
+
+
+class ServiceIntervalPolicyAPIView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        company = _active_company_for(request.user)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+        policies = ServiceIntervalPolicy.objects.filter(company=company).select_related("part", "ro_model")
+        return Response([
+            {
+                "id": policy.id,
+                "part_id": policy.part_id,
+                "part_name": policy.part.name,
+                "ro_model_id": policy.ro_model_id,
+                "ro_model": policy.ro_model.model_name if policy.ro_model_id else None,
+                "configuration_key": policy.configuration_key,
+                "interval_days": policy.interval_days,
+                "due_soon_days": policy.due_soon_days,
+                "reminder_days": policy.reminder_days,
+                "is_active": policy.is_active,
+            }
+            for policy in policies
+        ])
+
+    @transaction.atomic
+    def post(self, request):
+        company = _active_company_for(request.user)
+        if company is None:
+            return Response({"detail": "Active company workspace not found."}, status=403)
+
+        try:
+            part_id = int(request.data.get("part_id"))
+            interval_days = int(request.data.get("interval_days"))
+            due_soon_days = int(request.data.get("due_soon_days", 30))
+        except (TypeError, ValueError):
+            return Response({"detail": "part_id and valid interval days are required."}, status=400)
+        if interval_days <= 0 or due_soon_days < 0:
+            return Response({"detail": "Intervals must be positive and due-soon days cannot be negative."}, status=400)
+
+        part = get_object_or_404(PartMaster, pk=part_id, is_active=True)
+        ro_model = None
+        ro_model_id = request.data.get("ro_model_id")
+        if ro_model_id not in (None, ""):
+            ro_model = get_object_or_404(ROModel, pk=ro_model_id, is_active=True)
+
+        raw_reminders = request.data.get("reminder_days", [])
+        if not isinstance(raw_reminders, list):
+            return Response({"detail": "reminder_days must be a list."}, status=400)
+        reminders = []
+        for raw in raw_reminders:
+            try:
+                day = int(raw)
+            except (TypeError, ValueError):
+                return Response({"detail": "Every reminder day must be a number."}, status=400)
+            if day < 0 or day > 3650:
+                return Response({"detail": "Reminder days must be between 0 and 3650."}, status=400)
+            if day not in reminders:
+                reminders.append(day)
+        reminders.sort(reverse=True)
+
+        configuration_key = str(request.data.get("configuration_key", "") or "").strip()[:80]
+        policy, created = ServiceIntervalPolicy.objects.update_or_create(
+            company=company,
+            part=part,
+            ro_model=ro_model,
+            configuration_key=configuration_key,
+            defaults={
+                "interval_days": interval_days,
+                "due_soon_days": due_soon_days,
+                "reminder_days": reminders,
+                "is_active": bool(request.data.get("is_active", True)),
+            },
+        )
+        return Response(
+            {
+                "success": True,
+                "created": created,
+                "policy_id": policy.id,
+                "part_id": policy.part_id,
+                "ro_model_id": policy.ro_model_id,
+                "configuration_key": policy.configuration_key,
+                "interval_days": policy.interval_days,
+                "due_soon_days": policy.due_soon_days,
+                "reminder_days": policy.reminder_days,
+                "is_active": policy.is_active,
+            },
+            status=201 if created else 200,
+        )
 
 
 class ServiceSearchAPIView(generics.ListAPIView):
@@ -187,7 +347,7 @@ class ServiceExportAPIView(APIView):
                 service.customer.name if service.customer else "",
                 service.customer.phone if service.customer else "",
                 service.engineer.name if service.engineer else "",
-                service.ro_asset.name if service.ro_asset else "",
+                service.ro_asset.asset_id if service.ro_asset else "",
                 service.service_type,
                 service.status,
                 service.scheduled_date.isoformat() if service.scheduled_date else "",

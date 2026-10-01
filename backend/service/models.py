@@ -68,11 +68,24 @@ class Service(models.Model):
 
 
 class ServicePart(models.Model):
+    ACTION_USED = "USED"
+    ACTION_REPLACED = "REPLACED"
+    ACTION_CLEANED = "CLEANED"
+    ACTION_INSPECTED = "INSPECTED"
+    ACTION_CHOICES = [
+        (ACTION_USED, "Part Used"),
+        (ACTION_REPLACED, "Part Replaced"),
+        (ACTION_CLEANED, "Part Cleaned"),
+        (ACTION_INSPECTED, "Part Inspected"),
+    ]
+
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="parts_used")
     part = models.ForeignKey(PartMaster, on_delete=models.PROTECT)
     inventory_item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, null=True, blank=True)
     quantity = models.PositiveIntegerField(default=1)
     remarks = models.CharField(max_length=200, blank=True)
+    action = models.CharField(max_length=16, choices=ACTION_CHOICES, default=ACTION_USED)
+    verification_method = models.CharField(max_length=40, blank=True)
 
     def __str__(self):
         return f"{self.service.service_id} - {self.part.name}"
@@ -97,3 +110,108 @@ class ServiceSignature(models.Model):
 
     def __str__(self):
         return self.service.service_id
+
+
+class ServiceIntervalPolicy(models.Model):
+    """Admin-configurable preventive interval for one part/model/configuration.
+
+    No universal replacement interval is assumed. A health countdown exists
+    only when an active policy is configured for the tenant and part.
+    """
+
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.CASCADE,
+        related_name="ro_service_interval_policies",
+    )
+    part = models.ForeignKey(
+        PartMaster,
+        on_delete=models.PROTECT,
+        related_name="service_interval_policies",
+    )
+    ro_model = models.ForeignKey(
+        "products.ROModel",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="service_interval_policies",
+    )
+    configuration_key = models.CharField(max_length=80, blank=True, default="")
+    interval_days = models.PositiveIntegerField()
+    due_soon_days = models.PositiveIntegerField(default=30)
+    reminder_days = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "part", "ro_model", "configuration_key"],
+                name="uniq_ro_service_interval_policy",
+                nulls_distinct=False,
+            ),
+        ]
+        ordering = ["part__name", "ro_model__model_name", "configuration_key"]
+
+    def __str__(self):
+        model = self.ro_model.model_name if self.ro_model_id else "Any model"
+        return f"{self.part.name} / {model} / {self.interval_days} days"
+
+
+class PartServiceCycleAudit(models.Model):
+    """Immutable evidence that an explicit verified replacement started a new cycle.
+
+    The actual replacement remains ServicePart. This table is an audit/calculation
+    trail only; it never replaces or deletes service/replacement history.
+    """
+
+    source_service_part = models.OneToOneField(
+        ServicePart,
+        on_delete=models.PROTECT,
+        related_name="cycle_audit",
+    )
+    company = models.ForeignKey(
+        "tenancy.Company",
+        on_delete=models.PROTECT,
+        related_name="part_service_cycle_audits",
+    )
+    ro_asset = models.ForeignKey(
+        ROAsset,
+        on_delete=models.PROTECT,
+        related_name="part_service_cycle_audits",
+    )
+    part = models.ForeignKey(
+        PartMaster,
+        on_delete=models.PROTECT,
+        related_name="service_cycle_audits",
+    )
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.PROTECT,
+        related_name="part_cycle_audits",
+    )
+    engineer = models.ForeignKey(
+        EmployeeProfile,
+        on_delete=models.PROTECT,
+        related_name="part_service_cycle_audits",
+    )
+    cycle_started_at = models.DateTimeField()
+    old_due_date = models.DateField(null=True, blank=True)
+    new_due_date = models.DateField(null=True, blank=True)
+    verification_method = models.CharField(max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-cycle_started_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValueError("Part service-cycle audit records are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("Part service-cycle audit records are immutable.")
+
+    def __str__(self):
+        return f"{self.ro_asset.asset_id} / {self.part.name} / {self.cycle_started_at:%Y-%m-%d}"

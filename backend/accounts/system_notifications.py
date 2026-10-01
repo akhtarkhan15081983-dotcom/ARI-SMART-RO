@@ -115,6 +115,7 @@ def _sync_customer(user):
     from customers.models import CustomerRentHistory
     from customers.rent_policy import rent_due_date, rent_penalty
     from jobs.models import Job
+    from service.notifications import sync_ro_health_notifications
 
     today = timezone.localdate()
     current_month = today.replace(day=1)
@@ -186,6 +187,8 @@ def _sync_customer(user):
                 "discount_value": str(offer.discount_value),
             },
         )
+
+    sync_ro_health_notifications(user, customer, upsert_notification, today=today)
 
     for job in Job.objects.filter(customer=customer).exclude(status__in=["CANCELLED"]).select_related(
         "engineer__user"
