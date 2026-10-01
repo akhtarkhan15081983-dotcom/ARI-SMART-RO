@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from tenancy.access import HasRequiredFeature, request_company
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 
 from accounts.permissions import IsStaffOperator
 
