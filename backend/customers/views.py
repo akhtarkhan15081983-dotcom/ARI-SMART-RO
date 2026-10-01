@@ -39,6 +39,7 @@ from django.db import transaction
 from .models import CustomerLocationLog, CustomerRentHistory, CustomerRentPayment
 from .rent_policy import RENT_GRACE_DAYS, rent_due_date, rent_penalty
 from referrals.services import claim_welcome_reward
+from tenancy.access import has_feature_access
 
 from referrals.services import (
     calculate_max_redeemable,
@@ -1976,15 +1977,12 @@ class RentPaymentCreateAPIView(APIView):
         # ROLE CHECK
         # ====================================================
 
-        if request.user.role not in self.ALLOWED_ROLES:
+        if not has_feature_access(request, "rent_management"):
 
             return Response(
                 {
                     "success": False,
-                    "message": (
-                        "Only Admin, Manager or assigned Engineer "
-                        "can record rent payment."
-                    ),
+                    "message": "Rent management permission is required to record rent payment.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -2850,15 +2848,12 @@ class RentPaymentHistoryAPIView(APIView):
         # ROLE CHECK
         # ----------------------------------------------------
 
-        if request.user.role not in self.ALLOWED_ROLES:
+        if not has_feature_access(request, "payment_history"):
 
             return Response(
                 {
                     "success": False,
-                    "message": (
-                        "Only Admin or Manager "
-                        "can view rent payment history."
-                    ),
+                    "message": "Payment history permission is required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
