@@ -3074,8 +3074,8 @@ class RentPaymentHistoryAPIView(APIView):
 class CallingDeskAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def _allowed(self, user):
-        return getattr(user, "role", "") in {"ADMIN", "MANAGER", "OFFICE", "CALLING"}
+    def _allowed(self, request):
+        return has_feature_access(request, "calling_desk")
 
     def _serialize(self, row):
         caller = row.assigned_caller
@@ -3134,7 +3134,7 @@ class CallingDeskAPIView(APIView):
         }
 
     def get(self, request):
-        if not self._allowed(request.user):
+        if not self._allowed(request):
             return Response(
                 {"detail": "Calling desk access is restricted to authorised staff."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -3219,7 +3219,7 @@ class CallingDeskAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        if not self._allowed(request.user):
+        if not self._allowed(request):
             return Response({"detail": "Calling desk access is restricted to authorised staff."}, status=403)
         caller = self._caller(request)
         if getattr(request.user, "role", "") == "CALLING" and caller is None:
@@ -3278,7 +3278,7 @@ class CallingDeskAPIView(APIView):
 
     @transaction.atomic
     def patch(self, request, pk):
-        if not self._allowed(request.user):
+        if not self._allowed(request):
             return Response(
                 {"detail": "Calling desk access is restricted to authorised staff."},
                 status=status.HTTP_403_FORBIDDEN,
