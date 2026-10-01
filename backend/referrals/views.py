@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 from jobs.idempotency import action_id_from_request, replay_response, remember_response
-from tenancy.access import has_feature_access
+from tenancy.access import has_feature_access, request_company
 
 from .models import Referral, WalletReward, WalletLedgerEntry
 from .serializers import (
@@ -216,6 +216,38 @@ class QualifyReferralAPIView(APIView):
     def post(self, request, pk):
         if request.user.role not in self.ALLOWED_ROLES:
             return Response({"success": False, "message": "Only Admin, Manager or Office can qualify referrals."}, status=403)
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"success": False, "message": "Active company workspace not found."},
+                status=403,
+            )
+        referral = Referral.objects.filter(pk=pk).select_related(
+            "referrer",
+            "referred_user",
+        ).first()
+        if referral is None:
+            return Response({"success": False, "message": "Referral not found."}, status=404)
+
+        from customers.models import Customer
+
+        def user_in_company(user):
+            if user.company_memberships.filter(
+                company=company,
+                is_active=True,
+            ).exists():
+                return True
+            return Customer.objects.filter(
+                user=user,
+                company=company,
+            ).exists()
+
+        if not user_in_company(referral.referrer) or not user_in_company(referral.referred_user):
+            return Response(
+                {"success": False, "message": "Referral does not belong to your company."},
+                status=404,
+            )
+
         referred_type = str(request.data.get("referred_type", "")).upper().strip()
         try:
             amount = Decimal(str(request.data.get("qualifying_amount", "0"))).quantize(Decimal("0.01"))
