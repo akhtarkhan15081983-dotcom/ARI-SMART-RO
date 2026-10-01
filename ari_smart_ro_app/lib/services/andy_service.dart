@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -56,20 +57,36 @@ class AndyTranscription {
 }
 
 class AndyService {
+  static const _requestTimeout = Duration(seconds: 45);
+  static const _voicePollTimeout = Duration(minutes: 3);
+
+  Exception _unavailable([String feature = 'ANDY']) => Exception(
+        '$feature is temporarily unavailable. ARI SMART RO ke normal features aap use kar sakte hain; thodi der baad retry karein.',
+      );
+
   Map<String, dynamic> _decode(http.Response response) {
     if (response.body.isEmpty) return <String, dynamic>{};
     return Map<String, dynamic>.from(jsonDecode(response.body));
   }
 
   Future<AndyReply> chat(String message, {int? conversationId}) async {
-    final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/andy/chat/'),
-      headers: await ApiService.authHeaders(),
-      body: jsonEncode({
-        'message': message,
-        'conversation_id': ?conversationId,
-      }),
-    );
+    late http.Response response;
+    try {
+      response = await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/andy/chat/'),
+            headers: await ApiService.authHeaders(),
+            body: jsonEncode({
+              'message': message,
+              'conversation_id': ?conversationId,
+            }),
+          )
+          .timeout(_requestTimeout);
+    } on TimeoutException {
+      throw _unavailable();
+    } on http.ClientException {
+      throw _unavailable();
+    }
     final data = _decode(response);
     if (response.statusCode != 200) {
       throw Exception(data['message']?.toString() ?? 'ANDY is unavailable');
@@ -88,11 +105,20 @@ class AndyService {
   }
 
   Future<AndyActionResult> confirmAction(int actionId, bool confirm) async {
-    final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/andy/actions/$actionId/confirm/'),
-      headers: await ApiService.authHeaders(),
-      body: jsonEncode({'confirm': confirm}),
-    );
+    late http.Response response;
+    try {
+      response = await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/andy/actions/$actionId/confirm/'),
+            headers: await ApiService.authHeaders(),
+            body: jsonEncode({'confirm': confirm}),
+          )
+          .timeout(_requestTimeout);
+    } on TimeoutException {
+      throw _unavailable('ANDY action service');
+    } on http.ClientException {
+      throw _unavailable('ANDY action service');
+    }
     final data = _decode(response);
     if (response.statusCode != 200) {
       throw Exception(
@@ -116,8 +142,16 @@ class AndyService {
     final authorization = headers['Authorization'];
     if (authorization != null) request.headers['Authorization'] = authorization;
     request.files.add(await http.MultipartFile.fromPath('audio', audioPath));
-    final streamed = await request.send();
-    final response = await http.Response.fromStream(streamed);
+    late http.StreamedResponse streamed;
+    late http.Response response;
+    try {
+      streamed = await request.send().timeout(_requestTimeout);
+      response = await http.Response.fromStream(streamed).timeout(_requestTimeout);
+    } on TimeoutException {
+      throw _unavailable('ANDY voice recognition');
+    } on http.ClientException {
+      throw _unavailable('ANDY voice recognition');
+    }
     final data = _decode(response);
     if (response.statusCode != 200) {
       throw Exception(
@@ -134,11 +168,20 @@ class AndyService {
   }
 
   Future<Uint8List> speak(String text) async {
-    final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/andy/speak/'),
-      headers: await ApiService.authHeaders(),
-      body: jsonEncode({'text': text}),
-    );
+    late http.Response response;
+    try {
+      response = await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/andy/speak/'),
+            headers: await ApiService.authHeaders(),
+            body: jsonEncode({'text': text}),
+          )
+          .timeout(_requestTimeout);
+    } on TimeoutException {
+      throw _unavailable('ANDY voice');
+    } on http.ClientException {
+      throw _unavailable('ANDY voice');
+    }
     if (response.statusCode != 202) {
       String message = 'ANDY voice is unavailable';
       try {
@@ -153,15 +196,24 @@ class AndyService {
       throw Exception('ANDY voice job could not be started');
     }
 
-    // CPU-only IndicF5 can take a long time for its first model load. Keep
-    // polling without holding any single HTTP request open, so the completed
-    // WAV is still delivered instead of being abandoned after four minutes.
-    for (var attempt = 0; attempt < 1200; attempt++) {
+    // Production inference is external to Django. Keep polling bounded so an
+    // unavailable AI service never traps the mobile/Windows client indefinitely.
+    final deadline = DateTime.now().add(_voicePollTimeout);
+    while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(seconds: 1));
-      final poll = await http.get(
-        Uri.parse('${ApiService.baseUrl}/andy/speak/$jobId/'),
-        headers: await ApiService.authHeaders(),
-      );
+      late http.Response poll;
+      try {
+        poll = await http
+            .get(
+              Uri.parse('${ApiService.baseUrl}/andy/speak/$jobId/'),
+              headers: await ApiService.authHeaders(),
+            )
+            .timeout(_requestTimeout);
+      } on TimeoutException {
+        throw _unavailable('ANDY voice');
+      } on http.ClientException {
+        throw _unavailable('ANDY voice');
+      }
       if (poll.statusCode == 200 &&
           poll.headers['content-type']?.startsWith('audio/wav') == true) {
         return poll.bodyBytes;
@@ -174,7 +226,7 @@ class AndyService {
       } catch (_) {}
       throw Exception(message);
     }
-    throw Exception('ANDY voice generation timed out');
+    throw _unavailable('ANDY voice');
   }
 
   Future<void> feedback(
