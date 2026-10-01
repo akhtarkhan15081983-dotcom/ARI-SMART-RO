@@ -2,13 +2,14 @@ import calendar
 from datetime import date, datetime, time
 
 from django.utils import timezone
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import user_role
-from tenancy.access import has_feature_access
+from tenancy.access import has_feature_access, request_company
 from complaints.models import Complaint
 from customers.models import Customer, CustomerRentHistory
 from customers.rent_policy import rent_due_date
@@ -47,6 +48,66 @@ def employee_data(employee):
     }
 
 
+def _scoped_employees(request):
+    rows = EmployeeProfile.objects.select_related("user").filter(is_active=True)
+    company = request_company(request)
+    if company is not None:
+        return rows.filter(company=company)
+    return rows.filter(company__isnull=True)
+
+
+def _scoped_jobs(request):
+    rows = Job.objects.select_related("customer", "engineer__user")
+    company = request_company(request)
+    if company is not None:
+        return rows.filter(
+            Q(company=company)
+            | Q(
+                company__isnull=True,
+                engineer__company=company,
+                customer__company=company,
+            )
+        ).distinct()
+    return rows.filter(
+        company__isnull=True,
+        engineer__company__isnull=True,
+        customer__company__isnull=True,
+    )
+
+
+def _scoped_complaints(request):
+    rows = Complaint.objects.select_related("customer", "engineer__user")
+    company = request_company(request)
+    if company is not None:
+        return rows.filter(
+            Q(company=company)
+            | Q(
+                company__isnull=True,
+                engineer__company=company,
+                customer__company=company,
+            )
+        ).distinct()
+    return rows.filter(
+        company__isnull=True,
+        engineer__company__isnull=True,
+        customer__company__isnull=True,
+    )
+
+
+def _scoped_customers(request):
+    rows = Customer.objects.select_related("assigned_engineer__user")
+    company = request_company(request)
+    if company is not None:
+        return rows.filter(
+            Q(company=company)
+            | Q(company__isnull=True, assigned_engineer__company=company)
+        ).distinct()
+    return rows.filter(company__isnull=True).filter(
+        Q(assigned_engineer__isnull=True)
+        | Q(assigned_engineer__company__isnull=True)
+    )
+
+
 def customer_data(customer, latitude=None, longitude=None):
     lat = latitude if latitude is not None else customer.latitude
     lng = longitude if longitude is not None else customer.longitude
@@ -82,7 +143,7 @@ class WorkPlannerMixin:
             return getattr(request.user, "employee_profile", None)
         employee_id = request.query_params.get("employee_id") or request.data.get("employee_id")
         if employee_id:
-            return EmployeeProfile.objects.filter(pk=employee_id, is_active=True).first()
+            return _scoped_employees(request).filter(pk=employee_id).first()
         return None
 
 
@@ -99,35 +160,38 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
         if role == "ENGINEER" and selected is None:
             return Response({"detail": "Employee profile not found."}, status=status.HTTP_403_FORBIDDEN)
 
+        scoped_employees = _scoped_employees(request)
         overrides = {
             row.event_key: row
-            for row in WorkScheduleOverride.objects.select_related("employee__user").all()
+            for row in WorkScheduleOverride.objects.select_related("employee__user").filter(
+                employee__in=scoped_employees
+            )
         }
         moved_jobs = [int(key.split(":")[1]) for key in overrides if key.startswith("JOB:")]
         moved_complaints = [int(key.split(":")[1]) for key in overrides if key.startswith("COMPLAINT:")]
 
-        jobs = Job.objects.select_related("customer", "engineer__user").filter(
+        jobs = _scoped_jobs(request).filter(
             scheduled_date__date__range=(first, last)
-        ).exclude(status__in=["COMPLETED", "CANCELLED"]) | Job.objects.select_related(
-            "customer", "engineer__user"
+        ).exclude(status__in=["COMPLETED", "CANCELLED"]) | _scoped_jobs(
+            request
         ).filter(id__in=moved_jobs).exclude(status__in=["COMPLETED", "CANCELLED"])
 
         # Once a complaint has a linked Job, the Job is the single execution
         # event shown in the planner. Keeping the source complaint as another
         # event would duplicate the same field visit and route stop.
-        complaints = Complaint.objects.select_related("customer", "engineer__user").filter(
+        complaints = _scoped_complaints(request).filter(
             scheduled_date__date__range=(first, last),
             engineer__isnull=False,
             job__isnull=True,
-        ).exclude(status__in=["RESOLVED", "CLOSED", "CANCELLED"]) | Complaint.objects.select_related(
-            "customer", "engineer__user"
+        ).exclude(status__in=["RESOLVED", "CLOSED", "CANCELLED"]) | _scoped_complaints(
+            request
         ).filter(
             id__in=moved_complaints,
             job__isnull=True,
         ).exclude(
             status__in=["RESOLVED", "CLOSED", "CANCELLED"]
         )
-        customers = Customer.objects.select_related("assigned_engineer__user").filter(
+        customers = _scoped_customers(request).filter(
             is_active=True,
             monthly_rent__gt=0,
             installation_date__isnull=False,
@@ -209,7 +273,7 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
                 )
             except (IndexError, ValueError):
                 continue
-            customer = Customer.objects.select_related("assigned_engineer__user").filter(
+            customer = _scoped_customers(request).filter(
                 pk=customer_id, is_active=True
             ).first()
             if customer is None or (selected and override.employee_id != selected.id):
@@ -227,8 +291,8 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
                 override.employee, customer, "PENDING",
                 amount=max(expected - paid, 0), detail_id=customer.id)
 
-        employees = EmployeeProfile.objects.select_related("user").filter(
-            is_active=True, designation="ENGINEER"
+        employees = _scoped_employees(request).filter(
+            designation="ENGINEER"
         ).order_by("user__first_name", "employee_id")
         return Response({
             "month": first.strftime("%Y-%m"),
@@ -256,11 +320,17 @@ class WorkRescheduleAPIView(WorkPlannerMixin, APIView):
 
         source_employee_id = None
         if key.startswith("JOB:"):
-            source_employee_id = Job.objects.filter(pk=key.split(":")[1]).values_list("engineer_id", flat=True).first()
+            source_employee_id = _scoped_jobs(request).filter(
+                pk=key.split(":")[1]
+            ).values_list("engineer_id", flat=True).first()
         elif key.startswith("COMPLAINT:"):
-            source_employee_id = Complaint.objects.filter(pk=key.split(":")[1]).values_list("engineer_id", flat=True).first()
+            source_employee_id = _scoped_complaints(request).filter(
+                pk=key.split(":")[1]
+            ).values_list("engineer_id", flat=True).first()
         elif key.startswith("RENT:"):
-            source_employee_id = Customer.objects.filter(pk=key.split(":")[1]).values_list("assigned_engineer_id", flat=True).first()
+            source_employee_id = _scoped_customers(request).filter(
+                pk=key.split(":")[1]
+            ).values_list("assigned_engineer_id", flat=True).first()
         if source_employee_id is None:
             return Response({"detail": "Work item not found or not assigned."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -272,8 +342,8 @@ class WorkRescheduleAPIView(WorkPlannerMixin, APIView):
                 return Response({"detail": "You can only reschedule your own work."}, status=status.HTTP_403_FORBIDDEN)
         else:
             target_id = request.data.get("employee_id") or effective_employee_id
-            employee = EmployeeProfile.objects.filter(
-                pk=target_id, is_active=True, designation="ENGINEER"
+            employee = _scoped_employees(request).filter(
+                pk=target_id, designation="ENGINEER"
             ).first()
             if employee is None:
                 return Response({"detail": "Active engineer not found."}, status=status.HTTP_400_BAD_REQUEST)
