@@ -3448,10 +3448,15 @@ class CustomerLifecycleAPIView(APIView):
     @transaction.atomic
     def post(self, request, pk):
         try:
-            customer = operator_customer_queryset(
-                request,
-                Customer.objects.select_for_update(),
-            ).get(pk=pk)
+            scoped_customer_id = (
+                operator_customer_queryset(request, Customer.objects.all())
+                .filter(pk=pk)
+                .values_list("pk", flat=True)
+                .first()
+            )
+            if scoped_customer_id is None:
+                raise Customer.DoesNotExist
+            customer = Customer.objects.select_for_update().get(pk=scoped_customer_id)
         except Customer.DoesNotExist:
             return Response({"detail": "Customer not found in this workspace."}, status=404)
 
