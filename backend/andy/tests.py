@@ -1,3 +1,4 @@
+import urllib.error
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -522,6 +523,26 @@ class AndySpeakAPITests(TestCase):
         with self.assertRaisesMessage(LocalSTTError, "In-process STT is disabled in production"):
             LocalSTT()._get_model()
 
+    @patch.dict("os.environ", {"ANDY_LLM_URL": "https://ai.internal.example/llm", "ANDY_AI_SERVICE_TOKEN": "test-token", "ANDY_AI_REMOTE_RETRIES": "1"}, clear=False)
+    @patch("andy.local_llm.settings.DEBUG", False)
+    def test_remote_llm_retries_transient_failure_once(self, _debug):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.read.return_value = b'{"message":{"content":"ok"}}'
+        with patch("andy.local_llm.urllib.request.urlopen", side_effect=[urllib.error.URLError("temporary"), response]) as opener:
+            data = LocalLLM()._post_json("/api/chat", {"messages": []})
+            self.assertEqual(data["message"]["content"], "ok")
+            self.assertEqual(opener.call_count, 2)
+
+    @patch.dict("os.environ", {"ANDY_LLM_URL": "https://ai.internal.example/llm", "ANDY_AI_SERVICE_TOKEN": "test-token", "ANDY_AI_REMOTE_RETRIES": "1"}, clear=False)
+    @patch("andy.local_llm.settings.DEBUG", False)
+    def test_remote_llm_does_not_retry_client_error(self, _debug):
+        error = urllib.error.HTTPError("https://ai.internal.example/llm/api/chat", 401, "Unauthorized", None, None)
+        with patch("andy.local_llm.urllib.request.urlopen", side_effect=error) as opener:
+            with self.assertRaises(LocalLLMError):
+                LocalLLM()._post_json("/api/chat", {"messages": []})
+            self.assertEqual(opener.call_count, 1)
     @patch.dict(
         "os.environ",
         {
