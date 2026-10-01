@@ -1,7 +1,7 @@
 from django.urls import path
 
 from .views import (
-    CompanyCreateAPIView, MyCompaniesAPIView, PublicPlanListAPIView, PublicCompanyBrandAPIView,
+    CompanyCreateAPIView, MyCompaniesAPIView, PublicPlanListAPIView, PublicCompanyBrandAPIView, PublicShopCompanyListAPIView,
     SuperAdminDashboardAPIView, SuperAdminSubscriptionStatusAPIView,
     SuperAdminCompanyOnboardingAPIView,
     SuperAdminCompanyLifecycleAPIView, SuperAdminCompanyLifecycleHistoryAPIView,
@@ -12,6 +12,7 @@ from .views import (
 urlpatterns = [
     path("plans/", PublicPlanListAPIView.as_view(), name="saas-plan-list"),
     path("brand/<slug:slug>/", PublicCompanyBrandAPIView.as_view(), name="public-company-brand"),
+    path("public-shops/", PublicShopCompanyListAPIView.as_view(), name="public-shop-company-list"),
     path("companies/", MyCompaniesAPIView.as_view(), name="my-companies"),
     path("companies/create/", CompanyCreateAPIView.as_view(), name="company-create"),
     path("role-permissions/", RoleFeaturePermissionAPIView.as_view(), name="role-feature-permissions"),
