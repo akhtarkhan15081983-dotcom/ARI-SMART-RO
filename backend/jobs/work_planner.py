@@ -8,14 +8,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import user_role
+from tenancy.access import has_feature_access
 from complaints.models import Complaint
 from customers.models import Customer, CustomerRentHistory
 from customers.rent_policy import rent_due_date
 from employees.models import EmployeeProfile
 from .models import Job, WorkScheduleOverride
-
-
-ALLOWED_ROLES = {"ADMIN", "MANAGER", "OFFICE", "ENGINEER"}
 
 
 def month_bounds(value):
@@ -69,13 +67,14 @@ def customer_data(customer, latitude=None, longitude=None):
 
 class WorkPlannerMixin:
     permission_classes = [IsAuthenticated]
+    required_feature = "work_calendar"
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        if user_role(request.user) not in ALLOWED_ROLES:
+        if not has_feature_access(request, self.required_feature):
             self.permission_denied(
                 request,
-                message="Work planner is available to operations staff only.",
+                message=f"{self.required_feature.replace('_', ' ').title()} permission is required.",
             )
 
     def selected_employee(self, request):
@@ -88,6 +87,7 @@ class WorkPlannerMixin:
 
 
 class WorkCalendarAPIView(WorkPlannerMixin, APIView):
+    required_feature = "work_calendar"
     def get(self, request):
         try:
             first, last = month_bounds(request.query_params.get("month"))
@@ -238,6 +238,7 @@ class WorkCalendarAPIView(WorkPlannerMixin, APIView):
 
 
 class WorkRescheduleAPIView(WorkPlannerMixin, APIView):
+    required_feature = "work_calendar"
     def patch(self, request):
         key = str(request.data.get("event_key") or "").strip().upper()
         raw_date = request.data.get("scheduled_at")
@@ -296,6 +297,7 @@ class WorkRescheduleAPIView(WorkPlannerMixin, APIView):
 
 
 class WorkRouteAPIView(WorkPlannerMixin, APIView):
+    required_feature = "work_route"
     def get(self, request):
         try:
             selected_date = date.fromisoformat(request.query_params.get("date"))
