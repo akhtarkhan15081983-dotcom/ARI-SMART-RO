@@ -705,11 +705,18 @@ class MyCustomersAPIView(generics.ListAPIView):
     required_feature = "assigned_customers"
 
     def get_queryset(self):
+        company = request_company(self.request)
+        if company is None:
+            return Customer.objects.none()
         return Customer.objects.filter(
-            assigned_engineer__user=self.request.user
+            assigned_engineer__user=self.request.user,
+            assigned_engineer__company=company,
+        ).filter(
+            Q(company=company)
+            | Q(company__isnull=True, assigned_engineer__company=company)
         ).select_related(
             "assigned_engineer__user"
-        ).order_by("id")
+        ).distinct().order_by("id")
 
 class CustomerCreateAPIView(generics.CreateAPIView):
 
