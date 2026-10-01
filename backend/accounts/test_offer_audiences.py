@@ -4,16 +4,30 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from customers.models import Customer
+from tenancy.models import Company, CompanyMembership
 from .models import CustomerEngagement, User, UserNotification
 
 
 class OfferAudienceTests(APITestCase):
     def setUp(self):
+        self.company = Company.objects.create(
+            name="Offer Audience Test Company",
+            slug="offer-audience-test-company",
+            phone="9777799999",
+            is_active=True,
+            lifecycle_status="ACTIVE",
+        )
         self.admin = User.objects.create_user(
             phone="9777700001",
             password="Strong@Test1",
             role="ADMIN",
             is_verified=True,
+        )
+        CompanyMembership.objects.create(
+            company=self.company,
+            user=self.admin,
+            role="ADMIN",
+            is_active=True,
         )
         self.active_user = User.objects.create_user(
             phone="9777700002",
@@ -28,6 +42,7 @@ class OfferAudienceTests(APITestCase):
             is_verified=True,
         )
         self.active_customer = Customer.objects.create(
+            company=self.company,
             user=self.active_user,
             name="Active Customer",
             phone=self.active_user.phone,
@@ -40,6 +55,7 @@ class OfferAudienceTests(APITestCase):
             is_active=True,
         )
         self.inactive_customer = Customer.objects.create(
+            company=self.company,
             user=self.inactive_user,
             name="Inactive Customer",
             phone=self.inactive_user.phone,
@@ -115,6 +131,7 @@ class OfferAudienceTests(APITestCase):
         CustomerEngagement.objects.create(
             kind="OFFER",
             audience="ACTIVE",
+            created_by=self.admin,
             title="Active Rent Offer",
             message="10 percent off",
             discount_type="PERCENT",
