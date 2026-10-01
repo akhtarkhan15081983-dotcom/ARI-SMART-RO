@@ -1,0 +1,113 @@
+name: Isolated Tenant Migration Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type REHEARSE_ISOLATED_DB_ONLY to allow rehearsal DB migrations'
+        required: true
+        type: string
+      expected_db_name:
+        description: 'Expected isolated rehearsal database name'
+        required: true
+        default: 'ari-smart-ro-maxpro-rehearsal-2026-09-29'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-tenant-migration-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DJANGO_DEBUG: '1'
+      DB_ENGINE: django.db.backends.postgresql
+      DB_NAME: ${{ secrets.REHEARSAL_DB_NAME }}
+      DB_USER: ${{ secrets.REHEARSAL_DB_USER }}
+      DB_PASSWORD: ${{ secrets.REHEARSAL_DB_PASSWORD }}
+      DB_HOST: ${{ secrets.REHEARSAL_DB_HOST }}
+      DB_PORT: ${{ secrets.REHEARSAL_DB_PORT }}
+
+    steps:
+      - name: Guard explicit rehearsal confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "REHEARSE_ISOLATED_DB_ONLY" ]; then
+            echo "Explicit rehearsal confirmation is missing."
+            exit 1
+          fi
+          if [ -z "${DB_NAME:-}" ]; then
+            echo "REHEARSAL_DB_NAME secret is not configured."
+            exit 1
+          fi
+          if [ "$DB_NAME" = "ari-smart-ro-db" ]; then
+            echo "Refusing to run against the production database."
+            exit 1
+          fi
+          if [ "$DB_NAME" != "${{ inputs.expected_db_name }}" ]; then
+            echo "Configured rehearsal database does not match the expected isolated database name."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Verify connected database identity
+        working-directory: backend
+        run: |
+          python manage.py shell -c "from django.db import connection; print('DB_ENGINE=', connection.vendor); print('DB_NAME=', connection.settings_dict.get('NAME'))"
+
+      - name: Capture pre-migration evidence
+        working-directory: backend
+        run: |
+          python manage.py shell -c "from assets.models import ROAsset; from customers.models import PublicCustomerRequest, Customer; print('ROASSET_ROWS=', ROAsset.objects.count()); print('ROASSET_LINKED=', ROAsset.objects.filter(current_customer__isnull=False).count()); print('ROASSET_UNASSIGNED=', ROAsset.objects.filter(current_customer__isnull=True).count()); print('PUBLIC_REQUEST_ROWS=', PublicCustomerRequest.objects.count()); print('CUSTOMER_ROWS=', Customer.objects.count()); print('CUSTOMERS_WITH_COMPANY=', Customer.objects.filter(company__isnull=False).count()); print('CUSTOMERS_WITHOUT_COMPANY=', Customer.objects.filter(company__isnull=True).count())"
+
+      - name: Show migration plan
+        working-directory: backend
+        run: python manage.py migrate --plan
+
+      - name: Apply migrations to isolated rehearsal database
+        working-directory: backend
+        run: python manage.py migrate --noinput
+
+      - name: Verify migration rows and schema-visible model fields
+        working-directory: backend
+        run: |
+          python manage.py shell -c "from django.db import connection; from django.db.migrations.recorder import MigrationRecorder; from assets.models import ROAsset; from customers.models import PublicCustomerRequest; applied=set(MigrationRecorder(connection).migration_qs.values_list('app','name')); assert ('assets','0004_roasset_company') in applied; assert ('customers','0022_publiccustomerrequest_company') in applied; assert ROAsset._meta.get_field('company'); assert PublicCustomerRequest._meta.get_field('company'); print('MIGRATION_ROWS_OK=1'); print('ROASSET_COMPANY_FIELD_OK=1'); print('PUBLIC_REQUEST_COMPANY_FIELD_OK=1')"
+
+      - name: Capture post-migration evidence
+        working-directory: backend
+        run: |
+          python manage.py shell -c "from assets.models import ROAsset; from customers.models import PublicCustomerRequest; print('ROASSET_ROWS=', ROAsset.objects.count()); print('ROASSET_WITH_COMPANY=', ROAsset.objects.filter(company__isnull=False).count()); print('ROASSET_WITHOUT_COMPANY=', ROAsset.objects.filter(company__isnull=True).count()); print('PUBLIC_REQUEST_ROWS=', PublicCustomerRequest.objects.count()); print('PUBLIC_REQUESTS_WITH_COMPANY=', PublicCustomerRequest.objects.filter(company__isnull=False).count()); print('PUBLIC_REQUESTS_WITHOUT_COMPANY=', PublicCustomerRequest.objects.filter(company__isnull=True).count())"
+
+      - name: Read-only tenant migration rehearsal
+        working-directory: backend
+        run: python manage.py rehearse_tenant_migration
+
+      - name: Tenant ownership dry-run
+        working-directory: backend
+        run: python manage.py backfill_tenant_ownership
+
+      - name: Inventory ownership dry-run
+        working-directory: backend
+        run: python manage.py backfill_inventory_tenant_ownership
+
+      - name: Duplicate supplier invoice audit
+        working-directory: backend
+        run: python manage.py audit_duplicate_supplier_invoices --fail-on-conflict --json /tmp/duplicate-invoice-audit.json
