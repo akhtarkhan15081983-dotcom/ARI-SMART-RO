@@ -3140,9 +3140,22 @@ class CallingDeskAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         rows = PublicCustomerRequest.objects.select_related(
-            "assigned_caller__user"
-        ).order_by("-created_at")
+            "assigned_caller__user",
+            "assigned_caller__company",
+            "existing_customer",
+        ).filter(
+            Q(existing_customer__company=company)
+            | Q(existing_customer__company__isnull=True, assigned_caller__company=company)
+            | Q(existing_customer__isnull=True, assigned_caller__company=company)
+        ).distinct().order_by("-created_at")
 
         if getattr(request.user, "role", "") == "CALLING":
             employee = getattr(request.user, "employee_profile", None)
@@ -3168,7 +3181,12 @@ class CallingDeskAPIView(APIView):
 
         now = timezone.now()
         data = [self._serialize(row) for row in rows[:300]]
-        customers = Customer.objects.filter(is_active=True).order_by("name", "id")
+        customers = Customer.objects.filter(
+            is_active=True,
+        ).filter(
+            Q(company=company)
+            | Q(company__isnull=True, assigned_engineer__company=company)
+        ).distinct().order_by("name", "id")
         if q:
             customers = customers.filter(
                 Q(name__icontains=q) | Q(phone__icontains=q)
@@ -3179,8 +3197,14 @@ class CallingDeskAPIView(APIView):
         customer_data = [self._customer_data(row) for row in customers[:300]]
         caller = self._caller(request)
         activities = CallingActivity.objects.select_related(
-            "lead", "customer", "caller__user"
-        )
+            "lead", "customer", "caller__user", "caller__company"
+        ).filter(
+            Q(customer__company=company)
+            | Q(customer__company__isnull=True, caller__company=company)
+            | Q(customer__isnull=True, caller__company=company)
+            | Q(lead__existing_customer__company=company)
+            | Q(lead__existing_customer__isnull=True, lead__assigned_caller__company=company)
+        ).distinct()
         if getattr(request.user, "role", "") == "CALLING" and caller:
             activities = activities.filter(caller=caller)
         activity_data = [{
@@ -3210,7 +3234,7 @@ class CallingDeskAPIView(APIView):
                 "interested": sum(1 for row in rows[:300] if row.last_call_outcome == "INTERESTED"),
                 "converted": sum(1 for row in rows[:300] if row.last_call_outcome == "CONVERTED"),
                 "calls_today": activities.filter(called_at__date=timezone.localdate()).count(),
-                "customers": Customer.objects.filter(is_active=True).count(),
+                "customers": customers.count(),
             },
             "leads": data,
             "customers": customer_data,
@@ -3221,14 +3245,29 @@ class CallingDeskAPIView(APIView):
     def post(self, request):
         if not self._allowed(request):
             return Response({"detail": "Calling desk access is restricted to authorised staff."}, status=403)
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         caller = self._caller(request)
-        if getattr(request.user, "role", "") == "CALLING" and caller is None:
-            return Response({"detail": "Employee profile not found."}, status=404)
+        if caller is None or caller.company_id != company.id:
+            return Response(
+                {"detail": "Active employee profile in this workspace is required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         customer = None
         customer_id = request.data.get("customer_id")
         if customer_id not in (None, ""):
-            customer = Customer.objects.filter(pk=customer_id, is_active=True).first()
+            customer = Customer.objects.filter(
+                pk=customer_id,
+                is_active=True,
+            ).filter(
+                Q(company=company)
+                | Q(company__isnull=True, assigned_engineer__company=company)
+            ).first()
             if customer is None:
                 return Response({"detail": "Active customer not found."}, status=404)
             existing = PublicCustomerRequest.objects.filter(
@@ -3283,10 +3322,22 @@ class CallingDeskAPIView(APIView):
                 {"detail": "Calling desk access is restricted to authorised staff."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        company = request_company(request)
+        if company is None:
+            return Response(
+                {"detail": "Active company workspace not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             row = PublicCustomerRequest.objects.select_related(
-                "assigned_caller__user"
-            ).get(pk=pk)
+                "assigned_caller__user",
+                "assigned_caller__company",
+                "existing_customer",
+            ).filter(
+                Q(existing_customer__company=company)
+                | Q(existing_customer__company__isnull=True, assigned_caller__company=company)
+                | Q(existing_customer__isnull=True, assigned_caller__company=company)
+            ).distinct().get(pk=pk)
         except PublicCustomerRequest.DoesNotExist:
             return Response({"detail": "Lead not found."}, status=404)
 
