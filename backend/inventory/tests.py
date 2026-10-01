@@ -285,6 +285,7 @@ class InventorySecurityTests(TestCase):
         # -----------------------------------------
 
         self.supplier = Supplier.objects.create(
+            company=self.company,
             name="Security Test Supplier",
         )
 
@@ -293,6 +294,7 @@ class InventorySecurityTests(TestCase):
         # -----------------------------------------
 
         self.purchase = Purchase.objects.create(
+            company=self.company,
             supplier=self.supplier,
             invoice_number="TEST-INV-001",
             invoice_date=date(2026, 1, 1),
@@ -303,6 +305,7 @@ class InventorySecurityTests(TestCase):
         # -----------------------------------------
 
         self.purchase_item = PurchaseItem.objects.create(
+            company=self.company,
             purchase=self.purchase,
             part=self.part,
             quantity=10,
@@ -314,6 +317,7 @@ class InventorySecurityTests(TestCase):
         # -----------------------------------------
 
         self.inventory_item = InventoryItem.objects.create(
+            company=self.company,
             purchase_item=self.purchase_item,
             part=self.part,
             serial_number="TEST-SERIAL-001",
