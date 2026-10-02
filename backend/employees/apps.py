@@ -19,3 +19,5 @@ class EmployeesConfig(AppConfig):
         # Digital HR Letters + BGV remain additive and company scoped.
         from . import hr_phase2_letters_bgv_models  # noqa: F401
         from . import hr_phase2_letters_bgv_signals  # noqa: F401
+        # Enterprise employee lifecycle workflows remain additive and tenant scoped.
+        from . import hr_phase2_lifecycle_models  # noqa: F401
