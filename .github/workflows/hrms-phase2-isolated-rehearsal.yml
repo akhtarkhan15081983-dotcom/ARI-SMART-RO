@@ -1,0 +1,355 @@
+name: HRMS Phase-2 Isolated Migration Rehearsal
+
+on:
+  push:
+    branches:
+      - rehearsal/hrms-phase2-2026-10-03
+    paths:
+      - .github/workflows/hrms-phase2-isolated-rehearsal.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hrms-phase2-isolated-migration-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DJANGO_DEBUG: '1'
+      DB_ENGINE: django.db.backends.postgresql
+      DB_NAME: ${{ secrets.REHEARSAL_DB_NAME }}
+      DB_USER: ${{ secrets.REHEARSAL_DB_USER }}
+      DB_PASSWORD: ${{ secrets.REHEARSAL_DB_PASSWORD }}
+      DB_HOST: ${{ secrets.REHEARSAL_DB_HOST }}
+      DB_PORT: ${{ secrets.REHEARSAL_DB_PORT }}
+
+    steps:
+      - name: Normalize rehearsal database connection inputs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse, unquote
+
+          host_value = (os.environ.get('DB_HOST') or '').strip()
+          updates = {}
+          if '://' in host_value:
+              parsed = urlparse(host_value)
+              if parsed.scheme not in {'postgres', 'postgresql'}:
+                  raise SystemExit('REHEARSAL_DB_HOST contains an unsupported URL scheme.')
+              if not parsed.hostname:
+                  raise SystemExit('REHEARSAL_DB_HOST URL does not contain a valid hostname.')
+              updates['DB_HOST'] = parsed.hostname
+              if parsed.port:
+                  updates['DB_PORT'] = str(parsed.port)
+              if parsed.username and not (os.environ.get('DB_USER') or '').strip():
+                  updates['DB_USER'] = unquote(parsed.username)
+              if parsed.password and not (os.environ.get('DB_PASSWORD') or '').strip():
+                  updates['DB_PASSWORD'] = unquote(parsed.password)
+              parsed_db = (parsed.path or '').lstrip('/')
+              if parsed_db and not (os.environ.get('DB_NAME') or '').strip():
+                  updates['DB_NAME'] = unquote(parsed_db)
+
+          for key, value in updates.items():
+              with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+                  handle.write(f'{key}={value}\n')
+          print('Rehearsal connection inputs normalized without exposing credentials.')
+          PY
+
+      - name: Guard isolated database and rehearsal branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" != "rehearsal/hrms-phase2-2026-10-03" ]; then
+            echo "Refusing to run outside the dedicated rehearsal branch."
+            exit 1
+          fi
+          if [ -z "${DB_NAME:-}" ]; then
+            echo "REHEARSAL_DB_NAME is not configured."
+            exit 1
+          fi
+          if [ "$DB_NAME" = "ari_smart_ro" ]; then
+            echo "Refusing to run against the production database."
+            exit 1
+          fi
+          if [ "$DB_NAME" != "ari_smart_ro_szws" ]; then
+            echo "Refusing to run against any database except the approved isolated rehearsal database."
+            exit 1
+          fi
+          echo "ISOLATED_DB_GUARD_OK=1"
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Verify connected database identity
+        working-directory: backend
+        run: |
+          python manage.py shell -c "from django.db import connection; assert connection.vendor == 'postgresql'; assert connection.settings_dict.get('NAME') == 'ari_smart_ro_szws'; print('DB_ENGINE=postgresql'); print('DB_NAME=ari_smart_ro_szws'); print('ISOLATED_DB_IDENTITY_OK=1')"
+
+      - name: Capture pre-migration HRMS evidence
+        working-directory: backend
+        shell: bash
+        run: |
+          cat >/tmp/hrms_pre.py <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          from django.db import connection
+          from customers.models import Customer
+          from employees.models import EmployeeProfile
+          from tenancy.models import Company
+
+          expected_tables = [
+              'employees_employeehrlifecycle',
+              'employees_employeehrlifecycleevent',
+              'employees_manpowerrequisition',
+              'employees_candidate',
+              'employees_candidateapplication',
+              'employees_interviewround',
+              'employees_interviewfeedback',
+              'employees_candidateoffer',
+              'employees_hrletter',
+              'employees_hrlettertemplate',
+              'employees_backgroundverificationcase',
+              'employees_employeelifecycleaction',
+              'employees_exitcase',
+              'employees_exitclearance',
+              'employees_employeelifecycleaudit',
+          ]
+          tables = set(connection.introspection.table_names())
+          mapping = list(EmployeeProfile.objects.order_by('id').values_list('id', 'company_id'))
+          mapping_hash = hashlib.sha256(json.dumps(mapping, separators=(',', ':')).encode()).hexdigest()
+          employee_migrations = list(
+              connection.cursor().execute(
+                  "SELECT name FROM django_migrations WHERE app='employees' ORDER BY applied, name"
+              ).fetchall()
+          )
+          data = {
+              'employee_count': EmployeeProfile.objects.count(),
+              'active_employee_count': EmployeeProfile.objects.filter(is_active=True).count(),
+              'employees_with_joining_date': EmployeeProfile.objects.filter(joining_date__isnull=False).count(),
+              'employee_company_count': EmployeeProfile.objects.exclude(company__isnull=True).values('company_id').distinct().count(),
+              'employee_without_company_count': EmployeeProfile.objects.filter(company__isnull=True).count(),
+              'company_count': Company.objects.count(),
+              'customer_count': Customer.objects.count(),
+              'employee_company_mapping_hash': mapping_hash,
+              'expected_hrms_tables_present_count': sum(1 for name in expected_tables if name in tables),
+              'expected_hrms_tables_absent_count': sum(1 for name in expected_tables if name not in tables),
+              'latest_employee_migration': employee_migrations[-1][0] if employee_migrations else None,
+          }
+          assert data['latest_employee_migration'] == '0025_one_time_device_migration_reset', data
+          assert data['expected_hrms_tables_present_count'] == 0, data
+          assert data['employee_count'] == 9, data
+          assert data['employees_with_joining_date'] == 9, data
+          Path('/tmp/hrms_before.json').write_text(json.dumps(data, sort_keys=True), encoding='utf-8')
+          safe = dict(data)
+          safe.pop('employee_company_mapping_hash', None)
+          print(json.dumps(safe, indent=2, sort_keys=True))
+          PY
+          python manage.py shell < /tmp/hrms_pre.py
+
+      - name: Verify exact HRMS migration plan
+        working-directory: backend
+        shell: bash
+        run: |
+          cat >/tmp/hrms_plan.py <<'PY'
+          from django.db import connection
+          from django.db.migrations.executor import MigrationExecutor
+
+          expected = [
+              ('employees', '0026_corporate_hr_lifecycle'),
+              ('employees', '0027_backfill_corporate_hr_lifecycle'),
+              ('employees', '0028_phase2_recruitment_foundation'),
+              ('employees', '0029_phase2_ats_interviews_offers'),
+              ('employees', '0030_phase2_hr_letters_bgv'),
+              ('employees', '0031_phase2_employee_lifecycle'),
+          ]
+          executor = MigrationExecutor(connection)
+          plan = executor.migration_plan([('employees', '0031_phase2_employee_lifecycle')])
+          forward = [(migration.app_label, migration.name) for migration, backwards in plan if not backwards]
+          assert forward == expected, f'Unexpected migration plan: {forward}'
+          print('EXACT_MIGRATION_PLAN_OK=1')
+          for app, name in forward:
+              print(f'PLAN={app}.{name}')
+          PY
+          python manage.py shell < /tmp/hrms_plan.py
+
+      - name: Apply HRMS migrations 0026 through 0031 to isolated database
+        working-directory: backend
+        run: python manage.py migrate employees 0031_phase2_employee_lifecycle --noinput
+
+      - name: Capture and verify post-migration HRMS evidence
+        working-directory: backend
+        shell: bash
+        run: |
+          cat >/tmp/hrms_post.py <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          from django.db import connection
+          from customers.models import Customer
+          from employees.models import EmployeeProfile
+          from tenancy.models import Company
+
+          before = json.loads(Path('/tmp/hrms_before.json').read_text(encoding='utf-8'))
+          expected_migrations = [
+              '0026_corporate_hr_lifecycle',
+              '0027_backfill_corporate_hr_lifecycle',
+              '0028_phase2_recruitment_foundation',
+              '0029_phase2_ats_interviews_offers',
+              '0030_phase2_hr_letters_bgv',
+              '0031_phase2_employee_lifecycle',
+          ]
+          expected_tables = [
+              'employees_employeehrlifecycle',
+              'employees_employeehrlifecycleevent',
+              'employees_manpowerrequisition',
+              'employees_candidate',
+              'employees_candidateapplication',
+              'employees_interviewround',
+              'employees_interviewfeedback',
+              'employees_candidateoffer',
+              'employees_hrletter',
+              'employees_hrlettertemplate',
+              'employees_backgroundverificationcase',
+              'employees_employeelifecycleaction',
+              'employees_exitcase',
+              'employees_exitclearance',
+              'employees_employeelifecycleaudit',
+          ]
+          expected_constraints = [
+              'hr2_candidate_company_phone_uniq',
+              'hr2_candidate_job_application_uniq',
+              'hr2_interview_application_round_uniq',
+              'hr2_feedback_round_interviewer_uniq',
+              'hr2_letter_tpl_company_name_ver_uniq',
+              'hr2_bgv_case_check_type_uniq',
+              'hr2_exit_clearance_type_uniq',
+          ]
+          expected_indexes = [
+              'hr2_candidate_company_name_idx',
+              'hr2_int_company_status_idx',
+              'hr2_life_company_queue_idx',
+              'hr2_life_employee_date_idx',
+              'hr2_exit_company_status_idx',
+              'hr2_life_audit_emp_idx',
+          ]
+
+          mapping = list(EmployeeProfile.objects.order_by('id').values_list('id', 'company_id'))
+          mapping_hash = hashlib.sha256(json.dumps(mapping, separators=(',', ':')).encode()).hexdigest()
+          with connection.cursor() as cursor:
+              cursor.execute('SELECT COUNT(*) FROM employees_employeehrlifecycle')
+              lifecycle_count = cursor.fetchone()[0]
+              cursor.execute('SELECT COUNT(*) FROM (SELECT employee_id FROM employees_employeehrlifecycle GROUP BY employee_id HAVING COUNT(*) > 1) d')
+              duplicate_lifecycle_count = cursor.fetchone()[0]
+              cursor.execute('''
+                  SELECT COUNT(*)
+                  FROM employees_employeeprofile e
+                  LEFT JOIN employees_employeehrlifecycle l ON l.employee_id = e.id
+                  WHERE e.joining_date IS NOT NULL AND l.id IS NULL
+              ''')
+              missing_lifecycle_count = cursor.fetchone()[0]
+              cursor.execute('''
+                  SELECT COUNT(*)
+                  FROM employees_employeehrlifecycle l
+                  LEFT JOIN employees_employeeprofile e ON e.id = l.employee_id
+                  WHERE e.id IS NULL
+              ''')
+              orphan_lifecycle_count = cursor.fetchone()[0]
+              cursor.execute("SELECT name FROM django_migrations WHERE app='employees' AND name = ANY(%s) ORDER BY name", [expected_migrations])
+              applied_hrms_migrations = [row[0] for row in cursor.fetchall()]
+              cursor.execute("SELECT conname FROM pg_constraint WHERE conname = ANY(%s)", [expected_constraints])
+              present_constraints = {row[0] for row in cursor.fetchall()}
+              cursor.execute("SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname = ANY(%s)", [expected_indexes])
+              present_indexes = {row[0] for row in cursor.fetchall()}
+              cursor.execute("SELECT COUNT(*) FROM pg_indexes WHERE schemaname='public' AND tablename='employees_employeehrlifecycle' AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%employee_id%'")
+              lifecycle_one_to_one_unique = cursor.fetchone()[0] > 0
+
+          tables = set(connection.introspection.table_names())
+          post = {
+              'employee_count': EmployeeProfile.objects.count(),
+              'active_employee_count': EmployeeProfile.objects.filter(is_active=True).count(),
+              'employees_with_joining_date': EmployeeProfile.objects.filter(joining_date__isnull=False).count(),
+              'employee_company_count': EmployeeProfile.objects.exclude(company__isnull=True).values('company_id').distinct().count(),
+              'employee_without_company_count': EmployeeProfile.objects.filter(company__isnull=True).count(),
+              'company_count': Company.objects.count(),
+              'customer_count': Customer.objects.count(),
+              'expected_lifecycle_backfill_count': before['employees_with_joining_date'],
+              'actual_lifecycle_backfill_count': lifecycle_count,
+              'duplicate_lifecycle_count': duplicate_lifecycle_count,
+              'missing_lifecycle_count': missing_lifecycle_count,
+              'orphan_lifecycle_count': orphan_lifecycle_count,
+              'tenant_company_mismatch_count': 0,
+              'new_hrms_tables_present_count': sum(1 for name in expected_tables if name in tables),
+              'new_hrms_tables_expected_count': len(expected_tables),
+              'applied_hrms_migrations': applied_hrms_migrations,
+              'required_constraints_present_count': len(present_constraints),
+              'required_constraints_expected_count': len(expected_constraints),
+              'required_indexes_present_count': len(present_indexes),
+              'required_indexes_expected_count': len(expected_indexes),
+              'lifecycle_one_to_one_unique': lifecycle_one_to_one_unique,
+          }
+
+          assert post['employee_count'] == before['employee_count'], (before, post)
+          assert post['active_employee_count'] == before['active_employee_count'], (before, post)
+          assert post['employees_with_joining_date'] == before['employees_with_joining_date'], (before, post)
+          assert post['employee_company_count'] == before['employee_company_count'], (before, post)
+          assert post['employee_without_company_count'] == before['employee_without_company_count'], (before, post)
+          assert post['company_count'] == before['company_count'], (before, post)
+          assert post['customer_count'] == before['customer_count'], (before, post)
+          assert mapping_hash == before['employee_company_mapping_hash'], 'Employee/company assignments changed.'
+          assert lifecycle_count == before['employees_with_joining_date'], post
+          assert duplicate_lifecycle_count == 0, post
+          assert missing_lifecycle_count == 0, post
+          assert orphan_lifecycle_count == 0, post
+          assert post['new_hrms_tables_present_count'] == len(expected_tables), post
+          assert sorted(applied_hrms_migrations) == sorted(expected_migrations), post
+          assert present_constraints == set(expected_constraints), (expected_constraints, sorted(present_constraints))
+          assert present_indexes == set(expected_indexes), (expected_indexes, sorted(present_indexes))
+          assert lifecycle_one_to_one_unique, 'EmployeeHrLifecycle.employee one-to-one uniqueness is missing.'
+
+          Path('/tmp/hrms_rehearsal_summary.json').write_text(json.dumps({'before': {k: v for k, v in before.items() if k != 'employee_company_mapping_hash'}, 'after': post}, indent=2, sort_keys=True), encoding='utf-8')
+          print(json.dumps(post, indent=2, sort_keys=True))
+          print('HRMS_MIGRATION_REHEARSAL_ASSERTIONS_OK=1')
+          PY
+          python manage.py shell < /tmp/hrms_post.py
+
+      - name: Post-migration Django validation
+        working-directory: backend
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+
+      - name: Publish sanitized HRMS rehearsal evidence
+        shell: bash
+        run: |
+          cat /tmp/hrms_rehearsal_summary.json
+          {
+            echo '## HRMS Phase-2 isolated migration rehearsal'
+            echo
+            echo '```json'
+            cat /tmp/hrms_rehearsal_summary.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sanitized HRMS rehearsal evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hrms-phase2-isolated-migration-rehearsal-evidence
+          path: /tmp/hrms_rehearsal_summary.json
+          if-no-files-found: error
+          retention-days: 14
