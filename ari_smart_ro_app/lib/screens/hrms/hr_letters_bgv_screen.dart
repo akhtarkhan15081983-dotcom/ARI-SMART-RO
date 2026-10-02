@@ -74,9 +74,9 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        appBar: AppBar(title: Text('HR Letters & Background Verification')),
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        appBar: AppBar(title: const Text('HR Letters & Background Verification')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
     if (_error != null) {
