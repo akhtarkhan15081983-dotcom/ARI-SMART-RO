@@ -6,6 +6,13 @@ String _read(String relativePath) => File(relativePath).readAsStringSync();
 
 void main() {
   group('Corporate HRMS Phase-2 Digital HR Letters + BGV contracts', () {
+    test('Corporate HRMS command center links HR Letters and BGV', () {
+      final source = _read('lib/screens/hrms/hrms_screen.dart');
+      expect(source, contains("import 'hr_letters_bgv_screen.dart';"));
+      expect(source, contains('HR Letters & BGV'));
+      expect(source, contains('HrLettersBgvScreen'));
+    });
+
     test('service covers letters and BGV backend endpoints', () {
       final source = _read('lib/services/corporate_hrms_service.dart');
       for (final endpoint in <String>[
@@ -51,6 +58,8 @@ void main() {
         'ISSUE IMMUTABLE LETTER',
         'Issued snapshot is final and read-only.',
         'Acknowledgement due',
+        'ACKNOWLEDGE',
+        'DECLINE',
       ]) {
         expect(source, contains(label), reason: 'Missing letters UI contract $label');
       }
@@ -58,12 +67,14 @@ void main() {
       expect(source, contains('createLetterTemplate'));
       expect(source, contains('createLetterWorkflow'));
       expect(source, contains('letterWorkflowAction'));
+      expect(source, contains('acknowledgeLetter'));
     });
 
     test('workspace exposes BGV checklist, decisions and READY policy', () {
       final source = _read('lib/screens/hrms/hr_letters_bgv_screen.dart');
       for (final value in <String>[
         'Background Verification',
+        'START BGV CASE',
         'Verification checklist',
         'IDENTITY',
         'ADDRESS',
@@ -81,6 +92,7 @@ void main() {
       ]) {
         expect(source, contains(value), reason: 'Missing BGV UI contract $value');
       }
+      expect(source, contains('createBgvCase'));
       expect(source, contains('upsertBgvCheck'));
       expect(source, contains('decideBgv'));
       expect(source, contains('updateBgvPolicy'));
