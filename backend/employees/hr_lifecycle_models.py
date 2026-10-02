@@ -5,6 +5,7 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 
 
 class EmployeeHrLifecycle(models.Model):
@@ -100,7 +101,14 @@ class EmployeeHrLifecycleEvent(models.Model):
         return f"{self.employee.employee_id} - {self.event_type}"
 
 
+def _coerce_date(value):
+    if isinstance(value, str):
+        value = parse_date(value)
+    return value or timezone.localdate()
+
+
 def _add_months(value, months):
+    value = _coerce_date(value)
     total = value.year * 12 + (value.month - 1) + months
     year, month0 = divmod(total, 12)
     month = month0 + 1
@@ -113,7 +121,7 @@ def ensure_hr_lifecycle(sender, instance, created, **kwargs):
     """Every employee gets a durable HR lifecycle record without changing legacy APIs."""
     if not created:
         return
-    start = instance.joining_date or timezone.localdate()
+    start = _coerce_date(instance.joining_date)
     EmployeeHrLifecycle.objects.get_or_create(
         employee=instance,
         defaults={
