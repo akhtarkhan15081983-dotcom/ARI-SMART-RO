@@ -8,11 +8,16 @@ from .hr_phase2_letters_bgv import (
     BGV_CHECK_TYPES,
     BackgroundVerificationCaseAPIView as BaseBackgroundVerificationCaseAPIView,
     BgvPolicyAPIView as BaseBgvPolicyAPIView,
+    HrLetterWorkflowActionAPIView as BaseHrLetterWorkflowActionAPIView,
     _audit,
     _case_payload,
     _employee,
 )
-from .hr_phase2_letters_bgv_models import BackgroundVerificationCase, BgvPolicy
+from .hr_phase2_letters_bgv_models import (
+    BackgroundVerificationCase,
+    BgvPolicy,
+    HrLetterWorkflow,
+)
 from .hr_phase2_recruitment_models import CandidateApplication
 
 
@@ -114,3 +119,28 @@ class BackgroundVerificationCaseAPIView(BaseBackgroundVerificationCaseAPIView):
             to_status=row.overall_status,
         )
         return Response(_case_payload(row), status=201)
+
+
+class HrLetterWorkflowActionAPIView(BaseHrLetterWorkflowActionAPIView):
+    @transaction.atomic
+    def post(self, request, workflow_id):
+        company = request_company(request)
+        action = str(request.data.get("action") or "").upper()
+        if action == "ISSUE":
+            row = (
+                HrLetterWorkflow.objects.select_for_update()
+                .filter(company=company, pk=workflow_id)
+                .select_related("issued_letter")
+                .first()
+            )
+            if row is None:
+                return Response({"detail": "Letter workflow not found."}, status=404)
+            if row.issued_letter_id:
+                return Response({
+                    "id": row.id,
+                    "status": "ISSUED",
+                    "issued_letter_id": row.issued_letter_id,
+                    "content_hash": row.issued_letter.content_hash,
+                    "idempotent": True,
+                })
+        return super().post(request, workflow_id)
