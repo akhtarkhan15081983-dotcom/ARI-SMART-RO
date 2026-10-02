@@ -26,10 +26,12 @@ from .device_health_security import (
 )
 from .location_batch import EmployeeLocationBatchAPIView
 from .route_history import EmployeeDayRouteAPIView
-from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
-from .hr_lifecycle import (
+from .hrms import EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
+from .hr_phase1 import (
     CorporateHrDashboardAPIView,
     EmployeeDigitalHrFileAPIView,
+    EmployeeDocumentComplianceAPIView,
+    EmployeeDocumentWorkflowAPIView,
     EmployeeHrDirectoryAPIView,
     EmployeeHrLifecycleActionAPIView,
 )
@@ -89,6 +91,7 @@ urlpatterns = [
     path("employees/hrms/directory/", EmployeeHrDirectoryAPIView.as_view(), name="hrms-employee-directory"),
     path("employees/hrms/employees/<int:employee_id>/", EmployeeDigitalHrFileAPIView.as_view(), name="hrms-digital-employee-file"),
     path("employees/hrms/employees/<int:employee_id>/profile/", EmployeeHrProfileAdminAPIView.as_view(), name="hrms-employee-profile-admin"),
+    path("employees/hrms/employees/<int:employee_id>/documents/", EmployeeDocumentWorkflowAPIView.as_view(), name="hrms-employee-documents"),
     path("employees/hrms/employees/<int:employee_id>/action/", EmployeeHrLifecycleActionAPIView.as_view(), name="hrms-employee-lifecycle-action"),
     path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
     path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
@@ -118,54 +121,14 @@ urlpatterns = [
     path("employees/hrms/training/certificates/verify/<str:code>/", TrainingCertificateVerifyAPIView.as_view(), name="hrms-training-certificate-verify"),
     path("employees/hrms/training/certificates/<str:code>/pdf/", TrainingCertificatePDFAPIView.as_view(), name="hrms-training-certificate-pdf"),
     path("employees/hrms/reports/payroll.xlsx", PayrollExcelReportAPIView.as_view(), name="hrms-payroll-excel"),
-    path(
-        "employees/live-location/",
-        AttendanceAwareLiveLocationAPIView.as_view(),
-        name="live-location",
-    ),
-    path(
-        "employees/live-location/batch/",
-        EmployeeLocationBatchAPIView.as_view(),
-        name="live-location-batch",
-    ),
-    path(
-        "employees/live-map/",
-        EngineerLiveMapAPIView.as_view(),
-        name="live-map",
-    ),
-    path(
-        "employees/day-route/",
-        EmployeeDayRouteAPIView.as_view(),
-        name="employee-day-route",
-    ),
-    path(
-        "employees/profile/",
-        EmployeeProfileAPIView.as_view(),
-        name="employee-profile",
-    ),
-    path(
-        "employees/face-enrollment/",
-        SecureFaceEnrollmentAPIView.as_view(),
-        name="face-enrollment",
-    ),
-    path(
-        "employees/admin/face-enrollments/",
-        TenantScopedAdminFaceEnrollmentListAPIView.as_view(),
-        name="admin-face-enrollment-list",
-    ),
-    path(
-        "employees/<int:employee_id>/face-enrollment-control/",
-        CombinedFaceEnrollmentControlAPIView.as_view(),
-        name="face-enrollment-control",
-    ),
-    path(
-        "employees/engineers/",
-        EngineerListAPIView.as_view(),
-        name="engineer-list",
-    ),
-    path(
-        "employees/assignment-employees/",
-        AssignmentEmployeeListAPIView.as_view(),
-        name="assignment-employees",
-    ),
+    path("employees/live-location/", AttendanceAwareLiveLocationAPIView.as_view(), name="live-location"),
+    path("employees/live-location/batch/", EmployeeLocationBatchAPIView.as_view(), name="live-location-batch"),
+    path("employees/live-map/", EngineerLiveMapAPIView.as_view(), name="live-map"),
+    path("employees/day-route/", EmployeeDayRouteAPIView.as_view(), name="employee-day-route"),
+    path("employees/profile/", EmployeeProfileAPIView.as_view(), name="employee-profile"),
+    path("employees/face-enrollment/", SecureFaceEnrollmentAPIView.as_view(), name="face-enrollment"),
+    path("employees/admin/face-enrollments/", TenantScopedAdminFaceEnrollmentListAPIView.as_view(), name="admin-face-enrollment-list"),
+    path("employees/<int:employee_id>/face-enrollment-control/", CombinedFaceEnrollmentControlAPIView.as_view(), name="face-enrollment-control"),
+    path("employees/engineers/", EngineerListAPIView.as_view(), name="engineer-list"),
+    path("employees/assignment-employees/", AssignmentEmployeeListAPIView.as_view(), name="assignment-employees"),
 ]
