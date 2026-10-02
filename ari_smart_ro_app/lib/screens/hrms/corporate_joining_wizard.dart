@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/corporate_hrms_service.dart';
@@ -19,6 +20,9 @@ class CorporateJoiningWizard extends StatefulWidget {
 class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
   final _service = CorporateHrmsService();
   final _formKey = GlobalKey<FormState>();
+  final _documents = <String, PlatformFile>{};
+  final _documentNumbers = <String, TextEditingController>{};
+
   int _step = 0;
   bool _saving = false;
 
@@ -33,8 +37,6 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
   final pincode = TextEditingController();
   final emergencyName = TextEditingController();
   final emergencyPhone = TextEditingController();
-  final aadhaar = TextEditingController();
-  final pan = TextEditingController();
   final department = TextEditingController();
   final jobTitle = TextEditingController();
   final grade = TextEditingController();
@@ -51,16 +53,28 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
   int probationMonths = 3;
   int? reportingManagerId;
   DateTime joiningDate = DateTime.now();
-  bool incentiveEligible = true;
-  bool overtimeEligible = true;
   bool policyAcknowledged = false;
   bool sopAcknowledged = false;
   bool safetyAcknowledged = false;
-  bool aadhaarAvailable = false;
-  bool panAvailable = false;
-  bool addressProofAvailable = false;
-  bool bankProofAvailable = false;
-  bool qualificationAvailable = false;
+
+  static const documentTypes = <String, String>{
+    'PHOTO': 'Photo',
+    'AADHAAR': 'Aadhaar',
+    'PAN': 'PAN',
+    'ADDRESS_PROOF': 'Address Proof',
+    'BANK_PROOF': 'Bank Proof',
+    'QUALIFICATION': 'Qualification',
+    'PREVIOUS_EMPLOYMENT': 'Previous Employment',
+    'OTHER': 'Other company-required document',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    for (final type in documentTypes.keys) {
+      _documentNumbers[type] = TextEditingController();
+    }
+  }
 
   @override
   void dispose() {
@@ -76,8 +90,6 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
       pincode,
       emergencyName,
       emergencyPhone,
-      aadhaar,
-      pan,
       department,
       jobTitle,
       grade,
@@ -87,6 +99,7 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
       bankAccount,
       ifsc,
       password,
+      ..._documentNumbers.values,
     ]) {
       controller.dispose();
     }
@@ -103,21 +116,11 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
         isDense: true,
       );
 
-  Widget _gap() => const SizedBox(height: 12);
-
   @override
   Widget build(BuildContext context) {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('New Employee Joining'),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Center(child: Text('CORPORATE ONBOARDING')),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('New Employee Joining')),
       body: Form(
         key: _formKey,
         child: Stepper(
@@ -125,33 +128,28 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
           currentStep: _step,
           onStepTapped: (value) => setState(() => _step = value),
           controlsBuilder: (context, details) => Padding(
-            padding: const EdgeInsets.only(top: 20),
+            padding: const EdgeInsets.only(top: 16),
             child: Row(
               children: [
                 if (_step > 0)
-                  OutlinedButton.icon(
-                    onPressed: _saving
-                        ? null
-                        : () => setState(() => _step -= 1),
-                    icon: const Icon(Icons.arrow_back),
-                    label: const Text('BACK'),
+                  OutlinedButton(
+                    onPressed: _saving ? null : () => setState(() => _step -= 1),
+                    child: const Text('BACK'),
                   ),
                 const Spacer(),
                 FilledButton.icon(
                   onPressed: _saving
                       ? null
-                      : (_step == 6
-                          ? _submit
-                          : () => setState(() => _step += 1)),
+                      : (_step == 5 ? _submit : () => setState(() => _step += 1)),
                   icon: _saving
                       ? const SizedBox.square(
                           dimension: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Icon(_step == 6 ? Icons.how_to_reg : Icons.arrow_forward),
+                      : Icon(_step == 5 ? Icons.how_to_reg : Icons.arrow_forward),
                   label: Text(_saving
                       ? 'CREATING...'
-                      : (_step == 6 ? 'CREATE EMPLOYEE' : 'CONTINUE')),
+                      : (_step == 5 ? 'CREATE EMPLOYEE' : 'CONTINUE')),
                 ),
               ],
             ),
@@ -160,42 +158,31 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
             Step(
               title: const Text('Personal'),
               isActive: _step >= 0,
-              content: _section('Personal details', [
+              content: _card('Personal & emergency information', [
                 _two(
                   TextFormField(
                     controller: firstName,
                     decoration: _decoration('First name *'),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
                   ),
-                  TextFormField(
-                    controller: lastName,
-                    decoration: _decoration('Last name'),
-                  ),
+                  TextFormField(controller: lastName, decoration: _decoration('Last name')),
                 ),
                 _gap(),
                 _two(
                   TextFormField(
                     controller: phone,
                     keyboardType: TextInputType.phone,
-                    maxLength: 10,
                     decoration: _decoration('Mobile *'),
-                    validator: (v) => (v ?? '').length == 10 ? null : '10 digits required',
+                    validator: (v) => (v ?? '').trim().length == 10 ? null : '10 digits required',
                   ),
-                  TextFormField(
-                    controller: email,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: _decoration('Email'),
-                  ),
+                  TextFormField(controller: email, decoration: _decoration('Email')),
                 ),
                 _gap(),
                 _two(
-                  TextFormField(
-                    controller: dob,
-                    decoration: _decoration('DOB', hint: 'YYYY-MM-DD'),
-                  ),
+                  TextFormField(controller: dob, decoration: _decoration('DOB', hint: 'YYYY-MM-DD')),
                   DropdownButtonFormField<String>(
                     initialValue: gender,
-                    decoration: _decoration('Gender *'),
+                    decoration: _decoration('Gender'),
                     items: const [
                       DropdownMenuItem(value: 'MALE', child: Text('Male')),
                       DropdownMenuItem(value: 'FEMALE', child: Text('Female')),
@@ -205,43 +192,28 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
                   ),
                 ),
                 _gap(),
-                TextFormField(
-                  controller: address,
-                  maxLines: 2,
-                  decoration: _decoration('Residential address'),
-                ),
+                TextFormField(controller: address, maxLines: 2, decoration: _decoration('Residential address')),
                 _gap(),
                 _three(
                   TextFormField(controller: city, decoration: _decoration('City')),
                   TextFormField(controller: state, decoration: _decoration('State')),
-                  TextFormField(
-                    controller: pincode,
-                    keyboardType: TextInputType.number,
-                    decoration: _decoration('Pincode'),
-                  ),
+                  TextFormField(controller: pincode, decoration: _decoration('Pincode')),
                 ),
                 _gap(),
                 _two(
-                  TextFormField(
-                    controller: emergencyName,
-                    decoration: _decoration('Emergency contact name'),
-                  ),
-                  TextFormField(
-                    controller: emergencyPhone,
-                    keyboardType: TextInputType.phone,
-                    decoration: _decoration('Emergency contact number'),
-                  ),
+                  TextFormField(controller: emergencyName, decoration: _decoration('Emergency contact name')),
+                  TextFormField(controller: emergencyPhone, decoration: _decoration('Emergency contact number')),
                 ),
               ]),
             ),
             Step(
               title: const Text('Employment'),
               isActive: _step >= 1,
-              content: _section('Employment details', [
+              content: _card('Employment setup', [
                 _two(
                   DropdownButtonFormField<String>(
                     initialValue: designation,
-                    decoration: _decoration('Designation *'),
+                    decoration: _decoration('Designation'),
                     items: const [
                       DropdownMenuItem(value: 'ENGINEER', child: Text('Engineer')),
                       DropdownMenuItem(value: 'OFFICE', child: Text('Office Staff')),
@@ -253,7 +225,7 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
                   TextFormField(
                     controller: jobTitle,
                     decoration: _decoration('Job title *'),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
                   ),
                 ),
                 _gap(),
@@ -261,7 +233,7 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
                   TextFormField(
                     controller: department,
                     decoration: _decoration('Department *'),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
                   ),
                   TextFormField(controller: grade, decoration: _decoration('Grade / level')),
                   TextFormField(controller: workLocation, decoration: _decoration('Work location')),
@@ -281,7 +253,7 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
                   ),
                   DropdownButtonFormField<int>(
                     initialValue: probationMonths,
-                    decoration: _decoration('Probation period'),
+                    decoration: _decoration('Probation months'),
                     items: const [1, 3, 6, 12]
                         .map((m) => DropdownMenuItem(value: m, child: Text('$m month${m == 1 ? '' : 's'}')))
                         .toList(),
@@ -295,7 +267,6 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
                     leading: const Icon(Icons.event_available),
                     title: const Text('Joining date'),
                     subtitle: Text(_date(joiningDate)),
-                    trailing: const Icon(Icons.edit_calendar),
                     onTap: _pickJoiningDate,
                   ),
                   DropdownButtonFormField<int?>(
@@ -315,15 +286,11 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
               ]),
             ),
             Step(
-              title: const Text('Compensation'),
+              title: const Text('Payroll'),
               isActive: _step >= 2,
-              content: _section('Compensation & payroll setup', [
+              content: _card('Payroll & bank setup', [
                 _two(
-                  TextFormField(
-                    controller: salary,
-                    keyboardType: TextInputType.number,
-                    decoration: _decoration('Monthly salary'),
-                  ),
+                  TextFormField(controller: salary, keyboardType: TextInputType.number, decoration: _decoration('Monthly salary')),
                   TextFormField(controller: bankName, decoration: _decoration('Bank name')),
                 ),
                 _gap(),
@@ -331,149 +298,76 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
                   TextFormField(controller: bankAccount, decoration: _decoration('Bank account number')),
                   TextFormField(controller: ifsc, decoration: _decoration('IFSC')),
                 ),
-                _gap(),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Incentive eligible'),
-                  value: incentiveEligible,
-                  onChanged: (v) => setState(() => incentiveEligible = v),
-                ),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Overtime eligible'),
-                  value: overtimeEligible,
-                  onChanged: (v) => setState(() => overtimeEligible = v),
-                ),
               ]),
             ),
             Step(
               title: const Text('Documents'),
               isActive: _step >= 3,
-              content: _section('Joining documents', [
-                _two(
-                  TextFormField(
-                    controller: aadhaar,
-                    keyboardType: TextInputType.number,
-                    decoration: _decoration('Aadhaar number'),
-                    onChanged: (_) => setState(() => aadhaarAvailable = aadhaar.text.trim().isNotEmpty),
-                  ),
-                  TextFormField(
-                    controller: pan,
-                    decoration: _decoration('PAN number'),
-                    onChanged: (_) => setState(() => panAvailable = pan.text.trim().isNotEmpty),
-                  ),
+              content: _card('Actual joining document uploads', [
+                const Text(
+                  'Mandatory documents remain MISSING until a real file is selected and uploaded. HR must verify each document before READY FOR DUTY.',
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
-                _gap(),
-                CheckboxListTile(
-                  value: addressProofAvailable,
-                  onChanged: (v) => setState(() => addressProofAvailable = v ?? false),
-                  title: const Text('Address proof available'),
-                  subtitle: const Text('Document record will remain pending verification until HR verifies it.'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                CheckboxListTile(
-                  value: bankProofAvailable,
-                  onChanged: (v) => setState(() => bankProofAvailable = v ?? false),
-                  title: const Text('Bank proof available'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                CheckboxListTile(
-                  value: qualificationAvailable,
-                  onChanged: (v) => setState(() => qualificationAvailable = v ?? false),
-                  title: const Text('Qualification / technical certificate available'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'HRMS will keep these as pending/unverified until the actual document record is verified. READY FOR DUTY cannot bypass missing mandatory documents without an audited HR override.',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ),
+                const SizedBox(height: 12),
+                ...documentTypes.entries.map(_documentRow),
               ]),
             ),
             Step(
-              title: const Text('Security'),
+              title: const Text('Controls'),
               isActive: _step >= 4,
-              content: _section('Security & access', [
+              content: _card('Security, acknowledgements & login', [
                 TextFormField(
                   controller: password,
                   obscureText: true,
-                  decoration: _decoration('Temporary password *', hint: '8+ characters with number/symbol'),
+                  decoration: _decoration('Temporary password *'),
                   validator: (v) => (v ?? '').length < 8 ? 'Minimum 8 characters' : null,
                 ),
                 _gap(),
-                const ListTile(
+                CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.badge_outlined),
-                  title: Text('Employee ID'),
-                  subtitle: Text('Generated automatically after employee creation.'),
+                  value: policyAcknowledged,
+                  onChanged: (v) => setState(() => policyAcknowledged = v ?? false),
+                  title: const Text('Company policy acknowledged'),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: sopAcknowledged,
+                  onChanged: (v) => setState(() => sopAcknowledged = v ?? false),
+                  title: const Text('SOP acknowledged'),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: safetyAcknowledged,
+                  onChanged: (v) => setState(() => safetyAcknowledged = v ?? false),
+                  title: const Text('Safety induction acknowledged'),
                 ),
                 const ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.face_retouching_natural),
-                  title: Text('Face enrollment'),
-                  subtitle: Text('Must be completed and verified before READY FOR DUTY.'),
+                  title: Text('Face + device registration'),
+                  subtitle: Text('Completed on employee device and must pass before READY FOR DUTY.'),
                 ),
-                const ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.phonelink_lock),
-                  title: Text('Device registration'),
-                  subtitle: Text('Attendance/login device binding is completed on the employee device.'),
-                ),
-              ]),
-            ),
-            Step(
-              title: const Text('Training'),
-              isActive: _step >= 5,
-              content: _section('Training & joining acknowledgements', [
                 const ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.school_outlined),
-                  title: Text('Mandatory 30-day ARI training'),
-                  subtitle: Text('Existing mandatory training assignment system will auto-sync for the employee.'),
-                ),
-                CheckboxListTile(
-                  value: policyAcknowledged,
-                  onChanged: (v) => setState(() => policyAcknowledged = v ?? false),
-                  title: const Text('Company policy acknowledged'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                CheckboxListTile(
-                  value: sopAcknowledged,
-                  onChanged: (v) => setState(() => sopAcknowledged = v ?? false),
-                  title: const Text('SOP acknowledged'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                CheckboxListTile(
-                  value: safetyAcknowledged,
-                  onChanged: (v) => setState(() => safetyAcknowledged = v ?? false),
-                  title: const Text('Safety & customer-service induction acknowledged'),
-                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text('Mandatory training'),
+                  subtitle: Text('Training completion remains a separate READY FOR DUTY gate.'),
                 ),
               ]),
             ),
             Step(
               title: const Text('Review'),
-              isActive: _step >= 6,
-              content: _section('Final HR review', [
-                _reviewRow('Employee', '${firstName.text} ${lastName.text}'.trim()),
-                _reviewRow('Role', '$jobTitle • $department'),
-                _reviewRow('Joining', _date(joiningDate)),
-                _reviewRow('Employment', '$employmentType • $probationMonths month probation'),
-                _reviewRow('Manager', reportingManagerId == null ? 'Pending assignment' : 'Assigned'),
-                _reviewRow('Documents declared', '${[
-                  aadhaarAvailable,
-                  panAvailable,
-                  addressProofAvailable,
-                  bankProofAvailable,
-                  qualificationAvailable,
-                ].where((e) => e).length}/5'),
-                _reviewRow('Policy/SOP/Safety', '${policyAcknowledged && sopAcknowledged && safetyAcknowledged ? 'Acknowledged' : 'Pending'}'),
+              isActive: _step >= 5,
+              content: _card('Final HR review', [
+                _review('Employee', '${firstName.text} ${lastName.text}'.trim()),
+                _review('Employment', employmentType),
+                _review('Department', department.text.trim()),
+                _review('Documents selected', '${_documents.length}/${documentTypes.length}'),
+                _review('Joining date', _date(joiningDate)),
                 const Divider(height: 28),
                 const Text(
-                  'Creating the employee does not automatically mark them READY FOR DUTY. Documents, face/device security, mandatory training and HR review remain gated and auditable.',
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                  'Employee creation does not mark READY FOR DUTY. Documents, face/device security, mandatory training, manager review and HR review remain enforced.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ]),
             ),
@@ -483,60 +377,98 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
     );
   }
 
-  Widget _section(String title, List<Widget> children) => Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1050),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 18),
-                  ...children,
-                ],
+  Widget _documentRow(MapEntry<String, String> entry) {
+    final selected = _documents[entry.key];
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(selected == null ? Icons.upload_file : Icons.check_circle_outline),
+                    title: Text(entry.value),
+                    subtitle: Text(selected?.name ?? (entry.key == 'OTHER' ? 'Optional / company-required' : 'Mandatory')),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _pickDocument(entry.key),
+                  icon: const Icon(Icons.attach_file),
+                  label: Text(selected == null ? 'SELECT' : 'CHANGE'),
+                ),
+              ],
+            ),
+            if (entry.key == 'AADHAAR' || entry.key == 'PAN')
+              TextField(
+                controller: _documentNumbers[entry.key],
+                decoration: _decoration('${entry.value} number'),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _card(String title, List<Widget> children) => ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1050),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 16),
+                ...children,
+              ],
             ),
           ),
         ),
       );
 
   Widget _two(Widget a, Widget b) => LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 700) {
-            return Column(children: [a, _gap(), b]);
-          }
-          return Row(children: [Expanded(child: a), const SizedBox(width: 12), Expanded(child: b)]);
-        },
+        builder: (context, constraints) => constraints.maxWidth < 700
+            ? Column(children: [a, _gap(), b])
+            : Row(children: [Expanded(child: a), const SizedBox(width: 12), Expanded(child: b)]),
       );
 
   Widget _three(Widget a, Widget b, Widget c) => LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 780) {
-            return Column(children: [a, _gap(), b, _gap(), c]);
-          }
-          return Row(children: [
-            Expanded(child: a),
-            const SizedBox(width: 12),
-            Expanded(child: b),
-            const SizedBox(width: 12),
-            Expanded(child: c),
-          ]);
-        },
+        builder: (context, constraints) => constraints.maxWidth < 780
+            ? Column(children: [a, _gap(), b, _gap(), c])
+            : Row(children: [
+                Expanded(child: a),
+                const SizedBox(width: 12),
+                Expanded(child: b),
+                const SizedBox(width: 12),
+                Expanded(child: c),
+              ]),
       );
 
-  Widget _reviewRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(width: 180, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700))),
-            Expanded(child: Text(value.isEmpty ? 'Pending' : value)),
-          ],
-        ),
+  Widget _review(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(children: [
+          SizedBox(width: 180, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700))),
+          Expanded(child: Text(value.isEmpty ? 'Pending' : value)),
+        ]),
       );
+
+  Widget _gap() => const SizedBox(height: 12);
+
+  Future<void> _pickDocument(String type) async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+    );
+    if (result != null && result.files.isNotEmpty) {
+      setState(() => _documents[type] = result.files.single);
+    }
+  }
 
   Future<void> _pickJoiningDate() async {
     final value = await showDatePicker(
@@ -550,9 +482,7 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Complete the required joining fields.')),
-      );
+      _message('Complete all required joining fields.');
       return;
     }
     setState(() => _saving = true);
@@ -583,8 +513,6 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
 
       await _service.updateProfile(employeeId, {
         if (dob.text.trim().isNotEmpty) 'date_of_birth': dob.text.trim(),
-        'aadhaar_number': aadhaar.text.trim(),
-        'pan_number': pan.text.trim().toUpperCase(),
         'address': address.text.trim(),
         'city': city.text.trim(),
         'state': state.text.trim(),
@@ -606,18 +534,7 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
         'sop_acknowledged': sopAcknowledged,
         'safety_training_acknowledged': safetyAcknowledged,
         'payroll_details_complete': bankAccount.text.trim().isNotEmpty && ifsc.text.trim().isNotEmpty,
-        'role_access_assigned': true,
-        'compensation_profile': {
-          'salary_structure': 'MONTHLY',
-          'incentive_eligible': incentiveEligible,
-          'overtime_eligible': overtimeEligible,
-        },
         'joining_checklist': {
-          'aadhaar_declared': aadhaarAvailable,
-          'pan_declared': panAvailable,
-          'address_proof_declared': addressProofAvailable,
-          'bank_proof_declared': bankProofAvailable,
-          'qualification_declared': qualificationAvailable,
           'bank_name': bankName.text.trim(),
           'bank_account_last4': bankAccount.text.trim().length >= 4
               ? bankAccount.text.trim().substring(bankAccount.text.trim().length - 4)
@@ -627,24 +544,28 @@ class _CorporateJoiningWizardState extends State<CorporateJoiningWizard> {
         'note': 'Corporate joining wizard completed by HR.',
       });
 
+      for (final entry in _documents.entries) {
+        await _service.uploadEmployeeDocument(
+          employeeId,
+          documentType: entry.key,
+          file: entry.value,
+          documentNumber: _documentNumbers[entry.key]?.text.trim() ?? '',
+        );
+      }
+
       if (!mounted) return;
       widget.onCompleted();
       Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${employee['employee_id']} created. Complete documents, security, training and HR review before Ready for Duty.',
-          ),
-        ),
-      );
+      _message('${employee['employee_id']} created. Uploaded documents are pending HR verification.');
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
-        );
-      }
+      _message(error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _message(String value) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
   }
 }
