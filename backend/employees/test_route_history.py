@@ -69,22 +69,27 @@ class EmployeeDayRouteTests(TestCase):
         )
 
     def test_engineer_can_read_own_day_route_and_tracking_gap(self):
-        now = timezone.now().replace(microsecond=0)
+        # Anchor both route points 20-30 minutes in the past so a test running
+        # just after local midnight still queries the calendar day that owns
+        # both captured timestamps.
+        route_end = timezone.now().replace(microsecond=0) - timedelta(minutes=20)
+        route_start = route_end - timedelta(minutes=10)
         EmployeeLocationPoint.objects.create(
             employee=self.engineer,
             latitude=Decimal("27.1490000"),
             longitude=Decimal("78.0450000"),
-            captured_at=now - timedelta(minutes=10),
+            captured_at=route_start,
         )
         EmployeeLocationPoint.objects.create(
             employee=self.engineer,
             latitude=Decimal("27.1500000"),
             longitude=Decimal("78.0460000"),
-            captured_at=now,
+            captured_at=route_end,
         )
         self.client.force_authenticate(user=self.engineer_user)
+        route_date = timezone.localtime(route_end).date()
         response = self.client.get(
-            f"/api/employees/day-route/?date={timezone.localdate().isoformat()}"
+            f"/api/employees/day-route/?date={route_date.isoformat()}"
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["point_count"], 2)
