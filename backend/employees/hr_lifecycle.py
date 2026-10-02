@@ -9,7 +9,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from attendance.models import Attendance
-from tenancy.access import HasRequiredFeature, request_company
+from tenancy.access import HasRequiredFeature, effective_role_features, request_company
+from tenancy.models import CompanyMembership
 
 from .hr_lifecycle_models import EmployeeHrLifecycle, EmployeeHrLifecycleEvent, _add_months
 from .models import (
@@ -79,9 +80,34 @@ def _training_compliance(employee):
     }
 
 
+def _role_access_compliance(employee):
+    role = str(getattr(employee.user, "role", "") or "").upper()
+    membership = CompanyMembership.objects.filter(
+        company=employee.company,
+        user=employee.user,
+        is_active=True,
+    ).exists()
+    if role == "ADMIN":
+        features = ["ALL"]
+        allowed = membership
+    elif role in {"MANAGER", "OFFICE", "CALLING", "ENGINEER"} and employee.company_id:
+        features = sorted(effective_role_features(employee.company, role))
+        allowed = membership and bool(features)
+    else:
+        features = []
+        allowed = False
+    return {
+        "complete": allowed,
+        "role": role,
+        "membership_active": membership,
+        "effective_features": features,
+    }
+
+
 def _readiness(employee, lifecycle):
     documents = _document_compliance(employee)
     training = _training_compliance(employee)
+    role_access = _role_access_compliance(employee)
     profile_complete = bool(
         employee.user.first_name
         and employee.joining_date
@@ -100,6 +126,7 @@ def _readiness(employee, lifecycle):
         and lifecycle.sop_acknowledged
         and lifecycle.safety_training_acknowledged
     )
+    manager_review_complete = lifecycle.manager_review_status == "APPROVED"
     hr_review_complete = lifecycle.hr_review_status == "APPROVED"
     checks = {
         "profile": profile_complete,
@@ -108,10 +135,12 @@ def _readiness(employee, lifecycle):
         "training": training["complete"],
         "acknowledgements": acknowledgements_complete,
         "payroll": lifecycle.payroll_details_complete,
-        "role_access": lifecycle.role_access_assigned,
+        "role_access": role_access["complete"],
+        "manager_review": manager_review_complete,
         "hr_review": hr_review_complete,
     }
-    ready = all(checks.values()) or lifecycle.hr_override_ready
+    ready_without_override = all(checks.values())
+    ready = ready_without_override or lifecycle.hr_override_ready
     if not profile_complete:
         stage = "PROFILE_PENDING"
     elif not documents["complete"]:
@@ -120,22 +149,41 @@ def _readiness(employee, lifecycle):
         stage = "SECURITY_PENDING"
     elif not training["complete"] or not acknowledgements_complete:
         stage = "TRAINING_PENDING"
-    elif not lifecycle.payroll_details_complete or not lifecycle.role_access_assigned or not hr_review_complete:
+    elif (
+        not lifecycle.payroll_details_complete
+        or not role_access["complete"]
+        or not manager_review_complete
+        or not hr_review_complete
+    ):
         stage = "HR_REVIEW"
     else:
         stage = "READY"
     if lifecycle.hr_override_ready:
         stage = "READY"
+
+    update_fields = []
+    if lifecycle.role_access_assigned != role_access["complete"]:
+        lifecycle.role_access_assigned = role_access["complete"]
+        update_fields.append("role_access_assigned")
     if lifecycle.hr_stage != stage:
         lifecycle.hr_stage = stage
-        lifecycle.save(update_fields=["hr_stage", "updated_at"])
+        update_fields.append("hr_stage")
+    if stage == "READY" and lifecycle.employment_status == "ONBOARDING":
+        lifecycle.employment_status = "PROBATION" if lifecycle.employment_type == "PROBATION" else lifecycle.employment_type
+        update_fields.append("employment_status")
+    if update_fields:
+        lifecycle.save(update_fields=[*update_fields, "updated_at"])
+
     return {
         "ready": ready,
+        "ready_without_override": ready_without_override,
         "stage": stage,
         "checks": checks,
         "documents": documents,
         "training": training,
+        "role_access": role_access,
         "override": lifecycle.hr_override_ready,
+        "override_reason": lifecycle.hr_override_reason,
     }
 
 
@@ -180,7 +228,6 @@ class CorporateHrDashboardAPIView(APIView):
             return Response({"detail": "Active company workspace not found."}, status=403)
         today = timezone.localdate()
         month_start = today.replace(day=1)
-        month_end = today.replace(day=monthrange(today.year, today.month)[1])
         employees = EmployeeProfile.objects.filter(company=company, is_active=True).select_related("user")
         employee_ids = list(employees.values_list("id", flat=True))
         lifecycle_rows = EmployeeHrLifecycle.objects.filter(employee_id__in=employee_ids)
@@ -415,7 +462,7 @@ class EmployeeDigitalHrFileAPIView(APIView):
         allowed_fields = {
             "employment_type", "work_location", "probation_months",
             "policy_acknowledged", "sop_acknowledged", "safety_training_acknowledged",
-            "payroll_details_complete", "role_access_assigned", "joining_checklist",
+            "payroll_details_complete", "joining_checklist",
             "compensation_profile", "manager_review_note", "hr_review_note",
         }
         for field in allowed_fields:
@@ -465,6 +512,8 @@ class EmployeeHrLifecycleActionAPIView(APIView):
             lifecycle.hr_review_status = str(request.data.get("status") or "APPROVED").upper()
             lifecycle.hr_review_note = note
         elif action == "EXTEND_PROBATION":
+            if not note:
+                return Response({"detail": "Probation extension reason is required."}, status=400)
             months = max(1, min(12, int(request.data.get("months") or 1)))
             lifecycle.employment_status = "PROBATION"
             lifecycle.confirmation_due_date = _add_months(lifecycle.confirmation_due_date or today, months)
@@ -491,11 +540,15 @@ class EmployeeHrLifecycleActionAPIView(APIView):
             employee.user.is_active = False
             employee.user.save(update_fields=["is_active"])
         elif action == "OVERRIDE_READY":
+            if _role(request) != "ADMIN":
+                return Response({"detail": "Only admin can override Ready for Duty controls."}, status=403)
             if not note:
                 return Response({"detail": "HR override reason is required."}, status=400)
             lifecycle.hr_override_ready = True
             lifecycle.hr_override_reason = note[:500]
         elif action == "REMOVE_READY_OVERRIDE":
+            if _role(request) != "ADMIN":
+                return Response({"detail": "Only admin can remove a Ready for Duty override."}, status=403)
             lifecycle.hr_override_ready = False
             lifecycle.hr_override_reason = ""
         else:
@@ -509,7 +562,11 @@ class EmployeeHrLifecycleActionAPIView(APIView):
             from_status=before,
             to_status=lifecycle.employment_status,
             note=note,
-            metadata={"hr_stage": lifecycle.hr_stage},
+            metadata={
+                "hr_stage": lifecycle.hr_stage,
+                "override": lifecycle.hr_override_ready,
+                "readiness_checks": payload["readiness"]["checks"],
+            },
             created_by=request.user,
         )
         return Response({"success": True, "lifecycle": payload})
