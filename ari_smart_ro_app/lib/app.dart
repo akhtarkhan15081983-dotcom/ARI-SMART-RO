@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/app_theme.dart';
+import 'screens/hrms/employee_lifecycle_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'screens/login/customer_onboarding_screen.dart';
 import 'services/referral_link_service.dart';
@@ -38,6 +39,9 @@ class _AriSmartROAppState extends State<AriSmartROApp> {
       title: 'ARI SMART RO',
       theme: AppTheme.lightTheme,
       themeMode: ThemeMode.light,
+      routes: {
+        '/hrms/lifecycle': (_) => const EmployeeLifecycleScreen(),
+      },
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(
           textScaler: MediaQuery.textScalerOf(
