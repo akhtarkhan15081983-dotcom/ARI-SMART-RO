@@ -41,16 +41,16 @@ void main() {
 
     test('joining wizard is responsive and uploads actual documents', () {
       final source = _read('lib/screens/hrms/corporate_joining_wizard.dart');
-      expect(source, contains('LayoutBuilder'));
-      expect(source, contains('constraints.maxWidth >= 900'));
-      expect(source, contains('NavigationRail'));
-      expect(source, contains('Step('));
-      expect(source, contains('Select & upload'));
+      expect(source, contains('MediaQuery.sizeOf(context).width >= 900'));
+      expect(source, contains('Stepper('));
+      expect(source, contains('StepperType.horizontal'));
+      expect(source, contains('StepperType.vertical'));
+      expect(source, contains('Actual joining document uploads'));
       expect(source, contains('uploadEmployeeDocument'));
       expect(source, contains('FilePicker.platform.pickFiles'));
-      expect(source, contains('reviewEmployeeDocument'));
-      expect(source, contains('Required joining documents'));
-      expect(source, contains('Ready-for-duty validation'));
+      expect(source, contains('Mandatory documents remain MISSING'));
+      expect(source, contains('READY FOR DUTY'));
+      expect(source, contains('Final HR review'));
     });
 
     test('digital employee HR file keeps hierarchy and audited document actions', () {
