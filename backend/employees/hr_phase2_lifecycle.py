@@ -152,7 +152,9 @@ class EmployeeLifecycleActionWorkflowAPIView(APIView):
     @transaction.atomic
     def post(self, request, action_id):
         company = request_company(request)
-        row = EmployeeLifecycleAction.objects.select_for_update().select_related("employee", "employee__user", "employee__reporting_manager").filter(company=company, id=action_id).first()
+        # Lock only rows reached through non-nullable joins. reporting_manager is nullable,
+        # and PostgreSQL rejects FOR UPDATE when it is joined with LEFT OUTER JOIN.
+        row = EmployeeLifecycleAction.objects.select_for_update().select_related("employee", "employee__user").filter(company=company, id=action_id).first()
         if not row: return Response({"detail": "Lifecycle action not found."}, status=404)
         verb = str(request.data.get("action", "")).upper(); reason = str(request.data.get("reason", "")).strip(); old = row.status
         if verb == "SUBMIT_MANAGER":
