@@ -33,6 +33,7 @@ from .hr_lifecycle import (
     EmployeeHrDirectoryAPIView,
     EmployeeHrLifecycleActionAPIView,
 )
+from .hr_profile_admin import EmployeeHrProfileAdminAPIView
 from .training import (
     TrainingDetailAPIView,
     TrainingLessonCompleteAPIView,
@@ -87,6 +88,7 @@ urlpatterns = [
     path("employees/hrms/corporate-dashboard/", CorporateHrDashboardAPIView.as_view(), name="hrms-corporate-dashboard"),
     path("employees/hrms/directory/", EmployeeHrDirectoryAPIView.as_view(), name="hrms-employee-directory"),
     path("employees/hrms/employees/<int:employee_id>/", EmployeeDigitalHrFileAPIView.as_view(), name="hrms-digital-employee-file"),
+    path("employees/hrms/employees/<int:employee_id>/profile/", EmployeeHrProfileAdminAPIView.as_view(), name="hrms-employee-profile-admin"),
     path("employees/hrms/employees/<int:employee_id>/action/", EmployeeHrLifecycleActionAPIView.as_view(), name="hrms-employee-lifecycle-action"),
     path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
     path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
