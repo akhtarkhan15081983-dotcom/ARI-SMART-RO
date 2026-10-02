@@ -49,9 +49,12 @@ class EmployeeLocationBatchTests(TestCase):
             is_active=True,
         )
         self.now = timezone.now().replace(microsecond=0)
+        first_payload_point = self.now - timedelta(minutes=30)
         self.attendance = Attendance.objects.create(
             employee=self.employee,
-            date=timezone.localdate(),
+            # Delayed GPS points may legitimately belong to the previous local
+            # calendar day when a batch is uploaded shortly after midnight.
+            date=timezone.localtime(first_payload_point).date(),
             check_in=self.now - timedelta(hours=2),
             status="PRESENT",
         )

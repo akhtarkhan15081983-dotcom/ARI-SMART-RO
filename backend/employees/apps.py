@@ -10,3 +10,14 @@ class EmployeesConfig(AppConfig):
         # existing live-location API contract.
         from . import location_models  # noqa: F401
         from . import location_signals  # noqa: F401
+        # Corporate HR lifecycle is intentionally kept as an additive model
+        # layer so existing attendance/payroll/training contracts remain safe.
+        from . import hr_lifecycle_models  # noqa: F401
+        # Phase-2 recruitment/ATS is additive for the same compatibility reason.
+        from . import hr_phase2_recruitment_models  # noqa: F401
+        from . import hr_phase2_ats_models  # noqa: F401
+        # Digital HR Letters + BGV remain additive and company scoped.
+        from . import hr_phase2_letters_bgv_models  # noqa: F401
+        from . import hr_phase2_letters_bgv_signals  # noqa: F401
+        # Enterprise employee lifecycle workflows remain additive and tenant scoped.
+        from . import hr_phase2_lifecycle_models  # noqa: F401

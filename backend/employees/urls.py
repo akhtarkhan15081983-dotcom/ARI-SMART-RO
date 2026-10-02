@@ -1,83 +1,82 @@
 from django.urls import path
 
 from .views import (
-    EngineerLiveMapAPIView,
-    EmployeeProfileAPIView,
-    EngineerListAPIView,
-    AssignmentEmployeeListAPIView,
-    EmployeeManagementAPIView,
-    EmployeeCustomerEditPermissionAPIView,
-    EmployeeLoginDeviceResetAPIView,
-    EmployeeLifecycleAPIView,
-    EmployeeCareerMovementAPIView,
-    EmployeeCareerMovementActionAPIView,
-    EmployeeIdCardAPIView,
-    EmployeeIdVerifyAPIView,
+    EngineerLiveMapAPIView, EmployeeProfileAPIView, EngineerListAPIView,
+    AssignmentEmployeeListAPIView, EmployeeManagementAPIView,
+    EmployeeCustomerEditPermissionAPIView, EmployeeLoginDeviceResetAPIView,
+    EmployeeLifecycleAPIView, EmployeeCareerMovementAPIView,
+    EmployeeCareerMovementActionAPIView, EmployeeIdCardAPIView, EmployeeIdVerifyAPIView,
 )
-from .reliability import (
-    AttendanceAwareLiveLocationAPIView,
-    CombinedFaceEnrollmentControlAPIView,
-    SecureFaceEnrollmentAPIView,
-)
-from .device_health_security import (
-    SecurityAwareEmployeeDeviceHealthAPIView,
-    SecurityAwareAdminDeviceHealthAPIView,
-    TenantScopedAdminFaceEnrollmentListAPIView,
-)
+from .reliability import AttendanceAwareLiveLocationAPIView, CombinedFaceEnrollmentControlAPIView, SecureFaceEnrollmentAPIView
+from .device_health_security import SecurityAwareEmployeeDeviceHealthAPIView, SecurityAwareAdminDeviceHealthAPIView, TenantScopedAdminFaceEnrollmentListAPIView
 from .location_batch import EmployeeLocationBatchAPIView
 from .route_history import EmployeeDayRouteAPIView
-from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
-from .training import (
-    TrainingDetailAPIView,
-    TrainingLessonCompleteAPIView,
-    TrainingListAPIView,
-    TrainingQuizSubmitAPIView,
-    TrainingTrainerReviewAPIView,
-    TrainingCertificateIssueAPIView,
-    TrainingCertificateRevokeAPIView,
-    TrainingCertificateVerifyAPIView,
-    TrainingCertificatePDFAPIView,
-    AdminTrainingCourseAPIView,
-    AdminTrainingCourseDetailAPIView,
-    AdminTrainingLessonAPIView,
-    AdminTrainingLessonDetailAPIView,
-    AdminTrainingQuestionAPIView,
-    AdminTrainingQuestionDetailAPIView,
-    AdminTrainingAssignAPIView,
-)
+from .hrms import EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
+from .hr_phase1 import CorporateHrDashboardAPIView, EmployeeDocumentWorkflowAPIView, EmployeeHrDirectoryAPIView, EmployeeHrLifecycleActionAPIView
+from .hr_phase1_compat import EmployeeDocumentComplianceAPIView
+from . import hr_phase1_requirements  # noqa: F401
+from .hr_profile_admin import EmployeeHrProfileAdminAPIView
+from .hr_phase2_recruitment import RecruitmentSummaryAPIView, ManpowerRequisitionAPIView, ManpowerRequisitionActionAPIView, JobOpeningAPIView, CandidateAPIView, CandidateApplicationAPIView, CandidateApplicationActionAPIView
+from .hr_phase2_ats import InterviewRoundAPIView, InterviewRoundActionAPIView, InterviewFeedbackAPIView, CandidateDecisionAPIView, CandidateOfferAPIView, CandidateOfferActionAPIView, CandidateConvertAPIView
+from .hr_phase2_letters_bgv import HrLettersDashboardAPIView, HrLetterTemplateAPIView, HrLetterTemplateActionAPIView, HrLetterWorkflowAPIView, IssuedHrLetterAPIView, HrLetterAcknowledgementAPIView, BackgroundVerificationCheckAPIView, BackgroundVerificationDecisionAPIView, EmployeeDigitalHrFileWithLettersAPIView
+from .hr_phase2_letters_bgv_compat import BgvPolicyAPIView, BackgroundVerificationCaseAPIView, HrLetterWorkflowActionAPIView
+from .hr_phase2_lifecycle import EmployeeLifecycleActionListAPIView, EmployeeLifecycleActionWorkflowAPIView, EmployeeLifecycleProbationQueueAPIView
+from .hr_phase2_exit import ExitCaseAPIView, ExitCaseActionAPIView, ExitClearanceActionAPIView, ExitPostSeparationLetterAPIView
+from .hr_phase2_lifecycle_dashboard import EmployeeLifecycleTimelineAPIView, EmployeeLifecycleCommandCenterAPIView
+from .training import TrainingDetailAPIView, TrainingLessonCompleteAPIView, TrainingListAPIView, TrainingQuizSubmitAPIView, TrainingTrainerReviewAPIView, TrainingCertificateIssueAPIView, TrainingCertificateRevokeAPIView, TrainingCertificateVerifyAPIView, TrainingCertificatePDFAPIView, AdminTrainingCourseAPIView, AdminTrainingCourseDetailAPIView, AdminTrainingLessonAPIView, AdminTrainingLessonDetailAPIView, AdminTrainingQuestionAPIView, AdminTrainingQuestionDetailAPIView, AdminTrainingAssignAPIView
 
 urlpatterns = [
     path("employees/device-health/", SecurityAwareEmployeeDeviceHealthAPIView.as_view(), name="employee-device-health"),
     path("employees/admin/device-health/", SecurityAwareAdminDeviceHealthAPIView.as_view(), name="admin-device-health"),
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
-    path(
-        "employees/manage/<int:employee_id>/customer-edit-permission/",
-        EmployeeCustomerEditPermissionAPIView.as_view(),
-        name="employee-customer-edit-permission",
-    ),
-    path(
-        "employees/manage/<int:employee_id>/login-device/reset/",
-        EmployeeLoginDeviceResetAPIView.as_view(),
-        name="employee-login-device-reset",
-    ),
+    path("employees/manage/<int:employee_id>/customer-edit-permission/", EmployeeCustomerEditPermissionAPIView.as_view(), name="employee-customer-edit-permission"),
+    path("employees/manage/<int:employee_id>/login-device/reset/", EmployeeLoginDeviceResetAPIView.as_view(), name="employee-login-device-reset"),
     path("employees/id-card/", EmployeeIdCardAPIView.as_view(), name="employee-id-card"),
     path("employees/verify-id/<str:code>/", EmployeeIdVerifyAPIView.as_view(), name="employee-id-verify"),
-    path(
-        "employees/manage/<int:employee_id>/lifecycle/",
-        EmployeeLifecycleAPIView.as_view(),
-        name="employee-lifecycle",
-    ),
-    path(
-        "employees/manage/<int:employee_id>/career/",
-        EmployeeCareerMovementAPIView.as_view(),
-        name="employee-career-movements",
-    ),
-    path(
-        "employees/manage/<int:employee_id>/career/<int:movement_id>/action/",
-        EmployeeCareerMovementActionAPIView.as_view(),
-        name="employee-career-movement-action",
-    ),
+    path("employees/manage/<int:employee_id>/lifecycle/", EmployeeLifecycleAPIView.as_view(), name="employee-lifecycle"),
+    path("employees/manage/<int:employee_id>/career/", EmployeeCareerMovementAPIView.as_view(), name="employee-career-movements"),
+    path("employees/manage/<int:employee_id>/career/<int:movement_id>/action/", EmployeeCareerMovementActionAPIView.as_view(), name="employee-career-movement-action"),
     path("employees/hrms/dashboard/", EmployeeHrmsDashboardAPIView.as_view(), name="hrms-dashboard"),
+    path("employees/hrms/corporate-dashboard/", CorporateHrDashboardAPIView.as_view(), name="hrms-corporate-dashboard"),
+    path("employees/hrms/directory/", EmployeeHrDirectoryAPIView.as_view(), name="hrms-employee-directory"),
+    path("employees/hrms/employees/<int:employee_id>/", EmployeeDigitalHrFileWithLettersAPIView.as_view(), name="hrms-digital-employee-file"),
+    path("employees/hrms/employees/<int:employee_id>/profile/", EmployeeHrProfileAdminAPIView.as_view(), name="hrms-employee-profile-admin"),
+    path("employees/hrms/employees/<int:employee_id>/documents/", EmployeeDocumentWorkflowAPIView.as_view(), name="hrms-employee-documents"),
+    path("employees/hrms/employees/<int:employee_id>/action/", EmployeeHrLifecycleActionAPIView.as_view(), name="hrms-employee-lifecycle-action"),
+    path("employees/hrms/lifecycle/actions/", EmployeeLifecycleActionListAPIView.as_view(), name="hrms-lifecycle-actions"),
+    path("employees/hrms/lifecycle/actions/<int:action_id>/workflow/", EmployeeLifecycleActionWorkflowAPIView.as_view(), name="hrms-lifecycle-action-workflow"),
+    path("employees/hrms/lifecycle/probation-queue/", EmployeeLifecycleProbationQueueAPIView.as_view(), name="hrms-lifecycle-probation-queue"),
+    path("employees/hrms/lifecycle/command-center/", EmployeeLifecycleCommandCenterAPIView.as_view(), name="hrms-lifecycle-command-center"),
+    path("employees/hrms/lifecycle/employees/<int:employee_id>/timeline/", EmployeeLifecycleTimelineAPIView.as_view(), name="hrms-lifecycle-employee-timeline"),
+    path("employees/hrms/lifecycle/exits/", ExitCaseAPIView.as_view(), name="hrms-lifecycle-exits"),
+    path("employees/hrms/lifecycle/exits/<int:case_id>/action/", ExitCaseActionAPIView.as_view(), name="hrms-lifecycle-exit-action"),
+    path("employees/hrms/lifecycle/exits/<int:case_id>/clearances/<int:clearance_id>/action/", ExitClearanceActionAPIView.as_view(), name="hrms-lifecycle-exit-clearance-action"),
+    path("employees/hrms/lifecycle/exits/<int:case_id>/post-separation-letter/", ExitPostSeparationLetterAPIView.as_view(), name="hrms-lifecycle-post-separation-letter"),
+    path("employees/hrms/recruitment/summary/", RecruitmentSummaryAPIView.as_view(), name="hrms-recruitment-summary"),
+    path("employees/hrms/recruitment/requisitions/", ManpowerRequisitionAPIView.as_view(), name="hrms-recruitment-requisitions"),
+    path("employees/hrms/recruitment/requisitions/<int:requisition_id>/action/", ManpowerRequisitionActionAPIView.as_view(), name="hrms-recruitment-requisition-action"),
+    path("employees/hrms/recruitment/jobs/", JobOpeningAPIView.as_view(), name="hrms-recruitment-jobs"),
+    path("employees/hrms/recruitment/candidates/", CandidateAPIView.as_view(), name="hrms-recruitment-candidates"),
+    path("employees/hrms/recruitment/applications/", CandidateApplicationAPIView.as_view(), name="hrms-recruitment-applications"),
+    path("employees/hrms/recruitment/applications/<int:application_id>/action/", CandidateApplicationActionAPIView.as_view(), name="hrms-recruitment-application-action"),
+    path("employees/hrms/recruitment/interviews/", InterviewRoundAPIView.as_view(), name="hrms-recruitment-interviews"),
+    path("employees/hrms/recruitment/interviews/<int:interview_id>/action/", InterviewRoundActionAPIView.as_view(), name="hrms-recruitment-interview-action"),
+    path("employees/hrms/recruitment/interviews/<int:interview_id>/feedback/", InterviewFeedbackAPIView.as_view(), name="hrms-recruitment-interview-feedback"),
+    path("employees/hrms/recruitment/applications/<int:application_id>/decision/", CandidateDecisionAPIView.as_view(), name="hrms-recruitment-application-decision"),
+    path("employees/hrms/recruitment/offers/", CandidateOfferAPIView.as_view(), name="hrms-recruitment-offers"),
+    path("employees/hrms/recruitment/offers/<int:offer_id>/action/", CandidateOfferActionAPIView.as_view(), name="hrms-recruitment-offer-action"),
+    path("employees/hrms/recruitment/applications/<int:application_id>/convert/", CandidateConvertAPIView.as_view(), name="hrms-recruitment-application-convert"),
+    path("employees/hrms/letters/dashboard/", HrLettersDashboardAPIView.as_view(), name="hrms-letters-dashboard"),
+    path("employees/hrms/letters/templates/", HrLetterTemplateAPIView.as_view(), name="hrms-letter-templates"),
+    path("employees/hrms/letters/templates/<int:template_id>/action/", HrLetterTemplateActionAPIView.as_view(), name="hrms-letter-template-action"),
+    path("employees/hrms/letters/workflows/", HrLetterWorkflowAPIView.as_view(), name="hrms-letter-workflows"),
+    path("employees/hrms/letters/workflows/<int:workflow_id>/action/", HrLetterWorkflowActionAPIView.as_view(), name="hrms-letter-workflow-action"),
+    path("employees/hrms/letters/issued/", IssuedHrLetterAPIView.as_view(), name="hrms-issued-letters"),
+    path("employees/hrms/letters/issued/<int:letter_id>/acknowledge/", HrLetterAcknowledgementAPIView.as_view(), name="hrms-letter-acknowledgement"),
+    path("employees/hrms/bgv/policy/", BgvPolicyAPIView.as_view(), name="hrms-bgv-policy"),
+    path("employees/hrms/bgv/cases/", BackgroundVerificationCaseAPIView.as_view(), name="hrms-bgv-cases"),
+    path("employees/hrms/bgv/cases/<int:case_id>/checks/", BackgroundVerificationCheckAPIView.as_view(), name="hrms-bgv-checks"),
+    path("employees/hrms/bgv/cases/<int:case_id>/decision/", BackgroundVerificationDecisionAPIView.as_view(), name="hrms-bgv-decision"),
     path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
     path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
     path("employees/hrms/leaves/", LeaveRequestAPIView.as_view(), name="hrms-leaves"),
@@ -106,54 +105,14 @@ urlpatterns = [
     path("employees/hrms/training/certificates/verify/<str:code>/", TrainingCertificateVerifyAPIView.as_view(), name="hrms-training-certificate-verify"),
     path("employees/hrms/training/certificates/<str:code>/pdf/", TrainingCertificatePDFAPIView.as_view(), name="hrms-training-certificate-pdf"),
     path("employees/hrms/reports/payroll.xlsx", PayrollExcelReportAPIView.as_view(), name="hrms-payroll-excel"),
-    path(
-        "employees/live-location/",
-        AttendanceAwareLiveLocationAPIView.as_view(),
-        name="live-location",
-    ),
-    path(
-        "employees/live-location/batch/",
-        EmployeeLocationBatchAPIView.as_view(),
-        name="live-location-batch",
-    ),
-    path(
-        "employees/live-map/",
-        EngineerLiveMapAPIView.as_view(),
-        name="live-map",
-    ),
-    path(
-        "employees/day-route/",
-        EmployeeDayRouteAPIView.as_view(),
-        name="employee-day-route",
-    ),
-    path(
-        "employees/profile/",
-        EmployeeProfileAPIView.as_view(),
-        name="employee-profile",
-    ),
-    path(
-        "employees/face-enrollment/",
-        SecureFaceEnrollmentAPIView.as_view(),
-        name="face-enrollment",
-    ),
-    path(
-        "employees/admin/face-enrollments/",
-        TenantScopedAdminFaceEnrollmentListAPIView.as_view(),
-        name="admin-face-enrollment-list",
-    ),
-    path(
-        "employees/<int:employee_id>/face-enrollment-control/",
-        CombinedFaceEnrollmentControlAPIView.as_view(),
-        name="face-enrollment-control",
-    ),
-    path(
-        "employees/engineers/",
-        EngineerListAPIView.as_view(),
-        name="engineer-list",
-    ),
-    path(
-        "employees/assignment-employees/",
-        AssignmentEmployeeListAPIView.as_view(),
-        name="assignment-employees",
-    ),
+    path("employees/live-location/", AttendanceAwareLiveLocationAPIView.as_view(), name="live-location"),
+    path("employees/live-location/batch/", EmployeeLocationBatchAPIView.as_view(), name="live-location-batch"),
+    path("employees/live-map/", EngineerLiveMapAPIView.as_view(), name="live-map"),
+    path("employees/day-route/", EmployeeDayRouteAPIView.as_view(), name="employee-day-route"),
+    path("employees/profile/", EmployeeProfileAPIView.as_view(), name="employee-profile"),
+    path("employees/face-enrollment/", SecureFaceEnrollmentAPIView.as_view(), name="face-enrollment"),
+    path("employees/admin/face-enrollments/", TenantScopedAdminFaceEnrollmentListAPIView.as_view(), name="admin-face-enrollment-list"),
+    path("employees/<int:employee_id>/face-enrollment-control/", CombinedFaceEnrollmentControlAPIView.as_view(), name="face-enrollment-control"),
+    path("employees/engineers/", EngineerListAPIView.as_view(), name="engineer-list"),
+    path("employees/assignment-employees/", AssignmentEmployeeListAPIView.as_view(), name="assignment-employees"),
 ]
