@@ -32,6 +32,23 @@ class CorporateHrmsService {
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
+  Future<Map<String, dynamic>> updateProfile(
+    int employeeId,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await http
+        .patch(
+          Uri.parse(
+            '${ApiService.baseUrl}/employees/hrms/employees/$employeeId/profile/',
+          ),
+          headers: await ApiService.authHeaders(),
+          body: jsonEncode(payload),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
   Future<Map<String, dynamic>> updateLifecycle(
     int employeeId,
     Map<String, dynamic> payload,
@@ -55,7 +72,9 @@ class CorporateHrmsService {
   }) async {
     final response = await http
         .post(
-          Uri.parse('${ApiService.baseUrl}/employees/hrms/employees/$employeeId/action/'),
+          Uri.parse(
+            '${ApiService.baseUrl}/employees/hrms/employees/$employeeId/action/',
+          ),
           headers: await ApiService.authHeaders(),
           body: jsonEncode({'action': action, 'note': note, ...extra}),
         )
@@ -78,7 +97,9 @@ class CorporateHrmsService {
   String _message(http.Response response) {
     try {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      return (data['message'] ?? data['detail'] ?? 'Corporate HRMS request failed.')
+      return (data['message'] ??
+              data['detail'] ??
+              'Corporate HRMS request failed.')
           .toString();
     } catch (_) {
       return 'Corporate HRMS request failed (HTTP ${response.statusCode}).';
