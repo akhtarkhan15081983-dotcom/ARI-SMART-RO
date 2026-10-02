@@ -1,93 +1,27 @@
 from django.urls import path
 
 from .views import (
-    EngineerLiveMapAPIView,
-    EmployeeProfileAPIView,
-    EngineerListAPIView,
-    AssignmentEmployeeListAPIView,
-    EmployeeManagementAPIView,
-    EmployeeCustomerEditPermissionAPIView,
-    EmployeeLoginDeviceResetAPIView,
-    EmployeeLifecycleAPIView,
-    EmployeeCareerMovementAPIView,
-    EmployeeCareerMovementActionAPIView,
-    EmployeeIdCardAPIView,
-    EmployeeIdVerifyAPIView,
+    EngineerLiveMapAPIView, EmployeeProfileAPIView, EngineerListAPIView,
+    AssignmentEmployeeListAPIView, EmployeeManagementAPIView,
+    EmployeeCustomerEditPermissionAPIView, EmployeeLoginDeviceResetAPIView,
+    EmployeeLifecycleAPIView, EmployeeCareerMovementAPIView,
+    EmployeeCareerMovementActionAPIView, EmployeeIdCardAPIView, EmployeeIdVerifyAPIView,
 )
-from .reliability import (
-    AttendanceAwareLiveLocationAPIView,
-    CombinedFaceEnrollmentControlAPIView,
-    SecureFaceEnrollmentAPIView,
-)
-from .device_health_security import (
-    SecurityAwareEmployeeDeviceHealthAPIView,
-    SecurityAwareAdminDeviceHealthAPIView,
-    TenantScopedAdminFaceEnrollmentListAPIView,
-)
+from .reliability import AttendanceAwareLiveLocationAPIView, CombinedFaceEnrollmentControlAPIView, SecureFaceEnrollmentAPIView
+from .device_health_security import SecurityAwareEmployeeDeviceHealthAPIView, SecurityAwareAdminDeviceHealthAPIView, TenantScopedAdminFaceEnrollmentListAPIView
 from .location_batch import EmployeeLocationBatchAPIView
 from .route_history import EmployeeDayRouteAPIView
 from .hrms import EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
-from .hr_phase1 import (
-    CorporateHrDashboardAPIView,
-    EmployeeDocumentWorkflowAPIView,
-    EmployeeHrDirectoryAPIView,
-    EmployeeHrLifecycleActionAPIView,
-)
+from .hr_phase1 import CorporateHrDashboardAPIView, EmployeeDocumentWorkflowAPIView, EmployeeHrDirectoryAPIView, EmployeeHrLifecycleActionAPIView
 from .hr_phase1_compat import EmployeeDocumentComplianceAPIView
 from . import hr_phase1_requirements  # noqa: F401
 from .hr_profile_admin import EmployeeHrProfileAdminAPIView
-from .hr_phase2_recruitment import (
-    RecruitmentSummaryAPIView,
-    ManpowerRequisitionAPIView,
-    ManpowerRequisitionActionAPIView,
-    JobOpeningAPIView,
-    CandidateAPIView,
-    CandidateApplicationAPIView,
-    CandidateApplicationActionAPIView,
-)
-from .hr_phase2_ats import (
-    InterviewRoundAPIView,
-    InterviewRoundActionAPIView,
-    InterviewFeedbackAPIView,
-    CandidateDecisionAPIView,
-    CandidateOfferAPIView,
-    CandidateOfferActionAPIView,
-    CandidateConvertAPIView,
-)
-from .hr_phase2_letters_bgv import (
-    HrLettersDashboardAPIView,
-    HrLetterTemplateAPIView,
-    HrLetterTemplateActionAPIView,
-    HrLetterWorkflowAPIView,
-    IssuedHrLetterAPIView,
-    HrLetterAcknowledgementAPIView,
-    BackgroundVerificationCheckAPIView,
-    BackgroundVerificationDecisionAPIView,
-    EmployeeDigitalHrFileWithLettersAPIView,
-)
-from .hr_phase2_letters_bgv_compat import (
-    BgvPolicyAPIView,
-    BackgroundVerificationCaseAPIView,
-    HrLetterWorkflowActionAPIView,
-)
-from .training import (
-    TrainingDetailAPIView,
-    TrainingLessonCompleteAPIView,
-    TrainingListAPIView,
-    TrainingQuizSubmitAPIView,
-    TrainingTrainerReviewAPIView,
-    TrainingCertificateIssueAPIView,
-    TrainingCertificateRevokeAPIView,
-    TrainingCertificateVerifyAPIView,
-    TrainingCertificatePDFAPIView,
-    AdminTrainingCourseAPIView,
-    AdminTrainingCourseDetailAPIView,
-    AdminTrainingLessonAPIView,
-    AdminTrainingLessonDetailAPIView,
-    AdminTrainingQuestionAPIView,
-    AdminTrainingQuestionDetailAPIView,
-    AdminTrainingAssignAPIView,
-)
+from .hr_phase2_recruitment import RecruitmentSummaryAPIView, ManpowerRequisitionAPIView, ManpowerRequisitionActionAPIView, JobOpeningAPIView, CandidateAPIView, CandidateApplicationAPIView, CandidateApplicationActionAPIView
+from .hr_phase2_ats import InterviewRoundAPIView, InterviewRoundActionAPIView, InterviewFeedbackAPIView, CandidateDecisionAPIView, CandidateOfferAPIView, CandidateOfferActionAPIView, CandidateConvertAPIView
+from .hr_phase2_letters_bgv import HrLettersDashboardAPIView, HrLetterTemplateAPIView, HrLetterTemplateActionAPIView, HrLetterWorkflowAPIView, IssuedHrLetterAPIView, HrLetterAcknowledgementAPIView, BackgroundVerificationCheckAPIView, BackgroundVerificationDecisionAPIView, EmployeeDigitalHrFileWithLettersAPIView
+from .hr_phase2_letters_bgv_compat import BgvPolicyAPIView, BackgroundVerificationCaseAPIView, HrLetterWorkflowActionAPIView
+from .hr_phase2_lifecycle import EmployeeLifecycleActionListAPIView, EmployeeLifecycleActionWorkflowAPIView, EmployeeLifecycleProbationQueueAPIView
+from .training import TrainingDetailAPIView, TrainingLessonCompleteAPIView, TrainingListAPIView, TrainingQuizSubmitAPIView, TrainingTrainerReviewAPIView, TrainingCertificateIssueAPIView, TrainingCertificateRevokeAPIView, TrainingCertificateVerifyAPIView, TrainingCertificatePDFAPIView, AdminTrainingCourseAPIView, AdminTrainingCourseDetailAPIView, AdminTrainingLessonAPIView, AdminTrainingLessonDetailAPIView, AdminTrainingQuestionAPIView, AdminTrainingQuestionDetailAPIView, AdminTrainingAssignAPIView
 
 urlpatterns = [
     path("employees/device-health/", SecurityAwareEmployeeDeviceHealthAPIView.as_view(), name="employee-device-health"),
@@ -107,6 +41,9 @@ urlpatterns = [
     path("employees/hrms/employees/<int:employee_id>/profile/", EmployeeHrProfileAdminAPIView.as_view(), name="hrms-employee-profile-admin"),
     path("employees/hrms/employees/<int:employee_id>/documents/", EmployeeDocumentWorkflowAPIView.as_view(), name="hrms-employee-documents"),
     path("employees/hrms/employees/<int:employee_id>/action/", EmployeeHrLifecycleActionAPIView.as_view(), name="hrms-employee-lifecycle-action"),
+    path("employees/hrms/lifecycle/actions/", EmployeeLifecycleActionListAPIView.as_view(), name="hrms-lifecycle-actions"),
+    path("employees/hrms/lifecycle/actions/<int:action_id>/workflow/", EmployeeLifecycleActionWorkflowAPIView.as_view(), name="hrms-lifecycle-action-workflow"),
+    path("employees/hrms/lifecycle/probation-queue/", EmployeeLifecycleProbationQueueAPIView.as_view(), name="hrms-lifecycle-probation-queue"),
     path("employees/hrms/recruitment/summary/", RecruitmentSummaryAPIView.as_view(), name="hrms-recruitment-summary"),
     path("employees/hrms/recruitment/requisitions/", ManpowerRequisitionAPIView.as_view(), name="hrms-recruitment-requisitions"),
     path("employees/hrms/recruitment/requisitions/<int:requisition_id>/action/", ManpowerRequisitionActionAPIView.as_view(), name="hrms-recruitment-requisition-action"),
