@@ -416,6 +416,8 @@ class _HrmsScreenState extends State<HrmsScreen> {
         _QuickAction('Talent Acquisition', Icons.person_search_outlined, () => _push(const RecruitmentScreen())),
       if (_isHrAdmin)
         _QuickAction('HR Letters & BGV', Icons.verified_user_outlined, () => _push(const HrLettersBgvScreen())),
+      if (_isHrAdmin)
+        _QuickAction('Employee Lifecycle', Icons.account_tree_outlined, () => Navigator.of(context).pushNamed('/hrms/lifecycle')),
       _QuickAction('Employee Directory', Icons.badge_outlined, () => setState(() => _page = 1)),
       _QuickAction('Attendance', Icons.fingerprint_outlined, () => _push(const AttendanceScreen())),
       _QuickAction('Leave', Icons.event_note_outlined, () => setState(() => _page = 2)),
