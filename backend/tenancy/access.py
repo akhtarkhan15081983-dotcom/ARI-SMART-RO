@@ -45,6 +45,13 @@ ROLE_FEATURE_CATALOG = {
     "hrms_recruitment_interview": "HRMS • Interview Feedback",
     "hrms_recruitment_offer_approve": "HRMS • Offer Approval",
     "hrms_recruitment_convert": "HRMS • Candidate Joining Conversion",
+    "hrms_letters_view": "HRMS • Digital HR Letters View",
+    "hrms_letters_manage": "HRMS • Digital HR Letters Manage",
+    "hrms_letters_approve": "HRMS • Digital HR Letters Approve",
+    "hrms_bgv_view": "HRMS • Background Verification View",
+    "hrms_bgv_manage": "HRMS • Background Verification Manage",
+    "hrms_bgv_decide": "HRMS • Background Verification Decision",
+    "hrms_bgv_override": "HRMS • Background Verification Override",
 }
 
 DEFAULT_ROLE_FEATURES = {
@@ -56,6 +63,7 @@ DEFAULT_ROLE_FEATURES = {
         "map", "engineer_map", "performance_admin", "documents_admin",
         "hrms_leave_approve", "hrms_performance_manage", "hrms_holiday_manage",
         "hrms_recruitment_view", "hrms_recruitment_interview",
+        "hrms_letters_view", "hrms_bgv_view",
     },
     "OFFICE": {
         "attendance", "hrms", "training", "customers", "walkin", "service",
@@ -63,6 +71,7 @@ DEFAULT_ROLE_FEATURES = {
         "work_calendar", "work_route", "complaint", "referral", "profile",
         "calling_desk", "documents_admin", "hrms_documents_manage",
         "hrms_holiday_manage", "hrms_recruitment_view", "hrms_recruitment_manage",
+        "hrms_letters_view", "hrms_letters_manage", "hrms_bgv_view", "hrms_bgv_manage",
     },
     "CALLING": {"attendance", "hrms", "training", "calling_desk", "profile"},
     "ENGINEER": {
