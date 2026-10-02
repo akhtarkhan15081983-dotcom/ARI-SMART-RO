@@ -42,6 +42,9 @@ ROLE_FEATURE_CATALOG = {
     "hrms_recruitment_view": "HRMS • Recruitment View",
     "hrms_recruitment_manage": "HRMS • Recruitment Manage",
     "hrms_recruitment_approve": "HRMS • Manpower Approval",
+    "hrms_recruitment_interview": "HRMS • Interview Feedback",
+    "hrms_recruitment_offer_approve": "HRMS • Offer Approval",
+    "hrms_recruitment_convert": "HRMS • Candidate Joining Conversion",
 }
 
 DEFAULT_ROLE_FEATURES = {
@@ -52,7 +55,7 @@ DEFAULT_ROLE_FEATURES = {
         "referral", "profile", "reports", "downloads", "inventory_workflow", "calling_desk",
         "map", "engineer_map", "performance_admin", "documents_admin",
         "hrms_leave_approve", "hrms_performance_manage", "hrms_holiday_manage",
-        "hrms_recruitment_view",
+        "hrms_recruitment_view", "hrms_recruitment_interview",
     },
     "OFFICE": {
         "attendance", "hrms", "training", "customers", "walkin", "service",
