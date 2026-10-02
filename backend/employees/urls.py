@@ -21,6 +21,7 @@ from .hr_phase2_ats import InterviewRoundAPIView, InterviewRoundActionAPIView, I
 from .hr_phase2_letters_bgv import HrLettersDashboardAPIView, HrLetterTemplateAPIView, HrLetterTemplateActionAPIView, HrLetterWorkflowAPIView, IssuedHrLetterAPIView, HrLetterAcknowledgementAPIView, BackgroundVerificationCheckAPIView, BackgroundVerificationDecisionAPIView, EmployeeDigitalHrFileWithLettersAPIView
 from .hr_phase2_letters_bgv_compat import BgvPolicyAPIView, BackgroundVerificationCaseAPIView, HrLetterWorkflowActionAPIView
 from .hr_phase2_lifecycle import EmployeeLifecycleActionListAPIView, EmployeeLifecycleActionWorkflowAPIView, EmployeeLifecycleProbationQueueAPIView
+from .hr_phase2_exit import ExitCaseAPIView, ExitCaseActionAPIView, ExitClearanceActionAPIView, ExitPostSeparationLetterAPIView
 from .training import TrainingDetailAPIView, TrainingLessonCompleteAPIView, TrainingListAPIView, TrainingQuizSubmitAPIView, TrainingTrainerReviewAPIView, TrainingCertificateIssueAPIView, TrainingCertificateRevokeAPIView, TrainingCertificateVerifyAPIView, TrainingCertificatePDFAPIView, AdminTrainingCourseAPIView, AdminTrainingCourseDetailAPIView, AdminTrainingLessonAPIView, AdminTrainingLessonDetailAPIView, AdminTrainingQuestionAPIView, AdminTrainingQuestionDetailAPIView, AdminTrainingAssignAPIView
 
 urlpatterns = [
@@ -44,6 +45,10 @@ urlpatterns = [
     path("employees/hrms/lifecycle/actions/", EmployeeLifecycleActionListAPIView.as_view(), name="hrms-lifecycle-actions"),
     path("employees/hrms/lifecycle/actions/<int:action_id>/workflow/", EmployeeLifecycleActionWorkflowAPIView.as_view(), name="hrms-lifecycle-action-workflow"),
     path("employees/hrms/lifecycle/probation-queue/", EmployeeLifecycleProbationQueueAPIView.as_view(), name="hrms-lifecycle-probation-queue"),
+    path("employees/hrms/lifecycle/exits/", ExitCaseAPIView.as_view(), name="hrms-lifecycle-exits"),
+    path("employees/hrms/lifecycle/exits/<int:case_id>/action/", ExitCaseActionAPIView.as_view(), name="hrms-lifecycle-exit-action"),
+    path("employees/hrms/lifecycle/exits/<int:case_id>/clearances/<int:clearance_id>/action/", ExitClearanceActionAPIView.as_view(), name="hrms-lifecycle-exit-clearance-action"),
+    path("employees/hrms/lifecycle/exits/<int:case_id>/post-separation-letter/", ExitPostSeparationLetterAPIView.as_view(), name="hrms-lifecycle-post-separation-letter"),
     path("employees/hrms/recruitment/summary/", RecruitmentSummaryAPIView.as_view(), name="hrms-recruitment-summary"),
     path("employees/hrms/recruitment/requisitions/", ManpowerRequisitionAPIView.as_view(), name="hrms-recruitment-requisitions"),
     path("employees/hrms/recruitment/requisitions/<int:requisition_id>/action/", ManpowerRequisitionActionAPIView.as_view(), name="hrms-recruitment-requisition-action"),
