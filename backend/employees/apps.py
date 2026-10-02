@@ -16,3 +16,5 @@ class EmployeesConfig(AppConfig):
         # Phase-2 recruitment/ATS is additive for the same compatibility reason.
         from . import hr_phase2_recruitment_models  # noqa: F401
         from . import hr_phase2_ats_models  # noqa: F401
+        # Digital HR Letters + BGV remain additive and company scoped.
+        from . import hr_phase2_letters_bgv_models  # noqa: F401
