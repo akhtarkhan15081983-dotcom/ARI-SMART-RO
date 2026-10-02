@@ -18,3 +18,4 @@ class EmployeesConfig(AppConfig):
         from . import hr_phase2_ats_models  # noqa: F401
         # Digital HR Letters + BGV remain additive and company scoped.
         from . import hr_phase2_letters_bgv_models  # noqa: F401
+        from . import hr_phase2_letters_bgv_signals  # noqa: F401
