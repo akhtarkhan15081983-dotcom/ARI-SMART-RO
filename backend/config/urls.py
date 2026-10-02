@@ -3,11 +3,42 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from employees.hr_phase2_id_card import (
+    EmployeeIdCardAPIView as CorporateReadyEmployeeIdCardAPIView,
+    EmployeeIdVerifyAPIView as CorporateReadyEmployeeIdVerifyAPIView,
+    EmployeeManagementAPIView as CorporateReadyEmployeeManagementAPIView,
+)
+from employees.hr_phase2_legacy_guard import (
+    EmployeeHrLifecycleActionAPIView as GuardedEmployeeHrLifecycleActionAPIView,
+)
 from .views import healthcheck
 
 urlpatterns = [
     path('health/', healthcheck, name='healthcheck'),
     path('admin/', admin.site.urls),
+    # Final Corporate HRMS closure guards. These exact compatibility URLs are
+    # resolved before employees.urls so legacy clients keep working while
+    # sensitive lifecycle transitions and ID-card issuance obey Phase-2 rules.
+    path(
+        'api/employees/manage/',
+        CorporateReadyEmployeeManagementAPIView.as_view(),
+        name='employee-management',
+    ),
+    path(
+        'api/employees/id-card/',
+        CorporateReadyEmployeeIdCardAPIView.as_view(),
+        name='employee-id-card',
+    ),
+    path(
+        'api/employees/verify-id/<str:code>/',
+        CorporateReadyEmployeeIdVerifyAPIView.as_view(),
+        name='employee-id-verify',
+    ),
+    path(
+        'api/employees/hrms/employees/<int:employee_id>/action/',
+        GuardedEmployeeHrLifecycleActionAPIView.as_view(),
+        name='hrms-employee-lifecycle-action',
+    ),
     path('api/', include('jobs.urls')),
     path('api/', include('partmaster.urls')),
     path('api/', include('purchase.urls')),
