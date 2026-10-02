@@ -29,7 +29,6 @@ from .route_history import EmployeeDayRouteAPIView
 from .hrms import EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
 from .hr_phase1 import (
     CorporateHrDashboardAPIView,
-    EmployeeDigitalHrFileAPIView,
     EmployeeDocumentWorkflowAPIView,
     EmployeeHrDirectoryAPIView,
     EmployeeHrLifecycleActionAPIView,
@@ -54,6 +53,22 @@ from .hr_phase2_ats import (
     CandidateOfferAPIView,
     CandidateOfferActionAPIView,
     CandidateConvertAPIView,
+)
+from .hr_phase2_letters_bgv import (
+    HrLettersDashboardAPIView,
+    HrLetterTemplateAPIView,
+    HrLetterTemplateActionAPIView,
+    HrLetterWorkflowAPIView,
+    HrLetterWorkflowActionAPIView,
+    IssuedHrLetterAPIView,
+    HrLetterAcknowledgementAPIView,
+    BackgroundVerificationCheckAPIView,
+    BackgroundVerificationDecisionAPIView,
+    EmployeeDigitalHrFileWithLettersAPIView,
+)
+from .hr_phase2_letters_bgv_compat import (
+    BgvPolicyAPIView,
+    BackgroundVerificationCaseAPIView,
 )
 from .training import (
     TrainingDetailAPIView,
@@ -88,7 +103,7 @@ urlpatterns = [
     path("employees/hrms/dashboard/", EmployeeHrmsDashboardAPIView.as_view(), name="hrms-dashboard"),
     path("employees/hrms/corporate-dashboard/", CorporateHrDashboardAPIView.as_view(), name="hrms-corporate-dashboard"),
     path("employees/hrms/directory/", EmployeeHrDirectoryAPIView.as_view(), name="hrms-employee-directory"),
-    path("employees/hrms/employees/<int:employee_id>/", EmployeeDigitalHrFileAPIView.as_view(), name="hrms-digital-employee-file"),
+    path("employees/hrms/employees/<int:employee_id>/", EmployeeDigitalHrFileWithLettersAPIView.as_view(), name="hrms-digital-employee-file"),
     path("employees/hrms/employees/<int:employee_id>/profile/", EmployeeHrProfileAdminAPIView.as_view(), name="hrms-employee-profile-admin"),
     path("employees/hrms/employees/<int:employee_id>/documents/", EmployeeDocumentWorkflowAPIView.as_view(), name="hrms-employee-documents"),
     path("employees/hrms/employees/<int:employee_id>/action/", EmployeeHrLifecycleActionAPIView.as_view(), name="hrms-employee-lifecycle-action"),
@@ -106,6 +121,17 @@ urlpatterns = [
     path("employees/hrms/recruitment/offers/", CandidateOfferAPIView.as_view(), name="hrms-recruitment-offers"),
     path("employees/hrms/recruitment/offers/<int:offer_id>/action/", CandidateOfferActionAPIView.as_view(), name="hrms-recruitment-offer-action"),
     path("employees/hrms/recruitment/applications/<int:application_id>/convert/", CandidateConvertAPIView.as_view(), name="hrms-recruitment-application-convert"),
+    path("employees/hrms/letters/dashboard/", HrLettersDashboardAPIView.as_view(), name="hrms-letters-dashboard"),
+    path("employees/hrms/letters/templates/", HrLetterTemplateAPIView.as_view(), name="hrms-letter-templates"),
+    path("employees/hrms/letters/templates/<int:template_id>/action/", HrLetterTemplateActionAPIView.as_view(), name="hrms-letter-template-action"),
+    path("employees/hrms/letters/workflows/", HrLetterWorkflowAPIView.as_view(), name="hrms-letter-workflows"),
+    path("employees/hrms/letters/workflows/<int:workflow_id>/action/", HrLetterWorkflowActionAPIView.as_view(), name="hrms-letter-workflow-action"),
+    path("employees/hrms/letters/issued/", IssuedHrLetterAPIView.as_view(), name="hrms-issued-letters"),
+    path("employees/hrms/letters/issued/<int:letter_id>/acknowledge/", HrLetterAcknowledgementAPIView.as_view(), name="hrms-letter-acknowledgement"),
+    path("employees/hrms/bgv/policy/", BgvPolicyAPIView.as_view(), name="hrms-bgv-policy"),
+    path("employees/hrms/bgv/cases/", BackgroundVerificationCaseAPIView.as_view(), name="hrms-bgv-cases"),
+    path("employees/hrms/bgv/cases/<int:case_id>/checks/", BackgroundVerificationCheckAPIView.as_view(), name="hrms-bgv-checks"),
+    path("employees/hrms/bgv/cases/<int:case_id>/decision/", BackgroundVerificationDecisionAPIView.as_view(), name="hrms-bgv-decision"),
     path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
     path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
     path("employees/hrms/leaves/", LeaveRequestAPIView.as_view(), name="hrms-leaves"),
