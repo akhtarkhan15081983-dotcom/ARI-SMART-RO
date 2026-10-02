@@ -25,20 +25,23 @@ void main() {
       expect(service, contains('/timeline/'));
     });
 
-    test('backend compatibility route is explicitly guarded', () {
-      final config = _read('../backend/config/urls.py');
-      final guard = _read('../backend/employees/hr_phase2_legacy_guard.py');
-      expect(config, contains('GuardedEmployeeHrLifecycleActionAPIView'));
-      expect(config, contains('hrms-employee-lifecycle-action-guarded'));
-      for (final action in <String>[
-        'EXTEND_PROBATION',
-        'CONFIRM',
-        'START_NOTICE',
-        'SEPARATE',
-      ]) {
-        expect(guard, contains('"$action"'));
-      }
-      expect(guard, contains('PHASE2_LIFECYCLE_REQUIRED'));
+    test('HRMS command center exposes visible lifecycle entry', () {
+      final hrms = _read('lib/screens/hrms/hrms_screen.dart');
+      expect(hrms, contains("'Employee Lifecycle'"));
+      expect(hrms, contains("pushNamed('/hrms/lifecycle')"));
+    });
+
+    test('digital HR file routes sensitive transitions to Phase-2 workspace', () {
+      final file = _read('lib/screens/hrms/employee_hr_file_screen.dart');
+      expect(file, contains('Employee Lifecycle workspace'));
+      expect(file, contains("pushNamed('/hrms/lifecycle')"));
+      expect(file, isNot(contains("_lifecycleAction('CONFIRM')")));
+      expect(file, isNot(contains("_lifecycleAction('START_NOTICE')")));
+      expect(file, isNot(contains("_lifecycleAction('SEPARATE')")));
+      expect(file, isNot(contains("'EXTEND_PROBATION'")));
+      expect(file, contains("_lifecycleAction('MANAGER_REVIEW'"));
+      expect(file, contains("_lifecycleAction('HR_REVIEW'"));
+      expect(file, contains("_lifecycleAction('OVERRIDE_READY'"));
     });
   });
 }
