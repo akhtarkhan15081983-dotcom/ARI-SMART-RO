@@ -2,7 +2,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from accounts.models import User
-from tenancy.models import Company, CompanyMembership, RoleFeaturePermission
+from tenancy.models import Company, CompanyMembership
 
 from .hr_phase2_recruitment_models import (
     Candidate,
@@ -102,7 +102,7 @@ class CorporateHrPhase2RecruitmentTests(APITestCase):
             entity_id=requisition_id, action="APPROVE", to_status="APPROVED",
         ).exists())
 
-    def test_job_candidate_application_pipeline_enforces_valid_transitions(self):
+    def test_job_candidate_application_pipeline_enforces_controlled_selection_gate(self):
         requisition_id = self._create_requisition()
         self._approve_requisition(requisition_id)
         job_id = self._open_job(requisition_id)
@@ -128,13 +128,18 @@ class CorporateHrPhase2RecruitmentTests(APITestCase):
         )
         self.assertEqual(invalid.status_code, 400)
 
-        for stage in ("SCREENING", "INTERVIEW", "SELECTED"):
+        for stage in ("SCREENING", "INTERVIEW"):
             moved = self.client.post(
                 f"{self.applications}{application_id}/action/", {"stage": stage}, format="json"
             )
             self.assertEqual(moved.status_code, 200)
             self.assertEqual(moved.data["stage"], stage)
-        self.assertEqual(CandidateApplication.objects.get(pk=application_id).stage, "SELECTED")
+
+        bypass = self.client.post(
+            f"{self.applications}{application_id}/action/", {"stage": "SELECTED"}, format="json"
+        )
+        self.assertEqual(bypass.status_code, 400)
+        self.assertEqual(CandidateApplication.objects.get(pk=application_id).stage, "INTERVIEW")
 
     def test_recruitment_records_are_tenant_isolated(self):
         requisition_id = self._create_requisition()
