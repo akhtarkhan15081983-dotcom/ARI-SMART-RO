@@ -10,3 +10,6 @@ class EmployeesConfig(AppConfig):
         # existing live-location API contract.
         from . import location_models  # noqa: F401
         from . import location_signals  # noqa: F401
+        # Corporate HR lifecycle is intentionally kept as an additive model
+        # layer so existing attendance/payroll/training contracts remain safe.
+        from . import hr_lifecycle_models  # noqa: F401
