@@ -37,6 +37,15 @@ from .hr_phase1 import (
 from .hr_phase1_compat import EmployeeDocumentComplianceAPIView
 from . import hr_phase1_requirements  # noqa: F401
 from .hr_profile_admin import EmployeeHrProfileAdminAPIView
+from .hr_phase2_recruitment import (
+    RecruitmentSummaryAPIView,
+    ManpowerRequisitionAPIView,
+    ManpowerRequisitionActionAPIView,
+    JobOpeningAPIView,
+    CandidateAPIView,
+    CandidateApplicationAPIView,
+    CandidateApplicationActionAPIView,
+)
 from .training import (
     TrainingDetailAPIView,
     TrainingLessonCompleteAPIView,
@@ -60,33 +69,13 @@ urlpatterns = [
     path("employees/device-health/", SecurityAwareEmployeeDeviceHealthAPIView.as_view(), name="employee-device-health"),
     path("employees/admin/device-health/", SecurityAwareAdminDeviceHealthAPIView.as_view(), name="admin-device-health"),
     path("employees/manage/", EmployeeManagementAPIView.as_view(), name="employee-management"),
-    path(
-        "employees/manage/<int:employee_id>/customer-edit-permission/",
-        EmployeeCustomerEditPermissionAPIView.as_view(),
-        name="employee-customer-edit-permission",
-    ),
-    path(
-        "employees/manage/<int:employee_id>/login-device/reset/",
-        EmployeeLoginDeviceResetAPIView.as_view(),
-        name="employee-login-device-reset",
-    ),
+    path("employees/manage/<int:employee_id>/customer-edit-permission/", EmployeeCustomerEditPermissionAPIView.as_view(), name="employee-customer-edit-permission"),
+    path("employees/manage/<int:employee_id>/login-device/reset/", EmployeeLoginDeviceResetAPIView.as_view(), name="employee-login-device-reset"),
     path("employees/id-card/", EmployeeIdCardAPIView.as_view(), name="employee-id-card"),
     path("employees/verify-id/<str:code>/", EmployeeIdVerifyAPIView.as_view(), name="employee-id-verify"),
-    path(
-        "employees/manage/<int:employee_id>/lifecycle/",
-        EmployeeLifecycleAPIView.as_view(),
-        name="employee-lifecycle",
-    ),
-    path(
-        "employees/manage/<int:employee_id>/career/",
-        EmployeeCareerMovementAPIView.as_view(),
-        name="employee-career-movements",
-    ),
-    path(
-        "employees/manage/<int:employee_id>/career/<int:movement_id>/action/",
-        EmployeeCareerMovementActionAPIView.as_view(),
-        name="employee-career-movement-action",
-    ),
+    path("employees/manage/<int:employee_id>/lifecycle/", EmployeeLifecycleAPIView.as_view(), name="employee-lifecycle"),
+    path("employees/manage/<int:employee_id>/career/", EmployeeCareerMovementAPIView.as_view(), name="employee-career-movements"),
+    path("employees/manage/<int:employee_id>/career/<int:movement_id>/action/", EmployeeCareerMovementActionAPIView.as_view(), name="employee-career-movement-action"),
     path("employees/hrms/dashboard/", EmployeeHrmsDashboardAPIView.as_view(), name="hrms-dashboard"),
     path("employees/hrms/corporate-dashboard/", CorporateHrDashboardAPIView.as_view(), name="hrms-corporate-dashboard"),
     path("employees/hrms/directory/", EmployeeHrDirectoryAPIView.as_view(), name="hrms-employee-directory"),
@@ -94,6 +83,13 @@ urlpatterns = [
     path("employees/hrms/employees/<int:employee_id>/profile/", EmployeeHrProfileAdminAPIView.as_view(), name="hrms-employee-profile-admin"),
     path("employees/hrms/employees/<int:employee_id>/documents/", EmployeeDocumentWorkflowAPIView.as_view(), name="hrms-employee-documents"),
     path("employees/hrms/employees/<int:employee_id>/action/", EmployeeHrLifecycleActionAPIView.as_view(), name="hrms-employee-lifecycle-action"),
+    path("employees/hrms/recruitment/summary/", RecruitmentSummaryAPIView.as_view(), name="hrms-recruitment-summary"),
+    path("employees/hrms/recruitment/requisitions/", ManpowerRequisitionAPIView.as_view(), name="hrms-recruitment-requisitions"),
+    path("employees/hrms/recruitment/requisitions/<int:requisition_id>/action/", ManpowerRequisitionActionAPIView.as_view(), name="hrms-recruitment-requisition-action"),
+    path("employees/hrms/recruitment/jobs/", JobOpeningAPIView.as_view(), name="hrms-recruitment-jobs"),
+    path("employees/hrms/recruitment/candidates/", CandidateAPIView.as_view(), name="hrms-recruitment-candidates"),
+    path("employees/hrms/recruitment/applications/", CandidateApplicationAPIView.as_view(), name="hrms-recruitment-applications"),
+    path("employees/hrms/recruitment/applications/<int:application_id>/action/", CandidateApplicationActionAPIView.as_view(), name="hrms-recruitment-application-action"),
     path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
     path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
     path("employees/hrms/leaves/", LeaveRequestAPIView.as_view(), name="hrms-leaves"),
