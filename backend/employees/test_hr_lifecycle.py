@@ -313,41 +313,36 @@ class CorporateHrLifecycleTests(APITestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_probation_extension_requires_reason_and_is_audited(self):
-        blocked = self.client.post(
-            self._url("action/"),
-            {"action": "EXTEND_PROBATION", "months": 2},
-            format="json",
-        )
-        self.assertEqual(blocked.status_code, 400)
-
+    def test_legacy_probation_extension_requires_phase2_workflow(self):
         before = EmployeeHrLifecycle.objects.get(employee=self.employee).confirmation_due_date
-        extended = self.client.post(
-            self._url("action/"),
+        for payload in (
+            {"action": "EXTEND_PROBATION", "months": 2},
             {
                 "action": "EXTEND_PROBATION",
                 "months": 2,
                 "note": "Additional field quality assessment required.",
             },
-            format="json",
-        )
-        self.assertEqual(extended.status_code, 200)
+        ):
+            response = self.client.post(self._url("action/"), payload, format="json")
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(response.data["code"], "PHASE2_LIFECYCLE_REQUIRED")
         row = EmployeeHrLifecycle.objects.get(employee=self.employee)
-        self.assertGreater(row.confirmation_due_date, before)
-        self.assertTrue(
+        self.assertEqual(row.confirmation_due_date, before)
+        self.assertFalse(
             EmployeeHrLifecycleEvent.objects.filter(
                 employee=self.employee,
                 event_type="EXTEND_PROBATION",
             ).exists()
         )
 
-    def test_confirmation_requires_manager_and_hr_reviews(self):
+    def test_legacy_confirmation_requires_phase2_workflow_even_after_reviews(self):
         blocked = self.client.post(
             self._url("action/"),
             {"action": "CONFIRM"},
             format="json",
         )
         self.assertEqual(blocked.status_code, 409)
+        self.assertEqual(blocked.data["code"], "PHASE2_LIFECYCLE_REQUIRED")
 
         self._approve_reviews()
         confirmed = self.client.post(
@@ -355,19 +350,20 @@ class CorporateHrLifecycleTests(APITestCase):
             {"action": "CONFIRM", "note": "Probation completed."},
             format="json",
         )
-        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(confirmed.status_code, 409)
+        self.assertEqual(confirmed.data["code"], "PHASE2_LIFECYCLE_REQUIRED")
         lifecycle = EmployeeHrLifecycle.objects.get(employee=self.employee)
-        self.assertEqual(lifecycle.employment_status, "CONFIRMED")
-        self.assertEqual(lifecycle.employment_type, "PERMANENT")
-        self.assertIsNotNone(lifecycle.confirmed_at)
-        self.assertTrue(
+        self.assertNotEqual(lifecycle.employment_status, "CONFIRMED")
+        self.assertEqual(lifecycle.employment_type, "PROBATION")
+        self.assertIsNone(lifecycle.confirmed_at)
+        self.assertFalse(
             EmployeeHrLifecycleEvent.objects.filter(
                 employee=self.employee,
                 event_type="CONFIRM",
             ).exists()
         )
 
-    def test_separation_preserves_employee_history_and_disables_login(self):
+    def test_legacy_notice_and_separation_require_phase2_exit_workflow(self):
         notice = self.client.post(
             self._url("action/"),
             {
@@ -378,16 +374,20 @@ class CorporateHrLifecycleTests(APITestCase):
             },
             format="json",
         )
-        self.assertEqual(notice.status_code, 200)
+        self.assertEqual(notice.status_code, 409)
+        self.assertEqual(notice.data["code"], "PHASE2_LIFECYCLE_REQUIRED")
         separated = self.client.post(
             self._url("action/"),
             {"action": "SEPARATE", "note": "Clearance complete."},
             format="json",
         )
-        self.assertEqual(separated.status_code, 200)
+        self.assertEqual(separated.status_code, 409)
+        self.assertEqual(separated.data["code"], "PHASE2_LIFECYCLE_REQUIRED")
         self.employee.refresh_from_db()
         self.employee_user.refresh_from_db()
-        self.assertFalse(self.employee.is_active)
-        self.assertFalse(self.employee_user.is_active)
+        lifecycle = EmployeeHrLifecycle.objects.get(employee=self.employee)
+        self.assertTrue(self.employee.is_active)
+        self.assertTrue(self.employee_user.is_active)
+        self.assertNotEqual(lifecycle.employment_status, "NOTICE")
+        self.assertNotEqual(lifecycle.employment_status, "SEPARATED")
         self.assertTrue(EmployeeProfile.objects.filter(pk=self.employee.id).exists())
-        self.assertTrue(EmployeeHrLifecycleEvent.objects.filter(employee=self.employee).exists())
