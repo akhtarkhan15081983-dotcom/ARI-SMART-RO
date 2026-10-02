@@ -35,7 +35,9 @@ class CorporateHrmsService {
         '${ApiService.baseUrl}/employees/hrms/employees/$employeeId/documents/',
       ),
     );
-    request.headers.addAll(await ApiService.authHeaders());
+    final headers = await ApiService.authHeaders();
+    headers.remove('Content-Type');
+    request.headers.addAll(headers);
     request.fields['document_type'] = documentType;
     if (documentNumber.trim().isNotEmpty) {
       request.fields['document_number'] = documentNumber.trim();
