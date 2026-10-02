@@ -1,5 +1,9 @@
+from calendar import monthrange
+
 from django.conf import settings
 from django.db import models
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from django.utils import timezone
 
 
@@ -94,3 +98,29 @@ class EmployeeHrLifecycleEvent(models.Model):
 
     def __str__(self):
         return f"{self.employee.employee_id} - {self.event_type}"
+
+
+def _add_months(value, months):
+    total = value.year * 12 + (value.month - 1) + months
+    year, month0 = divmod(total, 12)
+    month = month0 + 1
+    day = min(value.day, monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
+
+
+@receiver(post_save, sender="employees.EmployeeProfile")
+def ensure_hr_lifecycle(sender, instance, created, **kwargs):
+    """Every employee gets a durable HR lifecycle record without changing legacy APIs."""
+    if not created:
+        return
+    start = instance.joining_date or timezone.localdate()
+    EmployeeHrLifecycle.objects.get_or_create(
+        employee=instance,
+        defaults={
+            "employment_type": "PROBATION",
+            "employment_status": "ONBOARDING",
+            "hr_stage": "CREATED",
+            "probation_start_date": start,
+            "confirmation_due_date": _add_months(start, 3),
+        },
+    )
