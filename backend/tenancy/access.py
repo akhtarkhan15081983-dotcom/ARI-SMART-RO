@@ -122,6 +122,7 @@ def has_feature_access(request, feature_key):
     return feature_key in effective_role_features(company, role)
 
 
+
 class HasRequiredFeature(BasePermission):
     def has_permission(self, request, view):
         feature_key = getattr(view, "required_feature", "")
