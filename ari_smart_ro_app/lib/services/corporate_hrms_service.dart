@@ -11,9 +11,7 @@ class CorporateHrmsService {
 
   Future<List<Map<String, dynamic>>> directory() async {
     final data = await _getMap('/employees/hrms/directory/');
-    return (data['employees'] as List<dynamic>? ?? const [])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
+    return _rows(data, 'employees');
   }
 
   Future<Map<String, dynamic>> employeeFile(int employeeId) =>
@@ -21,6 +19,93 @@ class CorporateHrmsService {
 
   Future<Map<String, dynamic>> employeeDocuments(int employeeId) =>
       _getMap('/employees/hrms/employees/$employeeId/documents/');
+
+  Future<Map<String, dynamic>> recruitmentSummary() =>
+      _getMap('/employees/hrms/recruitment/summary/');
+
+  Future<List<Map<String, dynamic>>> recruitmentRequisitions() async =>
+      _rows(await _getMap('/employees/hrms/recruitment/requisitions/'), 'requisitions');
+
+  Future<List<Map<String, dynamic>>> recruitmentJobs() async =>
+      _rows(await _getMap('/employees/hrms/recruitment/jobs/'), 'jobs');
+
+  Future<List<Map<String, dynamic>>> recruitmentCandidates({String query = ''}) async {
+    final suffix = query.trim().isEmpty ? '' : '?q=${Uri.encodeQueryComponent(query.trim())}';
+    return _rows(await _getMap('/employees/hrms/recruitment/candidates/$suffix'), 'candidates');
+  }
+
+  Future<List<Map<String, dynamic>>> recruitmentApplications({String stage = ''}) async {
+    final suffix = stage.trim().isEmpty ? '' : '?stage=${Uri.encodeQueryComponent(stage.trim().toUpperCase())}';
+    return _rows(await _getMap('/employees/hrms/recruitment/applications/$suffix'), 'applications');
+  }
+
+  Future<List<Map<String, dynamic>>> recruitmentInterviews() async =>
+      _rows(await _getMap('/employees/hrms/recruitment/interviews/'), 'interviews');
+
+  Future<List<Map<String, dynamic>>> recruitmentOffers() async =>
+      _rows(await _getMap('/employees/hrms/recruitment/offers/'), 'offers');
+
+  Future<Map<String, dynamic>> createRequisition(Map<String, dynamic> payload) =>
+      _postMap('/employees/hrms/recruitment/requisitions/', payload, successCodes: const {201});
+
+  Future<Map<String, dynamic>> requisitionAction(int id, String action, {String reason = ''}) =>
+      _postMap('/employees/hrms/recruitment/requisitions/$id/action/', {
+        'action': action,
+        if (reason.trim().isNotEmpty) 'reason': reason.trim(),
+      });
+
+  Future<Map<String, dynamic>> createInterview(Map<String, dynamic> payload) =>
+      _postMap('/employees/hrms/recruitment/interviews/', payload, successCodes: const {201});
+
+  Future<Map<String, dynamic>> interviewAction(int id, String action, {String reason = ''}) =>
+      _postMap('/employees/hrms/recruitment/interviews/$id/action/', {
+        'action': action,
+        if (reason.trim().isNotEmpty) 'reason': reason.trim(),
+      });
+
+  Future<Map<String, dynamic>> submitInterviewFeedback(
+    int interviewId,
+    Map<String, dynamic> payload,
+  ) => _postMap(
+        '/employees/hrms/recruitment/interviews/$interviewId/feedback/',
+        payload,
+        successCodes: const {201},
+      );
+
+  Future<Map<String, dynamic>> recruitmentDecision(
+    int applicationId,
+    String action, {
+    required String reason,
+  }) =>
+      _postMap('/employees/hrms/recruitment/applications/$applicationId/decision/', {
+        'action': action,
+        'reason': reason.trim(),
+      });
+
+  Future<Map<String, dynamic>> createCandidateOffer(Map<String, dynamic> payload) =>
+      _postMap('/employees/hrms/recruitment/offers/', payload, successCodes: const {201});
+
+  Future<Map<String, dynamic>> offerAction(
+    int offerId,
+    String action, {
+    String reason = '',
+    Map<String, dynamic> evidence = const {},
+  }) =>
+      _postMap('/employees/hrms/recruitment/offers/$offerId/action/', {
+        'action': action,
+        if (reason.trim().isNotEmpty) 'reason': reason.trim(),
+        if (evidence.isNotEmpty) 'evidence': evidence,
+      });
+
+  Future<Map<String, dynamic>> convertCandidate(
+    int applicationId, {
+    bool capacityOverride = false,
+    String overrideReason = '',
+  }) =>
+      _postMap('/employees/hrms/recruitment/applications/$applicationId/convert/', {
+        if (capacityOverride) 'capacity_override': true,
+        if (overrideReason.trim().isNotEmpty) 'override_reason': overrideReason.trim(),
+      }, successCodes: const {200, 201});
 
   Future<Map<String, dynamic>> uploadEmployeeDocument(
     int employeeId, {
@@ -158,6 +243,29 @@ class CorporateHrmsService {
     if (response.statusCode != 200) throw Exception(_message(response));
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
+
+  Future<Map<String, dynamic>> _postMap(
+    String path,
+    Map<String, dynamic> payload, {
+    Set<int> successCodes = const {200},
+  }) async {
+    final response = await http
+        .post(
+          Uri.parse('${ApiService.baseUrl}$path'),
+          headers: await ApiService.authHeaders(),
+          body: jsonEncode(payload),
+        )
+        .timeout(const Duration(seconds: 25));
+    if (!successCodes.contains(response.statusCode)) {
+      throw Exception(_message(response));
+    }
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  List<Map<String, dynamic>> _rows(Map<String, dynamic> data, String key) =>
+      (data[key] as List<dynamic>? ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
 
   String _message(http.Response response) {
     try {
