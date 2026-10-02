@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.test import TestCase
@@ -69,11 +69,16 @@ class EmployeeDayRouteTests(TestCase):
         )
 
     def test_engineer_can_read_own_day_route_and_tracking_gap(self):
-        # Anchor both route points 20-30 minutes in the past so a test running
-        # just after local midnight still queries the calendar day that owns
-        # both captured timestamps.
-        route_end = timezone.now().replace(microsecond=0) - timedelta(minutes=20)
-        route_start = route_end - timedelta(minutes=10)
+        # Anchor the route to a fixed local midday window instead of relative
+        # "minutes ago" timestamps. This keeps both points on one calendar
+        # date even when CI executes immediately before or after midnight.
+        route_date = timezone.localdate() - timedelta(days=1)
+        tz = timezone.get_current_timezone()
+        route_start = timezone.make_aware(
+            datetime.combine(route_date, time(hour=12)),
+            tz,
+        )
+        route_end = route_start + timedelta(minutes=10)
         EmployeeLocationPoint.objects.create(
             employee=self.engineer,
             latitude=Decimal("27.1490000"),
@@ -87,7 +92,6 @@ class EmployeeDayRouteTests(TestCase):
             captured_at=route_end,
         )
         self.client.force_authenticate(user=self.engineer_user)
-        route_date = timezone.localtime(route_end).date()
         response = self.client.get(
             f"/api/employees/day-route/?date={route_date.isoformat()}"
         )
