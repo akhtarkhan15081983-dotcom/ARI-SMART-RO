@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/corporate_hrms_service.dart';
@@ -17,6 +18,7 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
   Map<String, dynamic>? _data;
   String? _error;
   bool _loading = true;
+  bool _documentBusy = false;
   late final TabController _tabs;
 
   @override
@@ -33,10 +35,12 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final value = await _service.employeeFile(widget.employeeId);
       if (mounted) setState(() => _data = value);
@@ -70,8 +74,8 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
       );
     }
 
-    final employee = Map<String, dynamic>.from(_data!['employee'] as Map? ?? const {});
-    final lifecycle = Map<String, dynamic>.from(_data!['lifecycle'] as Map? ?? const {});
+    final employee = _map('employee');
+    final lifecycle = _map('lifecycle');
     final readiness = Map<String, dynamic>.from(lifecycle['readiness'] as Map? ?? const {});
     final ready = readiness['ready'] == true;
 
@@ -79,7 +83,7 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
       appBar: AppBar(
         title: Text('${employee['name'] ?? 'Employee'} • HR File'),
         actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+          IconButton(onPressed: _load, tooltip: 'Refresh', icon: const Icon(Icons.refresh)),
           const SizedBox(width: 8),
         ],
         bottom: TabBar(
@@ -99,18 +103,18 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
       ),
       body: Column(
         children: [
-          _employeeHeader(employee, lifecycle, readiness, ready),
+          _header(employee, lifecycle, ready),
           Expanded(
             child: TabBarView(
               controller: _tabs,
               children: [
                 _overview(employee, lifecycle, readiness),
-                _records('Documents', _list('documents'), _documentTile),
-                _records('Attendance', _list('attendance'), _attendanceTile),
-                _records('Leave history', _list('leave'), _leaveTile),
-                _records('Payroll history', _list('payroll'), _payrollTile),
-                _records('Training', _list('training'), _trainingTile),
-                _records('Performance', _list('performance'), _performanceTile),
+                _documents(),
+                _recordList('Attendance', 'attendance', _attendanceTile),
+                _recordList('Leave history', 'leave', _leaveTile),
+                _recordList('Payroll history', 'payroll', _payrollTile),
+                _recordList('Training', 'training', _trainingTile),
+                _recordList('Performance', 'performance', _performanceTile),
                 _careerAudit(),
               ],
             ),
@@ -120,52 +124,48 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
     );
   }
 
+  Map<String, dynamic> _map(String key) =>
+      Map<String, dynamic>.from(_data?[key] as Map? ?? const {});
+
   List<Map<String, dynamic>> _list(String key) =>
       (_data?[key] as List<dynamic>? ?? const [])
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
 
-  Widget _employeeHeader(
+  Widget _header(
     Map<String, dynamic> employee,
     Map<String, dynamic> lifecycle,
-    Map<String, dynamic> readiness,
     bool ready,
   ) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+      padding: const EdgeInsets.all(14),
       color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: .35),
       child: Wrap(
-        spacing: 18,
-        runSpacing: 12,
+        spacing: 14,
+        runSpacing: 10,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           CircleAvatar(
-            radius: 28,
-            child: Text(
-              (employee['name'] ?? 'E').toString().trim().isEmpty
-                  ? 'E'
-                  : (employee['name'] ?? 'E').toString().trim()[0].toUpperCase(),
-            ),
+            radius: 26,
+            child: Text((employee['name'] ?? 'E').toString().trim().isEmpty
+                ? 'E'
+                : (employee['name'] ?? 'E').toString().trim()[0].toUpperCase()),
           ),
           SizedBox(
-            width: 260,
+            width: 270,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  employee['name']?.toString() ?? '-',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                Text(
-                  '${employee['employee_id'] ?? '-'} • ${employee['job_title'] ?? employee['designation'] ?? '-'}',
-                ),
+                Text(employee['name']?.toString() ?? '-',
+                    style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+                Text('${employee['employee_id'] ?? '-'} • ${employee['job_title'] ?? employee['designation'] ?? '-'}'),
                 Text('${employee['department'] ?? '-'} • ${employee['grade'] ?? '-'}'),
               ],
             ),
           ),
-          _statusChip(ready ? 'READY FOR DUTY' : (lifecycle['hr_stage'] ?? 'PENDING').toString(), ready),
-          _statusChip((lifecycle['employment_status'] ?? 'ONBOARDING').toString(), lifecycle['employment_status'] == 'CONFIRMED'),
+          Chip(label: Text(ready ? 'READY FOR DUTY' : (lifecycle['hr_stage'] ?? 'PENDING').toString().replaceAll('_', ' '))),
+          Chip(label: Text((lifecycle['employment_status'] ?? 'ONBOARDING').toString())),
           OutlinedButton.icon(
             onPressed: _showLifecycleActions,
             icon: const Icon(Icons.rule_folder_outlined),
@@ -175,14 +175,6 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
       ),
     );
   }
-
-  Widget _statusChip(String label, bool positive) => Chip(
-        avatar: Icon(
-          positive ? Icons.verified_outlined : Icons.pending_actions_outlined,
-          size: 18,
-        ),
-        label: Text(label.replaceAll('_', ' ')),
-      );
 
   Widget _overview(
     Map<String, dynamic> employee,
@@ -196,144 +188,161 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _section(
-            'Employment profile',
-            Icons.business_center_outlined,
-            [
-              _kv('Designation', employee['designation']),
-              _kv('Job title', employee['job_title']),
-              _kv('Department', employee['department']),
-              _kv('Grade', employee['grade']),
-              _kv('Reporting manager', employee['reporting_manager']),
-              _kv('Joining date', employee['joining_date']),
-              _kv('Employment type', lifecycle['employment_type']),
-              _kv('Work location', lifecycle['work_location']),
-              _kv('Probation start', lifecycle['probation_start_date']),
-              _kv('Confirmation due', lifecycle['confirmation_due_date']),
-              _kv('Confirmed on', lifecycle['confirmed_at']),
-            ],
-          ),
+          _section('Employment profile', Icons.business_center_outlined, [
+            _kv('Designation', employee['designation']),
+            _kv('Job title', employee['job_title']),
+            _kv('Department', employee['department']),
+            _kv('Grade', employee['grade']),
+            _kv('Reporting manager', employee['reporting_manager']),
+            _kv('Joining date', employee['joining_date']),
+            _kv('Employment type', lifecycle['employment_type']),
+            _kv('Employment status', lifecycle['employment_status']),
+            _kv('Work location', lifecycle['work_location']),
+            _kv('Confirmation due', lifecycle['confirmation_due_date']),
+          ]),
           const SizedBox(height: 12),
-          _section(
-            'Personal & emergency information',
-            Icons.contact_page_outlined,
-            [
-              _kv('Phone', employee['phone']),
-              _kv('Email', employee['email']),
-              _kv('DOB', employee['date_of_birth']),
-              _kv('Gender', employee['gender']),
-              _kv('Address', [employee['address'], employee['city'], employee['state'], employee['pincode']]
-                  .where((e) => e != null && e.toString().trim().isNotEmpty)
-                  .join(', ')),
-              _kv('Emergency contact', '${employee['emergency_name'] ?? ''} ${employee['emergency_contact'] ?? ''}'.trim()),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _section(
-            'Ready-for-duty controls',
-            Icons.fact_check_outlined,
-            [
-              ...checks.entries.map((e) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(e.value == true ? Icons.check_circle : Icons.error_outline),
-                    title: Text(e.key.replaceAll('_', ' ').toUpperCase()),
-                    trailing: Text(e.value == true ? 'COMPLETE' : 'PENDING'),
-                  )),
-              if ((documents['missing'] as List?)?.isNotEmpty == true)
-                ListTile(
+          _section('Ready-for-duty controls', Icons.fact_check_outlined, [
+            ...checks.entries.map((entry) => ListTile(
+                  dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.folder_off_outlined),
-                  title: const Text('Missing mandatory documents'),
-                  subtitle: Text((documents['missing'] as List).join(', ')),
-                ),
+                  leading: Icon(entry.value == true ? Icons.check_circle : Icons.error_outline),
+                  title: Text(entry.key.replaceAll('_', ' ').toUpperCase()),
+                  trailing: Text(entry.value == true ? 'COMPLETE' : 'BLOCKED'),
+                )),
+            if ((documents['missing'] as List?)?.isNotEmpty == true)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.folder_off_outlined),
+                title: const Text('Missing mandatory documents'),
+                subtitle: Text((documents['missing'] as List).join(', ')),
+              ),
+          ]),
+          const SizedBox(height: 12),
+          _section('Reviews', Icons.how_to_reg_outlined, [
+            _kv('Manager review', lifecycle['manager_review_status']),
+            _kv('Manager note', lifecycle['manager_review_note']),
+            _kv('HR review', lifecycle['hr_review_status']),
+            _kv('HR note', lifecycle['hr_review_note']),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _documents() {
+    final rows = _list('documents');
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Employee Documents', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              ),
+              FilledButton.icon(
+                onPressed: _documentBusy ? null : _uploadDocument,
+                icon: const Icon(Icons.upload_file),
+                label: const Text('UPLOAD DOCUMENT'),
+              ),
             ],
           ),
+          const SizedBox(height: 8),
+          const Text(
+            'MISSING, REJECTED and EXPIRED mandatory documents block READY FOR DUTY. Uploaded files require HR verification.',
+          ),
           const SizedBox(height: 12),
-          _section(
-            'Probation & confirmation',
-            Icons.workspace_premium_outlined,
-            [
-              _kv('Manager review', lifecycle['manager_review_status']),
-              _kv('Manager note', lifecycle['manager_review_note']),
-              _kv('HR review', lifecycle['hr_review_status']),
-              _kv('HR note', lifecycle['hr_review_note']),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _review('MANAGER_REVIEW'),
-                      icon: const Icon(Icons.supervisor_account_outlined),
-                      label: const Text('MANAGER REVIEW'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _review('HR_REVIEW'),
-                      icon: const Icon(Icons.how_to_reg_outlined),
-                      label: const Text('HR REVIEW'),
-                    ),
+          ...rows.map(_documentTile),
+        ],
+      ),
+    );
+  }
+
+  Widget _documentTile(Map<String, dynamic> row) {
+    final status = (row['status'] ?? (row['verified'] == true ? 'VERIFIED' : 'MISSING')).toString();
+    final id = (row['id'] as num?)?.toInt();
+    final audit = (row['audit'] as List<dynamic>? ?? const []);
+    return Card(
+      child: ExpansionTile(
+        leading: Icon(_documentIcon(status)),
+        title: Text((row['type'] ?? row['document_type'] ?? 'Document').toString().replaceAll('_', ' ')),
+        subtitle: Text('${row['file_name']?.toString().isNotEmpty == true ? row['file_name'] : 'No file'} • Expiry: ${row['expiry_date'] ?? 'No expiry'}'),
+        trailing: Chip(label: Text(status)),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if ((row['reason'] ?? '').toString().isNotEmpty)
+                  Text('Latest reason: ${row['reason']} • ${row['reviewer'] ?? ''}'),
+                if (id != null) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _documentBusy ? null : () => _reviewDocument(id, 'VERIFY'),
+                        icon: const Icon(Icons.verified_outlined),
+                        label: const Text('VERIFY'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _documentBusy ? null : () => _reviewDocument(id, 'REJECT'),
+                        icon: const Icon(Icons.cancel_outlined),
+                        label: const Text('REJECT'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _documentBusy ? null : () => _reviewDocument(id, 'EXPIRE'),
+                        icon: const Icon(Icons.event_busy_outlined),
+                        label: const Text('MARK EXPIRED'),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: _extendProbation,
-                      icon: const Icon(Icons.more_time),
-                      label: const Text('EXTEND PROBATION'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _confirmEmployee,
-                      icon: const Icon(Icons.verified_user_outlined),
-                      label: const Text('CONFIRM EMPLOYEE'),
-                    ),
-                  ),
+                if (audit.isNotEmpty) ...[
+                  const Divider(height: 24),
+                  const Text('Audit history', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ...audit.map((entry) {
+                    final item = Map<String, dynamic>.from(entry as Map);
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('${item['status'] ?? item['event'] ?? '-'} • ${item['reviewer'] ?? '-'}'),
+                      subtitle: Text('${item['reason'] ?? ''}\n${item['created_at'] ?? ''}'),
+                    );
+                  }),
                 ],
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _section(String title, IconData icon, List<Widget> children) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(children: [Icon(icon), const SizedBox(width: 8), Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))]),
-              const Divider(height: 24),
-              ...children,
-            ],
-          ),
-        ),
-      );
+  IconData _documentIcon(String status) {
+    switch (status) {
+      case 'VERIFIED':
+        return Icons.verified_outlined;
+      case 'REJECTED':
+        return Icons.cancel_outlined;
+      case 'EXPIRED':
+        return Icons.event_busy_outlined;
+      case 'UPLOADED':
+        return Icons.cloud_done_outlined;
+      default:
+        return Icons.upload_file_outlined;
+    }
+  }
 
-  Widget _kv(String label, dynamic value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(width: 180, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700))),
-            Expanded(child: Text((value ?? '-').toString().isEmpty ? '-' : (value ?? '-').toString())),
-          ],
-        ),
-      );
-
-  Widget _records(
+  Widget _recordList(
     String title,
-    List<Map<String, dynamic>> rows,
+    String key,
     Widget Function(Map<String, dynamic>) builder,
   ) {
+    final rows = _list(key);
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -349,15 +358,6 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
       ),
     );
   }
-
-  Widget _documentTile(Map<String, dynamic> row) => Card(
-        child: ListTile(
-          leading: Icon(row['verified'] == true ? Icons.verified_outlined : Icons.pending_outlined),
-          title: Text((row['type'] ?? 'Document').toString()),
-          subtitle: Text('No: ${row['number'] ?? '-'} • Expiry: ${row['expiry_date'] ?? 'No expiry'}'),
-          trailing: Chip(label: Text(row['verified'] == true ? 'VERIFIED' : 'PENDING')),
-        ),
-      );
 
   Widget _attendanceTile(Map<String, dynamic> row) => Card(
         child: ListTile(
@@ -411,8 +411,6 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
         padding: const EdgeInsets.all(16),
         children: [
           const Text('Career movements', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 10),
-          if (career.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('No career movements yet.'))),
           ...career.map((row) => Card(
                 child: ListTile(
                   leading: const Icon(Icons.trending_up_outlined),
@@ -420,15 +418,13 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
                   subtitle: Text('${row['effective_date'] ?? '-'}\n${row['old_job_title'] ?? '-'} → ${row['new_job_title'] ?? '-'}\n${row['reason'] ?? ''}'),
                 ),
               )),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           const Text('HR audit trail', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 10),
-          if (audit.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('No lifecycle audit events yet.'))),
           ...audit.map((row) => Card(
                 child: ListTile(
-                  leading: const Icon(Icons.history_outlined),
-                  title: Text('${row['type'] ?? '-'} • ${row['effective_date'] ?? '-'}'),
-                  subtitle: Text('${row['from'] ?? ''} → ${row['to'] ?? ''}\n${row['note'] ?? ''}\nBy: ${row['by'] ?? '-'}'),
+                  leading: const Icon(Icons.history),
+                  title: Text('${row['type'] ?? '-'} • ${row['from'] ?? '-'} → ${row['to'] ?? '-'}'),
+                  subtitle: Text('${row['note'] ?? ''}\nBy: ${row['by'] ?? '-'} • ${row['created_at'] ?? ''}'),
                 ),
               )),
         ],
@@ -436,214 +432,251 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
     );
   }
 
+  Widget _section(String title, IconData icon, List<Widget> children) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                Icon(icon),
+                const SizedBox(width: 8),
+                Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ]),
+              const Divider(height: 24),
+              ...children,
+            ],
+          ),
+        ),
+      );
+
+  Widget _kv(String label, dynamic value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 180, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700))),
+            Expanded(child: Text((value ?? '-').toString().isEmpty ? '-' : (value ?? '-').toString())),
+          ],
+        ),
+      );
+
+  Future<void> _uploadDocument() async {
+    final type = await _selectDocumentType();
+    if (type == null) return;
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    final details = await _documentMetadata(type);
+    if (details == null) return;
+    setState(() => _documentBusy = true);
+    try {
+      await _service.uploadEmployeeDocument(
+        widget.employeeId,
+        documentType: type,
+        file: result.files.single,
+        documentNumber: details.$1,
+        expiryDate: details.$2,
+      );
+      await _load();
+      _message('$type uploaded. HR verification is now pending.');
+    } catch (error) {
+      _message(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _documentBusy = false);
+    }
+  }
+
+  Future<String?> _selectDocumentType() {
+    const types = {
+      'PHOTO': 'Photo',
+      'AADHAAR': 'Aadhaar',
+      'PAN': 'PAN',
+      'ADDRESS_PROOF': 'Address Proof',
+      'BANK_PROOF': 'Bank Proof',
+      'QUALIFICATION': 'Qualification',
+      'PREVIOUS_EMPLOYMENT': 'Previous Employment',
+      'OTHER': 'Other company-required document',
+    };
+    return showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Document type'),
+        children: types.entries
+            .map((entry) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, entry.key),
+                  child: Text(entry.value),
+                ))
+            .toList(),
+      ),
+    );
+  }
+
+  Future<(String, String)?> _documentMetadata(String type) async {
+    final number = TextEditingController();
+    final expiry = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$type details'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: number, decoration: const InputDecoration(labelText: 'Document number (optional)')),
+            const SizedBox(height: 10),
+            TextField(controller: expiry, decoration: const InputDecoration(labelText: 'Expiry date YYYY-MM-DD (optional)')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('CONTINUE')),
+        ],
+      ),
+    );
+    final value = result == true ? (number.text.trim(), expiry.text.trim()) : null;
+    number.dispose();
+    expiry.dispose();
+    return value;
+  }
+
+  Future<void> _reviewDocument(int documentId, String action) async {
+    final reason = await _reasonDialog('$action DOCUMENT');
+    if (reason == null || reason.trim().isEmpty) return;
+    setState(() => _documentBusy = true);
+    try {
+      await _service.reviewEmployeeDocument(
+        widget.employeeId,
+        documentId: documentId,
+        action: action,
+        reason: reason,
+      );
+      await _load();
+      _message('Document $action completed and audited.');
+    } catch (error) {
+      _message(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _documentBusy = false);
+    }
+  }
+
   Future<void> _showLifecycleActions() async {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Wrap(
-            runSpacing: 8,
-            children: [
-              const Text('Employee lifecycle actions', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-              ListTile(
-                leading: const Icon(Icons.fact_check_outlined),
-                title: const Text('Manager review'),
-                onTap: () { Navigator.pop(context); _review('MANAGER_REVIEW'); },
-              ),
-              ListTile(
-                leading: const Icon(Icons.verified_user_outlined),
-                title: const Text('HR review'),
-                onTap: () { Navigator.pop(context); _review('HR_REVIEW'); },
-              ),
-              ListTile(
-                leading: const Icon(Icons.more_time),
-                title: const Text('Extend probation'),
-                onTap: () { Navigator.pop(context); _extendProbation(); },
-              ),
-              ListTile(
-                leading: const Icon(Icons.workspace_premium_outlined),
-                title: const Text('Confirm employee'),
-                onTap: () { Navigator.pop(context); _confirmEmployee(); },
-              ),
-              ListTile(
-                leading: const Icon(Icons.logout_outlined),
-                title: const Text('Start notice / separation'),
-                onTap: () { Navigator.pop(context); _startNotice(); },
-              ),
-            ],
-          ),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text('HR lifecycle actions', style: TextStyle(fontWeight: FontWeight.w900)),
+              subtitle: Text('Server-side segregation of duties is enforced for every action.'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.supervisor_account_outlined),
+              title: const Text('Manager review'),
+              onTap: () { Navigator.pop(context); _lifecycleAction('MANAGER_REVIEW', withStatus: true); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.how_to_reg_outlined),
+              title: const Text('HR review'),
+              onTap: () { Navigator.pop(context); _lifecycleAction('HR_REVIEW', withStatus: true); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.verified_user_outlined),
+              title: const Text('Confirm employee'),
+              onTap: () { Navigator.pop(context); _lifecycleAction('CONFIRM'); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.more_time),
+              title: const Text('Extend probation'),
+              onTap: () { Navigator.pop(context); _extendProbation(); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.exit_to_app),
+              title: const Text('Start notice'),
+              onTap: () { Navigator.pop(context); _lifecycleAction('START_NOTICE'); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_off_outlined),
+              title: const Text('Separate employee'),
+              onTap: () { Navigator.pop(context); _lifecycleAction('SEPARATE'); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.admin_panel_settings_outlined),
+              title: const Text('Admin Ready override'),
+              subtitle: const Text('Admin only; mandatory reason + audit'),
+              onTap: () { Navigator.pop(context); _lifecycleAction('OVERRIDE_READY'); },
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Future<void> _review(String action) async {
-    String note = '';
-    String status = 'APPROVED';
-    final submit = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: Text(action == 'HR_REVIEW' ? 'HR Review' : 'Manager Review'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: status,
-                items: const [
-                  DropdownMenuItem(value: 'APPROVED', child: Text('Approve')),
-                  DropdownMenuItem(value: 'REJECTED', child: Text('Needs correction')),
-                ],
-                onChanged: (v) => setLocal(() => status = v ?? 'APPROVED'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Review note', border: OutlineInputBorder()),
-                onChanged: (v) => note = v,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('SAVE REVIEW')),
-          ],
-        ),
-      ),
-    );
-    if (submit != true) return;
-    await _runAction(action, note: note, extra: {'status': status});
+  Future<void> _lifecycleAction(String action, {bool withStatus = false}) async {
+    final reason = await _reasonDialog(action.replaceAll('_', ' '));
+    if (reason == null || reason.trim().isEmpty) return;
+    try {
+      await _service.lifecycleAction(
+        widget.employeeId,
+        action,
+        note: reason,
+        extra: withStatus ? const {'status': 'APPROVED'} : const {},
+      );
+      await _load();
+      _message('$action completed.');
+    } catch (error) {
+      _message(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> _extendProbation() async {
-    int months = 1;
-    String note = '';
-    final submit = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: const Text('Extend probation'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<int>(
-                initialValue: months,
-                items: const [1, 2, 3, 6]
-                    .map((m) => DropdownMenuItem(value: m, child: Text('$m month${m == 1 ? '' : 's'}')))
-                    .toList(),
-                onChanged: (v) => setLocal(() => months = v ?? 1),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Reason', border: OutlineInputBorder()),
-                onChanged: (v) => note = v,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('EXTEND')),
-          ],
-        ),
-      ),
-    );
-    if (submit == true) await _runAction('EXTEND_PROBATION', note: note, extra: {'months': months});
+    final reason = await _reasonDialog('EXTEND PROBATION');
+    if (reason == null || reason.trim().isEmpty) return;
+    try {
+      await _service.lifecycleAction(
+        widget.employeeId,
+        'EXTEND_PROBATION',
+        note: reason,
+        extra: const {'months': 1},
+      );
+      await _load();
+      _message('Probation extended by 1 month.');
+    } catch (error) {
+      _message(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
-  Future<void> _confirmEmployee() async {
-    final confirmed = await showDialog<bool>(
+  Future<String?> _reasonDialog(String title) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Confirm employment?'),
-        content: const Text('Manager and HR reviews must both be approved. This action creates an auditable confirmation event.'),
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Reason / review note *',
+            border: OutlineInputBorder(),
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('CONFIRM EMPLOYEE')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('SUBMIT')),
         ],
       ),
     );
-    if (confirmed == true) await _runAction('CONFIRM', note: 'Employment confirmed after approved probation reviews.');
+    controller.dispose();
+    return result;
   }
 
-  Future<void> _startNotice() async {
-    String reason = '';
-    String type = 'RESIGNATION';
-    DateTime lastDay = DateTime.now().add(const Duration(days: 30));
-    final submit = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: const Text('Start notice / separation'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: type,
-                  items: const [
-                    DropdownMenuItem(value: 'RESIGNATION', child: Text('Resignation')),
-                    DropdownMenuItem(value: 'TERMINATION', child: Text('Termination')),
-                    DropdownMenuItem(value: 'CONTRACT_END', child: Text('Contract end')),
-                  ],
-                  onChanged: (v) => setLocal(() => type = v ?? type),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Last working date'),
-                  subtitle: Text('${lastDay.year}-${lastDay.month.toString().padLeft(2, '0')}-${lastDay.day.toString().padLeft(2, '0')}'),
-                  trailing: const Icon(Icons.edit_calendar),
-                  onTap: () async {
-                    final value = await showDatePicker(
-                      context: context,
-                      initialDate: lastDay,
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (value != null) setLocal(() => lastDay = value);
-                  },
-                ),
-                TextField(
-                  maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'Reason / HR note', border: OutlineInputBorder()),
-                  onChanged: (v) => reason = v,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('START NOTICE')),
-          ],
-        ),
-      ),
-    );
-    if (submit == true) {
-      await _runAction('START_NOTICE', note: reason, extra: {
-        'separation_type': type,
-        'last_working_date': '${lastDay.year}-${lastDay.month.toString().padLeft(2, '0')}-${lastDay.day.toString().padLeft(2, '0')}',
-      });
-    }
-  }
-
-  Future<void> _runAction(
-    String action, {
-    String note = '',
-    Map<String, dynamic> extra = const {},
-  }) async {
-    try {
-      await _service.lifecycleAction(widget.employeeId, action, note: note, extra: extra);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('HR lifecycle updated.')));
-      await _load();
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
-        );
-      }
-    }
+  void _message(String value) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
   }
 }
