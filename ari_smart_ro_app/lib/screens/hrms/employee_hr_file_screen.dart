@@ -567,49 +567,39 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: ListView(
           shrinkWrap: true,
           children: [
             const ListTile(
               title: Text('HR lifecycle actions', style: TextStyle(fontWeight: FontWeight.w900)),
-              subtitle: Text('Server-side segregation of duties is enforced for every action.'),
+              subtitle: Text('Sensitive employment changes use the Corporate HRMS Phase-2 approval workflow.'),
             ),
             ListTile(
+              leading: const Icon(Icons.account_tree_outlined),
+              title: const Text('Employee Lifecycle workspace'),
+              subtitle: const Text('Probation, confirmation, promotion, increment, transfer, exit and clearance'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                Navigator.of(context).pushNamed('/hrms/lifecycle');
+              },
+            ),
+            const Divider(),
+            ListTile(
               leading: const Icon(Icons.supervisor_account_outlined),
-              title: const Text('Manager review'),
-              onTap: () { Navigator.pop(context); _lifecycleAction('MANAGER_REVIEW', withStatus: true); },
+              title: const Text('Manager onboarding review'),
+              onTap: () { Navigator.pop(sheetContext); _lifecycleAction('MANAGER_REVIEW', withStatus: true); },
             ),
             ListTile(
               leading: const Icon(Icons.how_to_reg_outlined),
-              title: const Text('HR review'),
-              onTap: () { Navigator.pop(context); _lifecycleAction('HR_REVIEW', withStatus: true); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.verified_user_outlined),
-              title: const Text('Confirm employee'),
-              onTap: () { Navigator.pop(context); _lifecycleAction('CONFIRM'); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.more_time),
-              title: const Text('Extend probation'),
-              onTap: () { Navigator.pop(context); _extendProbation(); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.exit_to_app),
-              title: const Text('Start notice'),
-              onTap: () { Navigator.pop(context); _lifecycleAction('START_NOTICE'); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.person_off_outlined),
-              title: const Text('Separate employee'),
-              onTap: () { Navigator.pop(context); _lifecycleAction('SEPARATE'); },
+              title: const Text('HR onboarding review'),
+              onTap: () { Navigator.pop(sheetContext); _lifecycleAction('HR_REVIEW', withStatus: true); },
             ),
             ListTile(
               leading: const Icon(Icons.admin_panel_settings_outlined),
               title: const Text('Admin Ready override'),
               subtitle: const Text('Admin only; mandatory reason + audit'),
-              onTap: () { Navigator.pop(context); _lifecycleAction('OVERRIDE_READY'); },
+              onTap: () { Navigator.pop(sheetContext); _lifecycleAction('OVERRIDE_READY'); },
             ),
           ],
         ),
@@ -629,23 +619,6 @@ class _EmployeeHrFileScreenState extends State<EmployeeHrFileScreen>
       );
       await _load();
       _message('$action completed.');
-    } catch (error) {
-      _message(error.toString().replaceFirst('Exception: ', ''));
-    }
-  }
-
-  Future<void> _extendProbation() async {
-    final reason = await _reasonDialog('EXTEND PROBATION');
-    if (reason == null || reason.trim().isEmpty) return;
-    try {
-      await _service.lifecycleAction(
-        widget.employeeId,
-        'EXTEND_PROBATION',
-        note: reason,
-        extra: const {'months': 1},
-      );
-      await _load();
-      _message('Probation extended by 1 month.');
     } catch (error) {
       _message(error.toString().replaceFirst('Exception: ', ''));
     }
