@@ -37,6 +37,12 @@ void main() {
       }
     });
 
+    test('contract-completion exits use the canonical backend value', () {
+      final source = _read('lib/services/corporate_hrms_lifecycle_service.dart');
+      expect(source, contains("separationType == 'CONTRACT_END'"));
+      expect(source, contains("canonicalPayload['separation_type'] = 'CONTRACT_COMPLETION'"));
+    });
+
     test('workspace exposes corporate lifecycle command center', () {
       final source = _read('lib/screens/hrms/employee_lifecycle_screen.dart');
       for (final label in <String>[
