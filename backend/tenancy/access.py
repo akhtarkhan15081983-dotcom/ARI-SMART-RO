@@ -5,99 +5,57 @@ from .models import CompanyMembership, RoleFeaturePermission
 
 
 ROLE_FEATURE_CATALOG = {
-    "attendance": "Attendance",
-    "hrms": "Employee HRMS",
-    "training": "Mandatory Training",
-    "work_calendar": "Work Calendar",
-    "work_route": "Work Route",
-    "jobs": "Jobs",
-    "assigned_customers": "Assigned Customers",
-    "customers": "Customers",
-    "walkin": "Walk-In Installation",
-    "service": "Service",
-    "bag": "Engineer Bag",
-    "request": "Part Request",
-    "qr": "QR Verification",
-    "rent_management": "Rent Management",
-    "payment_history": "Payment History",
-    "complaint": "Complaint",
-    "referral": "Refer & Wallet",
-    "profile": "Profile",
-    "reports": "Business Reports",
-    "downloads": "Download Center",
-    "inventory_workflow": "Inventory Control",
-    "calling_desk": "Calling Desk",
-    "map": "Live Map",
-    "engineer_map": "Engineer Live Location",
-    "employee_management": "Employee Management",
-    "performance_admin": "Performance Management",
-    "documents_admin": "Document Compliance",
-    "hrms_leave_approve": "HRMS • Leave Approval",
-    "hrms_holiday_manage": "HRMS • Holiday Management",
-    "hrms_payroll_manage": "HRMS • Payroll Approve/Pay",
-    "hrms_penalty_manage": "HRMS • Penalty Management",
-    "hrms_performance_manage": "HRMS • Performance Finalize",
-    "hrms_documents_manage": "HRMS • Document Management",
+    "attendance": "Attendance", "hrms": "Employee HRMS", "training": "Mandatory Training",
+    "work_calendar": "Work Calendar", "work_route": "Work Route", "jobs": "Jobs",
+    "assigned_customers": "Assigned Customers", "customers": "Customers", "walkin": "Walk-In Installation",
+    "service": "Service", "bag": "Engineer Bag", "request": "Part Request", "qr": "QR Verification",
+    "rent_management": "Rent Management", "payment_history": "Payment History", "complaint": "Complaint",
+    "referral": "Refer & Wallet", "profile": "Profile", "reports": "Business Reports", "downloads": "Download Center",
+    "inventory_workflow": "Inventory Control", "calling_desk": "Calling Desk", "map": "Live Map",
+    "engineer_map": "Engineer Live Location", "employee_management": "Employee Management",
+    "performance_admin": "Performance Management", "documents_admin": "Document Compliance",
+    "hrms_leave_approve": "HRMS • Leave Approval", "hrms_holiday_manage": "HRMS • Holiday Management",
+    "hrms_payroll_manage": "HRMS • Payroll Approve/Pay", "hrms_penalty_manage": "HRMS • Penalty Management",
+    "hrms_performance_manage": "HRMS • Performance Finalize", "hrms_documents_manage": "HRMS • Document Management",
     "employee_career_manage": "Employees • Promotion/Career Changes",
-    "hrms_recruitment_view": "HRMS • Recruitment View",
-    "hrms_recruitment_manage": "HRMS • Recruitment Manage",
-    "hrms_recruitment_approve": "HRMS • Manpower Approval",
-    "hrms_recruitment_interview": "HRMS • Interview Feedback",
-    "hrms_recruitment_offer_approve": "HRMS • Offer Approval",
-    "hrms_recruitment_convert": "HRMS • Candidate Joining Conversion",
-    "hrms_letters_view": "HRMS • Digital HR Letters View",
-    "hrms_letters_manage": "HRMS • Digital HR Letters Manage",
-    "hrms_letters_approve": "HRMS • Digital HR Letters Approve",
-    "hrms_bgv_view": "HRMS • Background Verification View",
-    "hrms_bgv_manage": "HRMS • Background Verification Manage",
-    "hrms_bgv_decide": "HRMS • Background Verification Decision",
+    "hrms_recruitment_view": "HRMS • Recruitment View", "hrms_recruitment_manage": "HRMS • Recruitment Manage",
+    "hrms_recruitment_approve": "HRMS • Manpower Approval", "hrms_recruitment_interview": "HRMS • Interview Feedback",
+    "hrms_recruitment_offer_approve": "HRMS • Offer Approval", "hrms_recruitment_convert": "HRMS • Candidate Joining Conversion",
+    "hrms_letters_view": "HRMS • Digital HR Letters View", "hrms_letters_manage": "HRMS • Digital HR Letters Manage",
+    "hrms_letters_approve": "HRMS • Digital HR Letters Approve", "hrms_bgv_view": "HRMS • Background Verification View",
+    "hrms_bgv_manage": "HRMS • Background Verification Manage", "hrms_bgv_decide": "HRMS • Background Verification Decision",
     "hrms_bgv_override": "HRMS • Background Verification Override",
+    "hrms_lifecycle_view": "HRMS • Employee Lifecycle View", "hrms_lifecycle_manage": "HRMS • Employee Lifecycle Manage",
+    "hrms_lifecycle_manager_review": "HRMS • Lifecycle Manager Review", "hrms_lifecycle_hr_review": "HRMS • Lifecycle HR Review",
+    "hrms_lifecycle_approve": "HRMS • Lifecycle Final Approval", "hrms_exit_manage": "HRMS • Exit Management",
+    "hrms_exit_clearance": "HRMS • Exit Clearance", "hrms_exit_approve": "HRMS • Exit Final Approval",
 }
 
 DEFAULT_ROLE_FEATURES = {
     "MANAGER": {
-        "attendance", "hrms", "training", "work_calendar", "work_route", "jobs",
-        "assigned_customers", "customers", "walkin", "service", "bag",
-        "request", "qr", "rent_management", "payment_history", "complaint",
-        "referral", "profile", "reports", "downloads", "inventory_workflow", "calling_desk",
-        "map", "engineer_map", "performance_admin", "documents_admin",
-        "hrms_leave_approve", "hrms_performance_manage", "hrms_holiday_manage",
-        "hrms_recruitment_view", "hrms_recruitment_interview",
-        "hrms_letters_view", "hrms_bgv_view",
+        "attendance", "hrms", "training", "work_calendar", "work_route", "jobs", "assigned_customers", "customers",
+        "walkin", "service", "bag", "request", "qr", "rent_management", "payment_history", "complaint", "referral",
+        "profile", "reports", "downloads", "inventory_workflow", "calling_desk", "map", "engineer_map",
+        "performance_admin", "documents_admin", "hrms_leave_approve", "hrms_performance_manage", "hrms_holiday_manage",
+        "hrms_recruitment_view", "hrms_recruitment_interview", "hrms_letters_view", "hrms_bgv_view",
+        "hrms_lifecycle_view", "hrms_lifecycle_manager_review", "hrms_exit_clearance",
     },
     "OFFICE": {
-        "attendance", "hrms", "training", "customers", "walkin", "service",
-        "rent_management", "payment_history", "reports", "downloads", "inventory_workflow",
-        "work_calendar", "work_route", "complaint", "referral", "profile",
-        "calling_desk", "documents_admin", "hrms_documents_manage",
-        "hrms_holiday_manage", "hrms_recruitment_view", "hrms_recruitment_manage",
-        "hrms_letters_view", "hrms_letters_manage", "hrms_bgv_view", "hrms_bgv_manage",
+        "attendance", "hrms", "training", "customers", "walkin", "service", "rent_management", "payment_history",
+        "reports", "downloads", "inventory_workflow", "work_calendar", "work_route", "complaint", "referral", "profile",
+        "calling_desk", "documents_admin", "hrms_documents_manage", "hrms_holiday_manage", "hrms_recruitment_view",
+        "hrms_recruitment_manage", "hrms_letters_view", "hrms_letters_manage", "hrms_bgv_view", "hrms_bgv_manage",
+        "hrms_lifecycle_view", "hrms_lifecycle_manage", "hrms_lifecycle_hr_review", "hrms_exit_manage", "hrms_exit_clearance",
     },
     "CALLING": {"attendance", "hrms", "training", "calling_desk", "profile"},
-    "ENGINEER": {
-        "attendance", "hrms", "training", "work_calendar", "work_route", "jobs",
-        "assigned_customers", "customers", "walkin", "service", "bag",
-        "request", "qr", "rent_management", "complaint", "referral", "profile",
-    },
+    "ENGINEER": {"attendance", "hrms", "training", "work_calendar", "work_route", "jobs", "assigned_customers", "customers", "walkin", "service", "bag", "request", "qr", "rent_management", "complaint", "referral", "profile"},
 }
 
 
 def request_company(request):
-    membership = (
-        CompanyMembership.objects.filter(
-            user=request.user,
-            is_active=True,
-            company__is_active=True,
-            company__lifecycle_status="ACTIVE",
-        )
-        .select_related("company")
-        .first()
-    )
+    membership = (CompanyMembership.objects.filter(user=request.user, is_active=True, company__is_active=True, company__lifecycle_status="ACTIVE").select_related("company").first())
     if membership:
         return membership.company
-
-    # Backward-compatible fallback for operational employee accounts created
-    # before CompanyMembership became mandatory.
     try:
         company = request.user.employee_profile.company
     except (AttributeError, ObjectDoesNotExist):
@@ -130,10 +88,6 @@ def has_feature_access(request, feature_key):
         return True
     company = request_company(request)
     if company is None:
-        # Legacy employee accounts created before multi-company tenancy may
-        # not have a CompanyMembership yet. Preserve their original role
-        # permissions while keeping company-specific overrides for migrated
-        # accounts.
         return feature_key in DEFAULT_ROLE_FEATURES.get(role, set())
     return feature_key in effective_role_features(company, role)
 
