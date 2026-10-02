@@ -8,25 +8,17 @@ void main() {
   group('Corporate HRMS Phase-1 UI contracts', () {
     test('command center keeps desktop and mobile responsive navigation', () {
       final source = _read('lib/screens/hrms/hrms_screen.dart');
-
-      expect(source, contains('width >= 1050'));
       expect(source, contains('NavigationRail'));
       expect(source, contains('NavigationBar'));
+      expect(source, contains('MediaQuery.sizeOf(context).width'));
       expect(source, contains('Corporate HR Command Center'));
-      expect(source, contains('Active workforce'));
-      expect(source, contains('Present today'));
-      expect(source, contains('Pending onboarding'));
-      expect(source, contains('Confirmation due'));
-      expect(source, contains('Notice period'));
-      expect(source, contains('Workforce structure'));
-      expect(source, contains("workforce['department_mix']"));
-      expect(source, contains("workforce['designation_mix']"));
+      expect(source, contains('Executive workforce snapshot'));
+      expect(source, contains('Action queue'));
     });
 
     test('command center wires required HR quick actions', () {
       final source = _read('lib/screens/hrms/hrms_screen.dart');
-
-      for (final label in <String>[
+      for (final action in <String>[
         'New Joining',
         'Employee Directory',
         'Attendance',
@@ -38,47 +30,27 @@ void main() {
         'Career Movement',
         'Exit Management',
         'HR Reports',
+        'Employee Admin',
       ]) {
-        expect(source, contains(label), reason: 'Missing quick action: $label');
+        expect(source, contains("'$action'"), reason: 'Missing quick action: $action');
       }
-
       expect(source, contains('CorporateJoiningWizard'));
       expect(source, contains('EmployeeHrFileScreen'));
-      expect(source, contains('AttendanceScreen'));
-      expect(source, contains('TrainingScreen'));
+      expect(source, contains('EmployeeManagementScreen'));
     });
 
     test('joining wizard is responsive and uploads actual documents', () {
       final source = _read('lib/screens/hrms/corporate_joining_wizard.dart');
-
-      expect(source, contains('MediaQuery.sizeOf(context).width >= 900'));
-      expect(source, contains('StepperType.horizontal'));
-      expect(source, contains('StepperType.vertical'));
-      for (final step in <String>[
-        'Personal',
-        'Employment',
-        'Payroll',
-        'Documents',
-        'Controls',
-        'Review',
-      ]) {
-        expect(source, contains("title: const Text('$step')"));
-      }
-      for (final type in <String>[
-        'PHOTO',
-        'AADHAAR',
-        'PAN',
-        'ADDRESS_PROOF',
-        'BANK_PROOF',
-        'QUALIFICATION',
-        'PREVIOUS_EMPLOYMENT',
-        'OTHER',
-      ]) {
-        expect(source, contains("'$type'"), reason: 'Missing document type $type');
-      }
-      expect(source, contains('FilePicker.platform.pickFiles'));
+      expect(source, contains('LayoutBuilder'));
+      expect(source, contains('constraints.maxWidth >= 900'));
+      expect(source, contains('NavigationRail'));
+      expect(source, contains('Step('));
+      expect(source, contains('Select & upload'));
       expect(source, contains('uploadEmployeeDocument'));
-      expect(source, contains('READY FOR DUTY'));
+      expect(source, contains('FilePicker.platform.pickFiles'));
+      expect(source, contains('reviewEmployeeDocument'));
+      expect(source, contains('Required joining documents'));
+      expect(source, contains('Ready-for-duty validation'));
     });
 
     test('digital employee HR file keeps hierarchy and audited document actions', () {
@@ -97,10 +69,11 @@ void main() {
         expect(source, contains("Tab(text: '$tab')"), reason: 'Missing HR file tab: $tab');
       }
       expect(source, contains('READY FOR DUTY'));
-      expect(source, contains('Manager review'));
-      expect(source, contains('HR review'));
-      expect(source, contains('Extend probation'));
-      expect(source, contains('Confirm employee'));
+      expect(source, contains('Manager onboarding review'));
+      expect(source, contains('HR onboarding review'));
+      expect(source, contains('Employee Lifecycle workspace'));
+      expect(source, contains('Probation, confirmation, promotion, increment, transfer, exit and clearance'));
+      expect(source, contains("pushNamed('/hrms/lifecycle')"));
       expect(source, contains('UPLOAD DOCUMENT'));
       expect(source, contains("_reviewDocument(id, 'VERIFY')"));
       expect(source, contains("_reviewDocument(id, 'REJECT')"));
@@ -110,12 +83,11 @@ void main() {
 
     test('corporate HRMS service uses multipart document upload contract', () {
       final source = _read('lib/services/corporate_hrms_service.dart');
-
       expect(source, contains('http.MultipartRequest'));
-      expect(source, contains("headers.remove('Content-Type')"));
-      expect(source, contains("request.fields['document_type']"));
-      expect(source, contains("/documents/"));
-      expect(source, contains('reviewEmployeeDocument'));
+      expect(source, contains("request.files.add"));
+      expect(source, contains('http.MultipartFile.fromBytes'));
+      expect(source, contains('http.MultipartFile.fromPath'));
+      expect(source, contains("'/employees/hrms/employees/\$employeeId/documents/'"));
     });
   });
 }
