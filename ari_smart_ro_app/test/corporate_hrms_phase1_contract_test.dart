@@ -48,23 +48,40 @@ void main() {
       expect(source, contains('TrainingScreen'));
     });
 
-    test('joining wizard switches stepper layout for desktop and mobile', () {
+    test('joining wizard is responsive and uploads actual documents', () {
       final source = _read('lib/screens/hrms/corporate_joining_wizard.dart');
 
       expect(source, contains('MediaQuery.sizeOf(context).width >= 900'));
       expect(source, contains('StepperType.horizontal'));
       expect(source, contains('StepperType.vertical'));
-      expect(source, contains("title: const Text('Personal')"));
-      expect(source, contains("title: const Text('Employment')"));
-      expect(source, contains("title: const Text('Compensation')"));
-      expect(source, contains("title: const Text('Documents')"));
-      expect(source, contains("title: const Text('Security')"));
-      expect(source, contains("title: const Text('Training')"));
-      expect(source, contains("title: const Text('Review')"));
-      expect(source, contains("_section('Final HR review'"));
+      for (final step in <String>[
+        'Personal',
+        'Employment',
+        'Payroll',
+        'Documents',
+        'Controls',
+        'Review',
+      ]) {
+        expect(source, contains("title: const Text('$step')"));
+      }
+      for (final type in <String>[
+        'PHOTO',
+        'AADHAAR',
+        'PAN',
+        'ADDRESS_PROOF',
+        'BANK_PROOF',
+        'QUALIFICATION',
+        'PREVIOUS_EMPLOYMENT',
+        'OTHER',
+      ]) {
+        expect(source, contains("'$type'"), reason: 'Missing document type $type');
+      }
+      expect(source, contains('FilePicker.platform.pickFiles'));
+      expect(source, contains('uploadEmployeeDocument'));
+      expect(source, contains('READY FOR DUTY'));
     });
 
-    test('digital employee HR file keeps professional tab hierarchy', () {
+    test('digital employee HR file keeps hierarchy and audited document actions', () {
       final source = _read('lib/screens/hrms/employee_hr_file_screen.dart');
 
       for (final tab in <String>[
@@ -80,11 +97,25 @@ void main() {
         expect(source, contains("Tab(text: '$tab')"), reason: 'Missing HR file tab: $tab');
       }
       expect(source, contains('READY FOR DUTY'));
-      expect(source, contains('Probation & confirmation'));
-      expect(source, contains('MANAGER REVIEW'));
-      expect(source, contains('HR REVIEW'));
-      expect(source, contains('EXTEND PROBATION'));
-      expect(source, contains('CONFIRM EMPLOYEE'));
+      expect(source, contains('Manager review'));
+      expect(source, contains('HR review'));
+      expect(source, contains('Extend probation'));
+      expect(source, contains('Confirm employee'));
+      expect(source, contains('UPLOAD DOCUMENT'));
+      expect(source, contains("_reviewDocument(id, 'VERIFY')"));
+      expect(source, contains("_reviewDocument(id, 'REJECT')"));
+      expect(source, contains("_reviewDocument(id, 'EXPIRE')"));
+      expect(source, contains('Audit history'));
+    });
+
+    test('corporate HRMS service uses multipart document upload contract', () {
+      final source = _read('lib/services/corporate_hrms_service.dart');
+
+      expect(source, contains('http.MultipartRequest'));
+      expect(source, contains("headers.remove('Content-Type')"));
+      expect(source, contains("request.fields['document_type']"));
+      expect(source, contains("/documents/"));
+      expect(source, contains('reviewEmployeeDocument'));
     });
   });
 }
