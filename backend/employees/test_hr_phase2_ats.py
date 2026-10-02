@@ -271,6 +271,6 @@ class CorporateHrPhase2AtsTests(APITestCase):
         self.client.force_authenticate(self.admin)
         response = self.client.get(self.summary)
         self.assertEqual(response.status_code, 200)
-        self.assertIn("command_center", response.data)
+        self.assertIn("ats", response.data)
         self.assertIn("action_queue", response.data)
-        self.assertIn("open_vacancies", response.data["command_center"])
+        self.assertIn("open_vacancies", response.data["jobs"])
