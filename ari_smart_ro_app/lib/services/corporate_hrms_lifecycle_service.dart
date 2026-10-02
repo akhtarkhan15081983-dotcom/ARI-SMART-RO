@@ -82,12 +82,23 @@ extension CorporateHrmsLifecycleService on CorporateHrmsService {
 
   Future<Map<String, dynamic>> createExitCase(
     Map<String, dynamic> payload,
-  ) =>
-      _lifecyclePostMap(
-        '/employees/hrms/lifecycle/exits/',
-        payload,
-        successCodes: const {201},
-      );
+  ) {
+    final canonicalPayload = Map<String, dynamic>.from(payload);
+    final separationType =
+        (canonicalPayload['separation_type'] ?? '').toString().trim().toUpperCase();
+    // Older Flutter lifecycle UI builds used CONTRACT_END while the backend
+    // contract and persisted model use CONTRACT_COMPLETION. Normalize at the
+    // client API boundary so existing builds remain compatible without ever
+    // persisting the legacy value.
+    if (separationType == 'CONTRACT_END') {
+      canonicalPayload['separation_type'] = 'CONTRACT_COMPLETION';
+    }
+    return _lifecyclePostMap(
+      '/employees/hrms/lifecycle/exits/',
+      canonicalPayload,
+      successCodes: const {201},
+    );
+  }
 
   Future<Map<String, dynamic>> exitCaseAction(
     int caseId,
