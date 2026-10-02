@@ -242,18 +242,19 @@ class CandidateAPIView(APIView):
         except (InvalidOperation, TypeError, ValueError):
             return Response({"detail": "Experience years must be numeric."}, status=400)
         try:
-            row = Candidate.objects.create(
-                company=company,
-                full_name=full_name[:160], phone=phone[:20],
-                email=str(request.data.get("email") or "").strip()[:254],
-                city=str(request.data.get("city") or "").strip()[:100],
-                current_company=str(request.data.get("current_company") or "").strip()[:160],
-                current_title=str(request.data.get("current_title") or "").strip()[:120],
-                experience_years=experience,
-                source=str(request.data.get("source") or "").strip()[:80],
-                resume=request.FILES.get("resume"),
-                created_by=request.user,
-            )
+            with transaction.atomic():
+                row = Candidate.objects.create(
+                    company=company,
+                    full_name=full_name[:160], phone=phone[:20],
+                    email=str(request.data.get("email") or "").strip()[:254],
+                    city=str(request.data.get("city") or "").strip()[:100],
+                    current_company=str(request.data.get("current_company") or "").strip()[:160],
+                    current_title=str(request.data.get("current_title") or "").strip()[:120],
+                    experience_years=experience,
+                    source=str(request.data.get("source") or "").strip()[:80],
+                    resume=request.FILES.get("resume"),
+                    created_by=request.user,
+                )
         except IntegrityError:
             return Response({"detail": "Candidate with this phone already exists in this company."}, status=409)
         _audit(request, entity_type="CANDIDATE", entity_id=row.id, action="CREATED")
@@ -296,11 +297,12 @@ class CandidateApplicationAPIView(APIView):
         except ValueError:
             return Response({"detail": "Expected salary or available-from date is invalid."}, status=400)
         try:
-            row = CandidateApplication.objects.create(
-                company=company, candidate=candidate, job_opening=job,
-                expected_salary=expected_salary, available_from=available_from,
-                notes=str(request.data.get("notes") or "").strip(), created_by=request.user,
-            )
+            with transaction.atomic():
+                row = CandidateApplication.objects.create(
+                    company=company, candidate=candidate, job_opening=job,
+                    expected_salary=expected_salary, available_from=available_from,
+                    notes=str(request.data.get("notes") or "").strip(), created_by=request.user,
+                )
         except IntegrityError:
             return Response({"detail": "Candidate already applied to this job."}, status=409)
         _audit(request, entity_type="CANDIDATE_APPLICATION", entity_id=row.id, action="CREATED", to_status=row.stage)
