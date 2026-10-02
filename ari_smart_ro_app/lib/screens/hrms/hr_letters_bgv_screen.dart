@@ -83,22 +83,25 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
       return Scaffold(
         appBar: AppBar(title: const Text('HR Letters & Background Verification')),
         body: Center(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off_outlined, size: 42),
-                  const SizedBox(height: 12),
-                  Text(_error!, textAlign: TextAlign.center),
-                  const SizedBox(height: 14),
-                  FilledButton.icon(
-                    onPressed: _load,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('RETRY'),
-                  ),
-                ],
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.cloud_off_outlined, size: 42),
+                    const SizedBox(height: 12),
+                    Text(_error!, textAlign: TextAlign.center),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('RETRY'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -109,22 +112,18 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('HR Letters & Background Verification'),
-        actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-        ],
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final desktop = constraints.maxWidth >= 1050;
-          final content = IndexedStack(
-            index: _section,
-            children: [
-              _dashboardView(),
-              _templatesView(),
-              _lettersView(),
-              _bgvView(),
-            ],
-          );
+          final pages = <Widget>[
+            _dashboardView(),
+            _templatesView(),
+            _lettersView(),
+            _bgvView(),
+          ];
+          final content = IndexedStack(index: _section, children: pages);
           if (!desktop) return content;
           return Row(
             children: [
@@ -244,7 +243,11 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
       );
 
   Widget _metric(String label, dynamic value, IconData icon, double width) {
-    final cardWidth = width >= 1200 ? (width - 20) / 3 : width >= 700 ? (width - 10) / 2 : width;
+    final cardWidth = width >= 1200
+        ? (width - 20) / 3
+        : width >= 700
+            ? (width - 10) / 2
+            : width;
     return SizedBox(
       width: cardWidth,
       child: Card(
@@ -272,7 +275,9 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
 
   Widget _policyCard() {
     final mandatory = _policy['mandatory_before_ready'] == true;
-    final required = List<String>.from((_policy['required_checks'] as List? ?? const []).map((e) => e.toString()));
+    final required = List<String>.from(
+      (_policy['required_checks'] as List? ?? const []).map((e) => e.toString()),
+    );
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -285,7 +290,9 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    mandatory ? 'BGV is mandatory before READY FOR DUTY' : 'BGV is optional before READY FOR DUTY',
+                    mandatory
+                        ? 'BGV is mandatory before READY FOR DUTY'
+                        : 'BGV is optional before READY FOR DUTY',
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
@@ -298,7 +305,11 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
             ),
             if (required.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Wrap(spacing: 6, runSpacing: 6, children: required.map((e) => Chip(label: Text(e))).toList()),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: required.map((e) => Chip(label: Text(e))).toList(),
+              ),
             ],
             const SizedBox(height: 8),
             const Text('Admin READY override remains reasoned and audited; enabling BGV does not auto-mark anyone READY.'),
@@ -313,12 +324,21 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
     return _sectionList(
       title: 'Letter Templates',
       subtitle: 'Create new versions instead of overwriting issued history.',
-      action: _canManage ? FilledButton.icon(onPressed: _createTemplate, icon: const Icon(Icons.add), label: const Text('NEW TEMPLATE')) : null,
+      action: _canManage
+          ? FilledButton.icon(
+              onPressed: _createTemplate,
+              icon: const Icon(Icons.add),
+              label: const Text('NEW TEMPLATE'),
+            )
+          : null,
       rows: rows,
       builder: (row) => Card(
         child: ListTile(
           leading: const CircleAvatar(child: Icon(Icons.description_outlined)),
-          title: Text('${row['name'] ?? ''} • v${row['version'] ?? 1}', style: const TextStyle(fontWeight: FontWeight.w900)),
+          title: Text(
+            '${row['name'] ?? ''} • v${row['version'] ?? 1}',
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
           subtitle: Text('${row['letter_type'] ?? ''}\n${row['subject'] ?? ''}'),
           isThreeLine: true,
           trailing: _canManage
@@ -333,20 +353,42 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
   }
 
   Widget _lettersView() {
-    final flows = _filterRows(_workflows, ['employee_name', 'employee_code', 'letter_type', 'subject', 'status']);
-    final issued = _filterRows(_letters, ['employee_name', 'employee_code', 'letter_type', 'subject', 'acknowledgement_status']);
+    final flows = _filterRows(
+      _workflows,
+      ['employee_name', 'employee_code', 'letter_type', 'subject', 'status'],
+    );
+    final issued = _filterRows(
+      _letters,
+      ['employee_name', 'employee_code', 'letter_type', 'subject', 'acknowledgement_status'],
+    );
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          _searchHeader('Letter Workflows', 'Draft, approval and issue control', _canManage ? FilledButton.icon(onPressed: _createWorkflow, icon: const Icon(Icons.add), label: const Text('NEW LETTER')) : null),
+          _searchHeader(
+            'Letter Workflows',
+            'Draft, approval and issue control',
+            _canManage
+                ? FilledButton.icon(
+                    onPressed: _createWorkflow,
+                    icon: const Icon(Icons.add),
+                    label: const Text('NEW LETTER'),
+                  )
+                : null,
+          ),
           const SizedBox(height: 12),
-          if (flows.isEmpty) _empty('No letter workflows found.') else ...flows.map(_workflowCard),
+          if (flows.isEmpty)
+            _empty('No letter workflows found.')
+          else
+            ...flows.map(_workflowCard),
           const SizedBox(height: 22),
           const Text('Issued Letters • Read Only', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
           const SizedBox(height: 10),
-          if (issued.isEmpty) _empty('No issued letters found.') else ...issued.map(_issuedCard),
+          if (issued.isEmpty)
+            _empty('No issued letters found.')
+          else
+            ...issued.map(_issuedCard),
         ],
       ),
     );
@@ -362,7 +404,12 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
           children: [
             Row(
               children: [
-                Expanded(child: Text('${row['employee_name'] ?? ''} • ${row['employee_code'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w900))),
+                Expanded(
+                  child: Text(
+                    '${row['employee_name'] ?? ''} • ${row['employee_code'] ?? ''}',
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
                 _statusChip(status, null),
               ],
             ),
@@ -373,10 +420,26 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (_canManage && status == 'DRAFT') OutlinedButton(onPressed: () => _workflowAction(row, 'SUBMIT'), child: const Text('SUBMIT APPROVAL')),
-                if (_canApprove && status == 'PENDING_APPROVAL') FilledButton(onPressed: () => _workflowAction(row, 'APPROVE'), child: const Text('APPROVE')),
-                if (_canApprove && status == 'PENDING_APPROVAL') OutlinedButton(onPressed: () => _workflowAction(row, 'REJECT', reasonRequired: true), child: const Text('REJECT')),
-                if (_canManage && status == 'APPROVED') FilledButton(onPressed: () => _workflowAction(row, 'ISSUE'), child: const Text('ISSUE IMMUTABLE LETTER')),
+                if (_canManage && status == 'DRAFT')
+                  OutlinedButton(
+                    onPressed: () => _workflowAction(row, 'SUBMIT'),
+                    child: const Text('SUBMIT APPROVAL'),
+                  ),
+                if (_canApprove && status == 'PENDING_APPROVAL')
+                  FilledButton(
+                    onPressed: () => _workflowAction(row, 'APPROVE'),
+                    child: const Text('APPROVE'),
+                  ),
+                if (_canApprove && status == 'PENDING_APPROVAL')
+                  OutlinedButton(
+                    onPressed: () => _workflowAction(row, 'REJECT', reasonRequired: true),
+                    child: const Text('REJECT'),
+                  ),
+                if (_canManage && status == 'APPROVED')
+                  FilledButton(
+                    onPressed: () => _workflowAction(row, 'ISSUE'),
+                    child: const Text('ISSUE IMMUTABLE LETTER'),
+                  ),
               ],
             ),
           ],
@@ -385,27 +448,73 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
     );
   }
 
-  Widget _issuedCard(Map<String, dynamic> row) => Card(
-        child: ExpansionTile(
-          leading: const Icon(Icons.lock_outline),
-          title: Text('${row['employee_name'] ?? ''} • ${row['letter_type'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w900)),
-          subtitle: Text('${row['subject'] ?? ''}'),
-          trailing: _statusChip('${row['acknowledgement_status'] ?? 'PENDING'}', null),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          children: [
-            Align(alignment: Alignment.centerLeft, child: SelectableText('SHA-256: ${row['content_hash'] ?? ''}')),
-            const SizedBox(height: 8),
-            const Align(alignment: Alignment.centerLeft, child: Text('Issued snapshot is final and read-only.', style: TextStyle(fontWeight: FontWeight.w800))),
-          ],
+  Widget _issuedCard(Map<String, dynamic> row) {
+    final acknowledgement = '${row['acknowledgement_status'] ?? 'PENDING'}'.toUpperCase();
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.lock_outline),
+        title: Text(
+          '${row['employee_name'] ?? ''} • ${row['letter_type'] ?? ''}',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-      );
+        subtitle: Text('${row['subject'] ?? ''}'),
+        trailing: _statusChip(acknowledgement, null),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SelectableText('SHA-256: ${row['content_hash'] ?? ''}'),
+          ),
+          const SizedBox(height: 8),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Issued snapshot is final and read-only.',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          if (acknowledgement == 'PENDING' && _canManage) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _acknowledge(row, 'ACKNOWLEDGED'),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('ACKNOWLEDGE'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _acknowledge(row, 'DECLINED'),
+                    icon: const Icon(Icons.cancel_outlined),
+                    label: const Text('DECLINE'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _bgvView() {
-    final rows = _filterRows(_cases, ['candidate_name', 'employee_name', 'employee_code', 'overall_status']);
+    final rows = _filterRows(
+      _cases,
+      ['candidate_name', 'employee_name', 'employee_code', 'overall_status'],
+    );
     return _sectionList(
       title: 'Background Verification',
       subtitle: 'Candidate and employee checks with explicit final decision.',
-      action: null,
+      action: _canBgvManage
+          ? FilledButton.icon(
+              onPressed: _createBgvCase,
+              icon: const Icon(Icons.add_moderator_outlined),
+              label: const Text('START BGV CASE'),
+            )
+          : null,
       rows: rows,
       builder: _bgvCaseCard,
     );
@@ -413,20 +522,26 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
 
   Widget _bgvCaseCard(Map<String, dynamic> row) {
     final status = '${row['overall_status'] ?? 'NOT_STARTED'}'.toUpperCase();
-    final checks = List<Map<String, dynamic>>.from((row['checks'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+    final checks = List<Map<String, dynamic>>.from(
+      (row['checks'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)),
+    );
+    final subject = row['employee_name']?.toString().isNotEmpty == true
+        ? row['employee_name'].toString()
+        : '${row['candidate_name'] ?? 'BGV Case'}';
     return Card(
       child: ExpansionTile(
-        title: Text(
-          '${row['employee_name']?.toString().isNotEmpty == true ? row['employee_name'] : row['candidate_name'] ?? 'BGV Case'}',
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
+        title: Text(subject, style: const TextStyle(fontWeight: FontWeight.w900)),
         subtitle: Text('Employee ${row['employee_code'] ?? '-'} • Case #${row['id']}'),
         trailing: _statusChip(status, null),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
-          const Align(alignment: Alignment.centerLeft, child: Text('Verification checklist', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900))),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Verification checklist', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+          ),
           const SizedBox(height: 8),
-          if (checks.isEmpty) const Align(alignment: Alignment.centerLeft, child: Text('No checks recorded yet.')),
+          if (checks.isEmpty)
+            const Align(alignment: Alignment.centerLeft, child: Text('No checks recorded yet.')),
           for (final check in checks)
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -454,10 +569,22 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  FilledButton(onPressed: () => _bgvDecision(row, 'CLEAR'), child: const Text('MARK CLEAR')),
-                  OutlinedButton(onPressed: () => _bgvDecision(row, 'CONDITIONAL'), child: const Text('CONDITIONAL')),
-                  OutlinedButton(onPressed: () => _bgvDecision(row, 'FAILED'), child: const Text('FAILED')),
-                  OutlinedButton(onPressed: () => _bgvDecision(row, 'WAIVED'), child: const Text('WAIVE WITH REASON')),
+                  FilledButton(
+                    onPressed: () => _bgvDecision(row, 'CLEAR'),
+                    child: const Text('MARK CLEAR'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => _bgvDecision(row, 'CONDITIONAL'),
+                    child: const Text('CONDITIONAL'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => _bgvDecision(row, 'FAILED'),
+                    child: const Text('FAILED'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => _bgvDecision(row, 'WAIVED'),
+                    child: const Text('WAIVE WITH REASON'),
+                  ),
                 ],
               ),
             ),
@@ -467,7 +594,14 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
     );
   }
 
-  Widget _sectionList({required String title, required String subtitle, required Widget? action, required List<Map<String, dynamic>> rows, required Widget Function(Map<String, dynamic>) builder}) => RefreshIndicator(
+  Widget _sectionList({
+    required String title,
+    required String subtitle,
+    required Widget? action,
+    required List<Map<String, dynamic>> rows,
+    required Widget Function(Map<String, dynamic>) builder,
+  }) =>
+      RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.all(18),
@@ -486,7 +620,11 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
             child: TextField(
               controller: _search,
               onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search / filter', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Search / filter',
+                border: OutlineInputBorder(),
+              ),
             ),
           );
           return Wrap(
@@ -495,7 +633,16 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
             spacing: 12,
             runSpacing: 12,
             children: [
-              SizedBox(width: constraints.maxWidth >= 760 ? 360 : constraints.maxWidth, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)), Text(subtitle)])),
+              SizedBox(
+                width: constraints.maxWidth >= 760 ? 360 : constraints.maxWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+                    Text(subtitle),
+                  ],
+                ),
+              ),
               search,
               if (action != null) action,
             ],
@@ -503,31 +650,55 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
         },
       );
 
-  List<Map<String, dynamic>> _filterRows(List<Map<String, dynamic>> rows, List<String> keys) {
+  List<Map<String, dynamic>> _filterRows(
+    List<Map<String, dynamic>> rows,
+    List<String> keys,
+  ) {
     if (_query.isEmpty) return rows;
-    return rows.where((row) => keys.any((key) => '${row[key] ?? ''}'.toLowerCase().contains(_query))).toList();
+    return rows
+        .where((row) => keys.any((key) => '${row[key] ?? ''}'.toLowerCase().contains(_query)))
+        .toList();
   }
 
-  Widget _empty(String message) => Card(child: Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(message))));
+  Widget _empty(String message) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Center(child: Text(message)),
+        ),
+      );
 
   Widget _statusChip(String status, dynamic value) => Chip(
-        label: Text(value == null ? status.replaceAll('_', ' ') : '${status.replaceAll('_', ' ')} • $value'),
+        label: Text(
+          value == null
+              ? status.replaceAll('_', ' ')
+              : '${status.replaceAll('_', ' ')} • $value',
+        ),
       );
 
   Future<String?> _askReason(String title, {bool required = true}) async {
     final controller = TextEditingController();
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(title),
-        content: TextField(controller: controller, maxLines: 3, decoration: const InputDecoration(labelText: 'Reason / note', border: OutlineInputBorder())),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Reason / note',
+            border: OutlineInputBorder(),
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('CANCEL'),
+          ),
           FilledButton(
             onPressed: () {
               final value = controller.text.trim();
               if (required && value.isEmpty) return;
-              Navigator.pop(context, value);
+              Navigator.pop(dialogContext, value);
             },
             child: const Text('CONFIRM'),
           ),
@@ -538,10 +709,17 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
     return result;
   }
 
-  Future<void> _workflowAction(Map<String, dynamic> row, String action, {bool reasonRequired = false}) async {
+  Future<void> _workflowAction(
+    Map<String, dynamic> row,
+    String action, {
+    bool reasonRequired = false,
+  }) async {
     String reason = '';
     if (reasonRequired || action == 'APPROVE') {
-      final value = await _askReason('$action ${row['letter_type'] ?? 'letter'}', required: reasonRequired);
+      final value = await _askReason(
+        '$action ${row['letter_type'] ?? 'letter'}',
+        required: reasonRequired,
+      );
       if (value == null) return;
       reason = value;
     }
@@ -553,9 +731,30 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
     }
   }
 
+  Future<void> _acknowledge(Map<String, dynamic> row, String status) async {
+    final note = await _askReason(
+      status == 'DECLINED' ? 'Decline issued HR letter' : 'Acknowledge issued HR letter',
+      required: status == 'DECLINED',
+    );
+    if (note == null) return;
+    try {
+      await _service.acknowledgeLetter(
+        row['id'] as int,
+        status,
+        note: note,
+      );
+      await _load();
+    } catch (error) {
+      _snack(error);
+    }
+  }
+
   Future<void> _templateToggle(Map<String, dynamic> row) async {
     try {
-      await _service.letterTemplateAction(row['id'] as int, row['is_active'] == true ? 'DEACTIVATE' : 'ACTIVATE');
+      await _service.letterTemplateAction(
+        row['id'] as int,
+        row['is_active'] == true ? 'DEACTIVATE' : 'ACTIVATE',
+      );
       await _load();
     } catch (error) {
       _snack(error);
@@ -569,7 +768,7 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
     String type = 'APPOINTMENT';
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
           title: const Text('New Letter Template Version'),
           content: SizedBox(
@@ -583,27 +782,61 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
                   DropdownButtonFormField<String>(
                     initialValue: type,
                     decoration: const InputDecoration(labelText: 'Letter type'),
-                    items: const ['APPOINTMENT', 'CONFIRMATION', 'PROMOTION', 'INCREMENT', 'WARNING', 'NOTICE', 'TRANSFER', 'SEPARATION', 'EXPERIENCE'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                    items: const [
+                      'APPOINTMENT',
+                      'CONFIRMATION',
+                      'PROMOTION',
+                      'INCREMENT',
+                      'WARNING',
+                      'NOTICE',
+                      'TRANSFER',
+                      'SEPARATION',
+                      'EXPERIENCE',
+                    ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     onChanged: (value) => setLocal(() => type = value ?? type),
                   ),
                   const SizedBox(height: 10),
                   TextField(controller: subject, decoration: const InputDecoration(labelText: 'Subject template')),
                   const SizedBox(height: 10),
-                  TextField(controller: body, minLines: 5, maxLines: 9, decoration: const InputDecoration(labelText: 'Body template', hintText: 'Use {{employee_name}}, {{employee_id}}, {{effective_date}}', border: OutlineInputBorder())),
+                  TextField(
+                    controller: body,
+                    minLines: 5,
+                    maxLines: 9,
+                    decoration: const InputDecoration(
+                      labelText: 'Body template',
+                      hintText: 'Use {{employee_name}}, {{employee_id}}, {{effective_date}}',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('CREATE VERSION')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('CANCEL'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('CREATE VERSION'),
+            ),
           ],
         ),
       ),
     );
-    if (ok == true && name.text.trim().isNotEmpty && subject.text.trim().isNotEmpty && body.text.trim().isNotEmpty) {
+    if (ok == true &&
+        name.text.trim().isNotEmpty &&
+        subject.text.trim().isNotEmpty &&
+        body.text.trim().isNotEmpty) {
       try {
-        await _service.createLetterTemplate({'name': name.text.trim(), 'letter_type': type, 'subject': subject.text.trim(), 'body': body.text.trim(), 'is_active': true});
+        await _service.createLetterTemplate({
+          'name': name.text.trim(),
+          'letter_type': type,
+          'subject': subject.text.trim(),
+          'body': body.text.trim(),
+          'is_active': true,
+        });
         await _load();
       } catch (error) {
         _snack(error);
@@ -615,16 +848,17 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
   }
 
   Future<void> _createWorkflow() async {
-    if (_templates.where((e) => e['is_active'] == true).isEmpty) {
+    final activeTemplates = _templates.where((e) => e['is_active'] == true).toList();
+    if (activeTemplates.isEmpty) {
       _snack('Create an active letter template first.');
       return;
     }
     final employee = TextEditingController();
     final date = TextEditingController(text: DateTime.now().toIso8601String().split('T').first);
-    int templateId = _templates.firstWhere((e) => e['is_active'] == true)['id'] as int;
+    int templateId = activeTemplates.first['id'] as int;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
           title: const Text('Create HR Letter Draft'),
           content: SizedBox(
@@ -632,22 +866,42 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: employee, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Employee database ID')),
+                TextField(
+                  controller: employee,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Employee database ID'),
+                ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<int>(
                   initialValue: templateId,
                   decoration: const InputDecoration(labelText: 'Template'),
-                  items: _templates.where((e) => e['is_active'] == true).map((e) => DropdownMenuItem(value: e['id'] as int, child: Text('${e['name']} • ${e['letter_type']} v${e['version']}'))).toList(),
+                  items: activeTemplates
+                      .map(
+                        (e) => DropdownMenuItem<int>(
+                          value: e['id'] as int,
+                          child: Text('${e['name']} • ${e['letter_type']} v${e['version']}'),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (value) => setLocal(() => templateId = value ?? templateId),
                 ),
                 const SizedBox(height: 10),
-                TextField(controller: date, decoration: const InputDecoration(labelText: 'Effective date (YYYY-MM-DD)')),
+                TextField(
+                  controller: date,
+                  decoration: const InputDecoration(labelText: 'Effective date (YYYY-MM-DD)'),
+                ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('CREATE DRAFT')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('CANCEL'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('CREATE DRAFT'),
+            ),
           ],
         ),
       ),
@@ -658,7 +912,12 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
         _snack('Valid employee ID is required.');
       } else {
         try {
-          await _service.createLetterWorkflow({'employee_id': employeeId, 'template_id': templateId, 'effective_date': date.text.trim(), 'context': <String, dynamic>{}});
+          await _service.createLetterWorkflow({
+            'employee_id': employeeId,
+            'template_id': templateId,
+            'effective_date': date.text.trim(),
+            'context': <String, dynamic>{},
+          });
           await _load();
         } catch (error) {
           _snack(error);
@@ -669,6 +928,68 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
     date.dispose();
   }
 
+  Future<void> _createBgvCase() async {
+    final employee = TextEditingController();
+    final application = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Start Background Verification'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: employee,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Employee database ID (optional)'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: application,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Candidate application ID (optional)'),
+              ),
+              const SizedBox(height: 10),
+              const Text('Enter either an employee ID or candidate application ID. Existing cases are reused safely.'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('START CASE'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      final employeeId = int.tryParse(employee.text.trim());
+      final applicationId = int.tryParse(application.text.trim());
+      if ((employeeId == null && applicationId == null) ||
+          (employeeId != null && applicationId != null)) {
+        _snack('Enter exactly one employee ID or candidate application ID.');
+      } else {
+        try {
+          await _service.createBgvCase(
+            employeeId: employeeId,
+            applicationId: applicationId,
+          );
+          await _load();
+        } catch (error) {
+          _snack(error);
+        }
+      }
+    }
+    employee.dispose();
+    application.dispose();
+  }
+
   Future<void> _addBgvCheck(Map<String, dynamic> row) async {
     final notes = TextEditingController();
     final reference = TextEditingController();
@@ -676,7 +997,7 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
     String status = 'IN_PROGRESS';
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
           title: const Text('BGV Verification Check'),
           content: SizedBox(
@@ -687,35 +1008,70 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
                 DropdownButtonFormField<String>(
                   initialValue: type,
                   decoration: const InputDecoration(labelText: 'Check type'),
-                  items: const ['IDENTITY', 'ADDRESS', 'EDUCATION', 'EMPLOYMENT', 'CRIMINAL_POLICE', 'REFERENCE'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                  items: const [
+                    'IDENTITY',
+                    'ADDRESS',
+                    'EDUCATION',
+                    'EMPLOYMENT',
+                    'CRIMINAL_POLICE',
+                    'REFERENCE',
+                  ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                   onChanged: (value) => setLocal(() => type = value ?? type),
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   initialValue: status,
                   decoration: const InputDecoration(labelText: 'Status'),
-                  items: const ['PENDING', 'IN_PROGRESS', 'VERIFIED', 'FAILED', 'NOT_APPLICABLE'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                  items: const [
+                    'PENDING',
+                    'IN_PROGRESS',
+                    'VERIFIED',
+                    'FAILED',
+                    'NOT_APPLICABLE',
+                  ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                   onChanged: (value) => setLocal(() => status = value ?? status),
                 ),
                 const SizedBox(height: 10),
-                TextField(controller: reference, decoration: const InputDecoration(labelText: 'Evidence / verification reference')),
+                TextField(
+                  controller: reference,
+                  decoration: const InputDecoration(labelText: 'Evidence / verification reference'),
+                ),
                 const SizedBox(height: 10),
-                TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Authorized notes', border: OutlineInputBorder())),
+                TextField(
+                  controller: notes,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Authorized notes',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 const Text('Do not enter full Aadhaar/PAN numbers. Sensitive identity values are not required here.'),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('SAVE CHECK')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('CANCEL'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('SAVE CHECK'),
+            ),
           ],
         ),
       ),
     );
     if (ok == true) {
       try {
-        await _service.upsertBgvCheck(row['id'] as int, {'check_type': type, 'status': status, 'evidence_reference': reference.text.trim(), 'notes': notes.text.trim(), 'details': <String, dynamic>{}});
+        await _service.upsertBgvCheck(row['id'] as int, {
+          'check_type': type,
+          'status': status,
+          'evidence_reference': reference.text.trim(),
+          'notes': notes.text.trim(),
+          'details': <String, dynamic>{},
+        });
         await _load();
       } catch (error) {
         _snack(error);
@@ -726,7 +1082,10 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
   }
 
   Future<void> _bgvDecision(Map<String, dynamic> row, String decision) async {
-    final reason = await _askReason('$decision BGV decision', required: decision == 'WAIVED' || decision != 'CLEAR');
+    final reason = await _askReason(
+      '$decision BGV decision',
+      required: decision != 'CLEAR',
+    );
     if (reason == null) return;
     try {
       await _service.decideBgv(row['id'] as int, decision, reason: reason);
@@ -737,8 +1096,11 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
   }
 
   Future<void> _updatePolicy(bool mandatory) async {
-    final reason = await _askReason(mandatory ? 'Enable mandatory BGV READY gate?' : 'Make BGV optional?', required: false);
-    if (reason == null) return;
+    final confirmation = await _askReason(
+      mandatory ? 'Enable mandatory BGV READY gate?' : 'Make BGV optional?',
+      required: false,
+    );
+    if (confirmation == null) return;
     try {
       await _service.updateBgvPolicy(mandatoryBeforeReady: mandatory);
       await _load();
@@ -749,6 +1111,8 @@ class _HrLettersBgvScreenState extends State<HrLettersBgvScreen> {
 
   void _snack(Object message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message.toString().replaceFirst('Exception: ', ''))));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message.toString().replaceFirst('Exception: ', ''))),
+    );
   }
 }
