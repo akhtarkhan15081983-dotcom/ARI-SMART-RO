@@ -1,7 +1,10 @@
 from rest_framework import status
 from rest_framework.response import Response
 
-from .hr_phase1 import EmployeeHrLifecycleActionAPIView as Phase1EmployeeHrLifecycleActionAPIView
+from .hr_phase1 import (
+    EmployeeHrLifecycleActionAPIView as Phase1EmployeeHrLifecycleActionAPIView,
+    _can_manage_lifecycle,
+)
 
 
 class EmployeeHrLifecycleActionAPIView(Phase1EmployeeHrLifecycleActionAPIView):
@@ -23,6 +26,10 @@ class EmployeeHrLifecycleActionAPIView(Phase1EmployeeHrLifecycleActionAPIView):
     def post(self, request, employee_id):
         action = str(request.data.get("action") or "").strip().upper()
         if action in self.PHASE2_ONLY_ACTIONS:
+            # Preserve the existing 403 authorization contract for callers that
+            # were never allowed to manage lifecycle state in the first place.
+            if not _can_manage_lifecycle(request):
+                return super().post(request, employee_id)
             return Response(
                 {
                     "detail": (
