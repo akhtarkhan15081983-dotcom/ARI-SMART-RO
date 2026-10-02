@@ -718,7 +718,7 @@ class _EmployeeLifecycleScreenState extends State<EmployeeLifecycleScreen> {
                 DropdownButtonFormField<String>(
                   initialValue: type,
                   decoration: const InputDecoration(labelText: 'Separation type'),
-                  items: const ['RESIGNATION', 'TERMINATION', 'RETIREMENT', 'ABSCONDING', 'CONTRACT_END'].map((v) => DropdownMenuItem(value: v, child: Text(v.replaceAll('_', ' ')))).toList(),
+                  items: const ['RESIGNATION', 'TERMINATION', 'RETIREMENT', 'ABSCONDING', 'CONTRACT_COMPLETION'].map((v) => DropdownMenuItem(value: v, child: Text(v.replaceAll('_', ' ')))).toList(),
                   onChanged: (value) => setLocal(() => type = value ?? type),
                 ),
                 if (type == 'RESIGNATION') TextField(controller: resignation, decoration: const InputDecoration(labelText: 'Resignation date • YYYY-MM-DD')),
