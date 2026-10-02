@@ -122,7 +122,9 @@ class HrLetter(models.Model):
         ("INCREMENT", "Increment"),
         ("WARNING", "Warning"),
         ("NOTICE", "Notice"),
+        ("TRANSFER", "Transfer"),
         ("SEPARATION", "Separation"),
+        ("EXPERIENCE", "Experience"),
     ]
     ACK_CHOICES = [("PENDING", "Pending"), ("ACKNOWLEDGED", "Acknowledged"), ("DECLINED", "Declined")]
 
