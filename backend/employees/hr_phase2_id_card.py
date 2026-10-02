@@ -7,6 +7,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import hr_lifecycle
+from . import hr_phase1 as _hr_phase1  # noqa: F401
+from . import hr_phase1_requirements as _hr_phase1_requirements  # noqa: F401
 from .hr_lifecycle_models import EmployeeHrLifecycle
 from .models import EmployeeProfile
 from .views import (
