@@ -83,7 +83,7 @@ void main() {
       ]) {
         expect(source, contains("'$stage'"), reason: 'Missing pipeline stage $stage');
       }
-      expect(source, contains('no frontend bypass'), isFalse);
+      expect(source.contains('no frontend bypass'), isFalse);
       expect(source, contains('recruitmentDecision'));
     });
 
