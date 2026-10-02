@@ -59,7 +59,6 @@ from .hr_phase2_letters_bgv import (
     HrLetterTemplateAPIView,
     HrLetterTemplateActionAPIView,
     HrLetterWorkflowAPIView,
-    HrLetterWorkflowActionAPIView,
     IssuedHrLetterAPIView,
     HrLetterAcknowledgementAPIView,
     BackgroundVerificationCheckAPIView,
@@ -69,6 +68,7 @@ from .hr_phase2_letters_bgv import (
 from .hr_phase2_letters_bgv_compat import (
     BgvPolicyAPIView,
     BackgroundVerificationCaseAPIView,
+    HrLetterWorkflowActionAPIView,
 )
 from .training import (
     TrainingDetailAPIView,
