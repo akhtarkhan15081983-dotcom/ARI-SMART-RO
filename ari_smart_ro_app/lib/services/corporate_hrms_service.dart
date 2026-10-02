@@ -107,6 +107,97 @@ class CorporateHrmsService {
         if (overrideReason.trim().isNotEmpty) 'override_reason': overrideReason.trim(),
       }, successCodes: const {200, 201});
 
+  Future<Map<String, dynamic>> lettersDashboard() =>
+      _getMap('/employees/hrms/letters/dashboard/');
+
+  Future<List<Map<String, dynamic>>> letterTemplates({String type = ''}) async {
+    final suffix = type.trim().isEmpty ? '' : '?letter_type=${Uri.encodeQueryComponent(type.trim().toUpperCase())}';
+    return _rows(await _getMap('/employees/hrms/letters/templates/$suffix'), 'templates');
+  }
+
+  Future<Map<String, dynamic>> createLetterTemplate(Map<String, dynamic> payload) =>
+      _postMap('/employees/hrms/letters/templates/', payload, successCodes: const {201});
+
+  Future<Map<String, dynamic>> letterTemplateAction(int id, String action) =>
+      _postMap('/employees/hrms/letters/templates/$id/action/', {'action': action});
+
+  Future<List<Map<String, dynamic>>> letterWorkflows({String status = ''}) async {
+    final suffix = status.trim().isEmpty ? '' : '?status=${Uri.encodeQueryComponent(status.trim().toUpperCase())}';
+    return _rows(await _getMap('/employees/hrms/letters/workflows/$suffix'), 'workflows');
+  }
+
+  Future<Map<String, dynamic>> createLetterWorkflow(Map<String, dynamic> payload) =>
+      _postMap('/employees/hrms/letters/workflows/', payload, successCodes: const {201});
+
+  Future<Map<String, dynamic>> letterWorkflowAction(
+    int id,
+    String action, {
+    String reason = '',
+  }) =>
+      _postMap('/employees/hrms/letters/workflows/$id/action/', {
+        'action': action,
+        if (reason.trim().isNotEmpty) 'reason': reason.trim(),
+      });
+
+  Future<List<Map<String, dynamic>>> issuedLetters({int? employeeId}) async {
+    final suffix = employeeId == null ? '' : '?employee_id=$employeeId';
+    return _rows(await _getMap('/employees/hrms/letters/issued/$suffix'), 'letters');
+  }
+
+  Future<Map<String, dynamic>> acknowledgeLetter(
+    int letterId,
+    String status, {
+    String note = '',
+    Map<String, dynamic> evidence = const {},
+  }) =>
+      _postMap('/employees/hrms/letters/issued/$letterId/acknowledge/', {
+        'status': status,
+        if (note.trim().isNotEmpty) 'note': note.trim(),
+        if (evidence.isNotEmpty) 'evidence': evidence,
+      });
+
+  Future<Map<String, dynamic>> bgvPolicy() =>
+      _getMap('/employees/hrms/bgv/policy/');
+
+  Future<Map<String, dynamic>> updateBgvPolicy({
+    required bool mandatoryBeforeReady,
+    List<String>? requiredChecks,
+  }) =>
+      _patchMap('/employees/hrms/bgv/policy/', {
+        'mandatory_before_ready': mandatoryBeforeReady,
+        if (requiredChecks != null) 'required_checks': requiredChecks,
+      });
+
+  Future<List<Map<String, dynamic>>> bgvCases({int? employeeId, int? applicationId}) async {
+    final query = <String>[];
+    if (employeeId != null) query.add('employee_id=$employeeId');
+    if (applicationId != null) query.add('application_id=$applicationId');
+    final suffix = query.isEmpty ? '' : '?${query.join('&')}';
+    return _rows(await _getMap('/employees/hrms/bgv/cases/$suffix'), 'cases');
+  }
+
+  Future<Map<String, dynamic>> createBgvCase({int? employeeId, int? applicationId}) =>
+      _postMap('/employees/hrms/bgv/cases/', {
+        if (employeeId != null) 'employee_id': employeeId,
+        if (applicationId != null) 'application_id': applicationId,
+      }, successCodes: const {200, 201});
+
+  Future<Map<String, dynamic>> upsertBgvCheck(
+    int caseId,
+    Map<String, dynamic> payload,
+  ) =>
+      _postMap('/employees/hrms/bgv/cases/$caseId/checks/', payload, successCodes: const {200, 201});
+
+  Future<Map<String, dynamic>> decideBgv(
+    int caseId,
+    String decision, {
+    required String reason,
+  }) =>
+      _postMap('/employees/hrms/bgv/cases/$caseId/decision/', {
+        'decision': decision,
+        'reason': reason.trim(),
+      });
+
   Future<Map<String, dynamic>> uploadEmployeeDocument(
     int employeeId, {
     required String documentType,
@@ -259,6 +350,21 @@ class CorporateHrmsService {
     if (!successCodes.contains(response.statusCode)) {
       throw Exception(_message(response));
     }
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<Map<String, dynamic>> _patchMap(
+    String path,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await http
+        .patch(
+          Uri.parse('${ApiService.baseUrl}$path'),
+          headers: await ApiService.authHeaders(),
+          body: jsonEncode(payload),
+        )
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) throw Exception(_message(response));
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
