@@ -38,6 +38,7 @@ ROLE_FEATURE_CATALOG = {
     "hrms_penalty_manage": "HRMS • Penalty Management",
     "hrms_performance_manage": "HRMS • Performance Finalize",
     "hrms_documents_manage": "HRMS • Document Management",
+    "hrms_lifecycle_manage": "HRMS • Lifecycle Management",
     "employee_career_manage": "Employees • Promotion/Career Changes",
 }
 
@@ -55,7 +56,7 @@ DEFAULT_ROLE_FEATURES = {
         "rent_management", "payment_history", "reports", "downloads", "inventory_workflow",
         "work_calendar", "work_route", "complaint", "referral", "profile",
         "calling_desk", "documents_admin", "hrms_documents_manage",
-        "hrms_holiday_manage",
+        "hrms_holiday_manage", "hrms_lifecycle_manage",
     },
     "CALLING": {"attendance", "hrms", "training", "calling_desk", "profile"},
     "ENGINEER": {
@@ -120,7 +121,6 @@ def has_feature_access(request, feature_key):
         # accounts.
         return feature_key in DEFAULT_ROLE_FEATURES.get(role, set())
     return feature_key in effective_role_features(company, role)
-
 
 
 class HasRequiredFeature(BasePermission):
