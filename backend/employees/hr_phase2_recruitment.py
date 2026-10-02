@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.permissions import IsAuthenticated
@@ -10,6 +11,7 @@ from rest_framework.views import APIView
 from tenancy.access import HasRequiredFeature, has_feature_access, request_company
 
 from .hr_lifecycle_models import EmployeeHrLifecycle
+from .hr_phase2_ats_models import CandidateOffer, InterviewRound
 from .hr_phase2_recruitment_models import (
     Candidate,
     CandidateApplication,
@@ -62,18 +64,56 @@ class RecruitmentSummaryAPIView(APIView):
         company = request_company(request)
         if company is None:
             return Response({"detail": "Active company membership is required."}, status=403)
+        now = timezone.now()
+        today = timezone.localdate()
         reqs = ManpowerRequisition.objects.filter(company=company)
         jobs = JobOpening.objects.filter(company=company)
         apps = CandidateApplication.objects.filter(company=company)
+        interviews = InterviewRound.objects.filter(company=company)
+        offers = CandidateOffer.objects.filter(company=company)
+        open_jobs = jobs.filter(status="OPEN")
+        approved_positions = reqs.filter(status="APPROVED").aggregate(total=Sum("positions"))["total"] or 0
+        joined = apps.filter(converted_employee__isnull=False)
+        joined_count = joined.count()
+        open_vacancies = max(0, sum(max(0, job.vacancies - job.applications.filter(converted_employee__isnull=False).count()) for job in open_jobs))
+        interviews_due = interviews.filter(status="SCHEDULED", scheduled_at__date__lte=today)
+        feedback_pending = interviews.filter(status="SCHEDULED", scheduled_at__lte=now, feedback_entries__isnull=True).distinct()
+        expiring_cutoff = today + timezone.timedelta(days=3)
+        expiring_offers = offers.filter(status="ISSUED", validity_date__gte=today, validity_date__lte=expiring_cutoff)
+        accepted_waiting = offers.filter(status="ACCEPTED", application__converted_employee__isnull=True)
+        joined_this_month = joined.filter(updated_at__year=today.year, updated_at__month=today.month).count()
         return Response({
             "requisitions": {
                 "total": reqs.count(),
                 "pending_approval": reqs.filter(status="PENDING_APPROVAL").count(),
                 "approved": reqs.filter(status="APPROVED").count(),
             },
-            "jobs": {"open": jobs.filter(status="OPEN").count()},
+            "jobs": {
+                "open": open_jobs.count(),
+                "approved_positions": approved_positions,
+                "open_vacancies": open_vacancies,
+            },
             "pipeline": {stage: apps.filter(stage=stage).count() for stage, _ in CandidateApplication.STAGE_CHOICES},
             "candidates": Candidate.objects.filter(company=company).count(),
+            "ats": {
+                "screening": apps.filter(stage="SCREENING").count(),
+                "interviews_due": interviews_due.count(),
+                "interview_feedback_pending": feedback_pending.count(),
+                "selected_awaiting_offer": apps.filter(stage="SELECTED", offer__isnull=True).count(),
+                "offers_awaiting_approval": offers.filter(status="PENDING_APPROVAL").count(),
+                "offers_awaiting_response": offers.filter(status="ISSUED").count(),
+                "accepted_awaiting_conversion": accepted_waiting.count(),
+                "joined": joined_count,
+                "joined_this_month": joined_this_month,
+            },
+            "action_queue": {
+                "requisition_approval_due": reqs.filter(status="PENDING_APPROVAL").count(),
+                "interview_overdue": interviews.filter(status="SCHEDULED", scheduled_at__lt=now).count(),
+                "feedback_pending": feedback_pending.count(),
+                "offer_approval_pending": offers.filter(status="PENDING_APPROVAL").count(),
+                "offer_expiry_approaching": expiring_offers.count(),
+                "accepted_waiting_joining": accepted_waiting.count(),
+            },
         })
 
 
@@ -325,13 +365,13 @@ class CandidateApplicationActionAPIView(APIView):
         allowed = {
             "APPLIED": {"SCREENING", "REJECTED", "WITHDRAWN"},
             "SCREENING": {"INTERVIEW", "REJECTED", "WITHDRAWN"},
-            "INTERVIEW": {"SELECTED", "REJECTED", "WITHDRAWN"},
-            "SELECTED": {"OFFERED", "REJECTED", "WITHDRAWN"},
-            "OFFERED": {"JOINED", "WITHDRAWN"},
+            "INTERVIEW": {"WITHDRAWN"},
+            "SELECTED": {"WITHDRAWN"},
+            "OFFERED": {"WITHDRAWN"},
             "REJECTED": set(), "JOINED": set(), "WITHDRAWN": set(),
         }
         if target not in allowed.get(row.stage, set()):
-            return Response({"detail": f"Cannot move application from {row.stage} to {target}."}, status=400)
+            return Response({"detail": f"Cannot move application from {row.stage} to {target}; use the controlled ATS decision/offer/conversion workflow."}, status=400)
         reason = str(request.data.get("reason") or "").strip()
         if target == "REJECTED" and not reason:
             return Response({"detail": "Rejection reason is required."}, status=400)
