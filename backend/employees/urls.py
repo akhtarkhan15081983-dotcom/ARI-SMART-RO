@@ -27,6 +27,12 @@ from .device_health_security import (
 from .location_batch import EmployeeLocationBatchAPIView
 from .route_history import EmployeeDayRouteAPIView
 from .hrms import EmployeeDocumentComplianceAPIView, EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, EmployeePenaltyAPIView, HolidayAPIView, HolidayDetailAPIView, LeaveRequestAPIView, LeaveReviewAPIView, PayrollActionAPIView, PayrollAPIView, PayrollExcelReportAPIView, PerformanceReviewActionAPIView, PerformanceReviewAPIView
+from .hr_lifecycle import (
+    CorporateHrDashboardAPIView,
+    EmployeeDigitalHrFileAPIView,
+    EmployeeHrDirectoryAPIView,
+    EmployeeHrLifecycleActionAPIView,
+)
 from .training import (
     TrainingDetailAPIView,
     TrainingLessonCompleteAPIView,
@@ -78,6 +84,10 @@ urlpatterns = [
         name="employee-career-movement-action",
     ),
     path("employees/hrms/dashboard/", EmployeeHrmsDashboardAPIView.as_view(), name="hrms-dashboard"),
+    path("employees/hrms/corporate-dashboard/", CorporateHrDashboardAPIView.as_view(), name="hrms-corporate-dashboard"),
+    path("employees/hrms/directory/", EmployeeHrDirectoryAPIView.as_view(), name="hrms-employee-directory"),
+    path("employees/hrms/employees/<int:employee_id>/", EmployeeDigitalHrFileAPIView.as_view(), name="hrms-digital-employee-file"),
+    path("employees/hrms/employees/<int:employee_id>/action/", EmployeeHrLifecycleActionAPIView.as_view(), name="hrms-employee-lifecycle-action"),
     path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
     path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
     path("employees/hrms/leaves/", LeaveRequestAPIView.as_view(), name="hrms-leaves"),
