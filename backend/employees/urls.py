@@ -30,11 +30,11 @@ from .hrms import EmployeeHrmsDashboardAPIView, EmployeePenaltyActionAPIView, Em
 from .hr_phase1 import (
     CorporateHrDashboardAPIView,
     EmployeeDigitalHrFileAPIView,
-    EmployeeDocumentComplianceAPIView,
     EmployeeDocumentWorkflowAPIView,
     EmployeeHrDirectoryAPIView,
     EmployeeHrLifecycleActionAPIView,
 )
+from .hr_phase1_compat import EmployeeDocumentComplianceAPIView
 from . import hr_phase1_requirements  # noqa: F401
 from .hr_profile_admin import EmployeeHrProfileAdminAPIView
 from .training import (
