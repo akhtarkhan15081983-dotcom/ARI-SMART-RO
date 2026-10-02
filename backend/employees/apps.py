@@ -15,3 +15,4 @@ class EmployeesConfig(AppConfig):
         from . import hr_lifecycle_models  # noqa: F401
         # Phase-2 recruitment/ATS is additive for the same compatibility reason.
         from . import hr_phase2_recruitment_models  # noqa: F401
+        from . import hr_phase2_ats_models  # noqa: F401
