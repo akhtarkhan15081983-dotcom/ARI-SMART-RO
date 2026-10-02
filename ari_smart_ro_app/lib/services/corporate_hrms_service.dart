@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_service.dart';
@@ -17,6 +18,68 @@ class CorporateHrmsService {
 
   Future<Map<String, dynamic>> employeeFile(int employeeId) =>
       _getMap('/employees/hrms/employees/$employeeId/');
+
+  Future<Map<String, dynamic>> employeeDocuments(int employeeId) =>
+      _getMap('/employees/hrms/employees/$employeeId/documents/');
+
+  Future<Map<String, dynamic>> uploadEmployeeDocument(
+    int employeeId, {
+    required String documentType,
+    required PlatformFile file,
+    String documentNumber = '',
+    String expiryDate = '',
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse(
+        '${ApiService.baseUrl}/employees/hrms/employees/$employeeId/documents/',
+      ),
+    );
+    request.headers.addAll(await ApiService.authHeaders());
+    request.fields['document_type'] = documentType;
+    if (documentNumber.trim().isNotEmpty) {
+      request.fields['document_number'] = documentNumber.trim();
+    }
+    if (expiryDate.trim().isNotEmpty) {
+      request.fields['expiry_date'] = expiryDate.trim();
+    }
+    if (file.bytes != null) {
+      request.files.add(
+        http.MultipartFile.fromBytes('file', file.bytes!, filename: file.name),
+      );
+    } else if (file.path != null) {
+      request.files.add(await http.MultipartFile.fromPath('file', file.path!));
+    } else {
+      throw Exception('Selected document file is unavailable.');
+    }
+    final streamed = await request.send().timeout(const Duration(seconds: 45));
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode != 201) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<Map<String, dynamic>> reviewEmployeeDocument(
+    int employeeId, {
+    required int documentId,
+    required String action,
+    required String reason,
+  }) async {
+    final response = await http
+        .patch(
+          Uri.parse(
+            '${ApiService.baseUrl}/employees/hrms/employees/$employeeId/documents/',
+          ),
+          headers: await ApiService.authHeaders(),
+          body: jsonEncode({
+            'document_id': documentId,
+            'action': action,
+            'reason': reason,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
 
   Future<Map<String, dynamic>> createEmployee(
     Map<String, dynamic> payload,
