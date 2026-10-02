@@ -46,6 +46,15 @@ from .hr_phase2_recruitment import (
     CandidateApplicationAPIView,
     CandidateApplicationActionAPIView,
 )
+from .hr_phase2_ats import (
+    InterviewRoundAPIView,
+    InterviewRoundActionAPIView,
+    InterviewFeedbackAPIView,
+    CandidateDecisionAPIView,
+    CandidateOfferAPIView,
+    CandidateOfferActionAPIView,
+    CandidateConvertAPIView,
+)
 from .training import (
     TrainingDetailAPIView,
     TrainingLessonCompleteAPIView,
@@ -90,6 +99,13 @@ urlpatterns = [
     path("employees/hrms/recruitment/candidates/", CandidateAPIView.as_view(), name="hrms-recruitment-candidates"),
     path("employees/hrms/recruitment/applications/", CandidateApplicationAPIView.as_view(), name="hrms-recruitment-applications"),
     path("employees/hrms/recruitment/applications/<int:application_id>/action/", CandidateApplicationActionAPIView.as_view(), name="hrms-recruitment-application-action"),
+    path("employees/hrms/recruitment/interviews/", InterviewRoundAPIView.as_view(), name="hrms-recruitment-interviews"),
+    path("employees/hrms/recruitment/interviews/<int:interview_id>/action/", InterviewRoundActionAPIView.as_view(), name="hrms-recruitment-interview-action"),
+    path("employees/hrms/recruitment/interviews/<int:interview_id>/feedback/", InterviewFeedbackAPIView.as_view(), name="hrms-recruitment-interview-feedback"),
+    path("employees/hrms/recruitment/applications/<int:application_id>/decision/", CandidateDecisionAPIView.as_view(), name="hrms-recruitment-application-decision"),
+    path("employees/hrms/recruitment/offers/", CandidateOfferAPIView.as_view(), name="hrms-recruitment-offers"),
+    path("employees/hrms/recruitment/offers/<int:offer_id>/action/", CandidateOfferActionAPIView.as_view(), name="hrms-recruitment-offer-action"),
+    path("employees/hrms/recruitment/applications/<int:application_id>/convert/", CandidateConvertAPIView.as_view(), name="hrms-recruitment-application-convert"),
     path("employees/hrms/holidays/", HolidayAPIView.as_view(), name="hrms-holidays"),
     path("employees/hrms/holidays/<int:holiday_id>/", HolidayDetailAPIView.as_view(), name="hrms-holiday-detail"),
     path("employees/hrms/leaves/", LeaveRequestAPIView.as_view(), name="hrms-leaves"),
