@@ -18,8 +18,9 @@ void main() {
       expect(source, contains('Pending onboarding'));
       expect(source, contains('Confirmation due'));
       expect(source, contains('Notice period'));
-      expect(source, contains('Department structure'));
-      expect(source, contains('Designation structure'));
+      expect(source, contains('Workforce structure'));
+      expect(source, contains("workforce['department_mix']"));
+      expect(source, contains("workforce['designation_mix']"));
     });
 
     test('command center wires required HR quick actions', () {
@@ -59,7 +60,8 @@ void main() {
       expect(source, contains("title: const Text('Documents')"));
       expect(source, contains("title: const Text('Security')"));
       expect(source, contains("title: const Text('Training')"));
-      expect(source, contains("title: const Text('Final Review')"));
+      expect(source, contains("title: const Text('Review')"));
+      expect(source, contains("_section('Final HR review'"));
     });
 
     test('digital employee HR file keeps professional tab hierarchy', () {
