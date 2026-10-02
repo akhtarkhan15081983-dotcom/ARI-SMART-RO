@@ -39,6 +39,9 @@ ROLE_FEATURE_CATALOG = {
     "hrms_performance_manage": "HRMS • Performance Finalize",
     "hrms_documents_manage": "HRMS • Document Management",
     "employee_career_manage": "Employees • Promotion/Career Changes",
+    "hrms_recruitment_view": "HRMS • Recruitment View",
+    "hrms_recruitment_manage": "HRMS • Recruitment Manage",
+    "hrms_recruitment_approve": "HRMS • Manpower Approval",
 }
 
 DEFAULT_ROLE_FEATURES = {
@@ -49,13 +52,14 @@ DEFAULT_ROLE_FEATURES = {
         "referral", "profile", "reports", "downloads", "inventory_workflow", "calling_desk",
         "map", "engineer_map", "performance_admin", "documents_admin",
         "hrms_leave_approve", "hrms_performance_manage", "hrms_holiday_manage",
+        "hrms_recruitment_view",
     },
     "OFFICE": {
         "attendance", "hrms", "training", "customers", "walkin", "service",
         "rent_management", "payment_history", "reports", "downloads", "inventory_workflow",
         "work_calendar", "work_route", "complaint", "referral", "profile",
         "calling_desk", "documents_admin", "hrms_documents_manage",
-        "hrms_holiday_manage",
+        "hrms_holiday_manage", "hrms_recruitment_view", "hrms_recruitment_manage",
     },
     "CALLING": {"attendance", "hrms", "training", "calling_desk", "profile"},
     "ENGINEER": {
@@ -120,7 +124,6 @@ def has_feature_access(request, feature_key):
         # accounts.
         return feature_key in DEFAULT_ROLE_FEATURES.get(role, set())
     return feature_key in effective_role_features(company, role)
-
 
 
 class HasRequiredFeature(BasePermission):
