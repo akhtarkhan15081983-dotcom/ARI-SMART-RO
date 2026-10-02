@@ -7,6 +7,7 @@ import '../attendance/attendance_screen.dart';
 import 'corporate_joining_wizard.dart';
 import 'employee_hr_file_screen.dart';
 import 'employee_management_screen.dart';
+import 'recruitment_screen.dart';
 import 'training_screen.dart';
 
 class HrmsScreen extends StatefulWidget {
@@ -410,6 +411,8 @@ class _HrmsScreenState extends State<HrmsScreen> {
     final actions = <_QuickAction>[
       if (_isHrAdmin)
         _QuickAction('New Joining', Icons.person_add_alt_1_outlined, _openJoining),
+      if (_isHrAdmin)
+        _QuickAction('Talent Acquisition', Icons.person_search_outlined, () => _push(const RecruitmentScreen())),
       _QuickAction('Employee Directory', Icons.badge_outlined, () => setState(() => _page = 1)),
       _QuickAction('Attendance', Icons.fingerprint_outlined, () => _push(const AttendanceScreen())),
       _QuickAction('Leave', Icons.event_note_outlined, () => setState(() => _page = 2)),
