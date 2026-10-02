@@ -35,6 +35,7 @@ from .hr_phase1 import (
     EmployeeHrDirectoryAPIView,
     EmployeeHrLifecycleActionAPIView,
 )
+from . import hr_phase1_requirements  # noqa: F401
 from .hr_profile_admin import EmployeeHrProfileAdminAPIView
 from .training import (
     TrainingDetailAPIView,
