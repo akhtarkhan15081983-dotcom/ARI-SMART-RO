@@ -13,5 +13,3 @@ class EmployeesConfig(AppConfig):
         # Corporate HR lifecycle is intentionally kept as an additive model
         # layer so existing attendance/payroll/training contracts remain safe.
         from . import hr_lifecycle_models  # noqa: F401
-        # Phase-1 READY FOR DUTY requires real uploaded, verified, valid files.
-        from . import hr_phase1_compliance  # noqa: F401
