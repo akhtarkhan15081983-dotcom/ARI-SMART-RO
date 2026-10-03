@@ -141,14 +141,31 @@ class LiveLocationService {
 
   Future<void> startTracking({bool requestPermissions = true}) async {
     if (!isSupportedPlatform) return;
-    await ensureTrackingReady(requestPermissions: requestPermissions);
+    await initialize();
 
+    final service = FlutterBackgroundService();
+    final trackingEnabled =
+        await _storage.read(key: _trackingEnabledKey) == 'true';
+    final serviceRunning = await service.isRunning();
+
+    if (trackingEnabled && serviceRunning) {
+      // Dashboard refresh/resume can call this repeatedly while an active shift
+      // is already being tracked. Keep a cheap compliance check so revoked GPS
+      // or background permission is surfaced, but never wait for another 12s +
+      // 8s foreground GPS capture. The background isolate already ticks every
+      // 20 seconds and remains the single location-capture loop.
+      await ensureTrackingReady(requestPermissions: false);
+      return;
+    }
+
+    await ensureTrackingReady(requestPermissions: requestPermissions);
     await _storage.write(key: _trackingEnabledKey, value: 'true');
 
-    // Start the Android foreground service before waiting on a GPS fix. A weak
-    // signal must never delay creation of the long-running tracking service.
-    final service = FlutterBackgroundService();
-    if (!await service.isRunning()) {
+    // Start the foreground service before any GPS work. The background entry
+    // point executes tick() immediately and then every 20 seconds, so a second
+    // UI-isolate sendCurrentLocation() here would duplicate network/GPS work and
+    // can make dashboard refreshes feel slow on weak-GPS devices.
+    if (!serviceRunning) {
       final started = await service.startService();
       if (!started) {
         await _storage.write(key: _trackingEnabledKey, value: 'false');
@@ -157,10 +174,6 @@ class LiveLocationService {
         );
       }
     }
-
-    // Capture immediately as well as from the background isolate. Duplicate
-    // points are harmless, while this gives the admin map a fast first update.
-    await sendCurrentLocation();
   }
 
   Future<void> stopTracking() async {
