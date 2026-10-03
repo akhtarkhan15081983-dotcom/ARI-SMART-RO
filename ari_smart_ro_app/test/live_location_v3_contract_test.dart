@@ -51,4 +51,19 @@ void main() {
       contains("final missing = employees.where((e) => _countsAsMissing(_status(e))).length;"),
     );
   });
+
+  test('face reenrollment uses authenticated stable device identity', () {
+    final identity = File('lib/services/device_identity_service.dart').readAsStringSync();
+    final enrollment = File('lib/screens/profile/face_enrollment_screen.dart').readAsStringSync();
+
+    expect(identity, contains('loginBoundDeviceId'));
+    expect(identity, contains("headers['X-ARI-Device-ID']"));
+    expect(identity, contains('static Future<void> bindTo(String deviceId)'));
+    expect(enrollment, contains('DeviceIdentityService.loginBoundDeviceId()'));
+    expect(enrollment, contains('await DeviceIdentityService.bindTo(deviceId);'));
+    expect(
+      enrollment.indexOf('await DeviceIdentityService.bindTo(deviceId);'),
+      greaterThan(enrollment.indexOf('await _service.enrollFace')),
+    );
+  });
 }
