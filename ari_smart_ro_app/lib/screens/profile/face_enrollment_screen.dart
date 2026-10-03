@@ -43,8 +43,9 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
     if (_photo == null || _saving) return;
     setState(() => _saving = true);
     try {
-      final deviceId = await DeviceIdentityService.getOrCreate();
+      final deviceId = await DeviceIdentityService.loginBoundDeviceId();
       await _service.enrollFace(photoPath: _photo!.path, deviceId: deviceId);
+      await DeviceIdentityService.bindTo(deviceId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
