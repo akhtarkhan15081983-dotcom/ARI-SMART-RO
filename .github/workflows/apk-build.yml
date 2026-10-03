@@ -9,7 +9,9 @@ concurrency:
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - fix/location-tracking-v3-2026-10-03
     paths:
       - "ari_smart_ro_app/**"
       - ".github/workflows/apk-build.yml"
