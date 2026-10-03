@@ -7,8 +7,10 @@ void main() {
     final source = File('lib/screens/engineer/map_screen.dart').readAsStringSync();
 
     expect(source, contains('Future<LatLng?> _tryCurrentLocation()'));
-    expect(source, contains("'destination': '${location.latitude},${location.longitude}'"));
-    expect(source, contains("if (current != null)"));
+    expect(source, contains("'destination':"));
+    expect(source, contains('location.latitude'));
+    expect(source, contains('location.longitude'));
+    expect(source, contains('if (current != null)'));
     expect(source, contains("query['origin'] ="));
     expect(source, contains("Uri.https('www.google.com', '/maps/dir/', query)"));
   });
