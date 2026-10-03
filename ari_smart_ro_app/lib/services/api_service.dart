@@ -27,6 +27,8 @@ class ApiService {
     "API_BASE_URL",
     defaultValue: "https://ari-smart-ro-api.onrender.com/api",
   );
+  static const String _stableAndroidDeviceIdKey =
+      "ari_stable_android_device_id_v1";
 
   static String get baseUrl {
     final configured = _configuredBaseUrl.trim();
@@ -98,13 +100,36 @@ class ApiService {
   static Future<String> _stableDeviceId() async {
     if (Platform.isAndroid) {
       try {
-        final nativeId = await _deviceChannel.invokeMethod<String>('getStableDeviceId');
+        final nativeId = await _deviceChannel.invokeMethod<String>(
+          'getStableDeviceId',
+        );
         final clean = nativeId?.trim();
-        if (clean != null && clean.isNotEmpty) return 'android-$clean';
+        if (clean != null && clean.isNotEmpty) {
+          final stableId = 'android-$clean';
+          // The background location service runs in a separate Flutter isolate.
+          // MainActivity's MethodChannel is not guaranteed to exist there, so
+          // persist the verified Android identity while the foreground engine is
+          // available. Background requests can then reuse the exact login-bound
+          // X-ARI-Device-ID instead of falling back to an unrelated random ID.
+          await storage.write(
+            key: _stableAndroidDeviceIdKey,
+            value: stableId,
+          );
+          return stableId;
+        }
       } on PlatformException {
-        // Fall back to the persisted identity.
+        // Fall through to the foreground-cached stable identity.
       } on MissingPluginException {
-        // Fall back to the persisted identity.
+        // Expected in background Flutter engines without MainActivity channel.
+      }
+
+      final cachedStableId = await storage.read(
+        key: _stableAndroidDeviceIdKey,
+      );
+      if (cachedStableId != null &&
+          cachedStableId.startsWith('android-') &&
+          cachedStableId.length > 'android-'.length) {
+        return cachedStableId;
       }
     }
     if (Platform.isWindows) {
