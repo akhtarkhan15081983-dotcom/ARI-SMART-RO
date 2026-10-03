@@ -15,7 +15,7 @@ void main() {
     expect(source, contains("source: 'LAST_KNOWN_FALLBACK'"));
   });
 
-  test('tracking startup is idempotent while background capture stays immediate', () {
+  test('tracking startup is idempotent while adaptive background capture stays immediate', () {
     final source = File('lib/services/live_location_service.dart').readAsStringSync();
 
     final startTrackingStart = source.indexOf('Future<void> startTracking');
@@ -35,8 +35,10 @@ void main() {
     final entryPointStart = source.indexOf('void liveLocationBackgroundEntryPoint');
     expect(entryPointStart, greaterThanOrEqualTo(0));
     final entryPointBody = source.substring(entryPointStart);
-    expect(entryPointBody, contains('await tick();'));
-    expect(entryPointBody, contains('Timer.periodic(_trackingInterval'));
+    expect(entryPointBody, contains('await runAndSchedule();'));
+    expect(entryPointBody, contains('Timer(nextInterval'));
+    expect(entryPointBody, contains('unawaited(runAndSchedule())'));
+    expect(entryPointBody, isNot(contains('Timer.periodic(')));
   });
 
   test('Android task removal does not request tracking service shutdown', () {

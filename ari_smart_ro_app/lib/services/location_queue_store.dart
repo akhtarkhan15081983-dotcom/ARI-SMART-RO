@@ -21,7 +21,8 @@ class LocationQueueStore {
   static const String _fileName = 'pending_location_points_v2.jsonl';
   static const String _lockFileName = '.pending_location_points_v2.lock';
   static const String _sequenceFileName = '.location_sequence_v5';
-  static const int maxRetainedPoints = 6000; // ~33h at a 20-second cadence.
+  // Preserve roughly 33 hours even at the fastest 5-second driving cadence.
+  static const int maxRetainedPoints = 24000;
   static const int defaultBatchSize = 200;
   static const int _compactEveryAppends = 250;
   static int _appendsSinceCompactionCheck = 0;
