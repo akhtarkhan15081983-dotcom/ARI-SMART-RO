@@ -52,6 +52,10 @@ def normalize_location_telemetry(raw):
     Latitude/longitude and captured_at remain authoritative in the existing
     endpoint. These fields enrich the immutable route point and are deliberately
     nullable so older mobile builds keep working during rollout.
+
+    The function intentionally accepts both wire-format names and its own
+    normalized field names. That makes re-normalization idempotent when telemetry
+    passes through serializer -> model signal safety boundaries.
     """
     raw = raw if isinstance(raw, dict) else {}
 
@@ -66,7 +70,10 @@ def normalize_location_telemetry(raw):
         maximum=200,
     )
     heading_degrees = _finite_float(
-        raw.get("heading", raw.get("bearing")),
+        raw.get(
+            "heading",
+            raw.get("bearing", raw.get("heading_degrees")),
+        ),
         minimum=0,
         maximum=360,
     )
