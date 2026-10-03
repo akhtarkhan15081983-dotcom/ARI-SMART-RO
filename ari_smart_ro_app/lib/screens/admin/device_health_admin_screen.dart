@@ -130,6 +130,8 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                           0;
                       final pendingLocations =
                           int.tryParse(health['pending_location_points']?.toString() ?? '') ?? 0;
+                      final notificationGranted =
+                          health['notification_permission_granted'] == true;
                       return Card(
                         child: Padding(
                           padding: const EdgeInsets.all(16),
@@ -214,6 +216,14 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                                     label: 'GPS',
                                     value:
                                         '${row['location_status'] ?? '-'} • ${health['location_permission'] ?? '-'}',
+                                  ),
+                                  _Metric(
+                                    icon: Icons.notifications_active_outlined,
+                                    label: 'Notifications',
+                                    value: notificationGranted ? 'GRANTED' : 'DENIED',
+                                    valueColor: notificationGranted
+                                        ? Colors.green.shade700
+                                        : Colors.red.shade700,
                                   ),
                                   _Metric(
                                     icon: Icons.location_searching,
