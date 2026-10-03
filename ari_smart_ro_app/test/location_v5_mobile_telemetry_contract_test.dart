@@ -15,10 +15,12 @@ void main() {
     expect(source, contains('headingDegrees: position.heading'));
     expect(source, contains('altitudeMeters: position.altitude'));
 
-    // Phase-2B must not sneak in a second scheduler. Adaptive cadence belongs to
-    // the next gated phase and will replace this timer inside the same loop.
-    expect(source, contains('Timer.periodic(_trackingInterval'));
-    expect(RegExp(r'Timer\.periodic\(').allMatches(source).length, 1);
+    // Phase-2B telemetry must remain inside the same authoritative scheduler.
+    // Phase-3 may adapt cadence, but must not introduce a second recurring loop.
+    expect(source, contains('timer = Timer(nextInterval'));
+    expect(source, contains('unawaited(runAndSchedule())'));
+    expect(source, isNot(contains('Timer.periodic(')));
+    expect(RegExp(r'\bTimer\(').allMatches(source).length, 1);
   });
 
   test('offline queue owns monotonic client sequence allocation', () {
