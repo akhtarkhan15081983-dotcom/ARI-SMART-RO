@@ -4,6 +4,20 @@ from .location_telemetry import normalize_location_telemetry
 from .models import EmployeeProfile
 
 
+LOCATION_TELEMETRY_FIELDS = (
+    "accuracy",
+    "source",
+    "speed_mps",
+    "heading",
+    "motion_state",
+    "quality_label",
+    "client_point_id",
+    "client_sequence",
+    "altitude",
+    "client_platform",
+)
+
+
 class EmployeeLocationSerializer(serializers.ModelSerializer):
     live_latitude = serializers.DecimalField(
         source="last_latitude",
@@ -31,18 +45,7 @@ class EmployeeLocationSerializer(serializers.ModelSerializer):
     altitude = serializers.FloatField(required=False, allow_null=True)
     client_platform = serializers.CharField(required=False, allow_blank=True, max_length=16)
 
-    _telemetry_fields = (
-        "accuracy",
-        "source",
-        "speed_mps",
-        "heading",
-        "motion_state",
-        "quality_label",
-        "client_point_id",
-        "client_sequence",
-        "altitude",
-        "client_platform",
-    )
+    _telemetry_fields = LOCATION_TELEMETRY_FIELDS
 
     class Meta:
         model = EmployeeProfile
@@ -65,7 +68,7 @@ class EmployeeLocationSerializer(serializers.ModelSerializer):
         read_only_fields = ["last_location_updated", "is_online"]
         extra_kwargs = {
             field: {"write_only": True}
-            for field in _telemetry_fields
+            for field in LOCATION_TELEMETRY_FIELDS
         }
 
     def validate_live_latitude(self, value):
