@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from .location_telemetry import normalize_location_telemetry
 from .models import EmployeeProfile
 
 
@@ -16,6 +18,32 @@ class EmployeeLocationSerializer(serializers.ModelSerializer):
         required=False,
     )
 
+    # V5 telemetry fields are write-only and optional. Existing clients that only
+    # send coordinates continue to use the same endpoint without any contract break.
+    accuracy = serializers.FloatField(required=False, allow_null=True, min_value=0)
+    source = serializers.CharField(required=False, allow_blank=True, max_length=32)
+    speed_mps = serializers.FloatField(required=False, allow_null=True, min_value=0)
+    heading = serializers.FloatField(required=False, allow_null=True, min_value=0, max_value=360)
+    motion_state = serializers.CharField(required=False, allow_blank=True, max_length=16)
+    quality_label = serializers.CharField(required=False, allow_blank=True, max_length=16)
+    client_point_id = serializers.CharField(required=False, allow_blank=True, max_length=96)
+    client_sequence = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    altitude = serializers.FloatField(required=False, allow_null=True)
+    client_platform = serializers.CharField(required=False, allow_blank=True, max_length=16)
+
+    _telemetry_fields = (
+        "accuracy",
+        "source",
+        "speed_mps",
+        "heading",
+        "motion_state",
+        "quality_label",
+        "client_point_id",
+        "client_sequence",
+        "altitude",
+        "client_platform",
+    )
+
     class Meta:
         model = EmployeeProfile
         fields = [
@@ -23,8 +51,22 @@ class EmployeeLocationSerializer(serializers.ModelSerializer):
             "live_longitude",
             "last_location_updated",
             "is_online",
+            "accuracy",
+            "source",
+            "speed_mps",
+            "heading",
+            "motion_state",
+            "quality_label",
+            "client_point_id",
+            "client_sequence",
+            "altitude",
+            "client_platform",
         ]
         read_only_fields = ["last_location_updated", "is_online"]
+        extra_kwargs = {
+            field: {"write_only": True}
+            for field in _telemetry_fields
+        }
 
     def validate_live_latitude(self, value):
         if value < -90 or value > 90:
@@ -35,6 +77,15 @@ class EmployeeLocationSerializer(serializers.ModelSerializer):
         if value < -180 or value > 180:
             raise serializers.ValidationError("Longitude must be between -180 and 180.")
         return value
+
+    def update(self, instance, validated_data):
+        telemetry_input = {
+            field: validated_data.pop(field)
+            for field in self._telemetry_fields
+            if field in validated_data
+        }
+        instance._location_telemetry = normalize_location_telemetry(telemetry_input)
+        return super().update(instance, validated_data)
 
 
 class EmployeeProfileSerializer(serializers.ModelSerializer):
