@@ -26,13 +26,12 @@ def _as_aware_datetime(value):
 
 
 class HardenedEngineerLiveMapAPIView(EngineerLiveMapAPIView):
-    """Escalate checked-in employees from stale GPS to missing GPS.
+    """Escalate checked-in employees from stale GPS to a critical map state.
 
-    The base live-map view already emits a 90-second STALE early warning. This
-    wrapper preserves that warning but turns an active-shift GPS gap into a
-    critical MISSING state after three minutes so field supervisors can act on
-    a real tracking failure without treating a short GPS acquisition delay as
-    a full outage.
+    The existing Flutter map renders unknown/non-live/non-missing status values in
+    red. We therefore emit LOCATION_MISSING after a three-minute active-shift gap,
+    while retaining a machine-readable reason and alert level. The UI text still
+    reads "Checked in • GPS missing" and the card/marker becomes red.
     """
 
     def get(self, request):
@@ -54,7 +53,7 @@ class HardenedEngineerLiveMapAPIView(EngineerLiveMapAPIView):
             if updated_at is None:
                 item["location_age_seconds"] = None
                 if attendance_active:
-                    item["location_status"] = "MISSING"
+                    item["location_status"] = "LOCATION_MISSING"
                     item["online"] = False
                     item["location_alert"] = "CRITICAL"
                     item["location_alert_reason"] = "NO_LOCATION_RECEIVED"
@@ -68,7 +67,7 @@ class HardenedEngineerLiveMapAPIView(EngineerLiveMapAPIView):
             item["location_age_seconds"] = int(age.total_seconds())
 
             if attendance_active and age > LOCATION_MISSING_AFTER:
-                item["location_status"] = "MISSING"
+                item["location_status"] = "LOCATION_MISSING"
                 item["online"] = False
                 item["location_alert"] = "CRITICAL"
                 item["location_alert_reason"] = "GPS_NOT_REFRESHED_3_MIN"
