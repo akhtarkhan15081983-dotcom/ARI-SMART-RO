@@ -13,6 +13,8 @@ import 'package:permission_handler/permission_handler.dart' as permissions;
 
 import 'api_service.dart';
 import 'attendance_service.dart';
+import 'location_point_envelope.dart';
+import 'location_point_identity.dart';
 import 'location_queue_store.dart';
 
 const String _trackingEnabledKey = 'ari_live_location_tracking_enabled';
@@ -224,17 +226,32 @@ class LiveLocationService {
     }
   }
 
-  static Map<String, dynamic> _pointFromPosition(
+  static Future<Map<String, dynamic>?> _pointFromPosition(
     Position position, {
     required String source,
-  }) {
-    return <String, dynamic>{
-      'live_latitude': position.latitude,
-      'live_longitude': position.longitude,
-      'accuracy': position.accuracy,
-      'captured_at': position.timestamp.toUtc().toIso8601String(),
-      'source': source,
-    };
+  }) async {
+    final capturedAt = position.timestamp.toUtc();
+    final platform = Platform.isIOS ? 'ios' : 'android';
+    final sequence = await LocationQueueStore.nextClientSequence();
+    final pointId = LocationPointIdentity.pointId(
+      platform: platform,
+      sequence: sequence,
+      capturedAt: capturedAt,
+    );
+
+    return LocationPointEnvelope.build(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracyMeters: position.accuracy,
+      capturedAt: capturedAt,
+      source: source,
+      speedMps: position.speed,
+      headingDegrees: position.heading,
+      altitudeMeters: position.altitude,
+      clientSequence: sequence,
+      clientPointId: pointId,
+      clientPlatform: platform,
+    );
   }
 
   static bool _isUsableLastKnown(Position position) {
@@ -260,7 +277,10 @@ class LiveLocationService {
             timeLimit: _primaryFixTimeout,
           ),
         );
-        return _pointFromPosition(position, source: 'FRESH_HIGH_ACCURACY');
+        return await _pointFromPosition(
+          position,
+          source: 'FRESH_HIGH_ACCURACY',
+        );
       } catch (_) {
         // Continue to a faster balanced/network-assisted fix. This is important
         // indoors and on low-end phones where a high-accuracy satellite fix can
@@ -274,14 +294,17 @@ class LiveLocationService {
             timeLimit: _fallbackFixTimeout,
           ),
         );
-        return _pointFromPosition(position, source: 'FRESH_BALANCED');
+        return await _pointFromPosition(position, source: 'FRESH_BALANCED');
       } catch (_) {
         // Last-known fallback below is deliberately bounded by age and accuracy.
       }
 
       final lastKnown = await Geolocator.getLastKnownPosition();
       if (lastKnown != null && _isUsableLastKnown(lastKnown)) {
-        return _pointFromPosition(lastKnown, source: 'LAST_KNOWN_FALLBACK');
+        return await _pointFromPosition(
+          lastKnown,
+          source: 'LAST_KNOWN_FALLBACK',
+        );
       }
     } catch (_) {
       // The next tracking tick will try again. Never crash the field service.
