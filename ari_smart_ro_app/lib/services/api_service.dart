@@ -233,7 +233,10 @@ class ApiService {
     }
   }
 
-  static Future<bool> _refreshAccessToken(String refresh) async {
+  static Future<bool> _refreshAccessToken(
+    String refresh, {
+    bool allowRotatedTokenRecovery = true,
+  }) async {
     try {
       final response = await http
           .post(
@@ -244,28 +247,39 @@ class ApiService {
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
-        if (response.statusCode == 400 || response.statusCode == 401) {
-          // A rotating refresh token can be consumed by the UI isolate and the
-          // background location isolate at nearly the same instant. One request
-          // succeeds, the other receives 401. Give the successful isolate a
-          // moment to persist its new access token before deciding the session
-          // is really invalid. Never delete a freshly-rotated session because
-          // the sibling isolate lost this race.
-          await Future<void>.delayed(const Duration(milliseconds: 350));
-          final concurrentAccess = await _readAccessToken();
-          if (isJwtUsable(concurrentAccess)) {
-            return true;
-          }
+        if ((response.statusCode == 400 || response.statusCode == 401) &&
+            allowRotatedTokenRecovery) {
+          // UI and background isolates can consume the same rotating refresh
+          // token almost simultaneously. Secure storage is shared, but the
+          // in-memory `_refreshInFlight` guard is isolate-local. Give the winning
+          // isolate time to persist its new tokens and recover from those tokens
+          // instead of deleting an otherwise valid session.
+          for (var attempt = 0; attempt < 4; attempt++) {
+            await Future<void>.delayed(const Duration(milliseconds: 350));
+            final concurrentAccess = await _readAccessToken();
+            if (isJwtUsable(concurrentAccess)) return true;
 
-          await logout();
+            final rotatedRefresh = await getRefreshToken();
+            if (rotatedRefresh != null &&
+                rotatedRefresh.isNotEmpty &&
+                rotatedRefresh != refresh) {
+              return _refreshAccessToken(
+                rotatedRefresh,
+                allowRotatedTokenRecovery: false,
+              );
+            }
+          }
         }
+        // Do not erase stored tokens here. A temporary cross-isolate rotation
+        // race or server delay must not strand the current UI in a logged-out
+        // state. Callers can route to Login when validity is definitively false;
+        // explicit logout remains the only routine that clears the session.
         return false;
       }
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final newAccess = data["access"] as String?;
       if (!isJwtUsable(newAccess, refreshBefore: Duration.zero)) {
-        await logout();
         return false;
       }
 
