@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'location_point_identity.dart';
+
 /// Durable append-only queue for employee GPS points captured while offline.
 ///
 /// Points are written as JSON Lines so a sudden app/process death cannot corrupt
@@ -18,7 +20,9 @@ class LocationQueueStore {
 
   static const String _fileName = 'pending_location_points_v2.jsonl';
   static const String _lockFileName = '.pending_location_points_v2.lock';
-  static const int maxRetainedPoints = 6000; // ~33h at a 20-second cadence.
+  static const String _sequenceFileName = '.location_sequence_v5';
+  // Preserve roughly 33 hours even at the fastest 5-second driving cadence.
+  static const int maxRetainedPoints = 24000;
   static const int defaultBatchSize = 200;
   static const int _compactEveryAppends = 250;
   static int _appendsSinceCompactionCheck = 0;
@@ -50,6 +54,44 @@ class LocationQueueStore {
       } finally {
         await handle.close();
       }
+    }
+  }
+
+  /// Allocate a monotonically increasing point sequence across isolates/restarts.
+  ///
+  /// The same queue file lock protects this tiny counter so the UI and background
+  /// isolates cannot allocate the same sequence. If storage is temporarily
+  /// unavailable, use the UTC microsecond clock as a fail-safe rather than losing
+  /// the GPS fix merely because identity bookkeeping failed.
+  static Future<int> nextClientSequence() async {
+    final nowMicros = DateTime.now().toUtc().microsecondsSinceEpoch;
+    try {
+      return await _withQueueLock(() async {
+        final directory = await _queueDirectory();
+        final sequenceFile = File('${directory.path}/$_sequenceFileName');
+        int? persisted;
+        if (await sequenceFile.exists()) {
+          try {
+            persisted = int.tryParse((await sequenceFile.readAsString()).trim());
+          } catch (_) {
+            persisted = null;
+          }
+        }
+
+        final next = LocationPointIdentity.nextSequence(
+          persisted: persisted,
+          nowMicros: nowMicros,
+        );
+        final temp = File('${sequenceFile.path}.tmp');
+        await temp.writeAsString('$next\n', flush: true);
+        if (await sequenceFile.exists()) {
+          await sequenceFile.delete();
+        }
+        await temp.rename(sequenceFile.path);
+        return next;
+      });
+    } catch (_) {
+      return nowMicros;
     }
   }
 

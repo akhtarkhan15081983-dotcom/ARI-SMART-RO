@@ -9,7 +9,9 @@ concurrency:
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - fix/location-tracking-v3-2026-10-03
     paths:
       - "ari_smart_ro_app/**"
       - ".github/workflows/apk-build.yml"
@@ -39,7 +41,13 @@ jobs:
         run: flutter test
 
   apk:
-    if: github.event_name == 'push'
+    # Build on normal pushes and on pull requests whose source branch belongs
+    # to this same repository. Secrets stay unavailable to fork PRs while the
+    # V3 field-test branch can verify/use the repository's stable signing key.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 30

@@ -13,13 +13,20 @@ import 'package:permission_handler/permission_handler.dart' as permissions;
 
 import 'api_service.dart';
 import 'attendance_service.dart';
+import 'location_motion_hysteresis.dart';
+import 'location_point_envelope.dart';
+import 'location_point_identity.dart';
 import 'location_queue_store.dart';
+import 'location_tracking_policy.dart';
 
 const String _trackingEnabledKey = 'ari_live_location_tracking_enabled';
 const String _legacyPendingLocationsKey = 'ari_live_location_pending_queue';
 const String _notificationChannelId = 'ari_live_location';
 const int _notificationId = 4091;
-const Duration _trackingInterval = Duration(seconds: 20);
+const Duration _primaryFixTimeout = Duration(seconds: 12);
+const Duration _fallbackFixTimeout = Duration(seconds: 8);
+const Duration _maxLastKnownAge = Duration(minutes: 2);
+const double _maxFallbackAccuracyMeters = 250;
 
 class LiveLocationException implements Exception {
   const LiveLocationException(this.message);
@@ -90,7 +97,7 @@ class LiveLocationService {
     );
   }
 
-  Future<void> startTracking({bool requestPermissions = true}) async {
+  Future<void> ensureTrackingReady({bool requestPermissions = true}) async {
     if (!isSupportedPlatform) return;
     await initialize();
     if (!await Geolocator.isLocationServiceEnabled()) {
@@ -133,14 +140,34 @@ class LiveLocationService {
         );
       }
     }
+  }
 
-    await _storage.write(key: _trackingEnabledKey, value: 'true');
-    await sendCurrentLocation();
+  Future<void> startTracking({bool requestPermissions = true}) async {
+    if (!isSupportedPlatform) return;
+    await initialize();
 
     final service = FlutterBackgroundService();
-    if (!await service.isRunning()) {
+    final trackingEnabled =
+        await _storage.read(key: _trackingEnabledKey) == 'true';
+    final serviceRunning = await service.isRunning();
+
+    if (trackingEnabled && serviceRunning) {
+      // Dashboard refresh/resume can call this repeatedly while an active shift
+      // is already being tracked. Keep a cheap compliance check so revoked GPS
+      // or background permission is surfaced without starting a second loop.
+      await ensureTrackingReady(requestPermissions: false);
+      return;
+    }
+
+    await ensureTrackingReady(requestPermissions: requestPermissions);
+    await _storage.write(key: _trackingEnabledKey, value: 'true');
+
+    // Start the foreground service before GPS work. The background entry point
+    // captures immediately and owns the only recurring location loop.
+    if (!serviceRunning) {
       final started = await service.startService();
       if (!started) {
+        await _storage.write(key: _trackingEnabledKey, value: 'false');
         throw const LiveLocationException(
           'Live location service could not start. Please reopen the app and try again.',
         );
@@ -196,6 +223,41 @@ class LiveLocationService {
     }
   }
 
+  static Future<Map<String, dynamic>?> _pointFromPosition(
+    Position position, {
+    required String source,
+  }) async {
+    final capturedAt = position.timestamp.toUtc();
+    final platform = Platform.isIOS ? 'ios' : 'android';
+    final sequence = await LocationQueueStore.nextClientSequence();
+    final pointId = LocationPointIdentity.pointId(
+      platform: platform,
+      sequence: sequence,
+      capturedAt: capturedAt,
+    );
+
+    return LocationPointEnvelope.build(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracyMeters: position.accuracy,
+      capturedAt: capturedAt,
+      source: source,
+      speedMps: position.speed,
+      headingDegrees: position.heading,
+      altitudeMeters: position.altitude,
+      clientSequence: sequence,
+      clientPointId: pointId,
+      clientPlatform: platform,
+    );
+  }
+
+  static bool _isUsableLastKnown(Position position) {
+    final age = DateTime.now().toUtc().difference(position.timestamp.toUtc());
+    return age <= _maxLastKnownAge &&
+        position.accuracy.isFinite &&
+        position.accuracy <= _maxFallbackAccuracyMeters;
+  }
+
   static Future<Map<String, dynamic>?> _capturePoint() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return null;
@@ -205,22 +267,46 @@ class LiveLocationService {
         return null;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: _primaryFixTimeout,
+          ),
+        );
+        return await _pointFromPosition(
+          position,
+          source: 'FRESH_HIGH_ACCURACY',
+        );
+      } catch (_) {
+        // Continue to a faster balanced/network-assisted fix. This is important
+        // indoors and on low-end phones where a high-accuracy satellite fix can
+        // exceed the foreground tick window.
+      }
 
-      return <String, dynamic>{
-        'live_latitude': position.latitude,
-        'live_longitude': position.longitude,
-        'accuracy': position.accuracy,
-        'captured_at': position.timestamp.toUtc().toIso8601String(),
-      };
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: _fallbackFixTimeout,
+          ),
+        );
+        return await _pointFromPosition(position, source: 'FRESH_BALANCED');
+      } catch (_) {
+        // Last-known fallback below is deliberately bounded by age and accuracy.
+      }
+
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null && _isUsableLastKnown(lastKnown)) {
+        return await _pointFromPosition(
+          lastKnown,
+          source: 'LAST_KNOWN_FALLBACK',
+        );
+      }
     } catch (_) {
-      return null;
+      // The next tracking tick will try again. Never crash the field service.
     }
+    return null;
   }
 
   static Future<http.Response> _postPoint(Map<String, dynamic> point) {
@@ -361,35 +447,132 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
   final storage = const FlutterSecureStorage();
+  final motion = LocationMotionHysteresis();
   await LiveLocationService._migrateLegacyQueue();
-  var timer = Timer(const Duration(days: 3650), () {});
+
+  Timer? timer;
   var busy = false;
+  var stopping = false;
+  var nextInterval = LocationTrackingPolicy.unknownInterval;
+  Map<String, dynamic>? previousTrustedPoint;
+
+  double? finiteNumber(dynamic raw) {
+    if (raw is! num) return null;
+    final value = raw.toDouble();
+    return value.isFinite ? value : null;
+  }
+
+  DateTime? capturedTime(Map<String, dynamic> point) {
+    final raw = point['captured_at'];
+    if (raw is! String) return null;
+    return DateTime.tryParse(raw)?.toUtc();
+  }
+
+  void updateAdaptiveMotion(Map<String, dynamic> point) {
+    final accuracy = finiteNumber(point['accuracy']);
+    final latitude = finiteNumber(point['live_latitude']);
+    final longitude = finiteNumber(point['live_longitude']);
+    final capturedAt = capturedTime(point);
+
+    if (accuracy == null ||
+        accuracy < 0 ||
+        accuracy > LocationTrackingPolicy.degradedAccuracyMeters ||
+        latitude == null ||
+        longitude == null ||
+        capturedAt == null) {
+      point['motion_state'] = motion.current.name.toUpperCase();
+      nextInterval = LocationTrackingPolicy.unknownInterval;
+      return;
+    }
+
+    var speed = finiteNumber(point['speed_mps']);
+    if (speed != null &&
+        (speed < 0 || speed > LocationTrackingPolicy.rejectImpossibleSpeedMps)) {
+      speed = null;
+    }
+
+    var movedMeters = 0.0;
+    var shouldAdvanceReference = previousTrustedPoint == null;
+    final previous = previousTrustedPoint;
+    if (previous != null) {
+      final previousLatitude = finiteNumber(previous['live_latitude']);
+      final previousLongitude = finiteNumber(previous['live_longitude']);
+      final previousCapturedAt = capturedTime(previous);
+      if (previousLatitude == null ||
+          previousLongitude == null ||
+          previousCapturedAt == null ||
+          !capturedAt.isAfter(previousCapturedAt)) {
+        point['motion_state'] = motion.current.name.toUpperCase();
+        nextInterval = LocationTrackingPolicy.unknownInterval;
+        return;
+      }
+
+      final distance = Geolocator.distanceBetween(
+        previousLatitude,
+        previousLongitude,
+        latitude,
+        longitude,
+      );
+      final elapsed = capturedAt.difference(previousCapturedAt);
+      if (LocationTrackingPolicy.isPlausibleTransition(
+        movedMeters: distance,
+        elapsed: elapsed,
+      )) {
+        movedMeters = distance;
+        shouldAdvanceReference = true;
+      } else {
+        // Preserve the raw point for audit/server quality processing but do not
+        // let one impossible jump poison motion cadence decisions.
+        point['motion_state'] = motion.current.name.toUpperCase();
+        nextInterval = LocationTrackingPolicy.unknownInterval;
+        return;
+      }
+    }
+
+    final state = motion.observe(
+      speedMps: speed,
+      movedMeters: movedMeters,
+      accuracyMeters: accuracy,
+    );
+    point['motion_state'] = state.name.toUpperCase();
+    nextInterval = motion.interval;
+    if (shouldAdvanceReference) {
+      previousTrustedPoint = Map<String, dynamic>.from(point);
+    }
+  }
 
   Future<void> tick() async {
-    if (busy) return;
+    if (busy || stopping) return;
     busy = true;
     try {
       final enabled =
           await storage.read(key: _trackingEnabledKey) == 'true';
       if (!enabled) {
-        timer.cancel();
+        stopping = true;
         await service.stopSelf();
         return;
       }
 
       await LiveLocationService._syncPendingAttendanceBeforeLocation();
       await LiveLocationService._flushPendingLocations();
+      if (stopping) return;
+
       final stillEnabledAfterFlush =
           await storage.read(key: _trackingEnabledKey) == 'true';
       if (!stillEnabledAfterFlush) {
-        timer.cancel();
+        stopping = true;
         await service.stopSelf();
         return;
       }
 
       final point = await LiveLocationService._capturePoint();
+      if (stopping) return;
+
       var locationSent = false;
-      if (point != null) {
+      if (point == null) {
+        nextInterval = LocationTrackingPolicy.unknownInterval;
+      } else {
+        updateAdaptiveMotion(point);
         locationSent = await LiveLocationService._sendPoint(point);
         if (!locationSent) {
           await LiveLocationService._queuePoint(point);
@@ -399,7 +582,7 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
       final shiftStillActive =
           await storage.read(key: _trackingEnabledKey) == 'true';
       if (!shiftStillActive) {
-        timer.cancel();
+        stopping = true;
         await service.stopSelf();
         return;
       }
@@ -410,12 +593,16 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
             '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}';
         final pending = await LocationQueueStore.count();
         await service.setForegroundNotificationInfo(
-          title: locationSent
-              ? 'ARI SMART RO • Live location ON'
-              : 'ARI SMART RO • Location queued safely',
-          content: locationSent
-              ? 'Work shift tracking active • updated $time${pending > 0 ? ' • $pending pending' : ''}'
-              : 'Network/GPS issue • pending route points: $pending',
+          title: point == null
+              ? 'ARI SMART RO • Waiting for GPS'
+              : locationSent
+                  ? 'ARI SMART RO • Live location ON'
+                  : 'ARI SMART RO • Location queued safely',
+          content: point == null
+              ? 'GPS signal unavailable • tracking service is still running'
+              : locationSent
+                  ? 'Work shift tracking active • updated $time${pending > 0 ? ' • $pending pending' : ''}'
+                  : 'Network issue • pending route points: $pending',
         );
       }
     } finally {
@@ -423,8 +610,27 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
     }
   }
 
+  Future<void> runAndSchedule() async {
+    if (stopping) return;
+    await tick();
+    if (stopping) return;
+
+    final enabled = await storage.read(key: _trackingEnabledKey) == 'true';
+    if (!enabled) {
+      stopping = true;
+      await service.stopSelf();
+      return;
+    }
+
+    timer?.cancel();
+    timer = Timer(nextInterval, () {
+      unawaited(runAndSchedule());
+    });
+  }
+
   service.on('stopService').listen((_) async {
-    timer.cancel();
+    stopping = true;
+    timer?.cancel();
     await service.stopSelf();
   });
 
@@ -434,6 +640,7 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
     return;
   }
 
-  await tick();
-  timer = Timer.periodic(_trackingInterval, (_) => tick());
+  // Immediate first capture, then one self-rescheduling timer. A slow GPS/network
+  // call can never overlap another scheduled capture.
+  await runAndSchedule();
 }

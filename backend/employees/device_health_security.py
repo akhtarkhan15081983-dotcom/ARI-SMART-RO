@@ -90,6 +90,52 @@ def _with_attendance_pending(value, pending):
     return f"{base[:max_base]} | {marker}"
 
 
+def _location_diagnosis(health, location_status):
+    if not isinstance(health, dict):
+        return {
+            "code": "DEVICE_HEALTH_MISSING",
+            "label": "Device health not reported",
+            "severity": "CRITICAL" if location_status == "MISSING" else "WARNING",
+        }
+
+    if not bool(health.get("location_service_enabled", False)):
+        return {"code": "GPS_OFF", "label": "GPS / Location service is OFF", "severity": "CRITICAL"}
+
+    permission = str(health.get("location_permission") or "").upper()
+    if permission != "GRANTED":
+        return {"code": "LOCATION_PERMISSION_DENIED", "label": "Location permission is not granted", "severity": "CRITICAL"}
+
+    if not bool(health.get("background_location_granted", False)):
+        return {"code": "BACKGROUND_LOCATION_DENIED", "label": "Allow all the time location is OFF", "severity": "CRITICAL"}
+
+    if not bool(health.get("notification_permission_granted", False)):
+        return {"code": "NOTIFICATION_PERMISSION_DENIED", "label": "Notification permission is OFF", "severity": "WARNING"}
+
+    if not bool(health.get("battery_optimization_ignored", False)):
+        return {"code": "BATTERY_RESTRICTED", "label": "Battery optimization may stop background tracking", "severity": "CRITICAL"}
+
+    if not bool(health.get("live_location_tracking", False)):
+        return {"code": "TRACKING_SERVICE_STOPPED", "label": "Live tracking service is not running", "severity": "CRITICAL"}
+
+    try:
+        pending = max(0, int(health.get("pending_location_points") or 0))
+    except (TypeError, ValueError):
+        pending = 0
+    if pending > 0:
+        return {
+            "code": "OFFLINE_POINTS_PENDING",
+            "label": f"{pending} GPS point(s) waiting to sync",
+            "severity": "WARNING",
+        }
+
+    if location_status == "MISSING":
+        return {"code": "LOCATION_MISSING", "label": "No recent employee location received", "severity": "CRITICAL"}
+    if location_status == "STALE":
+        return {"code": "LOCATION_STALE", "label": "Employee location has not refreshed recently", "severity": "WARNING"}
+
+    return {"code": "TRACKING_HEALTHY", "label": "Location tracking healthy", "severity": "CLEAR"}
+
+
 class SecurityAwareEmployeeDeviceHealthAPIView(EmployeeDeviceHealthAPIView):
     """Persist normalized device-integrity diagnostics without blocking field work."""
 
@@ -161,6 +207,9 @@ class SecurityAwareAdminDeviceHealthAPIView(AdminDeviceHealthAPIView):
             if not isinstance(health, dict):
                 item["security_risks"] = []
                 item["risk_level"] = "UNKNOWN"
+                item["location_diagnosis"] = _location_diagnosis(
+                    health, str(item.get("location_status") or "MISSING").upper()
+                )
                 continue
             stored_error = health.get("last_error")
             risks = _stored_risks(stored_error)
@@ -170,6 +219,9 @@ class SecurityAwareAdminDeviceHealthAPIView(AdminDeviceHealthAPIView):
             )
             item["security_risks"] = risks
             item["risk_level"] = "HIGH" if risks else "CLEAR"
+            item["location_diagnosis"] = _location_diagnosis(
+                health, str(item.get("location_status") or "MISSING").upper()
+            )
         return response
 
 
@@ -185,10 +237,6 @@ class TenantScopedAdminFaceEnrollmentListAPIView(APIView):
         if company is not None:
             employees = employees.filter(company=company)
         else:
-            # Only legacy records that have not yet been assigned to any tenant
-            # are visible to an admin without a company membership. This avoids
-            # the historical all-company fallback while keeping migration-era
-            # unassigned employee records recoverable.
             employees = employees.filter(company__isnull=True)
         employees = employees.select_related("user").order_by(
             "designation", "user__first_name", "user__last_name", "employee_id"
