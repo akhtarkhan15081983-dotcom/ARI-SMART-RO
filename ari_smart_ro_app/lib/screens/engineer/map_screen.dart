@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -24,6 +25,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
   Timer? _refreshTimer;
   bool _isLoading = true;
   bool _isRefreshing = false;
+  bool _hasAutoCentered = false;
   String? _errorMessage;
 
   @override
@@ -39,24 +41,34 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
   Future<void> _loadEngineers({bool silent = false}) async {
     if (_isRefreshing) return;
     _isRefreshing = true;
-
-    if (!silent && mounted) {
-      setState(() => _errorMessage = null);
-    }
+    if (!silent && mounted) setState(() => _errorMessage = null);
 
     try {
       final data = await _service.getEngineers();
       if (!mounted) return;
-
+      final rows = List<dynamic>.from(data);
       setState(() {
-        _engineers = List<dynamic>.from(data);
+        _engineers = rows;
         _isLoading = false;
         _errorMessage = null;
       });
+
+      if (!_hasAutoCentered) {
+        final live = rows.where((row) => _isOnline(row)).map(_locationOf).whereType<LatLng>();
+        final firstLive = live.isEmpty ? null : live.first;
+        final any = rows.map(_locationOf).whereType<LatLng>();
+        final firstAny = any.isEmpty ? null : any.first;
+        final target = firstLive ?? firstAny;
+        if (target != null) {
+          _hasAutoCentered = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _mapController.move(target, 16);
+          });
+        }
+      }
     } catch (error, stackTrace) {
       debugPrint('Engineer map load error: $error\n$stackTrace');
       if (!mounted) return;
-
       setState(() {
         _isLoading = false;
         _errorMessage = 'Unable to load employee locations. Please try again.';
@@ -91,19 +103,16 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
       (engineer['online'] == true || engineer['online'] == 1);
 
   String _timeAgo(dynamic updatedAt) {
-    final rawValue = updatedAt?.toString();
-    if (rawValue == null || rawValue.isEmpty) return 'Not available';
-
-    final timestamp = DateTime.tryParse(rawValue);
+    final raw = updatedAt?.toString();
+    if (raw == null || raw.isEmpty) return 'Not available';
+    final timestamp = DateTime.tryParse(raw);
     if (timestamp == null) return 'Not available';
-
     final difference = DateTime.now().difference(timestamp.toLocal());
     if (difference.isNegative) return 'Just now';
     if (difference.inSeconds < 60) return '${difference.inSeconds}s ago';
     if (difference.inMinutes < 60) return '${difference.inMinutes} min ago';
     if (difference.inHours < 24) return '${difference.inHours} hr ago';
     if (difference.inDays < 7) return '${difference.inDays} day ago';
-
     return '${timestamp.toLocal().day.toString().padLeft(2, '0')}/'
         '${timestamp.toLocal().month.toString().padLeft(2, '0')}/'
         '${timestamp.toLocal().year}';
@@ -136,12 +145,10 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
 
   Future<void> _showMyLocation() async {
     try {
-      var serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
+      if (!await Geolocator.isLocationServiceEnabled()) {
         _showMessage('Please enable location services and try again.');
         return;
       }
-
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -151,7 +158,6 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
         _showMessage('Location permission is required to show your position.');
         return;
       }
-
       final position = await Geolocator.getCurrentPosition();
       _mapController.move(LatLng(position.latitude, position.longitude), 16);
     } catch (error) {
@@ -183,17 +189,37 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
       query['origin'] = '${current.latitude},${current.longitude}';
     }
 
-    final uri = Uri.https('www.google.com', '/maps/dir/', query);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      _showMessage('Could not open Google Maps.');
+    final directions = Uri.https('www.google.com', '/maps/dir/', query);
+    try {
+      if (await launchUrl(directions, mode: LaunchMode.externalApplication)) {
+        return;
+      }
+    } catch (_) {
+      // Windows may not support externalApplication for an HTTPS URL.
     }
+    try {
+      if (await launchUrl(directions, mode: LaunchMode.platformDefault)) {
+        return;
+      }
+    } catch (_) {
+      // Fall through to a simple destination search URL.
+    }
+
+    final search = Uri.https('www.google.com', '/maps/search/', <String, String>{
+      'api': '1',
+      'query': '${location.latitude},${location.longitude}',
+    });
+    try {
+      if (await launchUrl(search, mode: LaunchMode.platformDefault)) return;
+    } catch (_) {
+      // Report one clear error below.
+    }
+    _showMessage('Could not open Google Maps or your default browser.');
   }
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showEngineerDetails(dynamic engineer, LatLng location) async {
@@ -203,13 +229,21 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
     final phone = _value(engineer, 'phone');
     final photoUrl = _value(engineer, 'photo', fallback: '');
     final online = _isOnline(engineer);
-    final currentLocation = await _tryCurrentLocation();
+
+    final results = await Future.wait<dynamic>([
+      _tryCurrentLocation(),
+      _service.reverseGeocode(
+        latitude: location.latitude,
+        longitude: location.longitude,
+      ),
+    ]);
+    final currentLocation = results[0] as LatLng?;
+    final readableAddress = results[1] as String?;
 
     final distanceKm = currentLocation == null
         ? null
         : _calculateDistance(currentLocation, location);
     Map<String, dynamic>? routeInfo;
-
     if (currentLocation != null) {
       try {
         routeInfo = await _service.getRoute(
@@ -236,123 +270,132 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
             color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(24),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 34,
-                    backgroundColor: Colors.grey.shade200,
-                    backgroundImage: photoUrl.isNotEmpty
-                        ? NetworkImage(photoUrl)
-                        : null,
-                    child: photoUrl.isEmpty
-                        ? const Icon(Icons.person, size: 34, color: Colors.grey)
-                        : null,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        Text(
-                          _value(engineer, 'designation', fallback: 'EMPLOYEE'),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 6),
-                        _StatusBadge(online: online),
-                      ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 34,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                      child: photoUrl.isEmpty
+                          ? const Icon(Icons.person, size: 34, color: Colors.grey)
+                          : null,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _InfoCard(
-                icon: Icons.phone_outlined,
-                color: Colors.blue,
-                label: 'Phone',
-                value: phone,
-              ),
-              const SizedBox(height: 12),
-              _InfoCard(
-                icon: Icons.access_time_outlined,
-                color: Colors.orange,
-                label: 'Last updated',
-                value: _timeAgo(
-                  engineer is Map ? engineer['updated_at'] : null,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name, style: Theme.of(context).textTheme.titleLarge),
+                          Text(
+                            _value(engineer, 'designation', fallback: 'EMPLOYEE'),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 6),
+                          _StatusBadge(online: online),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              _InfoCard(
-                icon: Icons.near_me,
-                color: Colors.green,
-                label: 'Distance',
-                value: distanceKm == null
-                    ? 'Admin location unavailable'
-                    : '${distanceKm.toStringAsFixed(2)} KM',
-              ),
-              const SizedBox(height: 12),
-              _InfoCard(
-                icon: Icons.route,
-                color: Colors.deepPurple,
-                label: 'Road Distance',
-                value: currentLocation == null
-                    ? 'Open Navigate for route'
-                    : routeInfo == null
-                        ? 'Unavailable'
-                        : '${(routeInfo['distance'] / 1000).toStringAsFixed(2)} KM',
-              ),
-              const SizedBox(height: 12),
-              _InfoCard(
-                icon: Icons.timer,
-                color: Colors.red,
-                label: 'ETA',
-                value: currentLocation == null
-                    ? 'Open Navigate for ETA'
-                    : routeInfo == null
-                        ? 'Unavailable'
-                        : '${(routeInfo['duration'] / 60).round()} Minutes',
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _callEngineer(phone),
-                      icon: const Icon(Icons.call),
-                      label: const Text('Call'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(50),
+                const SizedBox(height: 20),
+                _InfoCard(
+                  icon: Icons.place_outlined,
+                  color: Colors.teal,
+                  label: 'Current location',
+                  value: readableAddress ?? 'Address unavailable — coordinates shown below',
+                ),
+                const SizedBox(height: 12),
+                _InfoCard(
+                  icon: Icons.gps_fixed,
+                  color: Colors.indigo,
+                  label: 'Coordinates',
+                  value: '${location.latitude.toStringAsFixed(6)}, ${location.longitude.toStringAsFixed(6)}',
+                ),
+                const SizedBox(height: 12),
+                _InfoCard(
+                  icon: Icons.phone_outlined,
+                  color: Colors.blue,
+                  label: 'Phone',
+                  value: phone,
+                ),
+                const SizedBox(height: 12),
+                _InfoCard(
+                  icon: Icons.access_time_outlined,
+                  color: Colors.orange,
+                  label: 'Last updated',
+                  value: _timeAgo(engineer is Map ? engineer['updated_at'] : null),
+                ),
+                const SizedBox(height: 12),
+                _InfoCard(
+                  icon: Icons.near_me,
+                  color: Colors.green,
+                  label: 'Distance',
+                  value: distanceKm == null
+                      ? 'Admin location unavailable'
+                      : '${distanceKm.toStringAsFixed(2)} KM',
+                ),
+                const SizedBox(height: 12),
+                _InfoCard(
+                  icon: Icons.route,
+                  color: Colors.deepPurple,
+                  label: 'Road Distance',
+                  value: currentLocation == null
+                      ? 'Open Navigate for route'
+                      : routeInfo == null
+                          ? 'Unavailable'
+                          : '${((routeInfo['distance'] as num).toDouble() / 1000).toStringAsFixed(2)} KM',
+                ),
+                const SizedBox(height: 12),
+                _InfoCard(
+                  icon: Icons.timer,
+                  color: Colors.red,
+                  label: 'ETA',
+                  value: currentLocation == null
+                      ? 'Open Navigate for ETA'
+                      : routeInfo == null
+                          ? 'Unavailable'
+                          : '${((routeInfo['duration'] as num).toDouble() / 60).round()} Minutes',
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _callEngineer(phone),
+                        icon: const Icon(Icons.call),
+                        label: const Text('Call'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(50),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _navigateTo(location),
-                      icon: const Icon(Icons.navigation_outlined),
-                      label: const Text('Navigate'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(50),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _navigateTo(location),
+                        icon: const Icon(Icons.navigation_outlined),
+                        label: const Text('Navigate'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(50),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
-              ),
-            ],
+                  ],
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -404,13 +447,10 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                     ),
                   ],
                 ),
-                if (_isLoading)
-                  const Center(child: CircularProgressIndicator()),
+                if (_isLoading) const Center(child: CircularProgressIndicator()),
                 if (!_isLoading && _errorMessage != null)
                   _ErrorBanner(message: _errorMessage!, onRetry: _loadEngineers),
-                if (!_isLoading &&
-                    _errorMessage == null &&
-                    markers.isEmpty)
+                if (!_isLoading && _errorMessage == null && markers.isEmpty)
                   const Center(child: _EmptyState()),
               ],
             ),
@@ -455,19 +495,14 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black26, blurRadius: 4),
-                ],
+                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
               ),
               child: Text(
                 name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
             Stack(
@@ -483,8 +518,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                   child: CircleAvatar(
                     radius: 10,
                     backgroundColor: Colors.white,
-                    backgroundImage:
-                        _value(engineer, 'photo', fallback: '').isNotEmpty
+                    backgroundImage: _value(engineer, 'photo', fallback: '').isNotEmpty
                         ? NetworkImage(_value(engineer, 'photo', fallback: ''))
                         : null,
                     child: _value(engineer, 'photo', fallback: '').isEmpty
@@ -508,19 +542,14 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
 }
 
 class _EmployeeLocationSummary extends StatelessWidget {
-  const _EmployeeLocationSummary({
-    required this.employees,
-    required this.onTap,
-  });
+  const _EmployeeLocationSummary({required this.employees, required this.onTap});
 
   final List<dynamic> employees;
   final ValueChanged<dynamic> onTap;
 
   String _status(dynamic employee) {
     if (employee is! Map) return 'MISSING';
-    return (employee['location_status'] ?? 'MISSING')
-        .toString()
-        .toUpperCase();
+    return (employee['location_status'] ?? 'MISSING').toString().toUpperCase();
   }
 
   bool _countsAsMissing(String status) =>
@@ -550,18 +579,9 @@ class _EmployeeLocationSummary extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Employees: ${employees.length}  •  Live $live  •  Stale $stale  •  Missing $missing',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Employees: ${employees.length}  •  Live $live  •  Stale $stale  •  Missing $missing',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                 ),
               ),
               Expanded(
@@ -582,15 +602,12 @@ class _EmployeeLocationSummary extends StatelessWidget {
                         ? Colors.green
                         : isMissing
                             ? Colors.orange
-                            : isCriticalMissing
-                                ? Colors.red
-                                : Colors.red;
-                    final statusText = status == 'LIVE'
+                            : Colors.red;
+                    final statusText = isLive
                         ? 'Live location'
                         : isCheckedIn && status == 'STALE'
                             ? 'Checked in • GPS stale'
-                            : isCheckedIn &&
-                                    (isMissing || isCriticalMissing)
+                            : isCheckedIn && (isMissing || isCriticalMissing)
                                 ? 'Checked in • GPS missing'
                                 : status == 'STALE'
                                     ? 'Location stale'
@@ -604,9 +621,7 @@ class _EmployeeLocationSummary extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: color.withValues(alpha: .08),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: color.withValues(alpha: .25),
-                          ),
+                          border: Border.all(color: color.withValues(alpha: .25)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -616,9 +631,7 @@ class _EmployeeLocationSummary extends StatelessWidget {
                               _name(employee),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
+                              style: const TextStyle(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 4),
                             Text(
@@ -632,8 +645,7 @@ class _EmployeeLocationSummary extends StatelessWidget {
                             const SizedBox(height: 2),
                             Text(
                               employee is Map
-                                  ? (employee['designation'] ?? 'EMPLOYEE')
-                                      .toString()
+                                  ? (employee['designation'] ?? 'EMPLOYEE').toString()
                                   : 'EMPLOYEE',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -689,6 +701,7 @@ class _InfoCard extends StatelessWidget {
     required this.label,
     required this.value,
   });
+
   final IconData icon;
   final Color color;
   final String label;
@@ -696,41 +709,39 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: .08),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Row(
-      children: [
-        CircleAvatar(
-          backgroundColor: Colors.white,
-          foregroundColor: color,
-          child: Icon(icon),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .08),
+          borderRadius: BorderRadius.circular(14),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.white,
+              foregroundColor: color,
+              child: Icon(icon),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 }
 
 class _ErrorBanner extends StatelessWidget {
@@ -740,25 +751,25 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Align(
-    alignment: Alignment.topCenter,
-    child: Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.cloud_off_outlined, color: Colors.red),
-          const SizedBox(width: 8),
-          Flexible(child: Text(message)),
-          IconButton(onPressed: onRetry, icon: const Icon(Icons.refresh)),
-        ],
-      ),
-    ),
-  );
+        alignment: Alignment.topCenter,
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+          decoration: BoxDecoration(
+            color: Colors.red.shade50,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_outlined, color: Colors.red),
+              const SizedBox(width: 8),
+              Flexible(child: Text(message)),
+              IconButton(onPressed: onRetry, icon: const Icon(Icons.refresh)),
+            ],
+          ),
+        ),
+      );
 }
 
 class _EmptyState extends StatelessWidget {
@@ -766,19 +777,19 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.all(24),
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: const Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.location_off_outlined, size: 40, color: Colors.grey),
-        SizedBox(height: 8),
-        Text('No employee locations available.'),
-      ],
-    ),
-  );
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.location_off_outlined, size: 40, color: Colors.grey),
+            SizedBox(height: 8),
+            Text('No employee locations available.'),
+          ],
+        ),
+      );
 }
