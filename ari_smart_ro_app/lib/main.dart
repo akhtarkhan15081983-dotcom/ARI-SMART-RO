@@ -34,11 +34,14 @@ Future<void> main() async {
     return false;
   };
 
-  await PostHogService.initialize();
-
+  // Paint the application first. Telemetry is best-effort and must never hold
+  // the Android launch surface/first Flutter frame while its SDK or network is
+  // slow. This also makes cold starts resilient when the analytics host is
+  // unavailable.
   runApp(const AriSmartROApp());
 
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(PostHogService.initialize());
     unawaited(LiveLocationService.initialize());
   });
 }
