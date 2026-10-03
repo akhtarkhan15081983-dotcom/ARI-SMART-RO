@@ -131,6 +131,7 @@ class CustomerRegistrationTests(TestCase):
 # SEND OTP TESTS
 # ============================================================
 
+@override_settings(OTP_SMS_BACKEND="memory")
 class SendOTPTests(TestCase):
 
     def setUp(self):
