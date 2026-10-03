@@ -23,12 +23,40 @@ void main() {
     final service = File('lib/services/engineer_map_service.dart').readAsStringSync();
 
     expect(screen, contains('_hasAutoCentered'));
-    expect(screen, contains('_mapController.move(target, 16)'));
+    expect(screen, contains("_status(row) == 'LIVE'"));
+    expect(screen, contains('final target = _centroid(points);'));
+    expect(screen, contains('_mapController.move(target, zoom)'));
     expect(screen, contains("label: 'Current location'"));
     expect(screen, contains("label: 'Coordinates'"));
     expect(screen, contains('_service.reverseGeocode('));
     expect(service, contains('nominatim.openstreetmap.org'));
     expect(service, contains("'display_name'"));
+  });
+
+  test('live moving map interpolates markers without changing phone GPS cadence', () {
+    final screen = File('lib/screens/engineer/map_screen.dart').readAsStringSync();
+    final tracking = File('lib/services/live_location_service.dart').readAsStringSync();
+
+    expect(screen, contains("_pollInterval = Duration(seconds: 5)"));
+    expect(screen, contains('_markerAnimationDuration'));
+    expect(screen, contains('_animateMarkers()'));
+    expect(screen, contains('Curves.easeInOut.transform(t)'));
+    expect(screen, contains('_displayPositions'));
+    expect(screen, contains('_animationTargets'));
+    expect(screen, contains('LIVE MOVING'));
+    expect(tracking, contains('Duration(seconds: 20)'));
+  });
+
+  test('live moving map keeps breadcrumb trail bearing and follow mode', () {
+    final source = File('lib/screens/engineer/map_screen.dart').readAsStringSync();
+
+    expect(source, contains('_breadcrumbs'));
+    expect(source, contains('_maxBreadcrumbPoints = 45'));
+    expect(source, contains('_bearingBetween'));
+    expect(source, contains('Icons.navigation'));
+    expect(source, contains('Follow live movement'));
+    expect(source, contains('_followEmployeeKey'));
+    expect(source, contains('PolylineLayer(polylines: trails)'));
   });
 
   test('route cards do not show loading forever when admin location is absent', () {
