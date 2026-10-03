@@ -47,6 +47,7 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
         return Colors.green.shade700;
       case 'STALE':
       case 'UNKNOWN':
+      case 'WARNING':
         return Colors.orange.shade800;
       default:
         return Colors.red.shade700;
@@ -109,8 +110,13 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                       final health = row['health'] is Map
                           ? Map<String, dynamic>.from(row['health'] as Map)
                           : <String, dynamic>{};
+                      final diagnosis = row['location_diagnosis'] is Map
+                          ? Map<String, dynamic>.from(row['location_diagnosis'] as Map)
+                          : <String, dynamic>{};
                       final status = row['status']?.toString() ?? 'UNKNOWN';
                       final riskLevel = row['risk_level']?.toString() ?? 'UNKNOWN';
+                      final diagnosisSeverity =
+                          diagnosis['severity']?.toString() ?? 'UNKNOWN';
                       final risks = row['security_risks'] is List
                           ? List<dynamic>.from(row['security_risks'] as List)
                               .map((value) => value.toString().replaceAll('_', ' '))
@@ -210,6 +216,13 @@ class _DeviceHealthAdminScreenState extends State<DeviceHealthAdminScreen> {
                                         '${row['location_status'] ?? '-'} • ${health['location_permission'] ?? '-'}',
                                   ),
                                   _Metric(
+                                    icon: Icons.location_searching,
+                                    label: 'Location diagnosis',
+                                    value: diagnosis['label']?.toString() ??
+                                        'Location diagnosis unavailable',
+                                    valueColor: _statusColor(diagnosisSeverity),
+                                  ),
+                                  _Metric(
                                     icon: Icons.battery_saver_outlined,
                                     label: 'Background power',
                                     value: health['battery_optimization_ignored'] == true
@@ -261,9 +274,9 @@ class _Metric extends StatelessWidget {
   });
 
   final IconData icon;
+  final Color? valueColor;
   final String label;
   final String value;
-  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
