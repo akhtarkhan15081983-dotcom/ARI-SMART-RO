@@ -20,6 +20,10 @@ const String _legacyPendingLocationsKey = 'ari_live_location_pending_queue';
 const String _notificationChannelId = 'ari_live_location';
 const int _notificationId = 4091;
 const Duration _trackingInterval = Duration(seconds: 20);
+const Duration _primaryFixTimeout = Duration(seconds: 12);
+const Duration _fallbackFixTimeout = Duration(seconds: 8);
+const Duration _maxLastKnownAge = Duration(minutes: 2);
+const double _maxFallbackAccuracyMeters = 250;
 
 class LiveLocationException implements Exception {
   const LiveLocationException(this.message);
@@ -90,7 +94,7 @@ class LiveLocationService {
     );
   }
 
-  Future<void> startTracking({bool requestPermissions = true}) async {
+  Future<void> ensureTrackingReady({bool requestPermissions = true}) async {
     if (!isSupportedPlatform) return;
     await initialize();
     if (!await Geolocator.isLocationServiceEnabled()) {
@@ -133,19 +137,30 @@ class LiveLocationService {
         );
       }
     }
+  }
+
+  Future<void> startTracking({bool requestPermissions = true}) async {
+    if (!isSupportedPlatform) return;
+    await ensureTrackingReady(requestPermissions: requestPermissions);
 
     await _storage.write(key: _trackingEnabledKey, value: 'true');
-    await sendCurrentLocation();
 
+    // Start the Android foreground service before waiting on a GPS fix. A weak
+    // signal must never delay creation of the long-running tracking service.
     final service = FlutterBackgroundService();
     if (!await service.isRunning()) {
       final started = await service.startService();
       if (!started) {
+        await _storage.write(key: _trackingEnabledKey, value: 'false');
         throw const LiveLocationException(
           'Live location service could not start. Please reopen the app and try again.',
         );
       }
     }
+
+    // Capture immediately as well as from the background isolate. Duplicate
+    // points are harmless, while this gives the admin map a fast first update.
+    await sendCurrentLocation();
   }
 
   Future<void> stopTracking() async {
@@ -196,6 +211,26 @@ class LiveLocationService {
     }
   }
 
+  static Map<String, dynamic> _pointFromPosition(
+    Position position, {
+    required String source,
+  }) {
+    return <String, dynamic>{
+      'live_latitude': position.latitude,
+      'live_longitude': position.longitude,
+      'accuracy': position.accuracy,
+      'captured_at': position.timestamp.toUtc().toIso8601String(),
+      'source': source,
+    };
+  }
+
+  static bool _isUsableLastKnown(Position position) {
+    final age = DateTime.now().toUtc().difference(position.timestamp.toUtc());
+    return age <= _maxLastKnownAge &&
+        position.accuracy.isFinite &&
+        position.accuracy <= _maxFallbackAccuracyMeters;
+  }
+
   static Future<Map<String, dynamic>?> _capturePoint() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return null;
@@ -205,22 +240,40 @@ class LiveLocationService {
         return null;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: _primaryFixTimeout,
+          ),
+        );
+        return _pointFromPosition(position, source: 'FRESH_HIGH_ACCURACY');
+      } catch (_) {
+        // Continue to a faster balanced/network-assisted fix. This is important
+        // indoors and on low-end phones where a high-accuracy satellite fix can
+        // exceed the foreground tick window.
+      }
 
-      return <String, dynamic>{
-        'live_latitude': position.latitude,
-        'live_longitude': position.longitude,
-        'accuracy': position.accuracy,
-        'captured_at': position.timestamp.toUtc().toIso8601String(),
-      };
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: _fallbackFixTimeout,
+          ),
+        );
+        return _pointFromPosition(position, source: 'FRESH_BALANCED');
+      } catch (_) {
+        // Last-known fallback below is deliberately bounded by age and accuracy.
+      }
+
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null && _isUsableLastKnown(lastKnown)) {
+        return _pointFromPosition(lastKnown, source: 'LAST_KNOWN_FALLBACK');
+      }
     } catch (_) {
-      return null;
+      // The next tracking tick will try again. Never crash the field service.
     }
+    return null;
   }
 
   static Future<http.Response> _postPoint(Map<String, dynamic> point) {
@@ -410,12 +463,16 @@ void liveLocationBackgroundEntryPoint(ServiceInstance service) async {
             '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}';
         final pending = await LocationQueueStore.count();
         await service.setForegroundNotificationInfo(
-          title: locationSent
-              ? 'ARI SMART RO • Live location ON'
-              : 'ARI SMART RO • Location queued safely',
-          content: locationSent
-              ? 'Work shift tracking active • updated $time${pending > 0 ? ' • $pending pending' : ''}'
-              : 'Network/GPS issue • pending route points: $pending',
+          title: point == null
+              ? 'ARI SMART RO • Waiting for GPS'
+              : locationSent
+                  ? 'ARI SMART RO • Live location ON'
+                  : 'ARI SMART RO • Location queued safely',
+          content: point == null
+              ? 'GPS signal unavailable • tracking service is still running'
+              : locationSent
+                  ? 'Work shift tracking active • updated $time${pending > 0 ? ' • $pending pending' : ''}'
+                  : 'Network issue • pending route points: $pending',
         );
       }
     } finally {
