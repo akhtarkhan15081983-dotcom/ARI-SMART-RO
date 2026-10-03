@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -17,15 +18,30 @@ class EngineerMapScreen extends StatefulWidget {
 
 class _EngineerMapScreenState extends State<EngineerMapScreen> {
   static const LatLng _fallbackCenter = LatLng(27.1767, 78.0081);
+  static const Duration _pollInterval = Duration(seconds: 5);
+  static const Duration _markerAnimationDuration = Duration(milliseconds: 2200);
+  static const Duration _animationFrame = Duration(milliseconds: 80);
+  static const int _maxBreadcrumbPoints = 45;
+  static const double _minimumTrailMoveMeters = 4;
 
   final EngineerMapService _service = EngineerMapService();
   final MapController _mapController = MapController();
+  final Distance _distance = const Distance();
 
   List<dynamic> _engineers = <dynamic>[];
+  final Map<String, LatLng> _displayPositions = <String, LatLng>{};
+  final Map<String, LatLng> _animationStarts = <String, LatLng>{};
+  final Map<String, LatLng> _animationTargets = <String, LatLng>{};
+  final Map<String, DateTime> _animationStartedAt = <String, DateTime>{};
+  final Map<String, List<LatLng>> _breadcrumbs = <String, List<LatLng>>{};
+  final Map<String, double> _bearings = <String, double>{};
+
   Timer? _refreshTimer;
+  Timer? _animationTimer;
   bool _isLoading = true;
   bool _isRefreshing = false;
   bool _hasAutoCentered = false;
+  String? _followEmployeeKey;
   String? _errorMessage;
 
   @override
@@ -33,9 +49,10 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
     super.initState();
     _loadEngineers();
     _refreshTimer = Timer.periodic(
-      const Duration(seconds: 10),
+      _pollInterval,
       (_) => _loadEngineers(silent: true),
     );
+    _animationTimer = Timer.periodic(_animationFrame, (_) => _animateMarkers());
   }
 
   Future<void> _loadEngineers({bool silent = false}) async {
@@ -47,6 +64,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
       final data = await _service.getEngineers();
       if (!mounted) return;
       final rows = List<dynamic>.from(data);
+      _syncMovingPositions(rows);
       setState(() {
         _engineers = rows;
         _isLoading = false;
@@ -54,15 +72,19 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
       });
 
       if (!_hasAutoCentered) {
-        final live = rows.where((row) => _isOnline(row)).map(_locationOf).whereType<LatLng>();
-        final firstLive = live.isEmpty ? null : live.first;
-        final any = rows.map(_locationOf).whereType<LatLng>();
-        final firstAny = any.isEmpty ? null : any.first;
-        final target = firstLive ?? firstAny;
-        if (target != null) {
+        final livePoints = rows
+            .where((row) => _status(row) == 'LIVE')
+            .map(_locationOf)
+            .whereType<LatLng>()
+            .toList();
+        final anyPoints = rows.map(_locationOf).whereType<LatLng>().toList();
+        final points = livePoints.isNotEmpty ? livePoints : anyPoints;
+        if (points.isNotEmpty) {
+          final target = _centroid(points);
+          final zoom = points.length == 1 ? 16.0 : 13.5;
           _hasAutoCentered = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _mapController.move(target, 16);
+            if (mounted) _mapController.move(target, zoom);
           });
         }
       }
@@ -76,6 +98,100 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
     } finally {
       _isRefreshing = false;
     }
+  }
+
+  void _syncMovingPositions(List<dynamic> rows) {
+    final now = DateTime.now();
+    final activeKeys = <String>{};
+
+    for (final engineer in rows) {
+      final target = _locationOf(engineer);
+      if (target == null) continue;
+      final key = _employeeKey(engineer);
+      activeKeys.add(key);
+
+      final current = _displayPositions[key];
+      if (current == null) {
+        _displayPositions[key] = target;
+        _appendBreadcrumb(key, target);
+        continue;
+      }
+
+      final targetDistance = _distance.as(LengthUnit.Meter, current, target);
+      if (targetDistance < 1) continue;
+
+      _animationStarts[key] = current;
+      _animationTargets[key] = target;
+      _animationStartedAt[key] = now;
+      _appendBreadcrumb(key, target);
+    }
+
+    final staleKeys = _displayPositions.keys
+        .where((key) => !activeKeys.contains(key))
+        .toList();
+    for (final key in staleKeys) {
+      _displayPositions.remove(key);
+      _animationStarts.remove(key);
+      _animationTargets.remove(key);
+      _animationStartedAt.remove(key);
+      _bearings.remove(key);
+    }
+  }
+
+  void _appendBreadcrumb(String key, LatLng point) {
+    final trail = _breadcrumbs.putIfAbsent(key, () => <LatLng>[]);
+    if (trail.isNotEmpty) {
+      final previous = trail.last;
+      final meters = _distance.as(LengthUnit.Meter, previous, point);
+      if (meters < _minimumTrailMoveMeters) return;
+      _bearings[key] = _bearingBetween(previous, point);
+    }
+    trail.add(point);
+    if (trail.length > _maxBreadcrumbPoints) {
+      trail.removeRange(0, trail.length - _maxBreadcrumbPoints);
+    }
+  }
+
+  void _animateMarkers() {
+    if (!mounted || _animationTargets.isEmpty) return;
+    final now = DateTime.now();
+    var changed = false;
+    final completed = <String>[];
+
+    for (final key in _animationTargets.keys.toList()) {
+      final start = _animationStarts[key];
+      final target = _animationTargets[key];
+      final startedAt = _animationStartedAt[key];
+      if (start == null || target == null || startedAt == null) {
+        completed.add(key);
+        continue;
+      }
+
+      final elapsed = now.difference(startedAt).inMilliseconds;
+      final rawT = elapsed / _markerAnimationDuration.inMilliseconds;
+      final t = rawT.clamp(0.0, 1.0);
+      final eased = Curves.easeInOut.transform(t);
+      final next = LatLng(
+        start.latitude + (target.latitude - start.latitude) * eased,
+        start.longitude + (target.longitude - start.longitude) * eased,
+      );
+      _displayPositions[key] = next;
+      changed = true;
+
+      if (_followEmployeeKey == key) {
+        _mapController.move(next, 17);
+      }
+      if (t >= 1) completed.add(key);
+    }
+
+    for (final key in completed) {
+      final target = _animationTargets.remove(key);
+      if (target != null) _displayPositions[key] = target;
+      _animationStarts.remove(key);
+      _animationStartedAt.remove(key);
+    }
+
+    if (changed) setState(() {});
   }
 
   double? _asDouble(dynamic value) {
@@ -92,15 +208,63 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
     return LatLng(latitude, longitude);
   }
 
+  LatLng? _displayLocationOf(dynamic engineer) {
+    final raw = _locationOf(engineer);
+    if (raw == null) return null;
+    return _displayPositions[_employeeKey(engineer)] ?? raw;
+  }
+
+  String _employeeKey(dynamic engineer) {
+    if (engineer is Map) {
+      for (final field in const <String>[
+        'employee_id',
+        'user_id',
+        'id',
+        'email',
+        'phone',
+        'name',
+      ]) {
+        final value = engineer[field]?.toString().trim();
+        if (value != null && value.isNotEmpty) return '$field:$value';
+      }
+    }
+    return 'employee:${engineer.hashCode}';
+  }
+
   String _value(dynamic engineer, String key, {String fallback = '-'}) {
     if (engineer is! Map) return fallback;
     final value = engineer[key]?.toString().trim();
     return value == null || value.isEmpty ? fallback : value;
   }
 
+  String _status(dynamic engineer) {
+    if (engineer is! Map) return 'MISSING';
+    return (engineer['location_status'] ?? 'MISSING').toString().toUpperCase();
+  }
+
   bool _isOnline(dynamic engineer) =>
       engineer is Map &&
       (engineer['online'] == true || engineer['online'] == 1);
+
+  LatLng _centroid(List<LatLng> points) {
+    var lat = 0.0;
+    var lng = 0.0;
+    for (final point in points) {
+      lat += point.latitude;
+      lng += point.longitude;
+    }
+    return LatLng(lat / points.length, lng / points.length);
+  }
+
+  double _bearingBetween(LatLng from, LatLng to) {
+    final lat1 = from.latitude * math.pi / 180;
+    final lat2 = to.latitude * math.pi / 180;
+    final deltaLng = (to.longitude - from.longitude) * math.pi / 180;
+    final y = math.sin(deltaLng) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(deltaLng);
+    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+  }
 
   String _timeAgo(dynamic updatedAt) {
     final raw = updatedAt?.toString();
@@ -118,9 +282,22 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
         '${timestamp.toLocal().year}';
   }
 
+  String _freshnessLabel(dynamic engineer) {
+    if (engineer is! Map) return 'No GPS';
+    return _timeAgo(engineer['updated_at']);
+  }
+
+  Color _markerColor(dynamic engineer) {
+    final status = _status(engineer);
+    if (status == 'LIVE') return Colors.green;
+    if (status == 'STALE') return Colors.orange;
+    if (status == 'LOCATION_MISSING') return Colors.red;
+    if (!_isOnline(engineer)) return Colors.blueGrey;
+    return Colors.red;
+  }
+
   double _calculateDistance(LatLng current, LatLng destination) {
-    const Distance distance = Distance();
-    return distance.as(LengthUnit.Kilometer, current, destination);
+    return _distance.as(LengthUnit.Kilometer, current, destination);
   }
 
   Future<LatLng?> _tryCurrentLocation() async {
@@ -220,6 +397,15 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _followEngineer(dynamic engineer) {
+    final key = _employeeKey(engineer);
+    final location = _displayLocationOf(engineer);
+    if (location == null) return;
+    setState(() => _followEmployeeKey = key);
+    _mapController.move(location, 17);
+    _showMessage('Following ${_value(engineer, 'name', fallback: 'employee')} live.');
   }
 
   Future<void> _showEngineerDetails(dynamic engineer, LatLng location) async {
@@ -390,6 +576,18 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _followEngineer(engineer);
+                    },
+                    icon: const Icon(Icons.gps_fixed),
+                    label: const Text('Follow live movement'),
+                  ),
+                ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Close'),
@@ -402,14 +600,35 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
     );
   }
 
+  List<Polyline> _breadcrumbPolylines() {
+    final activeKeys = _engineers.map(_employeeKey).toSet();
+    return _breadcrumbs.entries
+        .where((entry) => activeKeys.contains(entry.key) && entry.value.length >= 2)
+        .map(
+          (entry) => Polyline(
+            points: List<LatLng>.unmodifiable(entry.value),
+            strokeWidth: 3,
+            color: Colors.blueAccent.withValues(alpha: .48),
+          ),
+        )
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final markers = _engineers.map(_buildMarker).whereType<Marker>().toList();
+    final trails = _breadcrumbPolylines();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Employee Live Location'),
         actions: [
+          if (_followEmployeeKey != null)
+            IconButton(
+              tooltip: 'Stop following',
+              onPressed: () => setState(() => _followEmployeeKey = null),
+              icon: const Icon(Icons.gps_off),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _isRefreshing ? null : () => _loadEngineers(),
@@ -439,6 +658,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                       userAgentPackageName: 'com.arismartro.app',
                       maxZoom: 19,
                     ),
+                    if (trails.isNotEmpty) PolylineLayer(polylines: trails),
                     MarkerLayer(markers: markers),
                     RichAttributionWidget(
                       attributions: const [
@@ -446,6 +666,14 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                       ],
                     ),
                   ],
+                ),
+                Positioned(
+                  left: 12,
+                  top: 12,
+                  child: _LiveMovingBadge(
+                    pollingSeconds: _pollInterval.inSeconds,
+                    following: _followEmployeeKey != null,
+                  ),
                 ),
                 if (_isLoading) const Center(child: CircularProgressIndicator()),
                 if (!_isLoading && _errorMessage != null)
@@ -459,7 +687,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
             _EmployeeLocationSummary(
               employees: _engineers,
               onTap: (employee) {
-                final location = _locationOf(employee);
+                final location = _displayLocationOf(employee);
                 if (location != null) {
                   _showEngineerDetails(employee, location);
                 } else {
@@ -475,58 +703,82 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
   }
 
   Marker? _buildMarker(dynamic engineer) {
-    final location = _locationOf(engineer);
+    final location = _displayLocationOf(engineer);
     if (location == null) return null;
-    final online = _isOnline(engineer);
+    final key = _employeeKey(engineer);
+    final color = _markerColor(engineer);
     final name = _value(engineer, 'name', fallback: 'Engineer');
+    final photo = _value(engineer, 'photo', fallback: '');
+    final bearing = _bearings[key];
+    final following = _followEmployeeKey == key;
 
     return Marker(
       point: location,
-      width: 126,
-      height: 74,
+      width: 138,
+      height: 94,
       child: GestureDetector(
         onTap: () => _showEngineerDetails(engineer, location),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              constraints: const BoxConstraints(maxWidth: 118),
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              constraints: const BoxConstraints(maxWidth: 132),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
+                border: following ? Border.all(color: Colors.blue, width: 2) : null,
                 boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
               ),
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    '${_status(engineer)} • ${_freshnessLabel(engineer)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(
-                  Icons.location_pin,
-                  color: online ? Colors.green : Colors.red,
-                  size: 46,
-                ),
-                Positioned(
-                  top: 6,
-                  child: CircleAvatar(
-                    radius: 10,
-                    backgroundColor: Colors.white,
-                    backgroundImage: _value(engineer, 'photo', fallback: '').isNotEmpty
-                        ? NetworkImage(_value(engineer, 'photo', fallback: ''))
-                        : null,
-                    child: _value(engineer, 'photo', fallback: '').isEmpty
-                        ? const Icon(Icons.person, size: 12)
-                        : null,
+            SizedBox(
+              height: 50,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(Icons.location_pin, color: color, size: 48),
+                  Positioned(
+                    top: 6,
+                    child: CircleAvatar(
+                      radius: 10,
+                      backgroundColor: Colors.white,
+                      backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+                      child: photo.isEmpty ? const Icon(Icons.person, size: 12) : null,
+                    ),
                   ),
-                ),
-              ],
+                  if (bearing != null)
+                    Positioned(
+                      right: 10,
+                      bottom: 4,
+                      child: Transform.rotate(
+                        angle: bearing * math.pi / 180,
+                        child: Icon(Icons.navigation, size: 18, color: color),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ],
         ),
@@ -537,8 +789,37 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _animationTimer?.cancel();
     super.dispose();
   }
+}
+
+class _LiveMovingBadge extends StatelessWidget {
+  const _LiveMovingBadge({required this.pollingSeconds, required this.following});
+
+  final int pollingSeconds;
+  final bool following;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .94),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.circle, size: 9, color: Colors.green),
+            const SizedBox(width: 6),
+            Text(
+              following ? 'LIVE MOVING • FOLLOW' : 'LIVE MOVING • ${pollingSeconds}s',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+      );
 }
 
 class _EmployeeLocationSummary extends StatelessWidget {
