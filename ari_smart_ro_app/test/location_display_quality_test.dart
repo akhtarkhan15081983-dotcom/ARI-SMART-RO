@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ari_smart_ro/services/location_display_quality.dart';
+import 'package:ari_smart_ro_app/services/location_display_quality.dart';
 
 LocationDisplaySample sample({
   required double latitude,
