@@ -52,7 +52,8 @@
         </provider>
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
