@@ -111,8 +111,27 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
 
   double _calculateDistance(LatLng current, LatLng destination) {
     const Distance distance = Distance();
-
     return distance.as(LengthUnit.Kilometer, current, destination);
+  }
+
+  Future<LatLng?> _tryCurrentLocation() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return null;
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return null;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          timeLimit: Duration(seconds: 6),
+        ),
+      );
+      return LatLng(position.latitude, position.longitude);
+    } catch (error) {
+      debugPrint('Admin current-location unavailable: $error');
+      return null;
+    }
   }
 
   Future<void> _showMyLocation() async {
@@ -154,17 +173,19 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
   }
 
   Future<void> _navigateTo(LatLng location) async {
-    final current = await Geolocator.getCurrentPosition();
+    final current = await _tryCurrentLocation();
+    final query = <String, String>{
+      'api': '1',
+      'destination': '${location.latitude},${location.longitude}',
+      'travelmode': 'driving',
+    };
+    if (current != null) {
+      query['origin'] = '${current.latitude},${current.longitude}';
+    }
 
-    final uri = Uri.parse(
-      "https://www.google.com/maps/dir/?api=1"
-      "&origin=${current.latitude},${current.longitude}"
-      "&destination=${location.latitude},${location.longitude}"
-      "&travelmode=driving",
-    );
-
+    final uri = Uri.https('www.google.com', '/maps/dir/', query);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      _showMessage("Could not open Google Maps.");
+      _showMessage('Could not open Google Maps.');
     }
   }
 
@@ -182,13 +203,7 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
     final phone = _value(engineer, 'phone');
     final photoUrl = _value(engineer, 'photo', fallback: '');
     final online = _isOnline(engineer);
-    LatLng? currentLocation;
-
-    try {
-      final position = await Geolocator.getCurrentPosition();
-
-      currentLocation = LatLng(position.latitude, position.longitude);
-    } catch (_) {}
+    final currentLocation = await _tryCurrentLocation();
 
     final distanceKm = currentLocation == null
         ? null
@@ -196,14 +211,19 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
     Map<String, dynamic>? routeInfo;
 
     if (currentLocation != null) {
-      routeInfo = await _service.getRoute(
-        startLat: currentLocation.latitude,
-        startLng: currentLocation.longitude,
-        endLat: location.latitude,
-        endLng: location.longitude,
-      );
+      try {
+        routeInfo = await _service.getRoute(
+          startLat: currentLocation.latitude,
+          startLng: currentLocation.longitude,
+          endLat: location.latitude,
+          endLng: location.longitude,
+        );
+      } catch (error) {
+        debugPrint('Road route unavailable: $error');
+      }
     }
 
+    if (!mounted) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -268,37 +288,36 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-
               _InfoCard(
                 icon: Icons.near_me,
                 color: Colors.green,
-                label: "Distance",
+                label: 'Distance',
                 value: distanceKm == null
-                    ? "Unknown"
-                    : "${distanceKm.toStringAsFixed(2)} KM",
+                    ? 'Admin location unavailable'
+                    : '${distanceKm.toStringAsFixed(2)} KM',
               ),
               const SizedBox(height: 12),
-
               _InfoCard(
                 icon: Icons.route,
                 color: Colors.deepPurple,
-                label: "Road Distance",
-                value: routeInfo == null
-                    ? "Loading..."
-                    : "${(routeInfo["distance"] / 1000).toStringAsFixed(2)} KM",
+                label: 'Road Distance',
+                value: currentLocation == null
+                    ? 'Open Navigate for route'
+                    : routeInfo == null
+                        ? 'Unavailable'
+                        : '${(routeInfo['distance'] / 1000).toStringAsFixed(2)} KM',
               ),
-
               const SizedBox(height: 12),
-
               _InfoCard(
                 icon: Icons.timer,
                 color: Colors.red,
-                label: "ETA",
-                value: routeInfo == null
-                    ? "Loading..."
-                    : "${(routeInfo["duration"] / 60).round()} Minutes",
+                label: 'ETA',
+                value: currentLocation == null
+                    ? 'Open Navigate for ETA'
+                    : routeInfo == null
+                        ? 'Unavailable'
+                        : '${(routeInfo['duration'] / 60).round()} Minutes',
               ),
-
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -459,19 +478,16 @@ class _EngineerMapScreenState extends State<EngineerMapScreen> {
                   color: online ? Colors.green : Colors.red,
                   size: 46,
                 ),
-
                 Positioned(
                   top: 6,
                   child: CircleAvatar(
                     radius: 10,
                     backgroundColor: Colors.white,
-
                     backgroundImage:
-                        _value(engineer, "photo", fallback: "").isNotEmpty
-                        ? NetworkImage(_value(engineer, "photo", fallback: ""))
+                        _value(engineer, 'photo', fallback: '').isNotEmpty
+                        ? NetworkImage(_value(engineer, 'photo', fallback: ''))
                         : null,
-
-                    child: _value(engineer, "photo", fallback: "").isEmpty
+                    child: _value(engineer, 'photo', fallback: '').isEmpty
                         ? const Icon(Icons.person, size: 12)
                         : null,
                   ),
