@@ -58,7 +58,7 @@ void main() {
     );
     expect(source, contains("final isCriticalMissing = status == 'LOCATION_MISSING';"));
     expect(source, contains("? Colors.orange"));
-    expect(source, contains("? Colors.red"));
+    expect(source, contains(": Colors.red;"));
     expect(source, contains("status == 'STALE'"));
     expect(source, contains("'Checked in • GPS missing'"));
     expect(
