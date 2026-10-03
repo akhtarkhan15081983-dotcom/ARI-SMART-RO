@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from attendance.models import Attendance, OvertimeRequest
 
 from .location_models import EmployeeLocationPoint
+from .location_telemetry import normalize_location_telemetry
 from .models import EmployeeProfile
 
 
@@ -79,8 +80,8 @@ class EmployeeLocationBatchAPIView(APIView):
     """Persist delayed GPS history without moving the employee's live marker backwards.
 
     Mobile clients upload queued points here after reconnecting. The endpoint is
-    intentionally idempotent: the EmployeeLocationPoint unique constraint plus
-    ignore_conflicts makes a repeated acknowledged batch safe.
+    intentionally idempotent. V5 client_point_id gives stronger dedupe while the
+    legacy coordinate/timestamp unique constraint remains as a compatibility net.
     """
 
     permission_classes = [IsAuthenticated]
@@ -142,12 +143,14 @@ class EmployeeLocationBatchAPIView(APIView):
                 rejected["outside_shift"] += 1
                 continue
 
+            telemetry = normalize_location_telemetry(raw)
             accepted.append(
                 EmployeeLocationPoint(
                     employee=employee,
                     latitude=latitude,
                     longitude=longitude,
                     captured_at=captured_at,
+                    **telemetry,
                 )
             )
 
