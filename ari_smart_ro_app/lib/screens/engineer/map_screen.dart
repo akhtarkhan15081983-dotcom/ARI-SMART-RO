@@ -507,6 +507,9 @@ class _EmployeeLocationSummary extends StatelessWidget {
         .toUpperCase();
   }
 
+  bool _countsAsMissing(String status) =>
+      status == 'MISSING' || status == 'LOCATION_MISSING';
+
   String _name(dynamic employee) {
     if (employee is! Map) return 'Employee';
     final value = employee['name']?.toString().trim();
@@ -517,7 +520,7 @@ class _EmployeeLocationSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final live = employees.where((e) => _status(e) == 'LIVE').length;
     final stale = employees.where((e) => _status(e) == 'STALE').length;
-    final missing = employees.where((e) => _status(e) == 'MISSING').length;
+    final missing = employees.where((e) => _countsAsMissing(_status(e))).length;
 
     return Material(
       elevation: 8,
@@ -556,11 +559,26 @@ class _EmployeeLocationSummary extends StatelessWidget {
                     final status = _status(employee);
                     final isLive = status == 'LIVE';
                     final isMissing = status == 'MISSING';
+                    final isCriticalMissing = status == 'LOCATION_MISSING';
+                    final isCheckedIn =
+                        employee is Map && employee['attendance_active'] == true;
                     final color = isLive
                         ? Colors.green
                         : isMissing
                             ? Colors.orange
-                            : Colors.red;
+                            : isCriticalMissing
+                                ? Colors.red
+                                : Colors.red;
+                    final statusText = status == 'LIVE'
+                        ? 'Live location'
+                        : isCheckedIn && status == 'STALE'
+                            ? 'Checked in • GPS stale'
+                            : isCheckedIn &&
+                                    (isMissing || isCriticalMissing)
+                                ? 'Checked in • GPS missing'
+                                : status == 'STALE'
+                                    ? 'Location stale'
+                                    : 'Location missing';
                     return InkWell(
                       onTap: () => onTap(employee),
                       borderRadius: BorderRadius.circular(12),
@@ -588,16 +606,7 @@ class _EmployeeLocationSummary extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              status == 'LIVE'
-                                  ? 'Live location'
-                                  : employee is Map &&
-                                          employee['attendance_active'] == true
-                                      ? status == 'STALE'
-                                          ? 'Checked in • GPS stale'
-                                          : 'Checked in • GPS missing'
-                                      : status == 'STALE'
-                                          ? 'Location stale'
-                                          : 'Location missing',
+                              statusText,
                               style: TextStyle(
                                 color: color,
                                 fontSize: 12,
