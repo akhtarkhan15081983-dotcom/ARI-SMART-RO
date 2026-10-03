@@ -15,13 +15,28 @@ void main() {
     expect(source, contains("source: 'LAST_KNOWN_FALLBACK'"));
   });
 
-  test('foreground service starts before immediate GPS capture', () {
+  test('tracking startup is idempotent while background capture stays immediate', () {
     final source = File('lib/services/live_location_service.dart').readAsStringSync();
-    final start = source.indexOf('final started = await service.startService();');
-    final capture = source.indexOf('await sendCurrentLocation();');
 
-    expect(start, greaterThanOrEqualTo(0));
-    expect(capture, greaterThan(start));
+    final startTrackingStart = source.indexOf('Future<void> startTracking');
+    final stopTrackingStart = source.indexOf('Future<void> stopTracking');
+    expect(startTrackingStart, greaterThanOrEqualTo(0));
+    expect(stopTrackingStart, greaterThan(startTrackingStart));
+
+    final startTrackingBody = source.substring(startTrackingStart, stopTrackingStart);
+    expect(startTrackingBody, contains('trackingEnabled && serviceRunning'));
+    expect(
+      startTrackingBody,
+      contains('ensureTrackingReady(requestPermissions: false)'),
+    );
+    expect(startTrackingBody, contains('final started = await service.startService();'));
+    expect(startTrackingBody, isNot(contains('await sendCurrentLocation();')));
+
+    final entryPointStart = source.indexOf('void liveLocationBackgroundEntryPoint');
+    expect(entryPointStart, greaterThanOrEqualTo(0));
+    final entryPointBody = source.substring(entryPointStart);
+    expect(entryPointBody, contains('await tick();'));
+    expect(entryPointBody, contains('Timer.periodic(_trackingInterval'));
   });
 
   test('Android task removal does not request tracking service shutdown', () {
