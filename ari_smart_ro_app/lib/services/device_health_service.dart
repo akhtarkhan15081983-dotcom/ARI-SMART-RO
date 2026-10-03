@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_service.dart';
+import 'battery_optimization_service.dart';
 import 'live_location_service.dart';
 import 'offline_attendance_store.dart';
 import 'offline_job_store.dart';
@@ -35,7 +37,18 @@ class DeviceHealthService {
     };
   }
 
+  Future<void> _offerEngineerBatteryExemption() async {
+    try {
+      final role = (await ApiService.getRole())?.trim().toUpperCase();
+      if (role != 'ENGINEER') return;
+      unawaited(const BatteryOptimizationService().requestExemptionOnce());
+    } catch (_) {
+      // Battery exemption is best-effort and must never block dashboard/reporting.
+    }
+  }
+
   Future<void> report() async {
+    await _offerEngineerBatteryExemption();
     try {
       final response = await http
           .post(
